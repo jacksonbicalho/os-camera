@@ -1,0 +1,14 @@
+storage:
+  path: /data/recordings     # env: STORAGE_PATH
+
+defaults:
+  chunk_duration: 5m         # env: CHUNK_DURATION
+  reconnect_interval: 10s    # env: RECONNECT_INTERVAL
+
+cameras:
+  - id: entrada
+    rtsp_url: rtsp://192.168.1.10:554/stream
+
+  - id: quintal
+    rtsp_url: rtsp://192.168.1.11:554/stream
+    chunk_duration: 10m      # sobrescreve o default
