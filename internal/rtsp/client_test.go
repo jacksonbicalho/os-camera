@@ -2,16 +2,22 @@ package rtsp_test
 
 import (
 	"errors"
+	"io"
+	"log/slog"
 	"testing"
 
 	"camera/internal/rtsp"
 )
 
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
 // --- connect ---
 
 func TestClientConnectsToRTSPURL(t *testing.T) {
 	conn := rtsp.NewFakeConnection(true, nil)
-	client := rtsp.NewClient("rtsp://localhost:8554/test", conn)
+	client := rtsp.NewClient("rtsp://localhost:8554/test", conn, discardLogger())
 
 	if err := client.Connect(); err != nil {
 		t.Fatalf("expected successful connection, got: %v", err)
@@ -23,7 +29,7 @@ func TestClientConnectsToRTSPURL(t *testing.T) {
 
 func TestClientIsNotConnectedBeforeConnect(t *testing.T) {
 	conn := rtsp.NewFakeConnection(true, nil)
-	client := rtsp.NewClient("rtsp://localhost:8554/test", conn)
+	client := rtsp.NewClient("rtsp://localhost:8554/test", conn, discardLogger())
 
 	if client.IsConnected() {
 		t.Error("client must not be connected before calling Connect()")
@@ -35,7 +41,7 @@ func TestClientIsNotConnectedBeforeConnect(t *testing.T) {
 func TestClientGetsFrameAfterConnect(t *testing.T) {
 	expectedData := []byte{0xFF, 0xD8, 0xFF, 0xE0}
 	conn := rtsp.NewFakeConnection(true, expectedData)
-	client := rtsp.NewClient("rtsp://localhost:8554/test", conn)
+	client := rtsp.NewClient("rtsp://localhost:8554/test", conn, discardLogger())
 
 	_ = client.Connect()
 
@@ -51,7 +57,7 @@ func TestClientGetsFrameAfterConnect(t *testing.T) {
 
 func TestClientCannotGetFrameWithoutConnecting(t *testing.T) {
 	conn := rtsp.NewFakeConnection(true, nil)
-	client := rtsp.NewClient("rtsp://localhost:8554/test", conn)
+	client := rtsp.NewClient("rtsp://localhost:8554/test", conn, discardLogger())
 
 	_, err := client.GetFrame()
 
@@ -64,7 +70,7 @@ func TestClientCannotGetFrameWithoutConnecting(t *testing.T) {
 
 func TestClientClosesConnection(t *testing.T) {
 	conn := rtsp.NewFakeConnection(true, nil)
-	client := rtsp.NewClient("rtsp://localhost:8554/test", conn)
+	client := rtsp.NewClient("rtsp://localhost:8554/test", conn, discardLogger())
 	_ = client.Connect()
 
 	client.Close()
@@ -76,7 +82,7 @@ func TestClientClosesConnection(t *testing.T) {
 
 func TestClientCannotGetFrameAfterClose(t *testing.T) {
 	conn := rtsp.NewFakeConnection(true, []byte{0xFF})
-	client := rtsp.NewClient("rtsp://localhost:8554/test", conn)
+	client := rtsp.NewClient("rtsp://localhost:8554/test", conn, discardLogger())
 	_ = client.Connect()
 	client.Close()
 
@@ -92,7 +98,7 @@ func TestClientCannotGetFrameAfterClose(t *testing.T) {
 func TestClientPropagatesInvalidFrameError(t *testing.T) {
 	conn := rtsp.NewFakeConnection(true, nil)
 	conn.SetReadError(errors.New("corrupted frame"))
-	client := rtsp.NewClient("rtsp://localhost:8554/test", conn)
+	client := rtsp.NewClient("rtsp://localhost:8554/test", conn, discardLogger())
 	_ = client.Connect()
 
 	_, err := client.GetFrame()
@@ -106,7 +112,7 @@ func TestClientPropagatesInvalidFrameError(t *testing.T) {
 
 func TestClientReconnectsAfterFailure(t *testing.T) {
 	conn := rtsp.NewFakeConnection(false, nil)
-	client := rtsp.NewClient("rtsp://localhost:8554/test", conn)
+	client := rtsp.NewClient("rtsp://localhost:8554/test", conn, discardLogger())
 
 	_ = client.Connect()
 	if client.IsConnected() {

@@ -2,6 +2,7 @@ package recorder
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -22,25 +23,29 @@ type Recorder struct {
 	storage   config.StorageConfig
 	defaults  config.DefaultsConfig
 	commander Commander
+	log       *slog.Logger
 	process   Process
 }
 
-func NewRecorder(camera config.CameraConfig, storage config.StorageConfig, defaults config.DefaultsConfig, commander Commander) *Recorder {
+func NewRecorder(camera config.CameraConfig, storage config.StorageConfig, defaults config.DefaultsConfig, commander Commander, log *slog.Logger) *Recorder {
 	return &Recorder{
 		camera:    camera,
 		storage:   storage,
 		defaults:  defaults,
 		commander: commander,
+		log:       log,
 	}
 }
 
 func (r *Recorder) Start(now time.Time) error {
 	dir := OutputDir(r.storage.Path, r.camera.ID, now)
+	r.log.Debug("creating output directory", "path", dir, "camera", r.camera.ID)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 	pattern := OutputPattern(r.storage.Path, r.camera.ID, now)
 	duration := int(r.camera.EffectiveChunkDuration(r.defaults).Seconds())
+	r.log.Debug("starting ffmpeg", "camera", r.camera.ID, "pattern", pattern, "chunk_duration", duration)
 	proc, err := r.commander.Start("ffmpeg",
 		"-i", r.camera.RTSPURL,
 		"-f", "segment",
@@ -54,6 +59,7 @@ func (r *Recorder) Start(now time.Time) error {
 		return err
 	}
 	r.process = proc
+	r.log.Info("recording started", "camera", r.camera.ID)
 	return nil
 }
 
@@ -61,6 +67,7 @@ func (r *Recorder) Stop() {
 	if r.process == nil {
 		return
 	}
+	r.log.Info("stopping recorder, finalizing chunk", "camera", r.camera.ID)
 	r.process.Terminate()
 	r.process.Wait()
 }

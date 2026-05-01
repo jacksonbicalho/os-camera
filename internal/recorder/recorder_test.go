@@ -1,6 +1,8 @@
 package recorder_test
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +11,10 @@ import (
 	"camera/internal/config"
 	"camera/internal/recorder"
 )
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 type fakeProcess struct{}
 
@@ -75,7 +81,7 @@ func TestRecorderCreatesDirectoryBeforeStarting(t *testing.T) {
 	storage := config.StorageConfig{Path: tmpDir}
 	defaults := config.DefaultsConfig{}
 
-	rec := recorder.NewRecorder(camera, storage, defaults, &fakeCommander{})
+	rec := recorder.NewRecorder(camera, storage, defaults, &fakeCommander{}, discardLogger())
 	if err := rec.Start(ts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -99,7 +105,7 @@ func TestRecorderStartsFFmpegWithCorrectArguments(t *testing.T) {
 	defaults := config.DefaultsConfig{}
 
 	cmd := &fakeCommander{}
-	rec := recorder.NewRecorder(camera, storage, defaults, cmd)
+	rec := recorder.NewRecorder(camera, storage, defaults, cmd, discardLogger())
 	if err := rec.Start(ts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -137,7 +143,7 @@ func TestRecorderStopFinalizesChunk(t *testing.T) {
 	proc := &trackingProcess{}
 	cmd := &fakeCommander{process: proc}
 
-	rec := recorder.NewRecorder(camera, storage, defaults, cmd)
+	rec := recorder.NewRecorder(camera, storage, defaults, cmd, discardLogger())
 	if err := rec.Start(ts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

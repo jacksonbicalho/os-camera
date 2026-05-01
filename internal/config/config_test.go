@@ -155,6 +155,66 @@ cameras:
 	}
 }
 
+func TestLoadParsesLogConfig(t *testing.T) {
+	path := writeTempYAML(t, `
+log:
+  output: file
+  path: /var/log/camera
+
+cameras:
+  - id: cam1
+    rtsp_url: rtsp://localhost:8554/stream
+`)
+
+	cfg, err := config.Load(path)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Log.Output != "file" {
+		t.Errorf("expected output %q, got %q", "file", cfg.Log.Output)
+	}
+	if cfg.Log.Path != "/var/log/camera" {
+		t.Errorf("expected path %q, got %q", "/var/log/camera", cfg.Log.Path)
+	}
+}
+
+func TestLoadParsesDebugField(t *testing.T) {
+	path := writeTempYAML(t, `
+debug: true
+
+cameras:
+  - id: cam1
+    rtsp_url: rtsp://localhost:8554/stream
+`)
+
+	cfg, err := config.Load(path)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.Debug {
+		t.Error("expected Debug to be true")
+	}
+}
+
+func TestLoadDebugDefaultsToFalse(t *testing.T) {
+	path := writeTempYAML(t, `
+cameras:
+  - id: cam1
+    rtsp_url: rtsp://localhost:8554/stream
+`)
+
+	cfg, err := config.Load(path)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Debug {
+		t.Error("expected Debug to default to false")
+	}
+}
+
 func TestLoadEnvVarOverridesStoragePath(t *testing.T) {
 	t.Setenv("STORAGE_PATH", "/tmp/from-env")
 

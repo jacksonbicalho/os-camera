@@ -20,9 +20,16 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 }
 
 type Config struct {
+	Debug    bool           `yaml:"debug"`
+	Log      LogConfig      `yaml:"log"`
 	Storage  StorageConfig  `yaml:"storage"`
 	Defaults DefaultsConfig `yaml:"defaults"`
 	Cameras  []CameraConfig `yaml:"cameras"`
+}
+
+type LogConfig struct {
+	Output string `yaml:"output"`
+	Path   string `yaml:"path"`
 }
 
 type StorageConfig struct {

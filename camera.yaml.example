@@ -1,3 +1,9 @@
+debug: false         # env: DEBUG
+
+log:
+  output: stdout     # stdout | file — env: LOG_OUTPUT
+  path:              # diretório quando output: file — env: LOG_PATH
+
 storage:
   path: /data/recordings     # env: STORAGE_PATH
 
