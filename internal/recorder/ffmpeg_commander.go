@@ -1,6 +1,7 @@
 package recorder
 
 import (
+	"io"
 	"os/exec"
 	"syscall"
 )
@@ -14,6 +15,8 @@ func NewFFmpegCommander() *FFmpegCommander {
 func (c *FFmpegCommander) Start(name string, args ...string) (Process, error) {
 	cmd := exec.Command(name, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
