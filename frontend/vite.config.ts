@@ -11,6 +11,9 @@ export default defineConfig({
       '/recordings': 'http://localhost:8080',
     },
   },
+  build: {
+    chunkSizeWarningLimit: 600,
+  },
   test: {
     environment: 'happy-dom',
   },
