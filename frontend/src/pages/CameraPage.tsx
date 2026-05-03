@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
@@ -7,6 +7,7 @@ import 'react-day-picker/style.css'
 import { authHeaders, clearToken, getToken, getUsername } from '../auth'
 import Header from '../components/Header'
 import HLSPlayer from '../components/HLSPlayer'
+import { useScrollToPlayer } from '../hooks/useScrollToPlayer'
 
 interface Recording {
   filename: string
@@ -42,6 +43,9 @@ export default function CameraPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [activeRecording, setActiveRecording] = useState<Recording | null>(null)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const playerRef = useRef<HTMLDivElement>(null)
+
+  useScrollToPlayer(playerRef, activeRecording?.filename ?? null)
 
   useEffect(() => {
     fetch('/api/config')
@@ -91,7 +95,12 @@ export default function CameraPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Player */}
           <div className="lg:col-span-2 flex flex-col gap-4">
-            <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+            <div
+              ref={playerRef}
+              className={`bg-gray-900 border rounded-lg overflow-hidden transition-all duration-300 ${
+                !isLive ? 'border-blue-600 ring-1 ring-blue-600' : 'border-gray-800'
+              }`}
+            >
               <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
                 <div className="flex items-center gap-2">
                   {isLive ? (
