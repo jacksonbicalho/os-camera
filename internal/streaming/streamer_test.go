@@ -85,6 +85,68 @@ func TestHLSStreamerStartsFFmpegWithCorrectArguments(t *testing.T) {
 	}
 }
 
+func TestHLSStreamerUsesStreamCopy(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "entrada", RTSPURL: "rtsp://192.168.1.10:554/stream"}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := cmd.calls[0]
+	if !containsSequence(args, "-c", "copy") {
+		t.Error("expected -c copy in args for stream copy")
+	}
+	for i, a := range args {
+		if a == "-bsf:v" {
+			t.Errorf("unexpected -bsf:v %q: RTSP stream is already Annex B", args[i+1])
+		}
+	}
+}
+
+func TestHLSStreamerUsesIndependentSegments(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "entrada", RTSPURL: "rtsp://192.168.1.10:554/stream"}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := cmd.calls[0]
+	for i, a := range args {
+		if a == "-hls_flags" && i+1 < len(args) {
+			flags := args[i+1]
+			if !contains(flags, "independent_segments") {
+				t.Errorf("expected independent_segments in -hls_flags, got %q", flags)
+			}
+			return
+		}
+	}
+	t.Error("expected -hls_flags in args")
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr ||
+		len(s) > len(substr) && (s[:len(substr)] == substr ||
+			s[len(s)-len(substr):] == substr ||
+			containsMiddle(s, substr)))
+}
+
+func containsMiddle(s, substr string) bool {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 func TestHLSStreamerStopFinalizesStream(t *testing.T) {
 	tmpDir := t.TempDir()
 
