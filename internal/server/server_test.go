@@ -366,3 +366,83 @@ func TestGetStatsRequiresAuth(t *testing.T) {
 		t.Fatalf("expected 401, got %d", w.Code)
 	}
 }
+
+func TestMotionEventsReturnsEventsForDate(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "entrada"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "05", "03")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	ndjson := `{"time":"2026-05-03T10:00:00Z","score":0.12}` + "\n" +
+		`{"time":"2026-05-03T10:00:05Z","score":0.08}` + "\n"
+	if err := os.WriteFile(filepath.Join(dateDir, "motion.ndjson"), []byte(ndjson), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.ServerConfig{Username: "master", Password: "secret", RecordingsPath: tmpDir}
+	cameras := []config.CameraConfig{{ID: cameraID}}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion?date=2026-05-03", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Events []map[string]any `json:"events"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(resp.Events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(resp.Events))
+	}
+	if resp.Events[0]["time"] != "2026-05-03T10:00:00Z" {
+		t.Errorf("unexpected first event time: %v", resp.Events[0]["time"])
+	}
+}
+
+func TestMotionEventsRequiresAuth(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/entrada/motion?date=2026-05-03", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestMotionEventsReturnsEmptyWhenNoFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := config.ServerConfig{Username: "master", Password: "secret", RecordingsPath: tmpDir}
+	cameras := []config.CameraConfig{{ID: "entrada"}}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/entrada/motion?date=2026-05-03", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Events []map[string]any `json:"events"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if len(resp.Events) != 0 {
+		t.Fatalf("expected 0 events, got %d", len(resp.Events))
+	}
+}

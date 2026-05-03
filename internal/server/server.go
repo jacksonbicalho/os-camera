@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"crypto/rand"
 	"encoding/json"
 	"io/fs"
@@ -68,6 +69,7 @@ func (s *Server) routes() {
 	s.mux.Handle("/recordings/", s.requireAuth(recHandler.ServeHTTP))
 
 	s.mux.HandleFunc("GET /api/cameras/{id}/recordings", s.requireAuth(s.handleRecordings))
+	s.mux.HandleFunc("GET /api/cameras/{id}/motion", s.requireAuth(s.handleMotionEvents))
 	s.mux.HandleFunc("GET /api/stats", s.requireAuth(s.handleStats))
 
 	if s.frontend != nil {
@@ -297,4 +299,41 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"token": signed})
+}
+
+func (s *Server) handleMotionEvents(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	dateStr := r.URL.Query().Get("date")
+
+	_, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		http.Error(w, "invalid date", http.StatusBadRequest)
+		return
+	}
+
+	// dateStr is YYYY-MM-DD; convert slashes for directory path
+	datePath := strings.ReplaceAll(dateStr, "-", "/")
+	ndjsonPath := filepath.Join(s.cfg.RecordingsPath, id, datePath, "motion.ndjson")
+
+	empty := map[string]any{"events": []any{}}
+
+	f, err := os.Open(ndjsonPath)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(empty)
+		return
+	}
+	defer f.Close()
+
+	var events []map[string]any
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		var ev map[string]any
+		if json.Unmarshal(sc.Bytes(), &ev) == nil {
+			events = append(events, ev)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"events": events})
 }

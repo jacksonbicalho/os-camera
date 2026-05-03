@@ -25,6 +25,7 @@ type Config struct {
 	Log      LogConfig      `yaml:"log"`
 	Server   ServerConfig   `yaml:"server"`
 	Storage  StorageConfig  `yaml:"storage"`
+	Motion   MotionConfig   `yaml:"motion"`
 	Defaults DefaultsConfig `yaml:"defaults"`
 	Cameras  []CameraConfig `yaml:"cameras"`
 }
@@ -47,6 +48,12 @@ type StorageConfig struct {
 	RetentionDays int     `yaml:"retention_days"` // 0 = disabled
 	MaxSizeGB     float64 `yaml:"max_size_gb"`    // 0 = disabled
 	WarnPercent   float64 `yaml:"warn_percent"`   // % of max_size_gb to trigger warning
+}
+
+type MotionConfig struct {
+	Enabled   bool    `yaml:"enabled"`
+	Threshold float64 `yaml:"threshold"` // 0–1, fraction of pixels changed; default 0.02
+	FPS       int     `yaml:"fps"`       // frames per second to sample; default 2
 }
 
 type DefaultsConfig struct {

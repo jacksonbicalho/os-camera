@@ -20,6 +20,11 @@ interface RecordingsResponse {
   hasMore: boolean
 }
 
+interface MotionEvent {
+  time: string
+  score: number
+}
+
 const PAGE_SIZE = 10
 
 async function loadRecordingsData(cameraId: string, date: Date, page: number): Promise<RecordingsResponse | 401> {
@@ -30,6 +35,14 @@ async function loadRecordingsData(cameraId: string, date: Date, page: number): P
   )
   if (res.status === 401) return 401
   return res.json()
+}
+
+async function loadMotionEvents(cameraId: string, date: Date): Promise<MotionEvent[]> {
+  const dateStr = format(date, 'yyyy-MM-dd')
+  const res = await fetch(`/api/cameras/${cameraId}/motion?date=${dateStr}`, { headers: authHeaders() })
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.events ?? []
 }
 
 function formatRecordingTime(isoString: string, timezone: string): string {
@@ -53,6 +66,7 @@ export default function CameraPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [activeRecording, setActiveRecording] = useState<Recording | null>(null)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [motionEvents, setMotionEvents] = useState<MotionEvent[]>([])
   const playerRef = useRef<HTMLDivElement>(null)
 
   useScrollToPlayer(playerRef, activeRecording?.filename ?? null)
@@ -68,13 +82,17 @@ export default function CameraPage() {
     let cancelled = false
 
     async function load() {
-      const result = await loadRecordingsData(id!, selectedDate, 1)
+      const [result, events] = await Promise.all([
+        loadRecordingsData(id!, selectedDate, 1),
+        loadMotionEvents(id!, selectedDate),
+      ])
       if (cancelled) return
       if (result === 401) { clearToken(); navigate('/login'); return }
       setPage(1)
       setActiveRecording(null)
       setRecordings(result.recordings)
       setHasMore(result.hasMore)
+      setMotionEvents(events)
     }
 
     load()
@@ -189,14 +207,25 @@ export default function CameraPage() {
               <div className="divide-y divide-gray-800">
                 {recordings.length === 0 ? (
                   <p className="px-3 py-4 text-sm text-gray-500">Sem gravações nesta data.</p>
-                ) : (
-                  [...recordings]
-                    .sort((a, b) => {
-                      const diff = new Date(a.start).getTime() - new Date(b.start).getTime()
-                      return sortOrder === 'asc' ? diff : -diff
-                    })
-                    .map(rec => {
+                ) : (() => {
+                  const sorted = [...recordings].sort((a, b) => {
+                    const diff = new Date(a.start).getTime() - new Date(b.start).getTime()
+                    return sortOrder === 'asc' ? diff : -diff
+                  })
+                  const sortedAsc = [...recordings].sort((a, b) =>
+                    new Date(a.start).getTime() - new Date(b.start).getTime()
+                  )
+                  return sorted.map(rec => {
                     const isActive = activeRecording?.filename === rec.filename
+                    const recStart = new Date(rec.start).getTime()
+                    const idx = sortedAsc.findIndex(r => r.filename === rec.filename)
+                    const nextStart = idx + 1 < sortedAsc.length
+                      ? new Date(sortedAsc[idx + 1].start).getTime()
+                      : recStart + 5 * 60 * 1000
+                    const hasMotion = motionEvents.some(ev => {
+                      const t = new Date(ev.time).getTime()
+                      return t >= recStart && t < nextStart
+                    })
                     return (
                       <button
                         key={rec.filename}
@@ -208,11 +237,16 @@ export default function CameraPage() {
                         <span className={`text-sm ${isActive ? 'text-blue-300' : 'text-gray-300'}`}>
                           {formatRecordingTime(rec.start, timezone)}
                         </span>
-                        <span className="text-xs text-gray-500">▶ MP4</span>
+                        <div className="flex items-center gap-2">
+                          {hasMotion && (
+                            <span className="w-2 h-2 rounded-full bg-orange-400" title="Movimento detectado" />
+                          )}
+                          <span className="text-xs text-gray-500">▶ MP4</span>
+                        </div>
                       </button>
                     )
                   })
-                )}
+                })()}
               </div>
               {hasMore && (
                 <div className="px-3 py-2 border-t border-gray-800">
