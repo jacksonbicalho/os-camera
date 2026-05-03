@@ -21,6 +21,7 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 
 type Config struct {
 	Debug    bool           `yaml:"debug"`
+	Timezone string         `yaml:"timezone"`
 	Log      LogConfig      `yaml:"log"`
 	Server   ServerConfig   `yaml:"server"`
 	Storage  StorageConfig  `yaml:"storage"`
@@ -37,7 +38,6 @@ type ServerConfig struct {
 	Port           int    `yaml:"port"`
 	SegmentsPath   string `yaml:"segments_path"`
 	RecordingsPath string `yaml:"recordings_path"`
-	Timezone       string `yaml:"timezone"`
 	Username       string `yaml:"username"`
 	Password       string `yaml:"password"`
 }
@@ -77,11 +77,11 @@ func Load(path string) (Config, error) {
 	if v := os.Getenv("STORAGE_PATH"); v != "" {
 		cfg.Storage.Path = v
 	}
-	if v := os.Getenv("SERVER_TIMEZONE"); v != "" {
-		cfg.Server.Timezone = v
+	if v := os.Getenv("TIMEZONE"); v != "" {
+		cfg.Timezone = v
 	}
-	if cfg.Server.Timezone == "" {
-		cfg.Server.Timezone = "UTC"
+	if cfg.Timezone == "" {
+		cfg.Timezone = "UTC"
 	}
 	return cfg, nil
 }
