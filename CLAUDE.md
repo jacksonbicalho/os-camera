@@ -1,0 +1,78 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## O que é este projeto
+
+Sistema de monitoramento residencial via RTSP. Cada câmera configurada tem dois processos ffmpeg rodando em paralelo: um grava chunks MP4 em disco e outro gera segmentos HLS para visualização ao vivo. O frontend React é embutido no binário Go via `go:embed`.
+
+## Comandos principais
+
+### Backend (Go)
+
+```bash
+go test ./...                                         # todos os testes
+go test ./internal/server/... -run TestLogin          # teste específico
+go build ./cmd/camera                                 # binário de produção
+go run ./cmd/camera --config camera.yaml              # desenvolvimento local
+```
+
+### Frontend
+
+```bash
+cd frontend
+yarn install
+yarn build    # gera frontend/dist (necessário antes do go build)
+yarn dev      # Vite dev server na porta 5173 (proxy /api e /stream para :8080)
+```
+
+### Docker
+
+```bash
+docker compose --profile development up camera-dev --build   # dev: yarn build + go run
+docker compose --profile production up camera --build        # produção: binário estático
+```
+
+## Arquitetura
+
+### Fluxo de inicialização (`cmd/camera/main.go`)
+
+Para cada câmera configurada, `main` cria e inicia:
+1. Um `recorder.Recorder` — grava RTSP → MP4 chunk
+2. Um `streaming.HLSStreamer` — grava RTSP → segmentos HLS para live
+
+O `server.Server` é levantado em goroutine separada e serve a SPA + API REST.
+
+### Pacotes internos
+
+| Pacote | Responsabilidade |
+|---|---|
+| `internal/exec` | Interfaces `Commander` / `Process` e implementação real com `os/exec`. Injetadas nos pacotes abaixo para permitir testes sem ffmpeg. |
+| `internal/recorder` | Grava RTSP em chunks MP4. Armazena em `{storage}/{camera_id}/{YYYY/MM/DD}/{YYYYMMDDHHmmss}.mp4`. |
+| `internal/streaming` | Gera playlist HLS ao vivo em `{segments_path}/{camera_id}/index.m3u8` com janela de 5 segmentos de 2s. |
+| `internal/server` | HTTP server com JWT HS256 (segredo gerado a cada boot, expira em 24h). Serve API REST, arquivos de gravação, segmentos HLS e a SPA React. |
+| `internal/config` | Lê `camera.yaml`; variáveis de ambiente sobrescrevem campos específicos (ver abaixo). |
+| `internal/logger` | `stdout`: JSON em stdout. `file`: um arquivo por nível (`debug.log`, `info.log`, `warn.log`, `error.log`) no diretório configurado. |
+| `internal/rtsp` | Cliente RTSP com interface `Connection` — presente mas não usado no fluxo principal de gravação. |
+| `frontend/` | SPA React/Vite/Tailwind embutida via `go:embed all:dist`. |
+
+### Autenticação
+
+O JWT é assinado com um segredo aleatório gerado no boot — tokens não sobrevivem a reinicializações do servidor. O token é aceito via header `Authorization: Bearer <token>` ou query param `?token=<token>` (necessário para `<video src>` e `<HLSPlayer>`).
+
+### Frontend (`frontend/src/`)
+
+Três páginas com React Router: `LoginPage` → `DashboardPage` → `CameraPage`. O token JWT fica em `localStorage` (gerenciado em `auth.ts`). Em desenvolvimento, o Vite faz proxy de `/api` e `/stream` para `localhost:8080`.
+
+## Variáveis de ambiente
+
+| Variável | Campo sobrescrito |
+|---|---|
+| `STORAGE_PATH` | `storage.path` |
+| `SERVER_TIMEZONE` | `server.timezone` |
+| `LOG_OUTPUT` | `log.output` |
+| `LOG_PATH` | `log.path` |
+
+## Convenções de teste
+
+Testes usam `httptest.NewRecorder` (server), `fakeCommander` com `trackingProcess` (recorder/streamer) e implementações fake das interfaces de `internal/exec`. Não há banco de dados nem mocks externos — cada pacote é testado em isolamento via injeção de dependência.
