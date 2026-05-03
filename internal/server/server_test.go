@@ -21,7 +21,7 @@ func discardLogger() *slog.Logger {
 
 func TestLoginReturnsTokenForValidCredentials(t *testing.T) {
 	cfg := config.ServerConfig{Username: "master", Password: "secret"}
-	srv := server.NewServer(cfg, []config.CameraConfig{}, discardLogger(), nil)
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
 
 	body := `{"username":"master","password":"secret"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
@@ -54,7 +54,7 @@ func loginAndGetToken(t *testing.T, srv http.Handler, username, password string)
 
 func TestLoginReturnsUnauthorizedForInvalidCredentials(t *testing.T) {
 	cfg := config.ServerConfig{Username: "master", Password: "secret"}
-	srv := server.NewServer(cfg, []config.CameraConfig{}, discardLogger(), nil)
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
 
 	body := `{"username":"master","password":"wrong"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
@@ -74,7 +74,7 @@ func TestGetCamerasReturnsList(t *testing.T) {
 		{ID: "entrada", RTSPURL: "rtsp://192.168.1.10:554/stream"},
 		{ID: "quintal", RTSPURL: "rtsp://192.168.1.11:554/stream"},
 	}
-	srv := server.NewServer(cfg, cameras, discardLogger(), nil)
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
 
 	token := loginAndGetToken(t, srv, "master", "secret")
 
@@ -99,7 +99,7 @@ func TestGetCamerasReturnsList(t *testing.T) {
 
 func TestGetCamerasRequiresAuth(t *testing.T) {
 	cfg := config.ServerConfig{Username: "master", Password: "secret"}
-	srv := server.NewServer(cfg, []config.CameraConfig{}, discardLogger(), nil)
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras", nil)
 	w := httptest.NewRecorder()
@@ -125,7 +125,7 @@ func TestStreamServesHLSPlaylist(t *testing.T) {
 
 	cfg := config.ServerConfig{Username: "master", Password: "secret", SegmentsPath: tmpDir}
 	cameras := []config.CameraConfig{{ID: cameraID}}
-	srv := server.NewServer(cfg, cameras, discardLogger(), nil)
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
 
 	token := loginAndGetToken(t, srv, "master", "secret")
 
@@ -142,7 +142,7 @@ func TestStreamServesHLSPlaylist(t *testing.T) {
 
 func TestStreamRequiresAuth(t *testing.T) {
 	cfg := config.ServerConfig{Username: "master", Password: "secret", SegmentsPath: t.TempDir()}
-	srv := server.NewServer(cfg, []config.CameraConfig{}, discardLogger(), nil)
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/stream/entrada/index.m3u8", nil)
 	w := httptest.NewRecorder()
@@ -169,7 +169,7 @@ func TestRecordingsReturnsChunksForDate(t *testing.T) {
 
 	cfg := config.ServerConfig{Username: "master", Password: "secret", RecordingsPath: tmpDir}
 	cameras := []config.CameraConfig{{ID: cameraID}}
-	srv := server.NewServer(cfg, cameras, discardLogger(), nil)
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
 
 	token := loginAndGetToken(t, srv, "master", "secret")
 
@@ -203,9 +203,57 @@ func TestRecordingsReturnsChunksForDate(t *testing.T) {
 	}
 }
 
+func TestRecordingsSpansMidnightUTCWhenTimezoneOffset(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "entrada"
+
+	// 2026-05-02 no fuso America/Sao_Paulo (-3h) começa às 03:00 UTC do dia 02
+	// e termina às 02:59:59 UTC do dia 03.
+	// Gravações às 01:00 UTC do dia 03 pertencem ao dia local 02.
+	day02Dir := filepath.Join(tmpDir, cameraID, "2026", "05", "02")
+	day03Dir := filepath.Join(tmpDir, cameraID, "2026", "05", "03")
+	for _, dir := range []string{day02Dir, day03Dir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 10:00 UTC do dia 02 → 07:00 Sao Paulo → pertence ao dia local 02 ✓
+	os.WriteFile(filepath.Join(day02Dir, "20260502100000.mp4"), []byte("x"), 0644)
+	// 01:00 UTC do dia 03 → 22:00 Sao Paulo do dia 02 → pertence ao dia local 02 ✓
+	os.WriteFile(filepath.Join(day03Dir, "20260503010000.mp4"), []byte("x"), 0644)
+	// 04:00 UTC do dia 03 → 01:00 Sao Paulo do dia 03 → NÃO pertence ao dia local 02 ✗
+	os.WriteFile(filepath.Join(day03Dir, "20260503040000.mp4"), []byte("x"), 0644)
+
+	cfg := config.ServerConfig{Username: "master", Password: "secret", RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "America/Sao_Paulo", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-05-02&page=1&limit=10", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Recordings []map[string]string `json:"recordings"`
+		HasMore    bool                `json:"hasMore"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if len(resp.Recordings) != 2 {
+		t.Fatalf("expected 2 recordings for local day 2026-05-02 in Sao Paulo, got %d: %v", len(resp.Recordings), resp.Recordings)
+	}
+	filenames := []string{resp.Recordings[0]["filename"], resp.Recordings[1]["filename"]}
+	if filenames[0] != "20260502100000.mp4" || filenames[1] != "20260503010000.mp4" {
+		t.Errorf("unexpected recordings: %v", filenames)
+	}
+}
+
 func TestRecordingsRequiresAuth(t *testing.T) {
 	cfg := config.ServerConfig{Username: "master", Password: "secret", SegmentsPath: t.TempDir()}
-	srv := server.NewServer(cfg, []config.CameraConfig{}, discardLogger(), nil)
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/entrada/recordings?date=2026-04-30", nil)
 	w := httptest.NewRecorder()
