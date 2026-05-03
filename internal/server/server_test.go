@@ -264,3 +264,105 @@ func TestRecordingsRequiresAuth(t *testing.T) {
 		t.Fatalf("expected 401, got %d", w.Code)
 	}
 }
+
+func TestGetStatsReturnsStorageInfo(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "entrada"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "05", "01")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dateDir, "20260501100000.mp4"), []byte("abcde"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dateDir, "20260501101500.mp4"), []byte("xyz"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cameras := []config.CameraConfig{{ID: "entrada"}, {ID: "quintal"}}
+	cfg := config.ServerConfig{Username: "master", Password: "secret", RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		RecordingsBytes int64 `json:"recordings_bytes"`
+		RecordingsCount int   `json:"recordings_count"`
+		DiskTotalBytes  int64 `json:"disk_total_bytes"`
+		DiskFreeBytes   int64 `json:"disk_free_bytes"`
+		CameraCount     int   `json:"camera_count"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.RecordingsBytes != 8 {
+		t.Errorf("expected recordings_bytes=8, got %d", resp.RecordingsBytes)
+	}
+	if resp.RecordingsCount != 2 {
+		t.Errorf("expected recordings_count=2, got %d", resp.RecordingsCount)
+	}
+	if resp.CameraCount != 2 {
+		t.Errorf("expected camera_count=2, got %d", resp.CameraCount)
+	}
+	if resp.DiskTotalBytes <= 0 {
+		t.Errorf("expected disk_total_bytes > 0, got %d", resp.DiskTotalBytes)
+	}
+	if resp.DiskFreeBytes <= 0 {
+		t.Errorf("expected disk_free_bytes > 0, got %d", resp.DiskFreeBytes)
+	}
+}
+
+func TestGetStatsIncludesMaxSizeWhenConfigured(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := config.ServerConfig{Username: "master", Password: "secret", RecordingsPath: tmpDir}
+	storageCfg := config.StorageConfig{MaxSizeGB: 1.0, WarnPercent: 80}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil).
+		WithStorageConfig(storageCfg)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		MaxSizeBytes int64 `json:"max_size_bytes"`
+		WarnPercent  float64 `json:"warn_percent"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	wantMaxBytes := int64(1.0 * 1024 * 1024 * 1024)
+	if resp.MaxSizeBytes != wantMaxBytes {
+		t.Errorf("expected max_size_bytes=%d, got %d", wantMaxBytes, resp.MaxSizeBytes)
+	}
+	if resp.WarnPercent != 80 {
+		t.Errorf("expected warn_percent=80, got %f", resp.WarnPercent)
+	}
+}
+
+func TestGetStatsRequiresAuth(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}

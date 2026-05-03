@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, NavLink } from 'react-router-dom'
 import { clearToken } from '../auth'
 
 interface HeaderProps {
@@ -28,7 +28,28 @@ export default function Header({ username = 'usuário' }: HeaderProps) {
 
   return (
     <header className="flex items-center justify-between px-6 py-3 bg-gray-900 border-b border-gray-800">
-      <span className="text-white font-semibold tracking-wide">📷 Camera</span>
+      <div className="flex items-center gap-6">
+        <span className="text-white font-semibold tracking-wide">📷 Camera</span>
+        <nav className="flex items-center gap-4">
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) =>
+              `text-sm transition-colors ${isActive ? 'text-white' : 'text-gray-400 hover:text-white'}`
+            }
+          >
+            Câmeras
+          </NavLink>
+          <NavLink
+            to="/stats"
+            className={({ isActive }) =>
+              `text-sm transition-colors ${isActive ? 'text-white' : 'text-gray-400 hover:text-white'}`
+            }
+          >
+            Estatísticas
+          </NavLink>
+        </nav>
+      </div>
       <div className="relative" ref={ref}>
         <button
           onClick={() => setOpen(v => !v)}

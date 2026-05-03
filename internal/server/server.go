@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -19,13 +20,14 @@ import (
 )
 
 type Server struct {
-	cfg      config.ServerConfig
-	timezone string
-	cameras  []config.CameraConfig
-	log      *slog.Logger
-	secret   []byte
-	frontend fs.FS
-	mux      *http.ServeMux
+	cfg        config.ServerConfig
+	storageCfg config.StorageConfig
+	timezone   string
+	cameras    []config.CameraConfig
+	log        *slog.Logger
+	secret     []byte
+	frontend   fs.FS
+	mux        *http.ServeMux
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
@@ -45,6 +47,11 @@ func NewServer(cfg config.ServerConfig, timezone string, cameras []config.Camera
 	return s
 }
 
+func (s *Server) WithStorageConfig(cfg config.StorageConfig) *Server {
+	s.storageCfg = cfg
+	return s
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
@@ -61,6 +68,7 @@ func (s *Server) routes() {
 	s.mux.Handle("/recordings/", s.requireAuth(recHandler.ServeHTTP))
 
 	s.mux.HandleFunc("GET /api/cameras/{id}/recordings", s.requireAuth(s.handleRecordings))
+	s.mux.HandleFunc("GET /api/stats", s.requireAuth(s.handleStats))
 
 	if s.frontend != nil {
 		s.mux.Handle("/", s.spaHandler())
@@ -222,6 +230,45 @@ func utcDaysInRange(start, end time.Time) []time.Time {
 		d = d.AddDate(0, 0, 1)
 	}
 	return days
+}
+
+func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	var recBytes int64
+	var recCount int
+	filepath.WalkDir(s.cfg.RecordingsPath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Ext(path) != ".mp4" {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		recBytes += info.Size()
+		recCount++
+		return nil
+	})
+
+	var diskTotal, diskFree int64
+	if s.cfg.RecordingsPath != "" {
+		var stat syscall.Statfs_t
+		if err := syscall.Statfs(s.cfg.RecordingsPath, &stat); err == nil {
+			diskTotal = int64(stat.Blocks) * stat.Frsize
+			diskFree = int64(stat.Bavail) * stat.Frsize
+		}
+	}
+
+	maxSizeBytes := int64(s.storageCfg.MaxSizeGB * 1024 * 1024 * 1024)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"recordings_bytes": recBytes,
+		"recordings_count": recCount,
+		"disk_total_bytes": diskTotal,
+		"disk_free_bytes":  diskFree,
+		"camera_count":     len(s.cameras),
+		"max_size_bytes":   maxSizeBytes,
+		"warn_percent":     s.storageCfg.WarnPercent,
+	})
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
