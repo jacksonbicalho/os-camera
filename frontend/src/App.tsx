@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 
 const CameraPage = lazy(() => import('./pages/CameraPage'))
+const StatsPage = lazy(() => import('./pages/StatsPage'))
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
@@ -28,6 +29,16 @@ export default function App() {
           <RequireAuth>
             <Suspense>
               <CameraPage />
+            </Suspense>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/stats"
+        element={
+          <RequireAuth>
+            <Suspense>
+              <StatsPage />
             </Suspense>
           </RequireAuth>
         }
