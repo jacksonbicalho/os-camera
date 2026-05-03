@@ -3,28 +3,16 @@ module camera
 go 1.25.0
 
 require (
-	github.com/bluenviron/gortsplib/v5 v5.5.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/pion/rtp v1.10.1
+	github.com/modelcontextprotocol/go-sdk v1.6.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	github.com/bluenviron/mediacommon/v2 v2.8.3 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
-	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/modelcontextprotocol/go-sdk v1.6.0 // indirect
-	github.com/pion/logging v0.2.4 // indirect
-	github.com/pion/randutil v0.1.0 // indirect
-	github.com/pion/rtcp v1.2.16 // indirect
-	github.com/pion/sdp/v3 v3.0.18 // indirect
-	github.com/pion/srtp/v3 v3.0.10 // indirect
-	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 )
