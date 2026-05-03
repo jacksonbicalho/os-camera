@@ -73,6 +73,11 @@ Três páginas com React Router: `LoginPage` → `DashboardPage` → `CameraPage
 | `LOG_OUTPUT` | `log.output` |
 | `LOG_PATH` | `log.path` |
 
+## Manutenção contínua
+
+- **Ao adicionar ou alterar qualquer funcionalidade**, revise este `CLAUDE.md` e atualize as seções afetadas.
+- **Ao adicionar ou alterar qualquer campo de configuração**, atualize `camera.yaml.example` com o novo campo, valor de exemplo e comentário com a variável de ambiente correspondente (se houver).
+
 ## Convenções de teste
 
 Testes usam `httptest.NewRecorder` (server), `fakeCommander` com `trackingProcess` (recorder/streamer) e implementações fake das interfaces de `internal/exec`. Não há banco de dados nem mocks externos — cada pacote é testado em isolamento via injeção de dependência.
