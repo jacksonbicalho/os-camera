@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "ffprobe": {
+      "type": "stdio",
+      "command": "go",
+      "args": ["run", "./cmd/mcp-ffprobe"],
+      "cwd": "/home/<user>/dev/camera-2"
+    }
+  }
+}

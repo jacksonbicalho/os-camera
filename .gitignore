@@ -3,3 +3,4 @@ camera.yaml
 /camera
 frontend/dist/
 frontend/node_modules/
+.mcp.json
