@@ -247,6 +247,63 @@ cameras:
 	}
 }
 
+func TestLoadParsesTimezoneAtRoot(t *testing.T) {
+	path := writeTempYAML(t, `
+timezone: America/Sao_Paulo
+
+cameras:
+  - id: cam1
+    rtsp_url: rtsp://localhost:8554/stream
+`)
+
+	cfg, err := config.Load(path)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Timezone != "America/Sao_Paulo" {
+		t.Errorf("expected timezone %q, got %q", "America/Sao_Paulo", cfg.Timezone)
+	}
+}
+
+func TestLoadTimezoneDefaultsToUTC(t *testing.T) {
+	path := writeTempYAML(t, `
+cameras:
+  - id: cam1
+    rtsp_url: rtsp://localhost:8554/stream
+`)
+
+	cfg, err := config.Load(path)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Timezone != "UTC" {
+		t.Errorf("expected timezone UTC, got %q", cfg.Timezone)
+	}
+}
+
+func TestLoadEnvVarOverridesTimezone(t *testing.T) {
+	t.Setenv("TIMEZONE", "America/Manaus")
+
+	path := writeTempYAML(t, `
+timezone: America/Sao_Paulo
+
+cameras:
+  - id: cam1
+    rtsp_url: rtsp://localhost:8554/stream
+`)
+
+	cfg, err := config.Load(path)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Timezone != "America/Manaus" {
+		t.Errorf("expected America/Manaus, got %q", cfg.Timezone)
+	}
+}
+
 func TestLoadEnvVarOverridesStoragePath(t *testing.T) {
 	t.Setenv("STORAGE_PATH", "/tmp/from-env")
 

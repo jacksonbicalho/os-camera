@@ -69,7 +69,7 @@ Três páginas com React Router: `LoginPage` → `DashboardPage` → `CameraPage
 | Variável | Campo sobrescrito |
 |---|---|
 | `STORAGE_PATH` | `storage.path` |
-| `SERVER_TIMEZONE` | `server.timezone` |
+| `TIMEZONE` | `timezone` (fuso da instalação; usado pelo servidor para interpretar datas locais) |
 | `LOG_OUTPUT` | `log.output` |
 | `LOG_PATH` | `log.path` |
 

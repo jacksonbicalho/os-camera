@@ -1,4 +1,5 @@
-debug: false         # env: DEBUG
+debug: false                         # env: DEBUG
+timezone: America/Sao_Paulo          # env: TIMEZONE — fuso horário da instalação (padrão: UTC)
 
 log:
   output: stdout     # stdout | file — env: LOG_OUTPUT
@@ -7,7 +8,6 @@ log:
 server:
   port: 8080                        # env: SERVER_PORT
   segments_path: /tmp/hls           # env: SEGMENTS_PATH
-  timezone: America/Sao_Paulo       # env: SERVER_TIMEZONE
   username: master                  # env: SERVER_USERNAME
   password: ""                      # env: SERVER_PASSWORD
 

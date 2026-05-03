@@ -20,6 +20,7 @@ import (
 
 type Server struct {
 	cfg      config.ServerConfig
+	timezone string
 	cameras  []config.CameraConfig
 	log      *slog.Logger
 	secret   []byte
@@ -27,12 +28,13 @@ type Server struct {
 	mux      *http.ServeMux
 }
 
-func NewServer(cfg config.ServerConfig, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
+func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
 	secret := make([]byte, 32)
 	rand.Read(secret)
 
 	s := &Server{
 		cfg:      cfg,
+		timezone: timezone,
 		cameras:  cameras,
 		log:      log,
 		secret:   secret,
@@ -116,7 +118,7 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 
 func (s *Server) handleClientConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"timezone": s.cfg.Timezone})
+	json.NewEncoder(w).Encode(map[string]string{"timezone": s.timezone})
 }
 
 func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
@@ -143,56 +145,83 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 		limit = 10
 	}
 
-	t, err := time.Parse("2006-01-02", dateStr)
+	loc, err := time.LoadLocation(s.timezone)
+	if err != nil {
+		loc = time.UTC
+	}
+
+	// Parse the requested date as a local day in the configured timezone.
+	localDay, err := time.ParseInLocation("2006-01-02", dateStr, loc)
 	if err != nil {
 		http.Error(w, "invalid date", http.StatusBadRequest)
 		return
 	}
-	dir := filepath.Join(s.cfg.RecordingsPath, id, t.Format("2006/01/02"))
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"recordings": []any{}, "hasMore": false})
-		return
-	}
+	// UTC range that covers the full local day.
+	dayStart := localDay.UTC()
+	dayEnd := localDay.Add(24 * time.Hour).UTC()
 
-	var files []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".mp4") {
-			files = append(files, e.Name())
-		}
-	}
-	sort.Strings(files)
-
-	start := (page - 1) * limit
-	if start >= len(files) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"recordings": []any{}, "hasMore": false})
-		return
-	}
-	end := start + limit
-	hasMore := end < len(files)
-	if end > len(files) {
-		end = len(files)
-	}
+	// Collect UTC calendar days that overlap with this local day.
+	utcDays := utcDaysInRange(dayStart, dayEnd)
 
 	type recording struct {
 		Filename string `json:"filename"`
 		Start    string `json:"start"`
 		URL      string `json:"url"`
 	}
-	result := make([]recording, 0, end-start)
-	for _, name := range files[start:end] {
-		ts, _ := time.ParseInLocation("20060102150405", strings.TrimSuffix(name, ".mp4"), time.UTC)
-		result = append(result, recording{
-			Filename: name,
-			Start:    ts.UTC().Format(time.RFC3339),
-			URL:      "/recordings/" + id + "/" + t.Format("2006/01/02") + "/" + name,
-		})
+
+	var all []recording
+	for _, utcDay := range utcDays {
+		dir := filepath.Join(s.cfg.RecordingsPath, id, utcDay.Format("2006/01/02"))
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".mp4") {
+				continue
+			}
+			ts, err := time.ParseInLocation("20060102150405", strings.TrimSuffix(e.Name(), ".mp4"), time.UTC)
+			if err != nil {
+				continue
+			}
+			if ts.Before(dayStart) || !ts.Before(dayEnd) {
+				continue
+			}
+			all = append(all, recording{
+				Filename: e.Name(),
+				Start:    ts.UTC().Format(time.RFC3339),
+				URL:      "/recordings/" + id + "/" + utcDay.Format("2006/01/02") + "/" + e.Name(),
+			})
+		}
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].Filename < all[j].Filename })
+
+	empty := map[string]any{"recordings": []any{}, "hasMore": false}
+	startIdx := (page - 1) * limit
+	if startIdx >= len(all) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(empty)
+		return
+	}
+	endIdx := startIdx + limit
+	hasMore := endIdx < len(all)
+	if endIdx > len(all) {
+		endIdx = len(all)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"recordings": result, "hasMore": hasMore})
+	json.NewEncoder(w).Encode(map[string]any{"recordings": all[startIdx:endIdx], "hasMore": hasMore})
+}
+
+// utcDaysInRange returns the distinct UTC calendar days that overlap [start, end).
+func utcDaysInRange(start, end time.Time) []time.Time {
+	var days []time.Time
+	d := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
+	for d.Before(end) {
+		days = append(days, d)
+		d = d.AddDate(0, 0, 1)
+	}
+	return days
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
