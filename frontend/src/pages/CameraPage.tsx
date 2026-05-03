@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
@@ -21,6 +21,16 @@ interface RecordingsResponse {
 }
 
 const PAGE_SIZE = 10
+
+async function loadRecordingsData(cameraId: string, date: Date, page: number): Promise<RecordingsResponse | 401> {
+  const dateStr = format(date, 'yyyy-MM-dd')
+  const res = await fetch(
+    `/api/cameras/${cameraId}/recordings?date=${dateStr}&page=${page}&limit=${PAGE_SIZE}`,
+    { headers: authHeaders() }
+  )
+  if (res.status === 401) return 401
+  return res.json()
+}
 
 function formatRecordingTime(isoString: string, timezone: string): string {
   return new Date(isoString).toLocaleTimeString([], {
@@ -54,29 +64,31 @@ export default function CameraPage() {
       .catch(() => {})
   }, [])
 
-  const fetchRecordings = useCallback(async (date: Date, p: number, append: boolean) => {
-    const dateStr = format(date, 'yyyy-MM-dd')
-    const res = await fetch(
-      `/api/cameras/${id}/recordings?date=${dateStr}&page=${p}&limit=${PAGE_SIZE}`,
-      { headers: authHeaders() }
-    )
-    if (res.status === 401) { clearToken(); navigate('/login'); return }
-    const data: RecordingsResponse = await res.json()
-    setRecordings(prev => append ? [...prev, ...data.recordings] : data.recordings)
-    setHasMore(data.hasMore)
-  }, [id, navigate])
-
   useEffect(() => {
-    setPage(1)
-    setActiveRecording(null)
-    fetchRecordings(selectedDate, 1, false)
-  }, [selectedDate, fetchRecordings])
+    let cancelled = false
+
+    async function load() {
+      const result = await loadRecordingsData(id!, selectedDate, 1)
+      if (cancelled) return
+      if (result === 401) { clearToken(); navigate('/login'); return }
+      setPage(1)
+      setActiveRecording(null)
+      setRecordings(result.recordings)
+      setHasMore(result.hasMore)
+    }
+
+    load()
+    return () => { cancelled = true }
+  }, [selectedDate, id, navigate])
 
   async function loadMore() {
     setLoadingMore(true)
     const next = page + 1
+    const result = await loadRecordingsData(id!, selectedDate, next)
+    if (result === 401) { clearToken(); navigate('/login'); return }
     setPage(next)
-    await fetchRecordings(selectedDate, next, true)
+    setRecordings(prev => [...prev, ...result.recordings])
+    setHasMore(result.hasMore)
     setLoadingMore(false)
   }
 

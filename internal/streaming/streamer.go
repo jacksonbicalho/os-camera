@@ -8,20 +8,23 @@ import (
 
 	"camera/internal/config"
 	"camera/internal/exec"
+	"camera/internal/ffprobe"
 )
 
 type HLSStreamer struct {
 	camera    config.CameraConfig
 	server    config.ServerConfig
+	stream    ffprobe.StreamInfo
 	commander exec.Commander
 	log       *slog.Logger
 	process   exec.Process
 }
 
-func NewHLSStreamer(camera config.CameraConfig, server config.ServerConfig, commander exec.Commander, log *slog.Logger) *HLSStreamer {
+func NewHLSStreamer(camera config.CameraConfig, server config.ServerConfig, stream ffprobe.StreamInfo, commander exec.Commander, log *slog.Logger) *HLSStreamer {
 	return &HLSStreamer{
 		camera:    camera,
 		server:    server,
+		stream:    stream,
 		commander: commander,
 		log:       log,
 	}
@@ -36,9 +39,11 @@ func (s *HLSStreamer) Start() error {
 	playlist := filepath.Join(dir, "index.m3u8")
 	segmentPattern := filepath.Join(dir, "%03d.ts")
 	s.log.Debug("starting hls ffmpeg", "camera", s.camera.ID, "playlist", playlist)
-	proc, err := s.commander.Start("ffmpeg",
-		"-i", s.camera.RTSPURL,
-		"-c", "copy",
+	args := []string{"-i", s.camera.RTSPURL, "-c", "copy"}
+	if !s.stream.HasAudio {
+		args = append(args, "-an")
+	}
+	args = append(args,
 		"-f", "hls",
 		"-hls_time", "2",
 		"-hls_list_size", "5",
@@ -46,6 +51,7 @@ func (s *HLSStreamer) Start() error {
 		"-hls_segment_filename", segmentPattern,
 		playlist,
 	)
+	proc, err := s.commander.Start("ffmpeg", args...)
 	if err != nil {
 		return fmt.Errorf("failed to start hls streamer for camera %s: %w", s.camera.ID, err)
 	}
