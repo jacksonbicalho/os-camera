@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import Hls from 'hls.js'
+import type HlsType from 'hls.js'
 import { getToken } from '../auth'
 
 interface HLSPlayerProps {
@@ -15,25 +15,35 @@ export default function HLSPlayer({ src, className }: HLSPlayerProps) {
     const video = videoRef.current
     if (!video) return
 
-    if (!Hls.isSupported()) {
-      video.src = src
-      return
-    }
+    let hls: HlsType | undefined
+    let cancelled = false
 
-    const hls = new Hls({
-      liveSyncDurationCount: 3,
-      liveMaxLatencyDurationCount: 6,
-      maxBufferLength: 10,
-      lowLatencyMode: false,
-      xhrSetup(xhr) {
-        xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`)
-      },
+    import('hls.js').then(({ default: Hls }) => {
+      if (cancelled) return
+
+      if (!Hls.isSupported()) {
+        video.src = src
+        return
+      }
+
+      hls = new Hls({
+        liveSyncDurationCount: 3,
+        liveMaxLatencyDurationCount: 6,
+        maxBufferLength: 10,
+        lowLatencyMode: false,
+        xhrSetup(xhr) {
+          xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`)
+        },
+      })
+      hls.loadSource(src)
+      hls.attachMedia(video)
+      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}))
     })
-    hls.loadSource(src)
-    hls.attachMedia(video)
-    hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}))
 
-    return () => hls.destroy()
+    return () => {
+      cancelled = true
+      hls?.destroy()
+    }
   }, [src])
 
   function handleFullscreen(e: React.MouseEvent) {
