@@ -1,8 +1,10 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { getToken } from './auth'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
-import CameraPage from './pages/CameraPage'
+
+const CameraPage = lazy(() => import('./pages/CameraPage'))
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
@@ -24,7 +26,9 @@ export default function App() {
         path="/cameras/:id"
         element={
           <RequireAuth>
-            <CameraPage />
+            <Suspense>
+              <CameraPage />
+            </Suspense>
           </RequireAuth>
         }
       />
