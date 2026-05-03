@@ -4,7 +4,7 @@ import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import 'react-day-picker/style.css'
-import { authHeaders, clearToken, getToken } from '../auth'
+import { authHeaders, clearToken, getToken, getUsername } from '../auth'
 import Header from '../components/Header'
 import HLSPlayer from '../components/HLSPlayer'
 
@@ -81,7 +81,7 @@ export default function CameraPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-950">
-      <Header />
+      <Header username={getUsername() ?? undefined} />
       <main className="flex-1 p-6 max-w-6xl mx-auto w-full">
         <div className="mb-4">
           <Link to="/" className="text-sm text-blue-400 hover:text-blue-300">← Câmeras</Link>
