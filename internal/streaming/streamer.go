@@ -38,10 +38,11 @@ func (s *HLSStreamer) Start() error {
 	s.log.Debug("starting hls ffmpeg", "camera", s.camera.ID, "playlist", playlist)
 	proc, err := s.commander.Start("ffmpeg",
 		"-i", s.camera.RTSPURL,
+		"-c", "copy",
 		"-f", "hls",
 		"-hls_time", "2",
 		"-hls_list_size", "5",
-		"-hls_flags", "delete_segments+append_list",
+		"-hls_flags", "delete_segments+append_list+independent_segments",
 		"-hls_segment_filename", segmentPattern,
 		playlist,
 	)
