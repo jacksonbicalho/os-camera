@@ -1,10 +1,19 @@
-package recorder
+package exec
 
 import (
 	"io"
 	"os/exec"
 	"syscall"
 )
+
+type Process interface {
+	Terminate() error
+	Wait() error
+}
+
+type Commander interface {
+	Start(name string, args ...string) (Process, error)
+}
 
 type FFmpegCommander struct{}
 

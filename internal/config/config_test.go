@@ -215,6 +215,38 @@ cameras:
 	}
 }
 
+func TestLoadParsesServerConfig(t *testing.T) {
+	path := writeTempYAML(t, `
+server:
+  port: 8080
+  segments_path: /tmp/hls
+  username: master
+  password: secret
+
+cameras:
+  - id: cam1
+    rtsp_url: rtsp://localhost:8554/stream
+`)
+
+	cfg, err := config.Load(path)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Server.Port != 8080 {
+		t.Errorf("expected port 8080, got %d", cfg.Server.Port)
+	}
+	if cfg.Server.SegmentsPath != "/tmp/hls" {
+		t.Errorf("expected segments_path /tmp/hls, got %q", cfg.Server.SegmentsPath)
+	}
+	if cfg.Server.Username != "master" {
+		t.Errorf("expected username %q, got %q", "master", cfg.Server.Username)
+	}
+	if cfg.Server.Password != "secret" {
+		t.Errorf("expected password %q, got %q", "secret", cfg.Server.Password)
+	}
+}
+
 func TestLoadEnvVarOverridesStoragePath(t *testing.T) {
 	t.Setenv("STORAGE_PATH", "/tmp/from-env")
 

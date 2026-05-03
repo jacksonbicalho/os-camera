@@ -22,6 +22,7 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 type Config struct {
 	Debug    bool           `yaml:"debug"`
 	Log      LogConfig      `yaml:"log"`
+	Server   ServerConfig   `yaml:"server"`
 	Storage  StorageConfig  `yaml:"storage"`
 	Defaults DefaultsConfig `yaml:"defaults"`
 	Cameras  []CameraConfig `yaml:"cameras"`
@@ -30,6 +31,15 @@ type Config struct {
 type LogConfig struct {
 	Output string `yaml:"output"`
 	Path   string `yaml:"path"`
+}
+
+type ServerConfig struct {
+	Port           int    `yaml:"port"`
+	SegmentsPath   string `yaml:"segments_path"`
+	RecordingsPath string `yaml:"recordings_path"`
+	Timezone       string `yaml:"timezone"`
+	Username       string `yaml:"username"`
+	Password       string `yaml:"password"`
 }
 
 type StorageConfig struct {
@@ -66,6 +76,12 @@ func Load(path string) (Config, error) {
 	}
 	if v := os.Getenv("STORAGE_PATH"); v != "" {
 		cfg.Storage.Path = v
+	}
+	if v := os.Getenv("SERVER_TIMEZONE"); v != "" {
+		cfg.Server.Timezone = v
+	}
+	if cfg.Server.Timezone == "" {
+		cfg.Server.Timezone = "UTC"
 	}
 	return cfg, nil
 }
