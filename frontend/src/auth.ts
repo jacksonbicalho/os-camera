@@ -23,6 +23,17 @@ export async function login(username: string, password: string): Promise<void> {
   setToken(data.token)
 }
 
+export function getUsername(): string | null {
+  const token = getToken()
+  if (!token) return null
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return typeof payload.sub === 'string' ? payload.sub : null
+  } catch {
+    return null
+  }
+}
+
 export function authHeaders(): HeadersInit {
   const token = getToken()
   return token ? { Authorization: `Bearer ${token}` } : {}

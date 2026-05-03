@@ -21,9 +21,15 @@ services:
       target: development
     volumes:
       - .:/app
+      - frontend_dist:/app/frontend/dist
+      - frontend_node_modules:/app/frontend/node_modules
       - ./storage:/data/recordings
       - ./storage/logs:/data/logs
     ports:
       - 8080:8080
     command: sh -c "cd frontend && yarn install && yarn build && cd .. && go run ./cmd/camera --config /app/camera.yaml"
     restart: "no"
+
+volumes:
+  frontend_dist:
+  frontend_node_modules:

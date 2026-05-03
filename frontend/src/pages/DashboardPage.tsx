@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { authHeaders, clearToken } from '../auth'
+import { authHeaders, clearToken, getUsername } from '../auth'
 import Header from '../components/Header'
 import HLSPlayer from '../components/HLSPlayer'
 
@@ -23,7 +23,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-950">
-      <Header />
+      <Header username={getUsername() ?? undefined} />
       <main className="flex-1 p-6">
         <h2 className="text-lg font-semibold text-gray-200 mb-4">Câmeras ao vivo</h2>
         {cameras.length === 0 ? (
