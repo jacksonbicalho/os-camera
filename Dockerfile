@@ -1,5 +1,5 @@
 FROM golang:1.25-alpine AS development
-RUN apk add --no-cache ffmpeg
+RUN apk add --no-cache ffmpeg nodejs yarn
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
