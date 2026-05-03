@@ -13,6 +13,9 @@ server:
 
 storage:
   path: /data/recordings     # env: STORAGE_PATH
+  retention_days: 30         # apaga gravações mais antigas que N dias (0 = desabilitado)
+  max_size_gb: 10            # tamanho máximo do diretório de gravações em GB (0 = desabilitado)
+  warn_percent: 70           # avisa quando uso atingir X% do max_size_gb (ex: 70% de 10 GB = 7 GB)
 
 defaults:
   chunk_duration: 5m         # env: CHUNK_DURATION

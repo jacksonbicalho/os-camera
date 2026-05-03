@@ -20,6 +20,7 @@ import (
 	"camera/internal/logger"
 	"camera/internal/recorder"
 	"camera/internal/server"
+	"camera/internal/storage"
 	"camera/internal/streaming"
 )
 
@@ -94,9 +95,21 @@ func main() {
 		}()
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
+	cleaner := storage.New(
+		cfg.Storage.Path,
+		cfg.Storage.RetentionDays,
+		cfg.Storage.MaxSizeGB,
+		cfg.Storage.WarnPercent,
+		slog,
+	)
+	go cleaner.Run(ctx, time.Hour)
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
+	cancel()
 
 	slog.Info("shutting down, finalizing chunks...")
 	for _, str := range streamers {
