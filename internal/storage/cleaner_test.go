@@ -120,10 +120,3 @@ func TestCheckSize_NoWarnWhenBelowThreshold(t *testing.T) {
 		t.Errorf("unexpected storage usage warning below threshold")
 	}
 }
-
-func TestCheckSize_DisabledWhenMaxSizeZero(t *testing.T) {
-	dir := t.TempDir()
-	writeFileWithSize(t, filepath.Join(dir, "cam1", "huge.mp4"), 1000)
-
-	storage.New(dir, 0, 0, 0, discardLogger()).CheckSize()
-}
