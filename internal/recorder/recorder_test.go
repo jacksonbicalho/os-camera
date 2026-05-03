@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"camera/internal/config"
+	"camera/internal/exec"
 	"camera/internal/recorder"
 )
 
@@ -31,10 +32,10 @@ func (p *trackingProcess) Wait() error      { p.waited = true; return nil }
 
 type fakeCommander struct {
 	calls   [][]string
-	process recorder.Process
+	process exec.Process
 }
 
-func (f *fakeCommander) Start(name string, args ...string) (recorder.Process, error) {
+func (f *fakeCommander) Start(name string, args ...string) (exec.Process, error) {
 	f.calls = append(f.calls, append([]string{name}, args...))
 	if f.process != nil {
 		return f.process, nil
@@ -120,8 +121,14 @@ func TestRecorderStartsFFmpegWithCorrectArguments(t *testing.T) {
 	if !containsSequence(args, "-i", "rtsp://192.168.1.10:554/stream") {
 		t.Error("expected -i <rtsp_url> in args")
 	}
+	if !containsSequence(args, "-c", "copy") {
+		t.Error("expected -c copy in args")
+	}
 	if !containsSequence(args, "-segment_time", "300") {
 		t.Error("expected -segment_time 300 in args")
+	}
+	if !containsSequence(args, "-avoid_negative_ts", "make_zero") {
+		t.Error("expected -avoid_negative_ts make_zero in args")
 	}
 	if !containsSequence(args, "-strftime", "1") {
 		t.Error("expected -strftime 1 in args")

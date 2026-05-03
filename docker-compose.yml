@@ -23,5 +23,7 @@ services:
       - .:/app
       - ./storage:/data/recordings
       - ./storage/logs:/data/logs
-    command: go run ./cmd/camera --config /app/camera.yaml
+    ports:
+      - 8080:8080
+    command: sh -c "cd frontend && yarn install && yarn build && cd .. && go run ./cmd/camera --config /app/camera.yaml"
     restart: "no"

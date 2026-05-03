@@ -1,0 +1,218 @@
+package server_test
+
+import (
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"camera/internal/config"
+	"camera/internal/server"
+)
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func TestLoginReturnsTokenForValidCredentials(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	srv := server.NewServer(cfg, []config.CameraConfig{}, discardLogger(), nil)
+
+	body := `{"username":"master","password":"secret"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp map[string]string
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["token"] == "" {
+		t.Error("expected non-empty token in response")
+	}
+}
+
+func loginAndGetToken(t *testing.T, srv http.Handler, username, password string) string {
+	t.Helper()
+	body := `{"username":"` + username + `","password":"` + password + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]string
+	json.NewDecoder(w.Body).Decode(&resp)
+	return resp["token"]
+}
+
+func TestLoginReturnsUnauthorizedForInvalidCredentials(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	srv := server.NewServer(cfg, []config.CameraConfig{}, discardLogger(), nil)
+
+	body := `{"username":"master","password":"wrong"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestGetCamerasReturnsList(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cameras := []config.CameraConfig{
+		{ID: "entrada", RTSPURL: "rtsp://192.168.1.10:554/stream"},
+		{ID: "quintal", RTSPURL: "rtsp://192.168.1.11:554/stream"},
+	}
+	srv := server.NewServer(cfg, cameras, discardLogger(), nil)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var list []map[string]string
+	json.NewDecoder(w.Body).Decode(&list)
+	if len(list) != 2 {
+		t.Fatalf("expected 2 cameras, got %d", len(list))
+	}
+	if list[0]["id"] != "entrada" {
+		t.Errorf("expected first camera id %q, got %q", "entrada", list[0]["id"])
+	}
+}
+
+func TestGetCamerasRequiresAuth(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	srv := server.NewServer(cfg, []config.CameraConfig{}, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestStreamServesHLSPlaylist(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "entrada"
+	segDir := filepath.Join(tmpDir, cameraID)
+	if err := os.MkdirAll(segDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	playlist := "#EXTM3U\n#EXT-X-VERSION:3\n"
+	if err := os.WriteFile(filepath.Join(segDir, "index.m3u8"), []byte(playlist), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.ServerConfig{Username: "master", Password: "secret", SegmentsPath: tmpDir}
+	cameras := []config.CameraConfig{{ID: cameraID}}
+	srv := server.NewServer(cfg, cameras, discardLogger(), nil)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+
+	req := httptest.NewRequest(http.MethodGet, "/stream/"+cameraID+"/index.m3u8", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestStreamRequiresAuth(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret", SegmentsPath: t.TempDir()}
+	srv := server.NewServer(cfg, []config.CameraConfig{}, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/stream/entrada/index.m3u8", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestRecordingsReturnsChunksForDate(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "entrada"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "04", "30")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"20260430143000.mp4", "20260430143500.mp4"} {
+		if err := os.WriteFile(filepath.Join(dateDir, name), []byte("fake"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := config.ServerConfig{Username: "master", Password: "secret", RecordingsPath: tmpDir}
+	cameras := []config.CameraConfig{{ID: cameraID}}
+	srv := server.NewServer(cfg, cameras, discardLogger(), nil)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-04-30&page=1&limit=10", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Recordings []map[string]string `json:"recordings"`
+		HasMore    bool                `json:"hasMore"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if len(resp.Recordings) != 2 {
+		t.Fatalf("expected 2 recordings, got %d", len(resp.Recordings))
+	}
+	if resp.Recordings[0]["filename"] != "20260430143000.mp4" {
+		t.Errorf("unexpected first recording: %v", resp.Recordings[0])
+	}
+	wantStart := "2026-04-30T14:30:00Z"
+	if resp.Recordings[0]["start"] != wantStart {
+		t.Errorf("expected start %q, got %q", wantStart, resp.Recordings[0]["start"])
+	}
+	wantURL := "/recordings/" + cameraID + "/2026/04/30/20260430143000.mp4"
+	if resp.Recordings[0]["url"] != wantURL {
+		t.Errorf("expected url %q, got %q", wantURL, resp.Recordings[0]["url"])
+	}
+}
+
+func TestRecordingsRequiresAuth(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret", SegmentsPath: t.TempDir()}
+	srv := server.NewServer(cfg, []config.CameraConfig{}, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/entrada/recordings?date=2026-04-30", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}

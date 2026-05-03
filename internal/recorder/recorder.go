@@ -7,27 +7,19 @@ import (
 	"time"
 
 	"camera/internal/config"
+	"camera/internal/exec"
 )
-
-type Process interface {
-	Terminate() error
-	Wait() error
-}
-
-type Commander interface {
-	Start(name string, args ...string) (Process, error)
-}
 
 type Recorder struct {
 	camera    config.CameraConfig
 	storage   config.StorageConfig
 	defaults  config.DefaultsConfig
-	commander Commander
+	commander exec.Commander
 	log       *slog.Logger
-	process   Process
+	process   exec.Process
 }
 
-func NewRecorder(camera config.CameraConfig, storage config.StorageConfig, defaults config.DefaultsConfig, commander Commander, log *slog.Logger) *Recorder {
+func NewRecorder(camera config.CameraConfig, storage config.StorageConfig, defaults config.DefaultsConfig, commander exec.Commander, log *slog.Logger) *Recorder {
 	return &Recorder{
 		camera:    camera,
 		storage:   storage,
@@ -48,10 +40,12 @@ func (r *Recorder) Start(now time.Time) error {
 	r.log.Debug("starting ffmpeg", "camera", r.camera.ID, "pattern", pattern, "chunk_duration", duration)
 	proc, err := r.commander.Start("ffmpeg",
 		"-i", r.camera.RTSPURL,
+		"-c", "copy",
 		"-f", "segment",
 		"-segment_time", fmt.Sprintf("%d", duration),
 		"-segment_format", "mp4",
 		"-reset_timestamps", "1",
+		"-avoid_negative_ts", "make_zero",
 		"-strftime", "1",
 		pattern,
 	)
