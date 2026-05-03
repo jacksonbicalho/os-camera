@@ -1,4 +1,5 @@
 /storage/
+!/internal/storage
 camera.yaml
 /camera
 frontend/dist/
