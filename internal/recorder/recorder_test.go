@@ -140,6 +140,9 @@ func TestRecorderStartsFFmpegWithCorrectArguments(t *testing.T) {
 	if !containsSequence(args, "-avoid_negative_ts", "make_zero") {
 		t.Error("expected -avoid_negative_ts make_zero in args")
 	}
+	if !containsSequence(args, "-segment_format_options", "movflags=+frag_keyframe+empty_moov+default_base_moof") {
+		t.Error("expected fragmented mp4 options in args")
+	}
 	if !containsSequence(args, "-strftime", "1") {
 		t.Error("expected -strftime 1 in args")
 	}

@@ -49,6 +49,7 @@ func (r *Recorder) Start(now time.Time) error {
 		"-f", "segment",
 		"-segment_time", fmt.Sprintf("%d", duration),
 		"-segment_format", "mp4",
+		"-segment_format_options", "movflags=+frag_keyframe+empty_moov+default_base_moof",
 		"-reset_timestamps", "1",
 		"-avoid_negative_ts", "make_zero",
 		"-strftime", "1",
