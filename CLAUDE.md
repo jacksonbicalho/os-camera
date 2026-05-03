@@ -73,6 +73,35 @@ Três páginas com React Router: `LoginPage` → `DashboardPage` → `CameraPage
 | `LOG_OUTPUT` | `log.output` |
 | `LOG_PATH` | `log.path` |
 
+## Forma de trabalho
+
+O desenvolvimento segue **XP (Extreme Programming)** com **TDD red → green → refactor**:
+
+- O **navigator** (usuário) define a história, revisa o código e aprova cada etapa.
+- O **driver** (Claude) implementa, sempre guiado pelos testes.
+
+### Fluxo por história
+
+1. Abrir uma branch nova por história: `git checkout -b <tipo>/<descricao-curta>` a partir de `master`.
+2. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.
+3. Implementar o mínimo para o teste passar (**green**).
+4. Refatorar se necessário, mantendo os testes verdes (**refactor**).
+5. Propor o commit ao navigator antes de executá-lo — aguardar aprovação explícita.
+6. Após aprovação, commitar com mensagem semântica e propor o merge em `master`.
+
+### Commits semânticos
+
+Formato: `<tipo>(<escopo opcional>): <descrição curta em inglês>`
+
+| Tipo | Quando usar |
+|---|---|
+| `feat` | nova funcionalidade |
+| `fix` | correção de bug |
+| `refactor` | refatoração sem mudança de comportamento |
+| `test` | adição ou correção de testes |
+| `docs` | documentação |
+| `chore` | configuração, build, dependências |
+
 ## Manutenção contínua
 
 - **Ao adicionar ou alterar qualquer funcionalidade**, revise este `CLAUDE.md` e atualize as seções afetadas.
