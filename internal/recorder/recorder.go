@@ -8,22 +8,25 @@ import (
 
 	"camera/internal/config"
 	"camera/internal/exec"
+	"camera/internal/ffprobe"
 )
 
 type Recorder struct {
 	camera    config.CameraConfig
 	storage   config.StorageConfig
 	defaults  config.DefaultsConfig
+	stream    ffprobe.StreamInfo
 	commander exec.Commander
 	log       *slog.Logger
 	process   exec.Process
 }
 
-func NewRecorder(camera config.CameraConfig, storage config.StorageConfig, defaults config.DefaultsConfig, commander exec.Commander, log *slog.Logger) *Recorder {
+func NewRecorder(camera config.CameraConfig, storage config.StorageConfig, defaults config.DefaultsConfig, stream ffprobe.StreamInfo, commander exec.Commander, log *slog.Logger) *Recorder {
 	return &Recorder{
 		camera:    camera,
 		storage:   storage,
 		defaults:  defaults,
+		stream:    stream,
 		commander: commander,
 		log:       log,
 	}
@@ -38,9 +41,11 @@ func (r *Recorder) Start(now time.Time) error {
 	pattern := OutputPattern(r.storage.Path, r.camera.ID, now)
 	duration := int(r.camera.EffectiveChunkDuration(r.defaults).Seconds())
 	r.log.Debug("starting ffmpeg", "camera", r.camera.ID, "pattern", pattern, "chunk_duration", duration)
-	proc, err := r.commander.Start("ffmpeg",
-		"-i", r.camera.RTSPURL,
-		"-c", "copy",
+	args := []string{"-i", r.camera.RTSPURL, "-c", "copy"}
+	if !r.stream.HasAudio {
+		args = append(args, "-an")
+	}
+	args = append(args,
 		"-f", "segment",
 		"-segment_time", fmt.Sprintf("%d", duration),
 		"-segment_format", "mp4",
@@ -49,6 +54,7 @@ func (r *Recorder) Start(now time.Time) error {
 		"-strftime", "1",
 		pattern,
 	)
+	proc, err := r.commander.Start("ffmpeg", args...)
 	if err != nil {
 		return err
 	}

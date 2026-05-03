@@ -74,6 +74,71 @@ func TestProberPropagatesExecutorError(t *testing.T) {
 	}
 }
 
+func TestParseExtractsVideoAndAudioInfo(t *testing.T) {
+	output := []byte(`{
+		"streams": [
+			{
+				"codec_type": "video",
+				"codec_name": "h264",
+				"width": 1920,
+				"height": 1080
+			},
+			{
+				"codec_type": "audio",
+				"codec_name": "aac"
+			}
+		]
+	}`)
+
+	info, err := ffprobe.Parse(output)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.VideoCodec != "h264" {
+		t.Errorf("expected VideoCodec %q, got %q", "h264", info.VideoCodec)
+	}
+	if info.Width != 1920 {
+		t.Errorf("expected Width 1920, got %d", info.Width)
+	}
+	if info.Height != 1080 {
+		t.Errorf("expected Height 1080, got %d", info.Height)
+	}
+	if !info.HasAudio {
+		t.Error("expected HasAudio = true")
+	}
+}
+
+func TestParseDetectsNoAudio(t *testing.T) {
+	output := []byte(`{
+		"streams": [
+			{
+				"codec_type": "video",
+				"codec_name": "hevc",
+				"width": 1280,
+				"height": 720
+			}
+		]
+	}`)
+
+	info, err := ffprobe.Parse(output)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.HasAudio {
+		t.Error("expected HasAudio = false")
+	}
+	if info.VideoCodec != "hevc" {
+		t.Errorf("expected VideoCodec %q, got %q", "hevc", info.VideoCodec)
+	}
+}
+
+func TestParseReturnsErrorOnInvalidJSON(t *testing.T) {
+	_, err := ffprobe.Parse([]byte(`not json`))
+	if err == nil {
+		t.Error("expected error on invalid JSON")
+	}
+}
+
 func containsSeq(args []string, key, value string) bool {
 	for i := 0; i < len(args)-1; i++ {
 		if args[i] == key && args[i+1] == value {

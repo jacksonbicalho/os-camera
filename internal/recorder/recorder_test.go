@@ -10,6 +10,7 @@ import (
 
 	"camera/internal/config"
 	"camera/internal/exec"
+	"camera/internal/ffprobe"
 	"camera/internal/recorder"
 )
 
@@ -52,6 +53,15 @@ func containsSequence(haystack []string, key, value string) bool {
 	return false
 }
 
+func containsArg(haystack []string, s string) bool {
+	for _, a := range haystack {
+		if a == s {
+			return true
+		}
+	}
+	return false
+}
+
 func TestOutputPatternBuildsFilename(t *testing.T) {
 	ts := time.Date(2026, 4, 30, 23, 0, 0, 0, time.UTC)
 
@@ -82,7 +92,7 @@ func TestRecorderCreatesDirectoryBeforeStarting(t *testing.T) {
 	storage := config.StorageConfig{Path: tmpDir}
 	defaults := config.DefaultsConfig{}
 
-	rec := recorder.NewRecorder(camera, storage, defaults, &fakeCommander{}, discardLogger())
+	rec := recorder.NewRecorder(camera, storage, defaults, ffprobe.StreamInfo{}, &fakeCommander{}, discardLogger())
 	if err := rec.Start(ts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -106,7 +116,7 @@ func TestRecorderStartsFFmpegWithCorrectArguments(t *testing.T) {
 	defaults := config.DefaultsConfig{}
 
 	cmd := &fakeCommander{}
-	rec := recorder.NewRecorder(camera, storage, defaults, cmd, discardLogger())
+	rec := recorder.NewRecorder(camera, storage, defaults, ffprobe.StreamInfo{}, cmd, discardLogger())
 	if err := rec.Start(ts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -150,7 +160,7 @@ func TestRecorderStopFinalizesChunk(t *testing.T) {
 	proc := &trackingProcess{}
 	cmd := &fakeCommander{process: proc}
 
-	rec := recorder.NewRecorder(camera, storage, defaults, cmd, discardLogger())
+	rec := recorder.NewRecorder(camera, storage, defaults, ffprobe.StreamInfo{}, cmd, discardLogger())
 	if err := rec.Start(ts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -162,5 +172,43 @@ func TestRecorderStopFinalizesChunk(t *testing.T) {
 	}
 	if !proc.waited {
 		t.Error("expected Wait() to be called after Terminate()")
+	}
+}
+
+func TestRecorderAddsAnFlagWhenNoAudio(t *testing.T) {
+	tmpDir := t.TempDir()
+	ts := time.Date(2026, 4, 30, 14, 30, 0, 0, time.UTC)
+
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://192.168.1.10:554/stream"}
+	storage := config.StorageConfig{Path: tmpDir}
+	stream := ffprobe.StreamInfo{HasAudio: false}
+
+	cmd := &fakeCommander{}
+	rec := recorder.NewRecorder(camera, storage, config.DefaultsConfig{}, stream, cmd, discardLogger())
+	if err := rec.Start(ts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !containsArg(cmd.calls[0], "-an") {
+		t.Error("expected -an in ffmpeg args when HasAudio = false")
+	}
+}
+
+func TestRecorderDoesNotAddAnFlagWhenHasAudio(t *testing.T) {
+	tmpDir := t.TempDir()
+	ts := time.Date(2026, 4, 30, 14, 30, 0, 0, time.UTC)
+
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://192.168.1.10:554/stream"}
+	storage := config.StorageConfig{Path: tmpDir}
+	stream := ffprobe.StreamInfo{HasAudio: true}
+
+	cmd := &fakeCommander{}
+	rec := recorder.NewRecorder(camera, storage, config.DefaultsConfig{}, stream, cmd, discardLogger())
+	if err := rec.Start(ts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if containsArg(cmd.calls[0], "-an") {
+		t.Error("expected no -an in ffmpeg args when HasAudio = true")
 	}
 }

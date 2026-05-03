@@ -9,6 +9,7 @@ import (
 
 	"camera/internal/config"
 	"camera/internal/exec"
+	"camera/internal/ffprobe"
 	"camera/internal/streaming"
 )
 
@@ -58,7 +59,7 @@ func TestHLSStreamerStartsFFmpegWithCorrectArguments(t *testing.T) {
 	server := config.ServerConfig{SegmentsPath: tmpDir}
 
 	cmd := &fakeCommander{}
-	s := streaming.NewHLSStreamer(camera, server, cmd, discardLogger())
+	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())
 	if err := s.Start(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,7 +92,7 @@ func TestHLSStreamerUsesStreamCopy(t *testing.T) {
 	server := config.ServerConfig{SegmentsPath: tmpDir}
 
 	cmd := &fakeCommander{}
-	s := streaming.NewHLSStreamer(camera, server, cmd, discardLogger())
+	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())
 	if err := s.Start(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -113,7 +114,7 @@ func TestHLSStreamerUsesIndependentSegments(t *testing.T) {
 	server := config.ServerConfig{SegmentsPath: tmpDir}
 
 	cmd := &fakeCommander{}
-	s := streaming.NewHLSStreamer(camera, server, cmd, discardLogger())
+	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())
 	if err := s.Start(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -156,7 +157,7 @@ func TestHLSStreamerStopFinalizesStream(t *testing.T) {
 	proc := &trackingProcess{}
 	cmd := &fakeCommander{process: proc}
 
-	s := streaming.NewHLSStreamer(camera, server, cmd, discardLogger())
+	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())
 	if err := s.Start(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -177,7 +178,7 @@ func TestHLSStreamerCreatesOutputDirectory(t *testing.T) {
 	camera := config.CameraConfig{ID: "entrada", RTSPURL: "rtsp://192.168.1.10:554/stream"}
 	server := config.ServerConfig{SegmentsPath: tmpDir}
 
-	s := streaming.NewHLSStreamer(camera, server, &fakeCommander{}, discardLogger())
+	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, &fakeCommander{}, discardLogger())
 	if err := s.Start(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -185,5 +186,48 @@ func TestHLSStreamerCreatesOutputDirectory(t *testing.T) {
 	wantDir := filepath.Join(tmpDir, "entrada")
 	if _, err := os.Stat(wantDir); os.IsNotExist(err) {
 		t.Errorf("expected directory %q to exist", wantDir)
+	}
+}
+
+func containsArg(haystack []string, s string) bool {
+	for _, a := range haystack {
+		if a == s {
+			return true
+		}
+	}
+	return false
+}
+
+func TestHLSStreamerAddsAnFlagWhenNoAudio(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://192.168.1.10:554/stream"}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
+	stream := ffprobe.StreamInfo{HasAudio: false}
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, stream, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !containsArg(cmd.calls[0], "-an") {
+		t.Error("expected -an in ffmpeg args when HasAudio = false")
+	}
+}
+
+func TestHLSStreamerDoesNotAddAnFlagWhenHasAudio(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://192.168.1.10:554/stream"}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
+	stream := ffprobe.StreamInfo{HasAudio: true}
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, stream, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if containsArg(cmd.calls[0], "-an") {
+		t.Error("expected no -an in ffmpeg args when HasAudio = true")
 	}
 }

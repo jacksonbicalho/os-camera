@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io/fs"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,6 +16,7 @@ import (
 	"camera/frontend"
 	"camera/internal/config"
 	"camera/internal/exec"
+	"camera/internal/ffprobe"
 	"camera/internal/logger"
 	"camera/internal/recorder"
 	"camera/internal/server"
@@ -49,11 +52,13 @@ func main() {
 	}
 
 	commander := exec.NewFFmpegCommander()
+	prober := ffprobe.NewProber(&ffprobe.OSExecutor{})
 	recorders := make([]*recorder.Recorder, 0, len(cfg.Cameras))
 	streamers := make([]*streaming.HLSStreamer, 0, len(cfg.Cameras))
 
 	for _, cam := range cfg.Cameras {
-		rec := recorder.NewRecorder(cam, cfg.Storage, cfg.Defaults, commander, slog)
+		stream := resolveStream(cam, prober, slog)
+		rec := recorder.NewRecorder(cam, cfg.Storage, cfg.Defaults, stream, commander, slog)
 		if err := rec.Start(time.Now().UTC()); err != nil {
 			slog.Error("failed to start recorder", "camera", cam.ID, "error", err)
 			os.Exit(1)
@@ -62,7 +67,7 @@ func main() {
 		recorders = append(recorders, rec)
 
 		if cfg.Server.SegmentsPath != "" {
-			str := streaming.NewHLSStreamer(cam, cfg.Server, commander, slog)
+			str := streaming.NewHLSStreamer(cam, cfg.Server, stream, commander, slog)
 			if err := str.Start(); err != nil {
 				slog.Error("failed to start hls streamer", "camera", cam.ID, "error", err)
 				os.Exit(1)
@@ -101,4 +106,40 @@ func main() {
 		rec.Stop()
 	}
 	slog.Info("done")
+}
+
+func resolveStream(cam config.CameraConfig, prober *ffprobe.Prober, log *slog.Logger) ffprobe.StreamInfo {
+	needsProbe := cam.VideoCodec == "" && cam.HasAudio == nil && cam.Width == 0 && cam.Height == 0
+	var info ffprobe.StreamInfo
+	if needsProbe {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		raw, err := prober.Probe(ctx, cam.RTSPURL)
+		if err != nil {
+			log.Warn("ffprobe failed, assuming audio present", "camera", cam.ID, "error", err)
+			info.HasAudio = true
+			return info
+		}
+		info, err = ffprobe.Parse(raw)
+		if err != nil {
+			log.Warn("ffprobe parse failed, assuming audio present", "camera", cam.ID, "error", err)
+			info.HasAudio = true
+			return info
+		}
+		log.Info("stream probed", "camera", cam.ID, "codec", info.VideoCodec,
+			"has_audio", info.HasAudio, "width", info.Width, "height", info.Height)
+	}
+	if cam.VideoCodec != "" {
+		info.VideoCodec = cam.VideoCodec
+	}
+	if cam.HasAudio != nil {
+		info.HasAudio = *cam.HasAudio
+	}
+	if cam.Width != 0 {
+		info.Width = cam.Width
+	}
+	if cam.Height != 0 {
+		info.Height = cam.Height
+	}
+	return info
 }

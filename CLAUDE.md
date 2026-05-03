@@ -86,8 +86,11 @@ O desenvolvimento segue **XP (Extreme Programming)** com **TDD red → green →
 2. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.
 3. Implementar o mínimo para o teste passar (**green**).
 4. Refatorar se necessário, mantendo os testes verdes (**refactor**).
-5. Propor o commit ao navigator antes de executá-lo — aguardar aprovação explícita.
-6. Após aprovação, commitar com mensagem semântica e propor o merge em `master`.
+5. Executar yarn lint 
+6. executar yarn test 
+7. Propor o commit ao navigator antes de executá-lo — aguardar aprovação explícita.
+8. Após aprovação, commitar com mensagem semântica 
+9. Propor o merge em `master`.
 
 ### Commits semânticos
 
@@ -110,3 +113,33 @@ Formato: `<tipo>(<escopo opcional>): <descrição curta em inglês>`
 ## Convenções de teste
 
 Testes usam `httptest.NewRecorder` (server), `fakeCommander` com `trackingProcess` (recorder/streamer) e implementações fake das interfaces de `internal/exec`. Não há banco de dados nem mocks externos — cada pacote é testado em isolamento via injeção de dependência.
+
+## 🐹 Diretrizes de Desenvolvimento Go (Golang)
+
+Sempre priorize a simplicidade e a legibilidade conforme os provérbios do Go ("Effective Go").
+
+### 1. Princípio DRY e Abstração
+- **Evite Abstração Precoce:** Siga a "Regra de Três". Não crie abstrações ou interfaces até que haja pelo menos três casos de uso concretos.
+- **Cópia vs. Dependência:** Prefira duplicar uma pequena função utilitária do que introduzir uma dependência externa desnecessária.
+- **Interfaces:** Defina interfaces no lado do consumidor (onde são usadas) e não no lado do produtor. Mantenha as interfaces pequenas (1 ou 2 métodos).
+
+### 2. Estilo e Convenções de Código
+- **Alinhamento do "Happy Path":** Mantenha o fluxo principal de sucesso alinhado à esquerda. Use *guard clauses* para tratar erros e retorne o mais cedo possível.
+- **Nomenclatura:**
+    - Variáveis de escopo curto: Curtas (ex: `ctx`, `w`, `r`, `i`).
+    - Variáveis globais/longas: Descritivas.
+    - Interfaces: Sufixo "-er" para interfaces de um único método (ex: `Formatter`, `Storer`).
+- **Zero Value:** Projete structs para que o valor zero (`var s MyStruct`) seja útil e seguro para uso imediato.
+
+### 3. Tratamento de Erros
+- **Erros são Valores:** Sempre verifique erros explicitamente logo após a chamada: `if err != nil { return err }`.
+- **Contexto de Erro:** Utilize `fmt.Errorf("contexto do erro: %w", err)` para adicionar contexto sem perder o erro original (wrapping).
+- **Sem Panics:** Nunca use `panic` para controle de fluxo. Reserve-o apenas para erros catastróficos de inicialização ou bugs lógicos irrecuperáveis.
+
+### 4. Concorrência e Performance
+- **Canais vs. Mutex:** "Não comunique compartilhando memória; compartilhe memória comunicando". Use canais para orquestração e `sync.Mutex` para proteção de estado simples.
+- **Goroutines:** Sempre saiba como uma goroutine vai terminar antes de iniciá-la para evitar vazamentos de memória.
+- **Ponteiros:** Use ponteiros apenas quando precisar mutar o estado ou para evitar cópias de structs muito grandes (> 64-128 bytes).
+
+### 5. Tooling Obrigatório
+- Todo código gerado deve ser compatível com o `gofmt`.

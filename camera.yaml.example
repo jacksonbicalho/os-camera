@@ -21,7 +21,13 @@ defaults:
 cameras:
   - id: entrada
     rtsp_url: rtsp://192.168.1.10:554/stream
+    # Configurações de stream (opcionais — detectadas via ffprobe se omitidas):
+    # video_codec: h264      # codec do vídeo (ex: h264, hevc)
+    # has_audio: false       # false = adiciona -an no ffmpeg; true = mantém áudio
+    # width: 1920            # largura do vídeo em pixels
+    # height: 1080           # altura do vídeo em pixels
 
   - id: quintal
     rtsp_url: rtsp://192.168.1.11:554/stream
     chunk_duration: 10m      # sobrescreve o default
+    has_audio: false         # câmera sem microfone — pula detecção por ffprobe
