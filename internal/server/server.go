@@ -23,6 +23,7 @@ import (
 type Server struct {
 	cfg        config.ServerConfig
 	storageCfg config.StorageConfig
+	defaults   config.DefaultsConfig
 	timezone   string
 	cameras    []config.CameraConfig
 	log        *slog.Logger
@@ -50,6 +51,11 @@ func NewServer(cfg config.ServerConfig, timezone string, cameras []config.Camera
 
 func (s *Server) WithStorageConfig(cfg config.StorageConfig) *Server {
 	s.storageCfg = cfg
+	return s
+}
+
+func (s *Server) WithDefaults(cfg config.DefaultsConfig) *Server {
+	s.defaults = cfg
 	return s
 }
 
@@ -292,15 +298,34 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 
 	maxSizeBytes := int64(s.storageCfg.MaxSizeGB * 1024 * 1024 * 1024)
 
+	chunkSec := int64(time.Duration(s.defaults.ChunkDuration).Seconds())
+	if chunkSec <= 0 {
+		chunkSec = 300 // default 5 min
+	}
+	durationSec := int64(recCount) * chunkSec
+
+	availableBytes := diskFree
+	if maxSizeBytes > 0 {
+		availableBytes = max(0, maxSizeBytes-recBytes)
+	}
+	// forecast = availableBytes * durationSec / recBytes
+	// (avoids integer division truncating bytes_per_sec to 0 for small files)
+	var forecastSec int64
+	if durationSec > 0 && recBytes > 0 {
+		forecastSec = availableBytes * durationSec / recBytes
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"recordings_bytes": recBytes,
-		"recordings_count": recCount,
-		"disk_total_bytes": diskTotal,
-		"disk_free_bytes":  diskFree,
-		"camera_count":     len(s.cameras),
-		"max_size_bytes":   maxSizeBytes,
-		"warn_percent":     s.storageCfg.WarnPercent,
+		"recordings_bytes":            recBytes,
+		"recordings_count":            recCount,
+		"recordings_duration_seconds": durationSec,
+		"forecast_seconds":            forecastSec,
+		"disk_total_bytes":            diskTotal,
+		"disk_free_bytes":             diskFree,
+		"camera_count":                len(s.cameras),
+		"max_size_bytes":              maxSizeBytes,
+		"warn_percent":                s.storageCfg.WarnPercent,
 	})
 }
 
