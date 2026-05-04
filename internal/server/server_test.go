@@ -491,6 +491,47 @@ func TestGetStatsReturnsStorageInfo(t *testing.T) {
 	}
 }
 
+func TestGetStatsIncludesRecordingsDurationAndForecast(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "05", "01")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"20260501100000.mp4", "20260501100500.mp4"} {
+		if err := os.WriteFile(filepath.Join(dateDir, name), []byte("abcdefgh"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	defaults := config.DefaultsConfig{ChunkDuration: config.Duration(5 * time.Minute)}
+	cameras := []config.CameraConfig{{ID: cameraID}}
+	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).
+		WithDefaults(defaults)
+
+	token := loginAndGetToken(t, srv, "u", "p")
+	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	var resp struct {
+		RecordingsDurationSeconds int64 `json:"recordings_duration_seconds"`
+		ForecastSeconds           int64 `json:"forecast_seconds"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	// 2 chunks × 300s = 600s
+	if resp.RecordingsDurationSeconds != 600 {
+		t.Errorf("expected recordings_duration_seconds=600, got %d", resp.RecordingsDurationSeconds)
+	}
+	if resp.ForecastSeconds <= 0 {
+		t.Errorf("expected forecast_seconds > 0, got %d", resp.ForecastSeconds)
+	}
+}
+
 func TestGetStatsIncludesMaxSizeWhenConfigured(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := config.ServerConfig{Username: "master", Password: "secret", RecordingsPath: tmpDir}

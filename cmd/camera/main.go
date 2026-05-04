@@ -87,7 +87,8 @@ func main() {
 			log.Fatalf("failed to sub frontend fs: %v", err)
 		}
 		srv := server.NewServer(cfg.Server, cfg.Timezone, cfg.Cameras, slog, static).
-			WithStorageConfig(cfg.Storage)
+			WithStorageConfig(cfg.Storage).
+			WithDefaults(cfg.Defaults)
 		addr := fmt.Sprintf(":%d", cfg.Server.Port)
 		slog.Info("http server starting", "addr", addr)
 		go func() {

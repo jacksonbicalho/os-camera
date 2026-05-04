@@ -6,6 +6,8 @@ import Header from '../components/Header'
 interface Stats {
   recordings_bytes: number
   recordings_count: number
+  recordings_duration_seconds: number
+  forecast_seconds: number
   disk_total_bytes: number
   disk_free_bytes: number
   camera_count: number
@@ -20,20 +22,33 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
 }
 
+function formatDuration(seconds: number): string {
+  if (seconds <= 0) return '—'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (h === 0) return `${m}m`
+  if (m === 0) return `${h}h`
+  return `${h}h ${m}m`
+}
+
 export default function StatsPage() {
   const navigate = useNavigate()
   const [stats, setStats] = useState<Stats | null>(null)
 
   useEffect(() => {
-    let cancelled = false
-    fetch('/api/stats', { headers: authHeaders() })
-      .then(res => {
-        if (res.status === 401) { clearToken(); navigate('/login'); return null }
-        return res.json()
-      })
-      .then(data => { if (!cancelled && data) setStats(data) })
-      .catch(() => {})
-    return () => { cancelled = true }
+    const cancelled = { value: false }
+    function fetchStats() {
+      fetch('/api/stats', { headers: authHeaders() })
+        .then(res => {
+          if (res.status === 401) { clearToken(); navigate('/login'); return null }
+          return res.json()
+        })
+        .then(data => { if (!cancelled.value && data) setStats(data) })
+        .catch(() => {})
+    }
+    fetchStats()
+    const interval = setInterval(fetchStats, 30_000)
+    return () => { cancelled.value = true; clearInterval(interval) }
   }, [navigate])
 
   const hasLimit = (stats?.max_size_bytes ?? 0) > 0
@@ -45,11 +60,7 @@ export default function StatsPage() {
   const isWarning = warnThreshold > 0 && usedPercent >= warnThreshold
   const isOver = hasLimit && stats ? stats.recordings_bytes >= stats.max_size_bytes : false
 
-  const barColor = isOver
-    ? 'bg-red-600'
-    : isWarning
-      ? 'bg-yellow-500'
-      : 'bg-blue-600'
+  const barColor = isOver ? 'bg-red-600' : isWarning ? 'bg-yellow-500' : 'bg-blue-600'
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-950">
@@ -111,6 +122,24 @@ export default function StatsPage() {
               <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2">Gravações</p>
               <p className="text-3xl font-bold text-gray-200">{stats.recordings_count.toLocaleString()}</p>
               <p className="text-xs text-gray-500 mt-1">arquivos MP4 · {formatBytes(stats.recordings_bytes)}</p>
+            </div>
+
+            {/* Horas gravadas */}
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
+              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2">Horas gravadas</p>
+              <p className="text-3xl font-bold text-gray-200">{formatDuration(stats.recordings_duration_seconds)}</p>
+              <p className="text-xs text-gray-500 mt-1">de vídeo em disco</p>
+            </div>
+
+            {/* Previsão */}
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
+              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2">Previsão de capacidade</p>
+              <p className="text-3xl font-bold text-gray-200">{formatDuration(stats.forecast_seconds)}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {stats.forecast_seconds > 0
+                  ? 'restantes com o espaço disponível'
+                  : 'dados insuficientes para estimar'}
+              </p>
             </div>
           </div>
         )}
