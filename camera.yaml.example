@@ -1,25 +1,25 @@
-debug: false                         # env: DEBUG
-timezone: America/Sao_Paulo          # env: TIMEZONE — fuso horário da instalação (padrão: UTC)
+debug: false                         # env: CAMERA_DEBUG
+timezone: America/Sao_Paulo          # env: CAMERA_TIMEZONE — fuso horário da instalação (padrão: UTC)
 
 log:
-  output: stdout     # stdout | file — env: LOG_OUTPUT
-  path:              # diretório quando output: file — env: LOG_PATH
+  output: stdout     # stdout | file — env: CAMERA_LOG_OUTPUT
+  path:              # diretório quando output: file — env: CAMERA_LOG_PATH
 
 server:
-  port: 8080                        # env: SERVER_PORT
-  segments_path: /tmp/hls           # env: SEGMENTS_PATH
-  username: master                  # env: SERVER_USERNAME
-  password: ""                      # env: SERVER_PASSWORD
+  port: 8080                        # env: CAMERA_SERVER_PORT
+  segments_path: /tmp/hls           # env: CAMERA_SEGMENTS_PATH
+  username: master                  # env: CAMERA_SERVER_USERNAME
+  password: ""                      # env: CAMERA_SERVER_PASSWORD
 
 storage:
-  path: /data/recordings     # env: STORAGE_PATH
+  path: /data/recordings     # env: CAMERA_STORAGE_PATH
   retention_days: 30         # apaga gravações mais antigas que N dias (0 = desabilitado)
   max_size_gb: 10            # tamanho máximo do diretório de gravações em GB (0 = desabilitado)
   warn_percent: 70           # avisa quando uso atingir X% do max_size_gb (ex: 70% de 10 GB = 7 GB)
 
 defaults:
-  chunk_duration: 5m         # env: CHUNK_DURATION
-  reconnect_interval: 10s    # env: RECONNECT_INTERVAL
+  chunk_duration: 5m         # env: CAMERA_CHUNK_DURATION
+  reconnect_interval: 10s    # env: CAMERA_RECONNECT_INTERVAL
 
 motion:
   enabled: false      # habilita detecção de movimento por câmera

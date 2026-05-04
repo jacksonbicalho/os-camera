@@ -284,7 +284,7 @@ cameras:
 }
 
 func TestLoadEnvVarOverridesTimezone(t *testing.T) {
-	t.Setenv("TIMEZONE", "America/Manaus")
+	t.Setenv("CAMERA_TIMEZONE", "America/Manaus")
 
 	path := writeTempYAML(t, `
 timezone: America/Sao_Paulo
@@ -305,7 +305,7 @@ cameras:
 }
 
 func TestLoadEnvVarOverridesStoragePath(t *testing.T) {
-	t.Setenv("STORAGE_PATH", "/tmp/from-env")
+	t.Setenv("CAMERA_STORAGE_PATH", "/tmp/from-env")
 
 	path := writeTempYAML(t, `
 storage:
