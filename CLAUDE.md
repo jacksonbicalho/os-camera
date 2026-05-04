@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## O que é este projeto
 
-Sistema de monitoramento residencial via RTSP. Cada câmera configurada tem dois processos ffmpeg rodando em paralelo: um grava chunks MP4 em disco e outro gera segmentos HLS para visualização ao vivo. O frontend React é embutido no binário Go via `go:embed`.
+Sistema de monitoramento residencial via RTSP. Cada câmera configurada tem três processos ffmpeg rodando em paralelo: um grava chunks MP4 em disco, outro gera segmentos HLS para visualização ao vivo e um terceiro detecta movimento por diff de frames. O frontend React é embutido no binário Go via `go:embed`.
 
 ## Comandos principais
 
@@ -40,6 +40,7 @@ docker compose --profile production up camera --build        # produção: biná
 Para cada câmera configurada, `main` cria e inicia:
 1. Um `recorder.Recorder` — grava RTSP → MP4 chunk
 2. Um `streaming.HLSStreamer` — grava RTSP → segmentos HLS para live
+3. Um `motion.Monitor` — detecta movimento via ffmpeg pipe raw (se `motion.enabled: true`)
 
 O `server.Server` é levantado em goroutine separada e serve a SPA + API REST.
 
@@ -50,10 +51,12 @@ O `server.Server` é levantado em goroutine separada e serve a SPA + API REST.
 | `internal/exec` | Interfaces `Commander` / `Process` e implementação real com `os/exec`. Injetadas nos pacotes abaixo para permitir testes sem ffmpeg. |
 | `internal/recorder` | Grava RTSP em chunks MP4. Armazena em `{storage}/{camera_id}/{YYYY/MM/DD}/{YYYYMMDDHHmmss}.mp4`. |
 | `internal/streaming` | Gera playlist HLS ao vivo em `{segments_path}/{camera_id}/index.m3u8` com janela de 5 segmentos de 2s. |
+| `internal/motion` | Detecta movimento via ffmpeg pipe raw (frames grayscale em 1/4 da resolução). Appenda eventos em `{storage}/{camera_id}/motion.ndjson`. |
+| `internal/storage` | `Cleaner` que apaga MP4s mais antigos que `retention_days` e monitora uso vs `max_size_gb`. |
+| `internal/ffprobe` | Executa e parseia saída JSON do ffprobe para detectar codec, áudio e dimensões do stream. |
 | `internal/server` | HTTP server com JWT HS256 (segredo gerado a cada boot, expira em 24h). Serve API REST, arquivos de gravação, segmentos HLS e a SPA React. |
 | `internal/config` | Lê `camera.yaml`; variáveis de ambiente sobrescrevem campos específicos (ver abaixo). |
 | `internal/logger` | `stdout`: JSON em stdout. `file`: um arquivo por nível (`debug.log`, `info.log`, `warn.log`, `error.log`) no diretório configurado. |
-| `internal/rtsp` | Cliente RTSP com interface `Connection` — presente mas não usado no fluxo principal de gravação. |
 | `frontend/` | SPA React/Vite/Tailwind embutida via `go:embed all:dist`. |
 
 ### Autenticação
@@ -62,16 +65,14 @@ O JWT é assinado com um segredo aleatório gerado no boot — tokens não sobre
 
 ### Frontend (`frontend/src/`)
 
-Três páginas com React Router: `LoginPage` → `DashboardPage` → `CameraPage`. O token JWT fica em `localStorage` (gerenciado em `auth.ts`). Em desenvolvimento, o Vite faz proxy de `/api` e `/stream` para `localhost:8080`.
+Quatro páginas com React Router: `LoginPage` → `DashboardPage` → `CameraPage` / `StatsPage`. O `Header` com links de navegação aparece em todas as páginas autenticadas. O token JWT fica em `localStorage` (gerenciado em `auth.ts`). Em desenvolvimento, o Vite faz proxy de `/api` e `/stream` para `localhost:8080`.
 
 ## Variáveis de ambiente
 
 | Variável | Campo sobrescrito |
 |---|---|
-| `STORAGE_PATH` | `storage.path` |
-| `TIMEZONE` | `timezone` (fuso da instalação; usado pelo servidor para interpretar datas locais) |
-| `LOG_OUTPUT` | `log.output` |
-| `LOG_PATH` | `log.path` |
+| `CAMERA_STORAGE_PATH` | `storage.path` |
+| `CAMERA_TIMEZONE` | `timezone` (fuso da instalação; usado pelo servidor para interpretar datas locais) |
 
 ## Forma de trabalho
 
