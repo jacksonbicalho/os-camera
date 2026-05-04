@@ -325,3 +325,38 @@ cameras:
 		t.Errorf("expected /tmp/from-env, got %q", cfg.Storage.Path)
 	}
 }
+
+func TestEffectiveMotionConfigFallsBackToGlobal(t *testing.T) {
+	cam := config.CameraConfig{}
+	global := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 4}
+
+	got := cam.EffectiveMotionConfig(global)
+
+	if !got.Enabled {
+		t.Error("expected Enabled=true from global")
+	}
+	if got.Threshold != 0.05 {
+		t.Errorf("expected Threshold=0.05, got %v", got.Threshold)
+	}
+	if got.FPS != 4 {
+		t.Errorf("expected FPS=4, got %d", got.FPS)
+	}
+}
+
+func TestEffectiveMotionConfigUsesPerCameraOverride(t *testing.T) {
+	override := config.MotionConfig{Enabled: false, Threshold: 0.10, FPS: 1}
+	cam := config.CameraConfig{Motion: &override}
+	global := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 4}
+
+	got := cam.EffectiveMotionConfig(global)
+
+	if got.Enabled {
+		t.Error("expected Enabled=false from camera override")
+	}
+	if got.Threshold != 0.10 {
+		t.Errorf("expected Threshold=0.10, got %v", got.Threshold)
+	}
+	if got.FPS != 1 {
+		t.Errorf("expected FPS=1, got %d", got.FPS)
+	}
+}

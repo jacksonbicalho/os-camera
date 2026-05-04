@@ -34,8 +34,14 @@ cameras:
     # has_audio: false       # false = adiciona -an no ffmpeg; true = mantém áudio
     # width: 1920            # largura do vídeo em pixels
     # height: 1080           # altura do vídeo em pixels
+    # motion:                # sobrescreve o bloco global motion para esta câmera
+    #   enabled: true
+    #   threshold: 0.03
+    #   fps: 2
 
   - id: quintal
     rtsp_url: rtsp://192.168.1.11:554/stream
     chunk_duration: 10m      # sobrescreve o default
     has_audio: false         # câmera sem microfone — pula detecção por ffprobe
+    motion:
+      enabled: false         # desabilita detecção de movimento somente nesta câmera

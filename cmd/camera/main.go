@@ -99,16 +99,18 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	if cfg.Motion.Enabled {
-		reconnect := time.Duration(cfg.Defaults.ReconnectInterval)
-		if reconnect == 0 {
-			reconnect = 5 * time.Second
+	reconnect := time.Duration(cfg.Defaults.ReconnectInterval)
+	if reconnect == 0 {
+		reconnect = 5 * time.Second
+	}
+	for _, cam := range cfg.Cameras {
+		motionCfg := cam.EffectiveMotionConfig(cfg.Motion)
+		if !motionCfg.Enabled {
+			continue
 		}
-		for _, cam := range cfg.Cameras {
-			stream := resolveStream(cam, prober, slog)
-			mon := motion.New(cam, stream, cfg.Motion, cfg.Storage.Path, reconnect, slog)
-			go mon.Run(ctx)
-		}
+		stream := resolveStream(cam, prober, slog)
+		mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, reconnect, slog)
+		go mon.Run(ctx)
 	}
 
 	cleaner := storage.New(
