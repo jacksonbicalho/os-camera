@@ -87,11 +87,8 @@ O desenvolvimento segue **XP (Extreme Programming)** com **TDD red → green →
 2. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.
 3. Implementar o mínimo para o teste passar (**green**).
 4. Refatorar se necessário, mantendo os testes verdes (**refactor**).
-5. Executar yarn lint 
-6. executar yarn test 
-7. Propor o commit ao navigator antes de executá-lo — aguardar aprovação explícita.
-8. Após aprovação, commitar com mensagem semântica 
-9. Propor o merge em `master`.
+5. Executar `yarn lint` e `yarn test` (frontend) ou `go test ./...` (backend).
+6. Ao final, executar `./scripts/ship.sh` — o script infere a mensagem semântica do nome da branch, commita e mergeia em `master`.
 
 ### Commits semânticos
 
