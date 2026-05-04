@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"camera/internal/config"
 	"camera/internal/server"
@@ -190,16 +191,137 @@ func TestRecordingsReturnsChunksForDate(t *testing.T) {
 	if len(resp.Recordings) != 2 {
 		t.Fatalf("expected 2 recordings, got %d", len(resp.Recordings))
 	}
-	if resp.Recordings[0]["filename"] != "20260430143000.mp4" {
+	// default order is desc — newest first
+	if resp.Recordings[0]["filename"] != "20260430143500.mp4" {
 		t.Errorf("unexpected first recording: %v", resp.Recordings[0])
 	}
-	wantStart := "2026-04-30T14:30:00Z"
+	wantStart := "2026-04-30T14:35:00Z"
 	if resp.Recordings[0]["start"] != wantStart {
 		t.Errorf("expected start %q, got %q", wantStart, resp.Recordings[0]["start"])
 	}
-	wantURL := "/recordings/" + cameraID + "/2026/04/30/20260430143000.mp4"
+	wantURL := "/recordings/" + cameraID + "/2026/04/30/20260430143500.mp4"
 	if resp.Recordings[0]["url"] != wantURL {
 		t.Errorf("expected url %q, got %q", wantURL, resp.Recordings[0]["url"])
+	}
+}
+
+func TestRecordingsDefaultOrderIsNewestFirst(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "04", "30")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"20260430140000.mp4", "20260430143000.mp4", "20260430150000.mp4"} {
+		if err := os.WriteFile(filepath.Join(dateDir, name), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-04-30&page=1&limit=10", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	var resp struct {
+		Recordings []map[string]string `json:"recordings"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if len(resp.Recordings) != 3 {
+		t.Fatalf("expected 3 recordings, got %d", len(resp.Recordings))
+	}
+	if resp.Recordings[0]["filename"] != "20260430150000.mp4" {
+		t.Errorf("expected newest first, got %q", resp.Recordings[0]["filename"])
+	}
+}
+
+func TestRecordingsAscOrderIsOldestFirst(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "04", "30")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"20260430140000.mp4", "20260430143000.mp4", "20260430150000.mp4"} {
+		if err := os.WriteFile(filepath.Join(dateDir, name), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-04-30&page=1&limit=10&order=asc", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	var resp struct {
+		Recordings []map[string]string `json:"recordings"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if len(resp.Recordings) != 3 {
+		t.Fatalf("expected 3 recordings, got %d", len(resp.Recordings))
+	}
+	if resp.Recordings[0]["filename"] != "20260430140000.mp4" {
+		t.Errorf("expected oldest first, got %q", resp.Recordings[0]["filename"])
+	}
+}
+
+func TestRecordingsMarksActiveFileAsRecording(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "04", "30")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	oldFile := filepath.Join(dateDir, "20260430140000.mp4")
+	activeFile := filepath.Join(dateDir, "20260430143000.mp4")
+	for _, f := range []string{oldFile, activeFile} {
+		if err := os.WriteFile(f, []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-10 * time.Minute)
+	os.Chtimes(oldFile, old, old)
+
+	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-04-30&page=1&limit=10", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Recordings []struct {
+			Filename    string `json:"filename"`
+			IsRecording bool   `json:"is_recording"`
+		} `json:"recordings"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(resp.Recordings) != 2 {
+		t.Fatalf("expected 2 recordings, got %d", len(resp.Recordings))
+	}
+	for _, rec := range resp.Recordings {
+		if rec.Filename == "20260430140000.mp4" && rec.IsRecording {
+			t.Errorf("old file should not be marked as recording")
+		}
+		if rec.Filename == "20260430143000.mp4" && !rec.IsRecording {
+			t.Errorf("active file should be marked as recording")
+		}
 	}
 }
 
@@ -245,8 +367,9 @@ func TestRecordingsSpansMidnightUTCWhenTimezoneOffset(t *testing.T) {
 	if len(resp.Recordings) != 2 {
 		t.Fatalf("expected 2 recordings for local day 2026-05-02 in Sao Paulo, got %d: %v", len(resp.Recordings), resp.Recordings)
 	}
+	// default order is desc — newest first
 	filenames := []string{resp.Recordings[0]["filename"], resp.Recordings[1]["filename"]}
-	if filenames[0] != "20260502100000.mp4" || filenames[1] != "20260503010000.mp4" {
+	if filenames[0] != "20260503010000.mp4" || filenames[1] != "20260502100000.mp4" {
 		t.Errorf("unexpected recordings: %v", filenames)
 	}
 }

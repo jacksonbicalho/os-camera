@@ -148,6 +148,10 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	dateStr := r.URL.Query().Get("date")
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	order := r.URL.Query().Get("order")
+	if order != "asc" {
+		order = "desc"
+	}
 	if page < 1 {
 		page = 1
 	}
@@ -174,9 +178,10 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	utcDays := utcDaysInRange(dayStart, dayEnd)
 
 	type recording struct {
-		Filename string `json:"filename"`
-		Start    string `json:"start"`
-		URL      string `json:"url"`
+		Filename    string `json:"filename"`
+		Start       string `json:"start"`
+		URL         string `json:"url"`
+		IsRecording bool   `json:"is_recording"`
 	}
 
 	var all []recording
@@ -197,14 +202,24 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 			if ts.Before(dayStart) || !ts.Before(dayEnd) {
 				continue
 			}
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
 			all = append(all, recording{
-				Filename: e.Name(),
-				Start:    ts.UTC().Format(time.RFC3339),
-				URL:      "/recordings/" + id + "/" + utcDay.Format("2006/01/02") + "/" + e.Name(),
+				Filename:    e.Name(),
+				Start:       ts.UTC().Format(time.RFC3339),
+				URL:         "/recordings/" + id + "/" + utcDay.Format("2006/01/02") + "/" + e.Name(),
+				IsRecording: time.Since(info.ModTime()) < 30*time.Second,
 			})
 		}
 	}
-	sort.Slice(all, func(i, j int) bool { return all[i].Filename < all[j].Filename })
+	sort.Slice(all, func(i, j int) bool {
+		if order == "asc" {
+			return all[i].Filename < all[j].Filename
+		}
+		return all[i].Filename > all[j].Filename
+	})
 
 	empty := map[string]any{"recordings": []any{}, "hasMore": false}
 	startIdx := (page - 1) * limit
