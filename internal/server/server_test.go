@@ -325,6 +325,54 @@ func TestRecordingsMarksActiveFileAsRecording(t *testing.T) {
 	}
 }
 
+func TestRecordingsOnlyLatestFileIsMarkedAsRecording(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "04", "30")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both files have recent mtime — simulates the transition moment when a
+	// chunk just closed and the new one just opened.
+	olderFile := filepath.Join(dateDir, "20260430140000.mp4")
+	newerFile := filepath.Join(dateDir, "20260430143000.mp4")
+	for _, f := range []string{olderFile, newerFile} {
+		if err := os.WriteFile(f, []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-04-30&page=1&limit=10", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	var resp struct {
+		Recordings []struct {
+			Filename    string `json:"filename"`
+			IsRecording bool   `json:"is_recording"`
+		} `json:"recordings"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	recByName := map[string]bool{}
+	for _, r := range resp.Recordings {
+		recByName[r.Filename] = r.IsRecording
+	}
+	if recByName["20260430140000.mp4"] {
+		t.Errorf("older file must not be marked as recording when a newer file exists")
+	}
+	if !recByName["20260430143000.mp4"] {
+		t.Errorf("latest file should be marked as recording")
+	}
+}
+
 func TestRecordingsSpansMidnightUTCWhenTimezoneOffset(t *testing.T) {
 	tmpDir := t.TempDir()
 	cameraID := "entrada"
