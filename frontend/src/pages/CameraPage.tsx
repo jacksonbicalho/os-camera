@@ -204,7 +204,7 @@ export default function CameraPage() {
                   {sortOrder === 'desc' ? '↓ Recente' : '↑ Antigo'}
                 </button>
               </div>
-              <div className="divide-y divide-gray-800 max-h-90 overflow-y-auto">
+              <div className="divide-y divide-gray-800 max-h-90 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-700 [&::-webkit-scrollbar-thumb]:rounded-full">
                 {recordings.length === 0 ? (
                   <p className="px-3 py-4 text-sm text-gray-500">Sem gravações nesta data.</p>
                 ) : (() => {
