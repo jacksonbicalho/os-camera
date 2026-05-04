@@ -7,6 +7,7 @@ import 'react-day-picker/style.css'
 import { authHeaders, clearToken, getToken, getUsername } from '../auth'
 import Header from '../components/Header'
 import HLSPlayer from '../components/HLSPlayer'
+import ListPanel from '../components/ListPanel'
 import { useScrollToPlayer } from '../hooks/useScrollToPlayer'
 
 interface Recording {
@@ -68,7 +69,13 @@ export default function CameraPage() {
   const [activeRecording, setActiveRecording] = useState<Recording | null>(null)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [motionEvents, setMotionEvents] = useState<MotionEvent[]>([])
+  const [activeTab, setActiveTab] = useState<'recordings' | 'events'>('recordings')
+  const [eventsPage, setEventsPage] = useState(1)
+  const [eventsSortOrder, setEventsSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [activeEventIdx, setActiveEventIdx] = useState<number | null>(null)
   const playerRef = useRef<HTMLDivElement>(null)
+  const pendingSeekRef = useRef<number | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
 
   useScrollToPlayer(playerRef, activeRecording?.filename ?? null)
 
@@ -94,6 +101,8 @@ export default function CameraPage() {
       setRecordings(result.recordings)
       setHasMore(result.hasMore)
       setMotionEvents(events)
+      setEventsPage(1)
+      setActiveEventIdx(null)
     }
 
     load()
@@ -140,8 +149,37 @@ export default function CameraPage() {
     setLoadingMore(false)
   }
 
+  function playEventAt(ev: MotionEvent, sortedIdx: number) {
+    const evTime = new Date(ev.time).getTime()
+    const asc = [...recordings].sort((a, b) => a.filename.localeCompare(b.filename))
+    for (let i = 0; i < asc.length; i++) {
+      const recStart = new Date(asc[i].start).getTime()
+      const nextStart = i + 1 < asc.length
+        ? new Date(asc[i + 1].start).getTime()
+        : recStart + 5 * 60 * 1000
+      if (evTime >= recStart && evTime < nextStart) {
+        if (asc[i].is_recording) return
+        const seekTime = Math.max(0, (evTime - recStart) / 1000 - 10)
+        setActiveEventIdx(sortedIdx)
+        if (activeRecording?.filename === asc[i].filename) {
+          if (videoRef.current) videoRef.current.currentTime = seekTime
+        } else {
+          pendingSeekRef.current = seekTime
+          setActiveRecording(asc[i])
+        }
+        return
+      }
+    }
+  }
+
   const liveUrl = `/stream/${id}/index.m3u8`
   const isLive = activeRecording === null
+  const sortedEvents = [...motionEvents].sort((a, b) => {
+    const diff = new Date(a.time).getTime() - new Date(b.time).getTime()
+    return eventsSortOrder === 'asc' ? diff : -diff
+  })
+  const visibleEvents = sortedEvents.slice(0, eventsPage * PAGE_SIZE)
+  const hasMoreEvents = sortedEvents.length > eventsPage * PAGE_SIZE
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-950">
@@ -186,12 +224,19 @@ export default function CameraPage() {
                 <HLSPlayer src={liveUrl} className="w-full aspect-video bg-black" />
               ) : (
                 <video
+                  ref={videoRef}
                   key={activeRecording.url}
                   src={`${activeRecording.url}?token=${getToken()}`}
                   className="w-full aspect-video bg-black"
                   controls
                   autoPlay
                   playsInline
+                  onLoadedMetadata={e => {
+                    if (pendingSeekRef.current !== null) {
+                      e.currentTarget.currentTime = pendingSeekRef.current
+                      pendingSeekRef.current = null
+                    }
+                  }}
                 />
               )}
             </div>
@@ -221,75 +266,108 @@ export default function CameraPage() {
               />
             </div>
 
-            {/* Lista de chunks */}
+            {/* Lista de gravações / eventos */}
             <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-              <div className="px-3 py-2 border-b border-gray-800 flex items-center justify-between">
-                <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">
-                  {format(selectedDate, "d 'de' MMMM", { locale: ptBR })}
-                </p>
-                <button
-                  onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
-                  className="text-xs text-blue-400 hover:text-blue-300"
-                >
-                  {sortOrder === 'desc' ? '↓ Recente' : '↑ Antigo'}
-                </button>
+              {/* Abas */}
+              <div className="flex border-b border-gray-800">
+                {(['recordings', 'events'] as const).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                      activeTab === tab
+                        ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
+                        : 'text-gray-500 hover:text-gray-300'
+                    }`}
+                  >
+                    {tab === 'recordings' ? 'Gravações' : 'Eventos'}
+                  </button>
+                ))}
               </div>
-              <div className="divide-y divide-gray-800 max-h-90 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-700 [&::-webkit-scrollbar-thumb]:rounded-full">
-                {recordings.length === 0 ? (
-                  <p className="px-3 py-4 text-sm text-gray-500">Sem gravações nesta data.</p>
-                ) : (() => {
-                  const recordingsAsc = [...recordings].sort((a, b) => a.filename.localeCompare(b.filename))
-                  return recordings.map(rec => {
-                    const isActive = activeRecording?.filename === rec.filename
-                    const recStart = new Date(rec.start).getTime()
-                    const idx = recordingsAsc.findIndex(r => r.filename === rec.filename)
-                    const nextStart = idx + 1 < recordingsAsc.length
-                      ? new Date(recordingsAsc[idx + 1].start).getTime()
-                      : recStart + 5 * 60 * 1000
-                    const hasMotion = motionEvents.some(ev => {
-                      const t = new Date(ev.time).getTime()
-                      return t >= recStart && t < nextStart
+
+              {activeTab === 'recordings' ? (
+                <ListPanel
+                  sortOrder={sortOrder}
+                  onSortOrderChange={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
+                  hasMore={hasMore}
+                  onLoadMore={loadMore}
+                  loadingMore={loadingMore}
+                  empty={recordings.length === 0}
+                  emptyMessage="Sem gravações nesta data."
+                >
+                  {(() => {
+                    const recordingsAsc = [...recordings].sort((a, b) => a.filename.localeCompare(b.filename))
+                    return recordings.map(rec => {
+                      const isActive = activeRecording?.filename === rec.filename
+                      const recStart = new Date(rec.start).getTime()
+                      const idx = recordingsAsc.findIndex(r => r.filename === rec.filename)
+                      const nextStart = idx + 1 < recordingsAsc.length
+                        ? new Date(recordingsAsc[idx + 1].start).getTime()
+                        : recStart + 5 * 60 * 1000
+                      const hasMotion = motionEvents.some(ev => {
+                        const t = new Date(ev.time).getTime()
+                        return t >= recStart && t < nextStart
+                      })
+                      return (
+                        <button
+                          key={rec.filename}
+                          disabled={rec.is_recording}
+                          onClick={() => !rec.is_recording && setActiveRecording(rec)}
+                          className={`w-full flex items-center justify-between px-3 py-2 transition-colors text-left ${
+                            rec.is_recording
+                              ? 'opacity-50 cursor-not-allowed'
+                              : isActive
+                                ? 'bg-blue-900/40 border-l-2 border-blue-500'
+                                : 'hover:bg-gray-800'
+                          }`}
+                        >
+                          <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
+                            {formatRecordingTime(rec.start, timezone)}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {hasMotion && (
+                              <span className="w-2 h-2 rounded-full bg-orange-400" title="Movimento detectado" />
+                            )}
+                            {rec.is_recording
+                              ? <span className="text-xs text-red-400 font-medium">● REC</span>
+                              : <span className="text-xs text-gray-500">▶ MP4</span>
+                            }
+                          </div>
+                        </button>
+                      )
                     })
+                  })()}
+                </ListPanel>
+              ) : (
+                <ListPanel
+                  sortOrder={eventsSortOrder}
+                  onSortOrderChange={() => setEventsSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
+                  hasMore={hasMoreEvents}
+                  onLoadMore={() => setEventsPage(p => p + 1)}
+                  empty={visibleEvents.length === 0}
+                  emptyMessage="Sem eventos detectados nesta data."
+                >
+                  {visibleEvents.map((ev, i) => {
+                    const isActive = activeEventIdx === i
                     return (
                       <button
-                        key={rec.filename}
-                        disabled={rec.is_recording}
-                        onClick={() => !rec.is_recording && setActiveRecording(rec)}
+                        key={i}
+                        onClick={() => playEventAt(ev, i)}
                         className={`w-full flex items-center justify-between px-3 py-2 transition-colors text-left ${
-                          rec.is_recording
-                            ? 'opacity-50 cursor-not-allowed'
-                            : isActive
-                              ? 'bg-blue-900/40 border-l-2 border-blue-500'
-                              : 'hover:bg-gray-800'
+                          isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-gray-800'
                         }`}
                       >
-                        <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
-                          {formatRecordingTime(rec.start, timezone)}
+                        <span className={`text-sm ${isActive ? 'text-blue-300' : 'text-gray-300'}`}>
+                          {formatRecordingTime(ev.time, timezone)}
                         </span>
                         <div className="flex items-center gap-2">
-                          {hasMotion && (
-                            <span className="w-2 h-2 rounded-full bg-orange-400" title="Movimento detectado" />
-                          )}
-                          {rec.is_recording
-                            ? <span className="text-xs text-red-400 font-medium">● REC</span>
-                            : <span className="text-xs text-gray-500">▶ MP4</span>
-                          }
+                          <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
+                          <span className="text-xs text-gray-500">{(ev.score * 100).toFixed(1)}%</span>
                         </div>
                       </button>
                     )
-                  })
-                })()}
-              </div>
-              {hasMore && (
-                <div className="px-3 py-2 border-t border-gray-800">
-                  <button
-                    onClick={loadMore}
-                    disabled={loadingMore}
-                    className="text-sm text-blue-400 hover:text-blue-300 disabled:opacity-50"
-                  >
-                    {loadingMore ? 'Carregando...' : 'Carregar mais'}
-                  </button>
-                </div>
+                  })}
+                </ListPanel>
               )}
             </div>
           </div>

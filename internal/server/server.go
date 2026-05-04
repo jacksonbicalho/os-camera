@@ -178,10 +178,11 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	utcDays := utcDaysInRange(dayStart, dayEnd)
 
 	type recording struct {
-		Filename    string `json:"filename"`
-		Start       string `json:"start"`
-		URL         string `json:"url"`
-		IsRecording bool   `json:"is_recording"`
+		Filename    string    `json:"filename"`
+		Start       string    `json:"start"`
+		URL         string    `json:"url"`
+		IsRecording bool      `json:"is_recording"`
+		mtime       time.Time // not serialized; used to detect active recording
 	}
 
 	var all []recording
@@ -207,11 +208,26 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			all = append(all, recording{
-				Filename:    e.Name(),
-				Start:       ts.UTC().Format(time.RFC3339),
-				URL:         "/recordings/" + id + "/" + utcDay.Format("2006/01/02") + "/" + e.Name(),
-				IsRecording: time.Since(info.ModTime()) < 30*time.Second,
+				Filename: e.Name(),
+				Start:    ts.UTC().Format(time.RFC3339),
+				URL:      "/recordings/" + id + "/" + utcDay.Format("2006/01/02") + "/" + e.Name(),
+				mtime:    info.ModTime(),
 			})
+		}
+	}
+
+	// Only the file with the latest filename (= latest segment start) can be
+	// actively recording. Marking all recent-mtime files would show two "REC"
+	// badges during the brief overlap when a chunk closes and a new one opens.
+	if len(all) > 0 {
+		latest := 0
+		for i := range all {
+			if all[i].Filename > all[latest].Filename {
+				latest = i
+			}
+		}
+		if time.Since(all[latest].mtime) < 30*time.Second {
+			all[latest].IsRecording = true
 		}
 	}
 	sort.Slice(all, func(i, j int) bool {
