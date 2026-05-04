@@ -13,6 +13,7 @@ interface Recording {
   filename: string
   start: string
   url: string
+  is_recording: boolean
 }
 
 interface RecordingsResponse {
@@ -27,10 +28,10 @@ interface MotionEvent {
 
 const PAGE_SIZE = 10
 
-async function loadRecordingsData(cameraId: string, date: Date, page: number): Promise<RecordingsResponse | 401> {
+async function loadRecordingsData(cameraId: string, date: Date, page: number, order: 'asc' | 'desc'): Promise<RecordingsResponse | 401> {
   const dateStr = format(date, 'yyyy-MM-dd')
   const res = await fetch(
-    `/api/cameras/${cameraId}/recordings?date=${dateStr}&page=${page}&limit=${PAGE_SIZE}`,
+    `/api/cameras/${cameraId}/recordings?date=${dateStr}&page=${page}&limit=${PAGE_SIZE}&order=${order}`,
     { headers: authHeaders() }
   )
   if (res.status === 401) return 401
@@ -83,7 +84,7 @@ export default function CameraPage() {
 
     async function load() {
       const [result, events] = await Promise.all([
-        loadRecordingsData(id!, selectedDate, 1),
+        loadRecordingsData(id!, selectedDate, 1, sortOrder),
         loadMotionEvents(id!, selectedDate),
       ])
       if (cancelled) return
@@ -97,12 +98,41 @@ export default function CameraPage() {
 
     load()
     return () => { cancelled = true }
-  }, [selectedDate, id, navigate])
+  }, [selectedDate, id, navigate, sortOrder])
+
+  useEffect(() => {
+    const today = new Date()
+    const isToday =
+      selectedDate.getFullYear() === today.getFullYear() &&
+      selectedDate.getMonth() === today.getMonth() &&
+      selectedDate.getDate() === today.getDate()
+    if (!isToday) return
+
+    const interval = setInterval(async () => {
+      const result = await loadRecordingsData(id!, selectedDate, 1, sortOrder)
+      if (result === 401) { clearToken(); navigate('/login'); return }
+      setRecordings(prev => {
+        const existingNames = new Set(prev.map(r => r.filename))
+        const fresh = result.recordings.filter(r => !existingNames.has(r.filename))
+        const merged = fresh.length > 0
+          ? [...prev, ...fresh]
+          : prev.map(r => result.recordings.find(u => u.filename === r.filename) ?? r)
+        return merged.sort((a, b) =>
+          sortOrder === 'desc'
+            ? b.filename.localeCompare(a.filename)
+            : a.filename.localeCompare(b.filename)
+        )
+      })
+      if (!hasMore) setHasMore(result.hasMore)
+    }, 30_000)
+
+    return () => clearInterval(interval)
+  }, [selectedDate, id, navigate, hasMore, sortOrder])
 
   async function loadMore() {
     setLoadingMore(true)
     const next = page + 1
-    const result = await loadRecordingsData(id!, selectedDate, next)
+    const result = await loadRecordingsData(id!, selectedDate, next, sortOrder)
     if (result === 401) { clearToken(); navigate('/login'); return }
     setPage(next)
     setRecordings(prev => [...prev, ...result.recordings])
@@ -208,19 +238,13 @@ export default function CameraPage() {
                 {recordings.length === 0 ? (
                   <p className="px-3 py-4 text-sm text-gray-500">Sem gravações nesta data.</p>
                 ) : (() => {
-                  const sorted = [...recordings].sort((a, b) => {
-                    const diff = new Date(a.start).getTime() - new Date(b.start).getTime()
-                    return sortOrder === 'asc' ? diff : -diff
-                  })
-                  const sortedAsc = [...recordings].sort((a, b) =>
-                    new Date(a.start).getTime() - new Date(b.start).getTime()
-                  )
-                  return sorted.map(rec => {
+                  const recordingsAsc = [...recordings].sort((a, b) => a.filename.localeCompare(b.filename))
+                  return recordings.map(rec => {
                     const isActive = activeRecording?.filename === rec.filename
                     const recStart = new Date(rec.start).getTime()
-                    const idx = sortedAsc.findIndex(r => r.filename === rec.filename)
-                    const nextStart = idx + 1 < sortedAsc.length
-                      ? new Date(sortedAsc[idx + 1].start).getTime()
+                    const idx = recordingsAsc.findIndex(r => r.filename === rec.filename)
+                    const nextStart = idx + 1 < recordingsAsc.length
+                      ? new Date(recordingsAsc[idx + 1].start).getTime()
                       : recStart + 5 * 60 * 1000
                     const hasMotion = motionEvents.some(ev => {
                       const t = new Date(ev.time).getTime()
@@ -229,19 +253,27 @@ export default function CameraPage() {
                     return (
                       <button
                         key={rec.filename}
-                        onClick={() => setActiveRecording(rec)}
+                        disabled={rec.is_recording}
+                        onClick={() => !rec.is_recording && setActiveRecording(rec)}
                         className={`w-full flex items-center justify-between px-3 py-2 transition-colors text-left ${
-                          isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-gray-800'
+                          rec.is_recording
+                            ? 'opacity-50 cursor-not-allowed'
+                            : isActive
+                              ? 'bg-blue-900/40 border-l-2 border-blue-500'
+                              : 'hover:bg-gray-800'
                         }`}
                       >
-                        <span className={`text-sm ${isActive ? 'text-blue-300' : 'text-gray-300'}`}>
+                        <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
                           {formatRecordingTime(rec.start, timezone)}
                         </span>
                         <div className="flex items-center gap-2">
                           {hasMotion && (
                             <span className="w-2 h-2 rounded-full bg-orange-400" title="Movimento detectado" />
                           )}
-                          <span className="text-xs text-gray-500">▶ MP4</span>
+                          {rec.is_recording
+                            ? <span className="text-xs text-red-400 font-medium">● REC</span>
+                            : <span className="text-xs text-gray-500">▶ MP4</span>
+                          }
                         </div>
                       </button>
                     )
