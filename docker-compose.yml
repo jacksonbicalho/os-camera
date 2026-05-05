@@ -5,6 +5,8 @@ services:
     build:
       context: .
       target: production
+      args:
+        VERSION: ${VERSION:-dev}
     volumes:
       - ./camera.yaml:/app/camera.yaml:ro
       - ./storage:/data/recordings
@@ -27,7 +29,9 @@ services:
       - ./storage/logs:/data/logs
     ports:
       - 8080:8080
-    command: sh -c "cd frontend && yarn install && yarn build && cd .. && go run ./cmd/camera --config /app/camera.yaml"
+    environment:
+      - VERSION=${VERSION:-dev}
+    command: sh -c "cd frontend && yarn install && yarn build && cd .. && go run -ldflags=\"-X main.version=$$VERSION\" ./cmd/camera --config /app/camera.yaml"
     restart: "no"
 
 volumes:
