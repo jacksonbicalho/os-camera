@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -30,6 +31,8 @@ type Server struct {
 	secret     []byte
 	frontend   fs.FS
 	mux        *http.ServeMux
+	mu         sync.Mutex
+	streamSeen map[string]time.Time
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
@@ -44,6 +47,7 @@ func NewServer(cfg config.ServerConfig, timezone string, cameras []config.Camera
 		secret:   secret,
 		frontend: frontend,
 		mux:      http.NewServeMux(),
+		streamSeen: make(map[string]time.Time),
 	}
 	s.routes()
 	return s
@@ -128,8 +132,40 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
+		if strings.HasPrefix(r.URL.Path, "/stream/") {
+			s.touchStreamClient(r)
+		}
 		next(w, r)
 	}
+}
+
+func (s *Server) touchStreamClient(r *http.Request) {
+	key := r.RemoteAddr
+	if host := r.Header.Get("X-Forwarded-For"); host != "" {
+		key = strings.TrimSpace(strings.Split(host, ",")[0])
+	}
+	if h, _, ok := strings.Cut(key, ":"); ok && h != "" {
+		key = h
+	}
+	s.mu.Lock()
+	s.streamSeen[key] = time.Now()
+	s.mu.Unlock()
+}
+
+func (s *Server) activeStreamClients(now time.Time) int {
+	const activeWindow = 30 * time.Second
+	cutoff := now.Add(-activeWindow)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	active := 0
+	for k, seen := range s.streamSeen {
+		if seen.Before(cutoff) {
+			delete(s.streamSeen, k)
+			continue
+		}
+		active++
+	}
+	return active
 }
 
 func (s *Server) handleClientConfig(w http.ResponseWriter, r *http.Request) {
@@ -324,6 +360,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		"disk_total_bytes":            diskTotal,
 		"disk_free_bytes":             diskFree,
 		"camera_count":                len(s.cameras),
+		"connected_clients":           s.activeStreamClients(time.Now()),
 		"max_size_bytes":              maxSizeBytes,
 		"warn_percent":                s.storageCfg.WarnPercent,
 	})

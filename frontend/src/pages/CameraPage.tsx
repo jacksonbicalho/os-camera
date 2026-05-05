@@ -4,8 +4,8 @@ import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import 'react-day-picker/style.css'
-import { authHeaders, clearToken, getToken, getUsername } from '../auth'
-import Header from '../components/Header'
+import { authHeaders, clearToken, getToken } from '../auth'
+import AppLayout from '../components/AppLayout'
 import HLSPlayer from '../components/HLSPlayer'
 import ListPanel from '../components/ListPanel'
 import { useScrollToPlayer } from '../hooks/useScrollToPlayer'
@@ -182,9 +182,7 @@ export default function CameraPage() {
   const hasMoreEvents = sortedEvents.length > eventsPage * PAGE_SIZE
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-950">
-      <Header username={getUsername() ?? undefined} />
-      <main className="flex-1 p-6 max-w-6xl mx-auto w-full">
+    <AppLayout mainClassName="max-w-6xl mx-auto w-full">
         <div className="mb-4">
           <Link to="/" className="text-sm text-blue-400 hover:text-blue-300">← Câmeras</Link>
           <h2 className="text-lg font-semibold text-gray-200 mt-1">{id}</h2>
@@ -372,7 +370,6 @@ export default function CameraPage() {
             </div>
           </div>
         </div>
-      </main>
-    </div>
+    </AppLayout>
   )
 }

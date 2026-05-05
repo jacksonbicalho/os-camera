@@ -579,6 +579,51 @@ func TestGetStatsRequiresAuth(t *testing.T) {
 	}
 }
 
+func TestGetStatsIncludesConnectedClients(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "entrada"
+	streamDir := filepath.Join(tmpDir, cameraID)
+	if err := os.MkdirAll(streamDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(streamDir, "index.m3u8"), []byte("#EXTM3U\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.ServerConfig{
+		Username:       "master",
+		Password:       "secret",
+		RecordingsPath: tmpDir,
+		SegmentsPath:   tmpDir,
+	}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	token := loginAndGetToken(t, srv, "master", "secret")
+
+	streamReq := httptest.NewRequest(http.MethodGet, "/stream/"+cameraID+"/index.m3u8", nil)
+	streamReq.Header.Set("Authorization", "Bearer "+token)
+	streamReq.RemoteAddr = "10.10.10.5:12345"
+	streamW := httptest.NewRecorder()
+	srv.ServeHTTP(streamW, streamReq)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		ConnectedClients int `json:"connected_clients"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.ConnectedClients != 1 {
+		t.Fatalf("expected connected_clients=1, got %d", resp.ConnectedClients)
+	}
+}
+
 func TestMotionEventsReturnsEventsForDate(t *testing.T) {
 	tmpDir := t.TempDir()
 	cameraID := "entrada"
