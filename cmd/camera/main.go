@@ -25,6 +25,8 @@ import (
 	"camera/internal/streaming"
 )
 
+var version = "dev"
+
 func main() {
 	configPath := flag.String("config", "camera.yaml", "path to config file")
 	flag.Parse()
@@ -88,7 +90,8 @@ func main() {
 		}
 		srv := server.NewServer(cfg.Server, cfg.Timezone, cfg.Cameras, slog, static).
 			WithStorageConfig(cfg.Storage).
-			WithDefaults(cfg.Defaults)
+			WithDefaults(cfg.Defaults).
+			WithVersion(version)
 		addr := fmt.Sprintf(":%d", cfg.Server.Port)
 		slog.Info("http server starting", "addr", addr)
 		go func() {

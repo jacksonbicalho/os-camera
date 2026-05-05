@@ -6,11 +6,12 @@ RUN go mod download
 CMD ["go", "run", "./cmd/camera"]
 
 FROM golang:1.25-alpine AS builder
+ARG VERSION=dev
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o camera ./cmd/camera
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w -X main.version=${VERSION}" -o camera ./cmd/camera
 
 FROM alpine:3.20 AS production
 RUN apk add --no-cache ffmpeg

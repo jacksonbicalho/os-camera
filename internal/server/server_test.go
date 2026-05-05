@@ -812,3 +812,24 @@ func TestMotionEventsSpansMidnightUTCWhenTimezoneOffset(t *testing.T) {
 		t.Errorf("unexpected event times: %v", times)
 	}
 }
+
+func TestClientConfigIncludesVersion(t *testing.T) {
+	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	srv := server.NewServer(cfg, "UTC", nil, discardLogger(), nil).
+		WithVersion("v1.2.3")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["version"] != "v1.2.3" {
+		t.Errorf("expected version v1.2.3, got %q", resp["version"])
+	}
+}
