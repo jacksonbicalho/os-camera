@@ -95,7 +95,7 @@ export default function CameraPage() {
         loadMotionEvents(id!, selectedDate),
       ])
       if (cancelled) return
-      if (result === 401) { clearToken(); navigate('/login'); return }
+      if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
       setPage(1)
       setActiveRecording(null)
       setRecordings(result.recordings)
@@ -119,14 +119,13 @@ export default function CameraPage() {
 
     const interval = setInterval(async () => {
       const result = await loadRecordingsData(id!, selectedDate, 1, sortOrder)
-      if (result === 401) { clearToken(); navigate('/login'); return }
+      if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
       setRecordings(prev => {
+        const freshByName = new Map(result.recordings.map(r => [r.filename, r]))
         const existingNames = new Set(prev.map(r => r.filename))
-        const fresh = result.recordings.filter(r => !existingNames.has(r.filename))
-        const merged = fresh.length > 0
-          ? [...prev, ...fresh]
-          : prev.map(r => result.recordings.find(u => u.filename === r.filename) ?? r)
-        return merged.sort((a, b) =>
+        const updated = prev.map(r => freshByName.get(r.filename) ?? r)
+        const newOnes = result.recordings.filter(r => !existingNames.has(r.filename))
+        return [...updated, ...newOnes].sort((a, b) =>
           sortOrder === 'desc'
             ? b.filename.localeCompare(a.filename)
             : a.filename.localeCompare(b.filename)
@@ -142,7 +141,7 @@ export default function CameraPage() {
     setLoadingMore(true)
     const next = page + 1
     const result = await loadRecordingsData(id!, selectedDate, next, sortOrder)
-    if (result === 401) { clearToken(); navigate('/login'); return }
+    if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
     setPage(next)
     setRecordings(prev => [...prev, ...result.recordings])
     setHasMore(result.hasMore)

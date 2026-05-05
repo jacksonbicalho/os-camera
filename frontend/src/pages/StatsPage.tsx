@@ -3,6 +3,12 @@ import { useNavigate, Link } from 'react-router-dom'
 import { authHeaders, clearToken } from '../auth'
 import AppLayout from '../components/AppLayout'
 
+interface CameraMotionStats {
+  id: string
+  top_motion_score: number
+  min_motion_score: number
+}
+
 interface Stats {
   recordings_bytes: number
   recordings_count: number
@@ -14,6 +20,7 @@ interface Stats {
   connected_clients: number
   max_size_bytes: number
   warn_percent: number
+  cameras: CameraMotionStats[]
 }
 
 function formatBytes(bytes: number): string {
@@ -41,7 +48,7 @@ export default function StatsPage() {
     function fetchStats() {
       fetch('/api/stats', { headers: authHeaders() })
         .then(res => {
-          if (res.status === 401) { clearToken(); navigate('/login'); return null }
+          if (res.status === 401) { clearToken(); navigate('/login', { state: { from: '/stats' }, replace: true }); return null }
           return res.json()
         })
         .then(data => { if (!cancelled.value && data) setStats(data) })
@@ -146,6 +153,37 @@ export default function StatsPage() {
                   : 'dados insuficientes para estimar'}
               </p>
             </div>
+
+            {/* Movimento hoje */}
+            {stats.cameras?.length > 0 && (
+              <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 sm:col-span-2">
+                <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-4">Movimento hoje</p>
+                <div className="flex flex-col gap-3">
+                  {stats.cameras.map(cam => {
+                    const hasData = cam.top_motion_score > 0
+                    const minPct = cam.min_motion_score * 100
+                    const maxPct = cam.top_motion_score * 100
+                    return (
+                      <div key={cam.id} className="flex items-center justify-between gap-4">
+                        <span className="text-sm text-gray-300 w-24 truncate shrink-0">{cam.id}</span>
+                        {hasData ? (
+                          <div className="flex items-center gap-3 flex-1 justify-end">
+                            <span className="text-xs text-gray-500">
+                              mín <span className="text-gray-300 font-medium">{cam.min_motion_score.toFixed(4)} ({minPct.toFixed(2)}%)</span>
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              máx <span className="text-blue-400 font-medium">{cam.top_motion_score.toFixed(4)} ({maxPct.toFixed(2)}%)</span>
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-600">sem detecção hoje</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
     </AppLayout>

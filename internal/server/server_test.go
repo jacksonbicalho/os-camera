@@ -624,6 +624,66 @@ func TestGetStatsIncludesConnectedClients(t *testing.T) {
 	}
 }
 
+func TestGetStatsIncludesTopMotionScorePerCamera(t *testing.T) {
+	tmpDir := t.TempDir()
+	today := time.Now().UTC()
+	dateDir := filepath.Join(tmpDir, "entrada", today.Format("2006/01/02"))
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	ndjson := `{"time":"2026-05-04T10:00:00Z","score":0.5}` + "\n" +
+		`{"time":"2026-05-04T10:05:00Z","score":0.9}` + "\n" +
+		`{"time":"2026-05-04T10:10:00Z","score":0.3}` + "\n"
+	if err := os.WriteFile(filepath.Join(dateDir, "motion.ndjson"), []byte(ndjson), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cameras := []config.CameraConfig{{ID: "entrada"}, {ID: "quintal"}}
+	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+
+	token := loginAndGetToken(t, srv, "u", "p")
+	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Cameras []struct {
+			ID             string  `json:"id"`
+			TopMotionScore float64 `json:"top_motion_score"`
+			MinMotionScore float64 `json:"min_motion_score"`
+		} `json:"cameras"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Cameras) != 2 {
+		t.Fatalf("expected 2 cameras, got %d", len(resp.Cameras))
+	}
+	for _, c := range resp.Cameras {
+		switch c.ID {
+		case "entrada":
+			if c.TopMotionScore != 0.9 {
+				t.Errorf("entrada: expected top_motion_score=0.9, got %f", c.TopMotionScore)
+			}
+			if c.MinMotionScore != 0.3 {
+				t.Errorf("entrada: expected min_motion_score=0.3, got %f", c.MinMotionScore)
+			}
+		case "quintal":
+			if c.TopMotionScore != 0.0 {
+				t.Errorf("quintal: expected top_motion_score=0.0, got %f", c.TopMotionScore)
+			}
+			if c.MinMotionScore != 0.0 {
+				t.Errorf("quintal: expected min_motion_score=0.0, got %f", c.MinMotionScore)
+			}
+		}
+	}
+}
+
 func TestMotionEventsReturnsEventsForDate(t *testing.T) {
 	tmpDir := t.TempDir()
 	cameraID := "entrada"
@@ -701,5 +761,54 @@ func TestMotionEventsReturnsEmptyWhenNoFile(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&resp)
 	if len(resp.Events) != 0 {
 		t.Fatalf("expected 0 events, got %d", len(resp.Events))
+	}
+}
+
+func TestMotionEventsSpansMidnightUTCWhenTimezoneOffset(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "entrada"
+
+	// 2026-05-02 no fuso America/Sao_Paulo (-3h) começa às 03:00 UTC do dia 02
+	// e termina às 02:59:59 UTC do dia 03.
+	day02Dir := filepath.Join(tmpDir, cameraID, "2026", "05", "02")
+	day03Dir := filepath.Join(tmpDir, cameraID, "2026", "05", "03")
+	for _, dir := range []string{day02Dir, day03Dir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 10:00 UTC dia 02 → 07:00 Sao Paulo → pertence ao dia local 02 ✓
+	ndjson02 := `{"time":"2026-05-02T10:00:00Z","score":0.5}` + "\n"
+	os.WriteFile(filepath.Join(day02Dir, "motion.ndjson"), []byte(ndjson02), 0644)
+	// 01:00 UTC dia 03 → 22:00 Sao Paulo dia 02 → pertence ao dia local 02 ✓
+	// 04:00 UTC dia 03 → 01:00 Sao Paulo dia 03 → NÃO pertence ao dia local 02 ✗
+	ndjson03 := `{"time":"2026-05-03T01:00:00Z","score":0.7}` + "\n" +
+		`{"time":"2026-05-03T04:00:00Z","score":0.9}` + "\n"
+	os.WriteFile(filepath.Join(day03Dir, "motion.ndjson"), []byte(ndjson03), 0644)
+
+	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "America/Sao_Paulo", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+
+	token := loginAndGetToken(t, srv, "u", "p")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion?date=2026-05-02", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Events []map[string]any `json:"events"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Events) != 2 {
+		t.Fatalf("expected 2 events for local day 2026-05-02 in Sao Paulo, got %d: %v", len(resp.Events), resp.Events)
+	}
+	times := []string{resp.Events[0]["time"].(string), resp.Events[1]["time"].(string)}
+	if times[0] != "2026-05-02T10:00:00Z" || times[1] != "2026-05-03T01:00:00Z" {
+		t.Errorf("unexpected event times: %v", times)
 	}
 }
