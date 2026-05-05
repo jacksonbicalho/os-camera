@@ -17,7 +17,9 @@ go build ./cmd/camera                                 # binário de produção
 go run ./cmd/camera --config camera.yaml              # desenvolvimento local
 ```
 
-### Frontend
+### Frontend (`frontend/src/`)
+
+SPA React/Vite/Tailwind com quatro páginas: `LoginPage` → `DashboardPage` → `CameraPage` / `StatsPage`. Token JWT em `localStorage` (`auth.ts`). Em desenvolvimento, Vite faz proxy de `/api` e `/stream` para `localhost:8080`.
 
 ```bash
 cd frontend
@@ -63,10 +65,6 @@ O `server.Server` é levantado em goroutine separada e serve a SPA + API REST.
 
 O JWT é assinado com um segredo aleatório gerado no boot — tokens não sobrevivem a reinicializações do servidor. O token é aceito via header `Authorization: Bearer <token>` ou query param `?token=<token>` (necessário para `<video src>` e `<HLSPlayer>`).
 
-### Frontend (`frontend/src/`)
-
-Quatro páginas com React Router: `LoginPage` → `DashboardPage` → `CameraPage` / `StatsPage`. O `Header` com links de navegação aparece em todas as páginas autenticadas. O token JWT fica em `localStorage` (gerenciado em `auth.ts`). Em desenvolvimento, o Vite faz proxy de `/api` e `/stream` para `localhost:8080`.
-
 ## Variáveis de ambiente
 
 | Variável | Campo sobrescrito |
@@ -88,7 +86,7 @@ O desenvolvimento segue **XP (Extreme Programming)** com **TDD red → green →
 3. Implementar o mínimo para o teste passar (**green**).
 4. Refatorar se necessário, mantendo os testes verdes (**refactor**).
 5. Executar `yarn lint` e `yarn test` (frontend) ou `go test ./...` (backend).
-6. Ao final, executar `./scripts/ship.sh` — o script infere a mensagem semântica do nome da branch, commita e mergeia em `master`.
+6. Commitar com mensagem semântica e mergear em `master` com `--no-ff`.
 
 ### Commits semânticos
 
@@ -112,7 +110,7 @@ Formato: `<tipo>(<escopo opcional>): <descrição curta em inglês>`
 
 Testes usam `httptest.NewRecorder` (server), `fakeCommander` com `trackingProcess` (recorder/streamer) e implementações fake das interfaces de `internal/exec`. Não há banco de dados nem mocks externos — cada pacote é testado em isolamento via injeção de dependência.
 
-## 🐹 Diretrizes de Desenvolvimento Go (Golang)
+## Diretrizes de Desenvolvimento Go
 
 Sempre priorize a simplicidade e a legibilidade conforme os provérbios do Go ("Effective Go").
 
