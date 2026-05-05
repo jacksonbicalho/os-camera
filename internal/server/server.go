@@ -351,6 +351,18 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		forecastSec = availableBytes * durationSec / recBytes
 	}
 
+	type cameraStats struct {
+		ID             string  `json:"id"`
+		TopMotionScore float64 `json:"top_motion_score"`
+		MinMotionScore float64 `json:"min_motion_score"`
+	}
+	today := time.Now().UTC().Format("2006/01/02")
+	cameras := make([]cameraStats, len(s.cameras))
+	for i, cam := range s.cameras {
+		mn, mx := motionScoreRange(s.cfg.RecordingsPath, cam.ID, today)
+		cameras[i] = cameraStats{ID: cam.ID, TopMotionScore: mx, MinMotionScore: mn}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"recordings_bytes":            recBytes,
@@ -363,7 +375,35 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		"connected_clients":           s.activeStreamClients(time.Now()),
 		"max_size_bytes":              maxSizeBytes,
 		"warn_percent":                s.storageCfg.WarnPercent,
+		"cameras":                     cameras,
 	})
+}
+
+func motionScoreRange(basePath, cameraID, utcDay string) (min, max float64) {
+	path := filepath.Join(basePath, cameraID, utcDay, "motion.ndjson")
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, 0
+	}
+	defer f.Close()
+	first := true
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		var ev struct {
+			Score float64 `json:"score"`
+		}
+		if json.Unmarshal(sc.Bytes(), &ev) != nil {
+			continue
+		}
+		if first || ev.Score < min {
+			min = ev.Score
+		}
+		if first || ev.Score > max {
+			max = ev.Score
+		}
+		first = false
+	}
+	return min, max
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -398,35 +438,47 @@ func (s *Server) handleMotionEvents(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	dateStr := r.URL.Query().Get("date")
 
-	_, err := time.Parse("2006-01-02", dateStr)
+	loc, err := time.LoadLocation(s.timezone)
+	if err != nil {
+		loc = time.UTC
+	}
+	localDay, err := time.ParseInLocation("2006-01-02", dateStr, loc)
 	if err != nil {
 		http.Error(w, "invalid date", http.StatusBadRequest)
 		return
 	}
-
-	// dateStr is YYYY-MM-DD; convert slashes for directory path
-	datePath := strings.ReplaceAll(dateStr, "-", "/")
-	ndjsonPath := filepath.Join(s.cfg.RecordingsPath, id, datePath, "motion.ndjson")
-
-	empty := map[string]any{"events": []any{}}
-
-	f, err := os.Open(ndjsonPath)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(empty)
-		return
-	}
-	defer f.Close()
+	dayStart := localDay.UTC()
+	dayEnd := localDay.Add(24 * time.Hour).UTC()
+	utcDays := utcDaysInRange(dayStart, dayEnd)
 
 	var events []map[string]any
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		var ev map[string]any
-		if json.Unmarshal(sc.Bytes(), &ev) == nil {
+	for _, utcDay := range utcDays {
+		ndjsonPath := filepath.Join(s.cfg.RecordingsPath, id, utcDay.Format("2006/01/02"), "motion.ndjson")
+		f, err := os.Open(ndjsonPath)
+		if err != nil {
+			continue
+		}
+		sc := bufio.NewScanner(f)
+		for sc.Scan() {
+			var ev map[string]any
+			if json.Unmarshal(sc.Bytes(), &ev) != nil {
+				continue
+			}
+			if timeStr, ok := ev["time"].(string); ok {
+				t, err := time.Parse(time.RFC3339, timeStr)
+				if err != nil || t.Before(dayStart) || !t.Before(dayEnd) {
+					continue
+				}
+			}
 			events = append(events, ev)
 		}
+		f.Close()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	if events == nil {
+		json.NewEncoder(w).Encode(map[string]any{"events": []any{}})
+		return
+	}
 	json.NewEncoder(w).Encode(map[string]any{"events": events})
 }
