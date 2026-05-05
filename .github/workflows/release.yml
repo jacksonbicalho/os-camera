@@ -26,11 +26,11 @@ jobs:
         with:
           node-version: '20'
           cache: 'yarn'
-          cache-dependency-path: web/yarn.lock
+          cache-dependency-path: frontend/yarn.lock
 
       - name: Build frontend
         run: |
-          cd web
+          cd frontend
           yarn install --frozen-lockfile
           yarn build
 
