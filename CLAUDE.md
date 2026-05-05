@@ -13,8 +13,8 @@ Sistema de monitoramento residencial via RTSP. Cada câmera configurada tem trê
 ```bash
 go test ./...                                         # todos os testes
 go test ./internal/server/... -run TestLogin          # teste específico
-go build ./cmd/camera                                 # binário de produção
-go run ./cmd/camera --config camera.yaml              # desenvolvimento local
+make build                                            # binário com versão git injetada
+make run                                              # sobe Docker dev (camera-dev)
 ```
 
 ### Frontend (`frontend/src/`)
