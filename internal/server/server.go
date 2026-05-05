@@ -290,11 +290,11 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	var diskTotal, diskFree int64
 	if s.cfg.RecordingsPath != "" {
 		var stat syscall.Statfs_t
-		if err := syscall.Statfs(s.cfg.RecordingsPath, &stat); err == nil {
-			diskTotal = int64(stat.Blocks) * stat.Frsize
-			diskFree = int64(stat.Bavail) * stat.Frsize
+			if err := syscall.Statfs(s.cfg.RecordingsPath, &stat); err == nil {
+				diskTotal = int64(stat.Blocks) * int64(stat.Frsize)
+				diskFree = int64(stat.Bavail) * int64(stat.Frsize)
+			}
 		}
-	}
 
 	maxSizeBytes := int64(s.storageCfg.MaxSizeGB * 1024 * 1024 * 1024)
 
