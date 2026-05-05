@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { authHeaders, clearToken, getUsername } from '../auth'
-import Header from '../components/Header'
+import { authHeaders, clearToken } from '../auth'
+import AppLayout from '../components/AppLayout'
 
 interface Stats {
   recordings_bytes: number
@@ -11,6 +11,7 @@ interface Stats {
   disk_total_bytes: number
   disk_free_bytes: number
   camera_count: number
+  connected_clients: number
   max_size_bytes: number
   warn_percent: number
 }
@@ -63,9 +64,7 @@ export default function StatsPage() {
   const barColor = isOver ? 'bg-red-600' : isWarning ? 'bg-yellow-500' : 'bg-blue-600'
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-950">
-      <Header username={getUsername() ?? undefined} />
-      <main className="flex-1 p-6 max-w-4xl mx-auto w-full">
+    <AppLayout mainClassName="max-w-4xl mx-auto w-full">
         <div className="mb-6">
           <Link to="/" className="text-sm text-blue-400 hover:text-blue-300">← Câmeras</Link>
           <h2 className="text-lg font-semibold text-gray-200 mt-1">Estatísticas</h2>
@@ -117,6 +116,12 @@ export default function StatsPage() {
               <p className="text-xs text-gray-500 mt-1">configuradas</p>
             </div>
 
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
+              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2">Clientes conectados</p>
+              <p className="text-3xl font-bold text-gray-200">{stats.connected_clients}</p>
+              <p className="text-xs text-gray-500 mt-1">ativos no stream (30s)</p>
+            </div>
+
             {/* Gravações */}
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
               <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2">Gravações</p>
@@ -143,7 +148,6 @@ export default function StatsPage() {
             </div>
           </div>
         )}
-      </main>
-    </div>
+    </AppLayout>
   )
 }

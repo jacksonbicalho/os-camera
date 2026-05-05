@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { authHeaders, clearToken, getUsername } from '../auth'
-import Header from '../components/Header'
+import { authHeaders, clearToken } from '../auth'
+import AppLayout from '../components/AppLayout'
 import HLSPlayer from '../components/HLSPlayer'
 
 interface Camera {
@@ -22,9 +22,7 @@ export default function DashboardPage() {
   }, [navigate])
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-950">
-      <Header username={getUsername() ?? undefined} />
-      <main className="flex-1 p-6">
+    <AppLayout>
         <h2 className="text-lg font-semibold text-gray-200 mb-4">Câmeras ao vivo</h2>
         {cameras.length === 0 ? (
           <p className="text-gray-500 text-sm">Nenhuma câmera configurada.</p>
@@ -52,7 +50,6 @@ export default function DashboardPage() {
             ))}
           </div>
         )}
-      </main>
-    </div>
+    </AppLayout>
   )
 }
