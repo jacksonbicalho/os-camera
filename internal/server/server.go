@@ -26,6 +26,7 @@ type Server struct {
 	storageCfg config.StorageConfig
 	defaults   config.DefaultsConfig
 	timezone   string
+	version    string
 	cameras    []config.CameraConfig
 	log        *slog.Logger
 	secret     []byte
@@ -60,6 +61,11 @@ func (s *Server) WithStorageConfig(cfg config.StorageConfig) *Server {
 
 func (s *Server) WithDefaults(cfg config.DefaultsConfig) *Server {
 	s.defaults = cfg
+	return s
+}
+
+func (s *Server) WithVersion(v string) *Server {
+	s.version = v
 	return s
 }
 
@@ -170,7 +176,7 @@ func (s *Server) activeStreamClients(now time.Time) int {
 
 func (s *Server) handleClientConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"timezone": s.timezone})
+	json.NewEncoder(w).Encode(map[string]string{"timezone": s.timezone, "version": s.version})
 }
 
 func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
