@@ -2,6 +2,7 @@
 !/internal/storage
 camera.yaml
 /camera
+dist/
 frontend/dist/
 frontend/node_modules/
 .mcp.json
