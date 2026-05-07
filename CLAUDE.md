@@ -63,7 +63,7 @@ O `server.Server` é levantado em goroutine separada e serve a SPA + API REST.
 |---|---|
 | `internal/exec` | Interfaces `Commander` / `Process` e implementação real com `os/exec`. Injetadas nos pacotes abaixo para permitir testes sem ffmpeg. |
 | `internal/recorder` | Grava RTSP em chunks MP4. Armazena em `{storage}/{camera_id}/{YYYY/MM/DD}/{YYYYMMDDHHmmss}.mp4`. |
-| `internal/streaming` | Gera playlist HLS ao vivo em `{segments_path}/{camera_id}/index.m3u8` com janela de 5 segmentos de 2s. |
+| `internal/streaming` | Gera playlist HLS ao vivo em `{segments_path}/{camera_id}/index.m3u8`. Modo padrão: janela de 5 segmentos de 2s. Modo DVR (quando `server.hls_dvr_seconds > 0`): mantém todos os segmentos da janela, adiciona `EXT-X-PROGRAM-DATE-TIME` para seek por timestamp. |
 | `internal/motion` | Detecta movimento via ffmpeg pipe raw (frames grayscale em 1/4 da resolução). Expõe dois canais: `Events()` para eventos acima do limiar (gravados em `{storage}/{camera_id}/motion.ndjson`) e `RawScores()` para o score bruto de cada frame diff (usado na visualização em tempo real). |
 | `internal/storage` | `Cleaner` que apaga MP4s mais antigos que `retention_days` e monitora uso vs `max_size_gb`. |
 | `internal/ffprobe` | Executa e parseia saída JSON do ffprobe para detectar codec, áudio e dimensões do stream. |

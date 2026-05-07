@@ -10,6 +10,7 @@ server:
   segments_path: /tmp/hls           # env: CAMERA_SEGMENTS_PATH
   username: master                  # env: CAMERA_SERVER_USERNAME
   password: ""                      # env: CAMERA_SERVER_PASSWORD
+  hls_dvr_seconds: 0                # janela DVR do HLS em segundos (0 = desabilitado; ex: 1200 = 20 min)
 
 storage:
   path: /data/recordings     # env: CAMERA_STORAGE_PATH
