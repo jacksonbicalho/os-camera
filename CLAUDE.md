@@ -21,6 +21,8 @@ make run                                              # sobe Docker dev (camera-
 
 SPA React/Vite/Tailwind com quatro páginas: `LoginPage` → `DashboardPage` → `CameraPage` / `StatsPage`. Token JWT em `localStorage` (`auth.ts`). Em desenvolvimento, Vite faz proxy de `/api` e `/stream` para `localhost:8080`.
 
+Componentes reutilizáveis relevantes: `AppLayout`, `HLSPlayer`, `ListPanel`, `MotionScoreChart` (gráfico SVG em tempo real dos scores brutos via SSE, escala logarítmica, janela de 30 s).
+
 ```bash
 cd frontend
 yarn install
@@ -36,6 +38,13 @@ docker compose --profile production up camera --build        # produção: biná
 ```
 
 ## Arquitetura
+
+### Binários
+
+| Binário | Responsabilidade |
+|---|---|
+| `cmd/camera` | Servidor principal: grava, faz streaming HLS, detecta movimento e serve a SPA. |
+| `cmd/mcp-ffprobe` | Servidor MCP (stdio) que expõe `probe_stream` — executa ffprobe em uma URL RTSP e retorna os metadados JSON do stream. Útil para inspeção de câmeras via ferramentas MCP. |
 
 ### Fluxo de inicialização (`cmd/camera/main.go`)
 
@@ -53,10 +62,10 @@ O `server.Server` é levantado em goroutine separada e serve a SPA + API REST.
 | `internal/exec` | Interfaces `Commander` / `Process` e implementação real com `os/exec`. Injetadas nos pacotes abaixo para permitir testes sem ffmpeg. |
 | `internal/recorder` | Grava RTSP em chunks MP4. Armazena em `{storage}/{camera_id}/{YYYY/MM/DD}/{YYYYMMDDHHmmss}.mp4`. |
 | `internal/streaming` | Gera playlist HLS ao vivo em `{segments_path}/{camera_id}/index.m3u8` com janela de 5 segmentos de 2s. |
-| `internal/motion` | Detecta movimento via ffmpeg pipe raw (frames grayscale em 1/4 da resolução). Appenda eventos em `{storage}/{camera_id}/motion.ndjson`. |
+| `internal/motion` | Detecta movimento via ffmpeg pipe raw (frames grayscale em 1/4 da resolução). Expõe dois canais: `Events()` para eventos acima do limiar (gravados em `{storage}/{camera_id}/motion.ndjson`) e `RawScores()` para o score bruto de cada frame diff (usado na visualização em tempo real). |
 | `internal/storage` | `Cleaner` que apaga MP4s mais antigos que `retention_days` e monitora uso vs `max_size_gb`. |
 | `internal/ffprobe` | Executa e parseia saída JSON do ffprobe para detectar codec, áudio e dimensões do stream. |
-| `internal/server` | HTTP server com JWT HS256 (segredo gerado a cada boot, expira em 24h). Serve API REST, arquivos de gravação, segmentos HLS e a SPA React. |
+| `internal/server` | HTTP server com JWT HS256 (segredo gerado a cada boot, expira em 24h). Serve API REST, arquivos de gravação, segmentos HLS e a SPA React. Inclui dois endpoints SSE de movimento: `/api/cameras/{id}/motion/live` (eventos acima do limiar) e `/api/cameras/{id}/motion/scores` (score bruto por frame). |
 | `internal/config` | Lê `camera.yaml`; variáveis de ambiente sobrescrevem campos específicos (ver abaixo). |
 | `internal/logger` | `stdout`: JSON em stdout. `file`: um arquivo por nível (`debug.log`, `info.log`, `warn.log`, `error.log`) no diretório configurado. |
 | `frontend/` | SPA React/Vite/Tailwind embutida via `go:embed all:dist`. |
