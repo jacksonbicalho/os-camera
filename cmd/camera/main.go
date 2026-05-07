@@ -28,6 +28,11 @@ import (
 var version = "dev"
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "init" {
+		runInit()
+		return
+	}
+
 	configPath := flag.String("config", "camera.yaml", "path to config file")
 	flag.Parse()
 
