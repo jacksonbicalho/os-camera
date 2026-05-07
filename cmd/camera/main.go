@@ -98,7 +98,8 @@ func main() {
 		srv := server.NewServer(cfg.Server, cfg.Timezone, cfg.Cameras, slog, static).
 			WithStorageConfig(cfg.Storage).
 			WithDefaults(cfg.Defaults).
-			WithVersion(version)
+			WithVersion(version).
+			WithMotionConfig(cfg.Motion)
 
 		for _, cam := range cfg.Cameras {
 			motionCfg := cam.EffectiveMotionConfig(cfg.Motion)
@@ -109,6 +110,7 @@ func main() {
 			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, reconnect, slog)
 			go mon.Run(ctx)
 			srv.WithMotionFeed(cam.ID, mon.Events())
+			srv.WithRawFeed(cam.ID, mon.RawScores())
 		}
 
 		addr := fmt.Sprintf(":%d", cfg.Server.Port)

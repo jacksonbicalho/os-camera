@@ -901,6 +901,99 @@ func TestMotionLiveAcceptsTokenViaQueryParam(t *testing.T) {
 	}
 }
 
+func TestMotionScoresRequiresAuth(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/scores", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestMotionScoresReturns404WhenNoFeed(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+	token := loginAndGetToken(t, srv, "master", "secret")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/scores", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestMotionScoresStreamsSSEEvents(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cameraID := "cam1"
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+
+	srcCh := make(chan motion.Event, 1)
+	srv.WithRawFeed(cameraID, srcCh)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion/scores", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		srv.ServeHTTP(w, req)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	srcCh <- motion.Event{Time: time.Date(2026, 5, 6, 10, 0, 0, 0, time.UTC), Score: 0.007}
+	close(srcCh)
+	<-done
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "0.007") {
+		t.Errorf("expected score 0.007 in body, got %q", body)
+	}
+}
+
+func TestCamerasIncludesMotionThreshold(t *testing.T) {
+	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cameras := []config.CameraConfig{{ID: "cam1"}}
+	motionCfg := config.MotionConfig{Enabled: true, Threshold: 0.03, FPS: 2}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).
+		WithMotionConfig(motionCfg)
+
+	token := loginAndGetToken(t, srv, "u", "p")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var list []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected 1 camera, got %d", len(list))
+	}
+	threshold, ok := list[0]["motion_threshold"].(float64)
+	if !ok {
+		t.Fatalf("expected motion_threshold field, got %v", list[0])
+	}
+	if threshold != 0.03 {
+		t.Errorf("expected threshold 0.03, got %v", threshold)
+	}
+}
+
 func TestClientConfigIncludesVersion(t *testing.T) {
 	cfg := config.ServerConfig{Username: "u", Password: "p"}
 	srv := server.NewServer(cfg, "UTC", nil, discardLogger(), nil).
