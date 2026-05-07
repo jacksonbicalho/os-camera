@@ -5,7 +5,7 @@ OUTDIR  := dist
 
 .PHONY: all frontend build \
         linux-amd64 linux-arm64 linux-arm windows-amd64 \
-        rpi termux \
+        rpi \
         run clean
 
 # ── Releases ────────────────────────────────────────────────────────────────
@@ -25,8 +25,7 @@ linux-arm: | $(OUTDIR)
 windows-amd64: | $(OUTDIR)
 	GOOS=windows GOARCH=amd64        $(BUILD) -o $(OUTDIR)/camera-windows-amd64.exe  ./cmd/camera
 
-rpi:    linux-arm64  # Raspberry Pi 3/4/5 com OS 64-bit
-termux: linux-arm64  # Termux no Android
+rpi: linux-arm64  # Raspberry Pi 3/4/5 com OS 64-bit
 
 # ── Desenvolvimento ─────────────────────────────────────────────────────────
 
