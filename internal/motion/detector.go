@@ -27,9 +27,10 @@ type detector struct {
 	commander frameCommander
 	st        *store
 	log       *slog.Logger
+	notify    func(Event)
 }
 
-func newDetector(cameraID, url string, width, height int, cfg config.MotionConfig, cmd frameCommander, st *store, log *slog.Logger) *detector {
+func newDetector(cameraID, url string, width, height int, cfg config.MotionConfig, cmd frameCommander, st *store, log *slog.Logger, notify func(Event)) *detector {
 	return &detector{
 		cameraID:  cameraID,
 		url:       url,
@@ -39,6 +40,7 @@ func newDetector(cameraID, url string, width, height int, cfg config.MotionConfi
 		commander: cmd,
 		st:        st,
 		log:       log,
+		notify:    notify,
 	}
 }
 
@@ -74,6 +76,8 @@ func (d *detector) processFrames() {
 				ts := time.Now().UTC()
 				if err := d.st.record(d.cameraID, ts, score); err != nil {
 					d.log.Error("motion: failed to record event", "camera", d.cameraID, "error", err)
+				} else if d.notify != nil {
+					d.notify(Event{Time: ts, Score: score})
 				}
 			}
 		}

@@ -5,12 +5,19 @@ import { getToken } from '../auth'
 interface HLSPlayerProps {
   src: string
   className?: string
+  cameraId?: string
 }
 
-export default function HLSPlayer({ src, className }: HLSPlayerProps) {
+interface MotionAlert {
+  score: number
+}
+
+export default function HLSPlayer({ src, className, cameraId }: HLSPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [muted, setMuted] = useState(true)
+  const [motionAlert, setMotionAlert] = useState<MotionAlert | null>(null)
+  const alertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const video = videoRef.current
@@ -47,6 +54,24 @@ export default function HLSPlayer({ src, className }: HLSPlayerProps) {
     }
   }, [src])
 
+  useEffect(() => {
+    if (!cameraId) return
+    const token = getToken()
+    if (!token) return
+
+    const es = new EventSource(`/api/cameras/${cameraId}/motion/live?token=${encodeURIComponent(token)}`)
+    es.onmessage = (e) => {
+      const ev = JSON.parse(e.data) as { score: number }
+      setMotionAlert({ score: ev.score })
+      if (alertTimerRef.current) clearTimeout(alertTimerRef.current)
+      alertTimerRef.current = setTimeout(() => setMotionAlert(null), 4000)
+    }
+    return () => {
+      es.close()
+      if (alertTimerRef.current) clearTimeout(alertTimerRef.current)
+    }
+  }, [cameraId])
+
   function handleMute(e: React.MouseEvent) {
     e.stopPropagation()
     const video = videoRef.current
@@ -72,6 +97,27 @@ export default function HLSPlayer({ src, className }: HLSPlayerProps) {
         muted
         playsInline
       />
+      {motionAlert && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-yellow-400/30 animate-pulse">
+          <div className="flex flex-col items-center gap-3 bg-yellow-500/60 backdrop-blur-sm px-6 py-5 rounded-xl">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            <span className="font-semibold text-gray-900 text-base">Movimento detectado</span>
+            <span className="text-xs font-mono text-gray-800">score: {motionAlert.score}</span>
+            <button
+              onClick={() => {
+                if (alertTimerRef.current) clearTimeout(alertTimerRef.current)
+                setMotionAlert(null)
+              }}
+              aria-label="Fechar alerta"
+              className="mt-1 px-3 py-1 text-xs font-medium text-gray-900 bg-yellow-300/70 hover:bg-yellow-300 rounded transition-colors"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
       <button
         onClick={handleMute}
         aria-label={muted ? 'Ativar áudio' : 'Silenciar'}
