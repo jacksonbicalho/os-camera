@@ -49,7 +49,7 @@ func TestDetectorRecordsEventWhenDiffExceedsThreshold(t *testing.T) {
 	st := newStore(tmpDir)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
-	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger())
+	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil)
 
 	det.processFrames()
 
@@ -70,7 +70,7 @@ func TestDetectorIgnoresSmallDiff(t *testing.T) {
 	st := newStore(tmpDir)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
-	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger())
+	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil)
 
 	det.processFrames()
 
@@ -90,7 +90,7 @@ func TestDetectorTimestampIsApproxNow(t *testing.T) {
 	st := newStore(tmpDir)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
-	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger())
+	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil)
 
 	before := time.Now().UTC().Truncate(time.Second)
 	det.processFrames()

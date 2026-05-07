@@ -9,11 +9,17 @@ import (
 	"camera/internal/ffprobe"
 )
 
+type Event struct {
+	Time  time.Time
+	Score float64
+}
+
 type Monitor struct {
 	det               *detector
 	reconnectInterval time.Duration
 	log               *slog.Logger
 	cameraID          string
+	events            chan Event
 }
 
 func New(cam config.CameraConfig, stream ffprobe.StreamInfo, cfg config.MotionConfig, storagePath string, reconnectInterval time.Duration, log *slog.Logger) *Monitor {
@@ -36,19 +42,33 @@ func New(cam config.CameraConfig, stream ffprobe.StreamInfo, cfg config.MotionCo
 	}
 	effective := config.MotionConfig{Enabled: true, Threshold: threshold, FPS: fps}
 
+	events := make(chan Event, 64)
+	notify := func(ev Event) {
+		select {
+		case events <- ev:
+		default:
+		}
+	}
+
 	cmd := newFFmpegFrameCommander()
 	st := newStore(storagePath)
-	det := newDetector(cam.ID, cam.RTSPURL, scaledW, scaledH, effective, cmd, st, log)
+	det := newDetector(cam.ID, cam.RTSPURL, scaledW, scaledH, effective, cmd, st, log, notify)
 
 	return &Monitor{
 		det:               det,
 		reconnectInterval: reconnectInterval,
 		log:               log,
 		cameraID:          cam.ID,
+		events:            events,
 	}
 }
 
+func (m *Monitor) Events() <-chan Event {
+	return m.events
+}
+
 func (m *Monitor) Run(ctx context.Context) {
+	defer close(m.events)
 	for {
 		m.det.processFrames()
 		select {

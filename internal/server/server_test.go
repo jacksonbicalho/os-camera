@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"camera/internal/config"
+	"camera/internal/motion"
 	"camera/internal/server"
 )
 
@@ -810,6 +811,93 @@ func TestMotionEventsSpansMidnightUTCWhenTimezoneOffset(t *testing.T) {
 	times := []string{resp.Events[0]["time"].(string), resp.Events[1]["time"].(string)}
 	if times[0] != "2026-05-02T10:00:00Z" || times[1] != "2026-05-03T01:00:00Z" {
 		t.Errorf("unexpected event times: %v", times)
+	}
+}
+
+func TestMotionLiveRequiresAuth(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/live", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestMotionLiveReturns404WhenNoFeed(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+	token := loginAndGetToken(t, srv, "master", "secret")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/live", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestMotionLiveStreamsSSEEvents(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cameraID := "cam1"
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+
+	srcCh := make(chan motion.Event, 1)
+	srv.WithMotionFeed(cameraID, srcCh)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion/live", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		srv.ServeHTTP(w, req)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	srcCh <- motion.Event{Time: time.Date(2026, 5, 6, 10, 0, 0, 0, time.UTC), Score: 0.42}
+	close(srcCh)
+	<-done
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	ct := w.Header().Get("Content-Type")
+	if !strings.Contains(ct, "text/event-stream") {
+		t.Errorf("expected Content-Type text/event-stream, got %q", ct)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "data:") {
+		t.Errorf("expected SSE data line in body, got %q", body)
+	}
+	if !strings.Contains(body, "0.42") {
+		t.Errorf("expected score 0.42 in body, got %q", body)
+	}
+}
+
+func TestMotionLiveAcceptsTokenViaQueryParam(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cameraID := "cam1"
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+
+	srcCh := make(chan motion.Event)
+	srv.WithMotionFeed(cameraID, srcCh)
+	close(srcCh)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion/live?token="+token, nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
 	}
 }
 
