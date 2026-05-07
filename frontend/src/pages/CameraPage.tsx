@@ -137,6 +137,28 @@ export default function CameraPage() {
     return () => clearInterval(interval)
   }, [selectedDate, id, navigate, hasMore, sortOrder])
 
+  useEffect(() => {
+    const today = new Date()
+    const isToday =
+      selectedDate.getFullYear() === today.getFullYear() &&
+      selectedDate.getMonth() === today.getMonth() &&
+      selectedDate.getDate() === today.getDate()
+    if (!isToday || !id) return
+
+    const token = getToken()
+    if (!token) return
+
+    const es = new EventSource(`/api/cameras/${id}/motion/live?token=${encodeURIComponent(token)}`)
+    es.onmessage = (e) => {
+      const ev = JSON.parse(e.data) as MotionEvent
+      setMotionEvents(prev => {
+        if (prev.some(p => p.time === ev.time)) return prev
+        return [ev, ...prev]
+      })
+    }
+    return () => es.close()
+  }, [selectedDate, id])
+
   async function loadMore() {
     setLoadingMore(true)
     const next = page + 1
@@ -218,7 +240,7 @@ export default function CameraPage() {
               </div>
 
               {isLive ? (
-                <HLSPlayer src={liveUrl} className="w-full aspect-video bg-black" />
+                <HLSPlayer src={liveUrl} className="w-full aspect-video bg-black" cameraId={id} />
               ) : (
                 <video
                   ref={videoRef}

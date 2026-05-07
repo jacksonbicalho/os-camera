@@ -80,6 +80,13 @@ func main() {
 		}
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
+	reconnect := time.Duration(cfg.Defaults.ReconnectInterval)
+	if reconnect == 0 {
+		reconnect = 5 * time.Second
+	}
+
 	if cfg.Server.Port > 0 {
 		if cfg.Server.RecordingsPath == "" {
 			cfg.Server.RecordingsPath = cfg.Storage.Path
@@ -92,6 +99,18 @@ func main() {
 			WithStorageConfig(cfg.Storage).
 			WithDefaults(cfg.Defaults).
 			WithVersion(version)
+
+		for _, cam := range cfg.Cameras {
+			motionCfg := cam.EffectiveMotionConfig(cfg.Motion)
+			if !motionCfg.Enabled {
+				continue
+			}
+			stream := resolveStream(cam, prober, slog)
+			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, reconnect, slog)
+			go mon.Run(ctx)
+			srv.WithMotionFeed(cam.ID, mon.Events())
+		}
+
 		addr := fmt.Sprintf(":%d", cfg.Server.Port)
 		slog.Info("http server starting", "addr", addr)
 		go func() {
@@ -99,22 +118,16 @@ func main() {
 				slog.Error("http server error", "error", err)
 			}
 		}()
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	reconnect := time.Duration(cfg.Defaults.ReconnectInterval)
-	if reconnect == 0 {
-		reconnect = 5 * time.Second
-	}
-	for _, cam := range cfg.Cameras {
-		motionCfg := cam.EffectiveMotionConfig(cfg.Motion)
-		if !motionCfg.Enabled {
-			continue
+	} else {
+		for _, cam := range cfg.Cameras {
+			motionCfg := cam.EffectiveMotionConfig(cfg.Motion)
+			if !motionCfg.Enabled {
+				continue
+			}
+			stream := resolveStream(cam, prober, slog)
+			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, reconnect, slog)
+			go mon.Run(ctx)
 		}
-		stream := resolveStream(cam, prober, slog)
-		mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, reconnect, slog)
-		go mon.Run(ctx)
 	}
 
 	cleaner := storage.New(
