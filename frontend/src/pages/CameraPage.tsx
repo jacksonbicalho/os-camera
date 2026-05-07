@@ -10,22 +10,12 @@ import HLSPlayer from '../components/HLSPlayer'
 import ListPanel from '../components/ListPanel'
 import { useScrollToPlayer } from '../hooks/useScrollToPlayer'
 import { useEventSource } from '../hooks/useEventSource'
-
-interface Recording {
-  filename: string
-  start: string
-  url: string
-  is_recording: boolean
-}
+import { mergeRecordings, eventsWithinRecordings } from './cameraUtils'
+import type { Recording, MotionEvent } from './cameraUtils'
 
 interface RecordingsResponse {
   recordings: Recording[]
   hasMore: boolean
-}
-
-interface MotionEvent {
-  time: string
-  score: number
 }
 
 const PAGE_SIZE = 10
@@ -121,18 +111,8 @@ export default function CameraPage() {
     const interval = setInterval(async () => {
       const result = await loadRecordingsData(id!, selectedDate, 1, sortOrder)
       if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
-      setRecordings(prev => {
-        const freshByName = new Map(result.recordings.map(r => [r.filename, r]))
-        const existingNames = new Set(prev.map(r => r.filename))
-        const updated = prev.map(r => freshByName.get(r.filename) ?? r)
-        const newOnes = result.recordings.filter(r => !existingNames.has(r.filename))
-        return [...updated, ...newOnes].sort((a, b) =>
-          sortOrder === 'desc'
-            ? b.filename.localeCompare(a.filename)
-            : a.filename.localeCompare(b.filename)
-        )
-      })
-      if (!hasMore) setHasMore(result.hasMore)
+      setRecordings(prev => mergeRecordings(prev, result.recordings, sortOrder, result.hasMore))
+      setHasMore(result.hasMore)
     }, 30_000)
 
     return () => clearInterval(interval)
@@ -193,10 +173,13 @@ export default function CameraPage() {
 
   const liveUrl = `/stream/${id}/index.m3u8`
   const isLive = activeRecording === null
-  const sortedEvents = [...motionEvents].sort((a, b) => {
-    const diff = new Date(a.time).getTime() - new Date(b.time).getTime()
-    return eventsSortOrder === 'asc' ? diff : -diff
-  })
+  const sortedEvents = eventsWithinRecordings(
+    [...motionEvents].sort((a, b) => {
+      const diff = new Date(a.time).getTime() - new Date(b.time).getTime()
+      return eventsSortOrder === 'asc' ? diff : -diff
+    }),
+    recordings,
+  )
   const visibleEvents = sortedEvents.slice(0, eventsPage * PAGE_SIZE)
   const hasMoreEvents = sortedEvents.length > eventsPage * PAGE_SIZE
 

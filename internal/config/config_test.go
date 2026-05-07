@@ -304,6 +304,48 @@ cameras:
 	}
 }
 
+func TestLoadParsesRetentionMinutes(t *testing.T) {
+	path := writeTempYAML(t, `
+storage:
+  path: /tmp/recordings
+  retention_minutes: 120
+
+cameras:
+  - id: cam1
+    rtsp_url: rtsp://localhost:8554/stream
+`)
+
+	cfg, err := config.Load(path)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Storage.RetentionMinutes != 120 {
+		t.Errorf("expected RetentionMinutes=120, got %d", cfg.Storage.RetentionMinutes)
+	}
+}
+
+func TestLoadParsesIntervalMinutes(t *testing.T) {
+	path := writeTempYAML(t, `
+storage:
+  path: /tmp/recordings
+  interval_minutes: 5
+
+cameras:
+  - id: cam1
+    rtsp_url: rtsp://localhost:8554/stream
+`)
+
+	cfg, err := config.Load(path)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Storage.IntervalMinutes != 5 {
+		t.Errorf("expected IntervalMinutes=5, got %d", cfg.Storage.IntervalMinutes)
+	}
+}
+
 func TestLoadEnvVarOverridesStoragePath(t *testing.T) {
 	t.Setenv("CAMERA_STORAGE_PATH", "/tmp/from-env")
 

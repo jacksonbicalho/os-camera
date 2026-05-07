@@ -43,7 +43,7 @@ func writeFileWithSize(t *testing.T, path string, size int) {
 func TestClean_DeletesOldFiles(t *testing.T) {
 	dir := t.TempDir()
 	old := filepath.Join(dir, "cam1", "2026", "01", "01", "20260101120000.mp4")
-	writeFile(t, old, time.Now().Add(-31*24*time.Hour))
+	writeFile(t, old, time.Now().Add(-31*time.Minute))
 
 	storage.New(dir, 30, 0, 0, discardLogger()).Clean()
 
@@ -55,7 +55,7 @@ func TestClean_DeletesOldFiles(t *testing.T) {
 func TestClean_KeepsRecentFiles(t *testing.T) {
 	dir := t.TempDir()
 	recent := filepath.Join(dir, "cam1", "2026", "04", "30", "20260430120000.mp4")
-	writeFile(t, recent, time.Now().Add(-1*24*time.Hour))
+	writeFile(t, recent, time.Now().Add(-1*time.Minute))
 
 	storage.New(dir, 30, 0, 0, discardLogger()).Clean()
 
@@ -64,7 +64,7 @@ func TestClean_KeepsRecentFiles(t *testing.T) {
 	}
 }
 
-func TestClean_DisabledWhenRetentionDaysZero(t *testing.T) {
+func TestClean_DisabledWhenRetentionMinutesZero(t *testing.T) {
 	dir := t.TempDir()
 	old := filepath.Join(dir, "cam1", "2024", "01", "01", "20240101000000.mp4")
 	writeFile(t, old, time.Now().Add(-365*24*time.Hour))
@@ -79,7 +79,7 @@ func TestClean_DisabledWhenRetentionDaysZero(t *testing.T) {
 func TestClean_IgnoresNonMp4Files(t *testing.T) {
 	dir := t.TempDir()
 	ts := filepath.Join(dir, "cam1", "2026", "01", "01", "001.ts")
-	writeFile(t, ts, time.Now().Add(-31*24*time.Hour))
+	writeFile(t, ts, time.Now().Add(-31*time.Minute))
 
 	storage.New(dir, 30, 0, 0, discardLogger()).Clean()
 
