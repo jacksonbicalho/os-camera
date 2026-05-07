@@ -21,7 +21,7 @@ export default function MotionScoreChart({ cameraId, threshold, windowMs = DEFAU
   const [samples, setSamples] = useState<Sample[]>([])
   const [tick, setTick] = useState(() => Date.now())
   const windowMsRef = useRef(windowMs)
-  windowMsRef.current = windowMs
+  useEffect(() => { windowMsRef.current = windowMs }, [windowMs])
 
   const handleScoreMessage = useCallback((data: string) => {
     const ev = JSON.parse(data) as { score: number }

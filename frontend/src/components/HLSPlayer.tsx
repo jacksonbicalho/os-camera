@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import type HlsType from 'hls.js'
 import { getToken } from '../auth'
 import { useEventSource } from '../hooks/useEventSource'
+
+export interface HLSPlayerHandle {
+  seekTo: (isoTime: string) => void
+}
 
 interface HLSPlayerProps {
   src: string
@@ -11,9 +15,10 @@ interface HLSPlayerProps {
 
 interface MotionAlert {
   score: number
+  time: string
 }
 
-export default function HLSPlayer({ src, className, cameraId }: HLSPlayerProps) {
+const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer({ src, className, cameraId }, ref) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [muted, setMuted] = useState(true)
@@ -56,11 +61,22 @@ export default function HLSPlayer({ src, className, cameraId }: HLSPlayerProps) 
   }, [src])
 
   const handleMotionMessage = useCallback((data: string) => {
-    const ev = JSON.parse(data) as { score: number }
-    setMotionAlert({ score: ev.score })
+    const ev = JSON.parse(data) as { score: number; time: string }
+    setMotionAlert({ score: ev.score, time: ev.time })
     if (alertTimerRef.current) clearTimeout(alertTimerRef.current)
     alertTimerRef.current = setTimeout(() => setMotionAlert(null), 4000)
   }, [])
+
+  const handleSeekToEvent = useCallback((eventTime: string) => {
+    const video = videoRef.current
+    if (!video || !video.seekable.length) return
+    const offsetSeconds = (Date.now() - new Date(eventTime).getTime()) / 1000
+    const target = video.currentTime - offsetSeconds
+    const earliest = video.seekable.start(0)
+    video.currentTime = Math.max(earliest, target)
+  }, [])
+
+  useImperativeHandle(ref, () => ({ seekTo: handleSeekToEvent }), [handleSeekToEvent])
 
   useEventSource(
     cameraId ? `/api/cameras/${cameraId}/motion/live` : null,
@@ -100,16 +116,25 @@ export default function HLSPlayer({ src, className, cameraId }: HLSPlayerProps) 
             </svg>
             <span className="font-semibold text-gray-900 text-base">Movimento detectado</span>
             <span className="text-xs font-mono text-gray-800">score: {motionAlert.score}</span>
-            <button
-              onClick={() => {
-                if (alertTimerRef.current) clearTimeout(alertTimerRef.current)
-                setMotionAlert(null)
-              }}
-              aria-label="Fechar alerta"
-              className="mt-1 px-3 py-1 text-xs font-medium text-gray-900 bg-yellow-300/70 hover:bg-yellow-300 rounded transition-colors"
-            >
-              Fechar
-            </button>
+            <div className="flex gap-2 mt-1">
+              <button
+                onClick={() => handleSeekToEvent(motionAlert.time)}
+                aria-label="Ir para o momento do evento"
+                className="px-3 py-1 text-xs font-medium text-gray-900 bg-yellow-300/70 hover:bg-yellow-300 rounded transition-colors"
+              >
+                Ir para este momento
+              </button>
+              <button
+                onClick={() => {
+                  if (alertTimerRef.current) clearTimeout(alertTimerRef.current)
+                  setMotionAlert(null)
+                }}
+                aria-label="Fechar alerta"
+                className="px-3 py-1 text-xs font-medium text-gray-900 bg-yellow-300/70 hover:bg-yellow-300 rounded transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -140,4 +165,6 @@ export default function HLSPlayer({ src, className, cameraId }: HLSPlayerProps) 
       </button>
     </div>
   )
-}
+})
+
+export default HLSPlayer

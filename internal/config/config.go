@@ -41,6 +41,7 @@ type ServerConfig struct {
 	RecordingsPath string `yaml:"recordings_path"`
 	Username       string `yaml:"username"`
 	Password       string `yaml:"password"`
+	HLSDVRSeconds  int    `yaml:"hls_dvr_seconds"` // 0 = disabled; >0 = DVR window size
 }
 
 type StorageConfig struct {
