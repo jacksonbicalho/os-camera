@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { getToken } from '../auth'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEventSource } from '../hooks/useEventSource'
 
 interface Sample {
   time: number  // Date.now()
@@ -20,26 +20,19 @@ const Y_TICKS = [0.0001, 0.001, 0.01, 0.1, 1.0]
 export default function MotionScoreChart({ cameraId, threshold, windowMs = DEFAULT_WINDOW }: Props) {
   const [samples, setSamples] = useState<Sample[]>([])
   const [tick, setTick] = useState(() => Date.now())
-  const esRef = useRef<EventSource | null>(null)
+  const windowMsRef = useRef(windowMs)
+  windowMsRef.current = windowMs
 
-  useEffect(() => {
-    const token = getToken()
-    if (!token) return
+  const handleScoreMessage = useCallback((data: string) => {
+    const ev = JSON.parse(data) as { score: number }
+    const now = Date.now()
+    setSamples(prev => {
+      const cutoff = now - windowMsRef.current
+      return [...prev.filter(s => s.time >= cutoff), { time: now, score: ev.score }]
+    })
+  }, [])
 
-    const es = new EventSource(`/api/cameras/${cameraId}/motion/scores?token=${encodeURIComponent(token)}`)
-    esRef.current = es
-
-    es.onmessage = (e) => {
-      const ev = JSON.parse(e.data) as { score: number }
-      const now = Date.now()
-      setSamples(prev => {
-        const cutoff = now - windowMs
-        return [...prev.filter(s => s.time >= cutoff), { time: now, score: ev.score }]
-      })
-    }
-
-    return () => { es.close(); esRef.current = null }
-  }, [cameraId, windowMs])
+  useEventSource(`/api/cameras/${cameraId}/motion/scores`, handleScoreMessage)
 
   // Redraw tick + prune old samples
   useEffect(() => {

@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { authHeaders, clearToken } from '../auth'
 import AppLayout from '../components/AppLayout'
 import MotionScoreChart from '../components/MotionScoreChart'
+import StatCard from '../components/StatCard'
 
 interface CameraInfo {
   id: string
@@ -45,16 +46,15 @@ export default function StatsPage() {
   const [monitorOpen, setMonitorOpen] = useState(false)
   const [monitorCam, setMonitorCam] = useState<string | null>(null)
 
-  // Fetch camera list (for thresholds)
   useEffect(() => {
     fetch('/api/cameras', { headers: authHeaders() })
       .then(res => {
-        if (res.status === 401) return []
+        if (res.status === 401) { clearToken(); navigate('/login', { state: { from: '/stats' }, replace: true }); return null }
         return res.json()
       })
       .then(data => { if (Array.isArray(data)) setCameras(data) })
       .catch(() => {})
-  }, [])
+  }, [navigate])
 
   useEffect(() => {
     const cancelled = { value: false }
@@ -132,43 +132,37 @@ export default function StatsPage() {
               </p>
             </div>
 
-            {/* Câmeras */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
-              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2">Câmeras</p>
-              <p className="text-3xl font-bold text-gray-200">{stats.camera_count}</p>
-              <p className="text-xs text-gray-500 mt-1">configuradas</p>
-            </div>
+            <StatCard
+              label="Câmeras"
+              value={stats.camera_count}
+              subtext="configuradas"
+            />
 
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
-              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2">Clientes conectados</p>
-              <p className="text-3xl font-bold text-gray-200">{stats.connected_clients}</p>
-              <p className="text-xs text-gray-500 mt-1">ativos no stream (30s)</p>
-            </div>
+            <StatCard
+              label="Clientes conectados"
+              value={stats.connected_clients}
+              subtext="ativos no stream (30s)"
+            />
 
-            {/* Gravações */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
-              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2">Gravações</p>
-              <p className="text-3xl font-bold text-gray-200">{stats.recordings_count.toLocaleString()}</p>
-              <p className="text-xs text-gray-500 mt-1">arquivos MP4 · {formatBytes(stats.recordings_bytes)}</p>
-            </div>
+            <StatCard
+              label="Gravações"
+              value={stats.recordings_count.toLocaleString()}
+              subtext={`arquivos MP4 · ${formatBytes(stats.recordings_bytes)}`}
+            />
 
-            {/* Horas gravadas */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
-              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2">Horas gravadas</p>
-              <p className="text-3xl font-bold text-gray-200">{formatDuration(stats.recordings_duration_seconds)}</p>
-              <p className="text-xs text-gray-500 mt-1">de vídeo em disco</p>
-            </div>
+            <StatCard
+              label="Horas gravadas"
+              value={formatDuration(stats.recordings_duration_seconds)}
+              subtext="de vídeo em disco"
+            />
 
-            {/* Previsão */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
-              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2">Previsão de capacidade</p>
-              <p className="text-3xl font-bold text-gray-200">{formatDuration(stats.forecast_seconds)}</p>
-              <p className="text-xs text-gray-500 mt-1">
-                {stats.forecast_seconds > 0
-                  ? 'restantes com o espaço disponível'
-                  : 'dados insuficientes para estimar'}
-              </p>
-            </div>
+            <StatCard
+              label="Previsão de capacidade"
+              value={formatDuration(stats.forecast_seconds)}
+              subtext={stats.forecast_seconds > 0
+                ? 'restantes com o espaço disponível'
+                : 'dados insuficientes para estimar'}
+            />
 
             {/* Monitor de movimento em tempo real */}
             {cameras.length > 0 && (
