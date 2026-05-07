@@ -20,6 +20,7 @@ type Monitor struct {
 	log               *slog.Logger
 	cameraID          string
 	events            chan Event
+	rawScores         chan Event
 }
 
 func New(cam config.CameraConfig, stream ffprobe.StreamInfo, cfg config.MotionConfig, storagePath string, reconnectInterval time.Duration, log *slog.Logger) *Monitor {
@@ -50,9 +51,17 @@ func New(cam config.CameraConfig, stream ffprobe.StreamInfo, cfg config.MotionCo
 		}
 	}
 
+	rawScores := make(chan Event, 256)
+	notifyRaw := func(ev Event) {
+		select {
+		case rawScores <- ev:
+		default:
+		}
+	}
+
 	cmd := newFFmpegFrameCommander()
 	st := newStore(storagePath)
-	det := newDetector(cam.ID, cam.RTSPURL, scaledW, scaledH, effective, cmd, st, log, notify)
+	det := newDetector(cam.ID, cam.RTSPURL, scaledW, scaledH, effective, cmd, st, log, notify, notifyRaw)
 
 	return &Monitor{
 		det:               det,
@@ -60,6 +69,7 @@ func New(cam config.CameraConfig, stream ffprobe.StreamInfo, cfg config.MotionCo
 		log:               log,
 		cameraID:          cam.ID,
 		events:            events,
+		rawScores:         rawScores,
 	}
 }
 
@@ -67,8 +77,13 @@ func (m *Monitor) Events() <-chan Event {
 	return m.events
 }
 
+func (m *Monitor) RawScores() <-chan Event {
+	return m.rawScores
+}
+
 func (m *Monitor) Run(ctx context.Context) {
 	defer close(m.events)
+	defer close(m.rawScores)
 	for {
 		m.det.processFrames()
 		select {

@@ -26,6 +26,7 @@ import (
 type broadcaster struct {
 	mu   sync.Mutex
 	subs map[chan motion.Event]struct{}
+	done bool
 }
 
 func newBroadcaster() *broadcaster {
@@ -35,6 +36,11 @@ func newBroadcaster() *broadcaster {
 func (b *broadcaster) subscribe() chan motion.Event {
 	ch := make(chan motion.Event, 16)
 	b.mu.Lock()
+	if b.done {
+		b.mu.Unlock()
+		close(ch)
+		return ch
+	}
 	b.subs[ch] = struct{}{}
 	b.mu.Unlock()
 	return ch
@@ -62,6 +68,7 @@ func (b *broadcaster) run(src <-chan motion.Event) {
 		close(ch)
 	}
 	b.subs = make(map[chan motion.Event]struct{})
+	b.done = true
 	b.mu.Unlock()
 }
 
@@ -79,6 +86,8 @@ type Server struct {
 	mu                 sync.Mutex
 	streamSeen         map[string]time.Time
 	motionBroadcasters map[string]*broadcaster
+	rawBroadcasters    map[string]*broadcaster
+	motionCfg          config.MotionConfig
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
@@ -126,6 +135,23 @@ func (s *Server) WithMotionFeed(cameraID string, events <-chan motion.Event) *Se
 	return s
 }
 
+func (s *Server) WithMotionConfig(cfg config.MotionConfig) *Server {
+	s.motionCfg = cfg
+	return s
+}
+
+func (s *Server) WithRawFeed(cameraID string, events <-chan motion.Event) *Server {
+	bc := newBroadcaster()
+	s.mu.Lock()
+	if s.rawBroadcasters == nil {
+		s.rawBroadcasters = make(map[string]*broadcaster)
+	}
+	s.rawBroadcasters[cameraID] = bc
+	s.mu.Unlock()
+	go bc.run(events)
+	return s
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
@@ -144,6 +170,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/cameras/{id}/recordings", s.requireAuth(s.handleRecordings))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion", s.requireAuth(s.handleMotionEvents))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/live", s.requireAuth(s.handleMotionLive))
+	s.mux.HandleFunc("GET /api/cameras/{id}/motion/scores", s.requireAuth(s.handleMotionScores))
 	s.mux.HandleFunc("GET /api/stats", s.requireAuth(s.handleStats))
 
 	if s.frontend != nil {
@@ -239,11 +266,15 @@ func (s *Server) handleClientConfig(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
 	type cameraInfo struct {
-		ID string `json:"id"`
+		ID              string  `json:"id"`
+		MotionThreshold float64 `json:"motion_threshold"`
 	}
 	list := make([]cameraInfo, len(s.cameras))
 	for i, c := range s.cameras {
-		list[i] = cameraInfo{ID: c.ID}
+		list[i] = cameraInfo{
+			ID:              c.ID,
+			MotionThreshold: c.EffectiveMotionConfig(s.motionCfg).Threshold,
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(list)
@@ -503,6 +534,48 @@ func (s *Server) handleMotionLive(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	bc := s.motionBroadcasters[id]
+	s.mu.Unlock()
+	if bc == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	sub := bc.subscribe()
+	defer bc.unsubscribe(sub)
+
+	for {
+		select {
+		case ev, ok := <-sub:
+			if !ok {
+				return
+			}
+			data, _ := json.Marshal(map[string]any{
+				"time":  ev.Time.Format(time.RFC3339),
+				"score": ev.Score,
+			})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+func (s *Server) handleMotionScores(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	s.mu.Lock()
+	bc := s.rawBroadcasters[id]
 	s.mu.Unlock()
 	if bc == nil {
 		http.NotFound(w, r)

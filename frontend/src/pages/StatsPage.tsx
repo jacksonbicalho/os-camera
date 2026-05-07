@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { authHeaders, clearToken, getToken } from '../auth'
+import { authHeaders, clearToken } from '../auth'
 import AppLayout from '../components/AppLayout'
+import MotionScoreChart from '../components/MotionScoreChart'
 
-interface CameraMotionStats {
+interface CameraInfo {
   id: string
-  top_motion_score: number
-  min_motion_score: number
+  motion_threshold: number
 }
 
 interface Stats {
@@ -20,7 +20,6 @@ interface Stats {
   connected_clients: number
   max_size_bytes: number
   warn_percent: number
-  cameras: CameraMotionStats[]
 }
 
 function formatBytes(bytes: number): string {
@@ -39,46 +38,23 @@ function formatDuration(seconds: number): string {
   return `${h}h ${m}m`
 }
 
-interface LiveScore {
-  min: number
-  max: number
-}
-
 export default function StatsPage() {
   const navigate = useNavigate()
   const [stats, setStats] = useState<Stats | null>(null)
-  const [liveScores, setLiveScores] = useState<Record<string, LiveScore>>({})
+  const [cameras, setCameras] = useState<CameraInfo[]>([])
+  const [monitorOpen, setMonitorOpen] = useState(false)
+  const [monitorCam, setMonitorCam] = useState<string | null>(null)
 
-  // Stable key — only changes if the set of cameras changes (not on each poll)
-  const cameraIdsKey = (stats?.cameras ?? []).map(c => c.id).sort().join(',')
-
-  // SSE subscriptions — one per camera, (re)opened only when camera list changes
+  // Fetch camera list (for thresholds)
   useEffect(() => {
-    if (!cameraIdsKey) return
-    const token = getToken()
-    if (!token) return
-    const ids = cameraIdsKey.split(',')
-
-    const sources = ids.map(id => {
-      const es = new EventSource(`/api/cameras/${id}/motion/live?token=${encodeURIComponent(token)}`)
-      es.onmessage = (e) => {
-        const ev = JSON.parse(e.data) as { score: number }
-        setLiveScores(prev => {
-          const cur = prev[id]
-          return {
-            ...prev,
-            [id]: {
-              min: cur ? Math.min(cur.min, ev.score) : ev.score,
-              max: cur ? Math.max(cur.max, ev.score) : ev.score,
-            },
-          }
-        })
-      }
-      return es
-    })
-
-    return () => sources.forEach(es => es.close())
-  }, [cameraIdsKey])
+    fetch('/api/cameras', { headers: authHeaders() })
+      .then(res => {
+        if (res.status === 401) return []
+        return res.json()
+      })
+      .then(data => { if (Array.isArray(data)) setCameras(data) })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     const cancelled = { value: false }
@@ -106,6 +82,9 @@ export default function StatsPage() {
   const isOver = hasLimit && stats ? stats.recordings_bytes >= stats.max_size_bytes : false
 
   const barColor = isOver ? 'bg-red-600' : isWarning ? 'bg-yellow-500' : 'bg-blue-600'
+
+  const activeCamId = monitorCam ?? (cameras.length > 0 ? cameras[0].id : null)
+  const selectedCam = cameras.find(c => c.id === activeCamId)
 
   return (
     <AppLayout mainClassName="max-w-4xl mx-auto w-full">
@@ -191,36 +170,57 @@ export default function StatsPage() {
               </p>
             </div>
 
-            {/* Movimento hoje */}
-            {stats.cameras?.length > 0 && (
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 sm:col-span-2">
-                <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-4">Movimento hoje</p>
-                <div className="flex flex-col gap-3">
-                  {stats.cameras.map(cam => {
-                    const live = liveScores[cam.id]
-                    const baseMin = cam.min_motion_score > 0 ? cam.min_motion_score : null
-                    const baseMax = cam.top_motion_score > 0 ? cam.top_motion_score : null
-                    const displayMin = live ? (baseMin !== null ? Math.min(baseMin, live.min) : live.min) : baseMin
-                    const displayMax = live ? (baseMax !== null ? Math.max(baseMax, live.max) : live.max) : baseMax
-                    return (
-                      <div key={cam.id} className="flex items-center justify-between gap-4">
-                        <span className="text-sm text-gray-300 w-24 truncate shrink-0">{cam.id}</span>
-                        {displayMax !== null ? (
-                          <div className="flex items-center gap-3 flex-1 justify-end font-mono">
-                            <span className="text-xs text-gray-500">
-                              mín <span className="text-gray-300 font-medium">{displayMin}</span>
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              máx <span className="text-blue-400 font-medium">{displayMax}</span>
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-600">sem detecção hoje</span>
-                        )}
+            {/* Monitor de movimento em tempo real */}
+            {cameras.length > 0 && (
+              <div className="bg-gray-900 border border-gray-800 rounded-lg sm:col-span-2 overflow-hidden">
+                <button
+                  onClick={() => setMonitorOpen(o => !o)}
+                  className="w-full flex items-center justify-between p-5 text-left hover:bg-gray-800 transition-colors"
+                >
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase tracking-wider font-medium">Monitor de movimento</p>
+                    <p className="text-xs text-gray-600 mt-0.5">score bruto por frame · limiar configurado</p>
+                  </div>
+                  <svg
+                    className={`w-4 h-4 text-gray-500 transition-transform ${monitorOpen ? 'rotate-180' : ''}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {monitorOpen && (
+                  <div className="px-5 pb-5">
+                    {/* Camera selector */}
+                    {cameras.length > 1 && (
+                      <div className="flex gap-2 mb-4 flex-wrap">
+                        {cameras.map(cam => (
+                          <button
+                            key={cam.id}
+                            onClick={() => setMonitorCam(cam.id)}
+                            className={`px-3 py-1 rounded text-xs font-mono transition-colors ${
+                              activeCamId === cam.id
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                            }`}
+                          >
+                            {cam.id}
+                          </button>
+                        ))}
                       </div>
-                    )
-                  })}
-                </div>
+                    )}
+
+                    {selectedCam ? (
+                      <MotionScoreChart
+                        key={selectedCam.id}
+                        cameraId={selectedCam.id}
+                        threshold={selectedCam.motion_threshold}
+                      />
+                    ) : (
+                      <p className="text-xs text-gray-600 text-center py-4">Selecione uma câmera</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -49,7 +49,7 @@ func TestDetectorRecordsEventWhenDiffExceedsThreshold(t *testing.T) {
 	st := newStore(tmpDir)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
-	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil)
+	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil)
 
 	det.processFrames()
 
@@ -70,7 +70,7 @@ func TestDetectorIgnoresSmallDiff(t *testing.T) {
 	st := newStore(tmpDir)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
-	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil)
+	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil)
 
 	det.processFrames()
 
@@ -90,7 +90,7 @@ func TestDetectorTimestampIsApproxNow(t *testing.T) {
 	st := newStore(tmpDir)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
-	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil)
+	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil)
 
 	before := time.Now().UTC().Truncate(time.Second)
 	det.processFrames()
@@ -106,6 +106,56 @@ func TestDetectorTimestampIsApproxNow(t *testing.T) {
 	}
 	if evTime.Before(before) || evTime.After(after) {
 		t.Errorf("event time %v outside range [%v, %v]", evTime, before, after)
+	}
+}
+
+func TestDetectorNotifyRawCalledForSubThresholdDiff(t *testing.T) {
+	tmpDir := t.TempDir()
+	frameSize := 4
+	// Both frames identical → diff=0 < threshold=0.05; notifyRaw must still fire
+	frameData := bytes.Repeat([]byte{128}, frameSize*2)
+
+	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
+	cmd := &fakeFrameCommander{process: proc}
+	st := newStore(tmpDir)
+
+	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
+	var rawEvents []Event
+	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, func(ev Event) {
+		rawEvents = append(rawEvents, ev)
+	})
+
+	det.processFrames()
+
+	if len(rawEvents) != 1 {
+		t.Fatalf("expected 1 raw event, got %d", len(rawEvents))
+	}
+}
+
+func TestDetectorNotifyRawCalledAlongsideNotify(t *testing.T) {
+	tmpDir := t.TempDir()
+	frameSize := 4
+	// frame1=black, frame2=white → diff=1.0 > threshold; both notify and notifyRaw must fire
+	frameData := append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...)
+
+	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
+	cmd := &fakeFrameCommander{process: proc}
+	st := newStore(tmpDir)
+
+	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
+	var notified, rawNotified int
+	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(),
+		func(ev Event) { notified++ },
+		func(ev Event) { rawNotified++ },
+	)
+
+	det.processFrames()
+
+	if notified != 1 {
+		t.Fatalf("expected notify called 1 time, got %d", notified)
+	}
+	if rawNotified != 1 {
+		t.Fatalf("expected notifyRaw called 1 time, got %d", rawNotified)
 	}
 }
 

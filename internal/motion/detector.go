@@ -19,18 +19,19 @@ type frameCommander interface {
 }
 
 type detector struct {
-	cameraID  string
-	url       string
-	width     int
-	height    int
-	cfg       config.MotionConfig
-	commander frameCommander
-	st        *store
-	log       *slog.Logger
-	notify    func(Event)
+	cameraID   string
+	url        string
+	width      int
+	height     int
+	cfg        config.MotionConfig
+	commander  frameCommander
+	st         *store
+	log        *slog.Logger
+	notify     func(Event)
+	notifyRaw  func(Event)
 }
 
-func newDetector(cameraID, url string, width, height int, cfg config.MotionConfig, cmd frameCommander, st *store, log *slog.Logger, notify func(Event)) *detector {
+func newDetector(cameraID, url string, width, height int, cfg config.MotionConfig, cmd frameCommander, st *store, log *slog.Logger, notify func(Event), notifyRaw func(Event)) *detector {
 	return &detector{
 		cameraID:  cameraID,
 		url:       url,
@@ -41,6 +42,7 @@ func newDetector(cameraID, url string, width, height int, cfg config.MotionConfi
 		st:        st,
 		log:       log,
 		notify:    notify,
+		notifyRaw: notifyRaw,
 	}
 }
 
@@ -72,8 +74,11 @@ func (d *detector) processFrames() {
 
 		if prev != nil {
 			score := diffFrames(prev, cur)
+			ts := time.Now().UTC()
+			if d.notifyRaw != nil {
+				d.notifyRaw(Event{Time: ts, Score: score})
+			}
 			if score >= d.cfg.Threshold {
-				ts := time.Now().UTC()
 				if err := d.st.record(d.cameraID, ts, score); err != nil {
 					d.log.Error("motion: failed to record event", "camera", d.cameraID, "error", err)
 				} else if d.notify != nil {
