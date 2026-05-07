@@ -4,11 +4,13 @@ package exec
 
 import (
 	"io"
+	"os"
 	"os/exec"
 )
 
 func (c *FFmpegCommander) Start(name string, args ...string) (Process, error) {
 	cmd := exec.Command(name, args...)
+	cmd.Env = append(os.Environ(), "TZ=UTC")
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	stdin, err := cmd.StdinPipe()

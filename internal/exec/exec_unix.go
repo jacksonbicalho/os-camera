@@ -11,6 +11,7 @@ import (
 
 func (c *FFmpegCommander) Start(name string, args ...string) (Process, error) {
 	cmd := exec.Command(name, args...)
+	cmd.Env = append(os.Environ(), "TZ=UTC")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
