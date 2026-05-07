@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { authHeaders, clearToken } from '../auth'
+import { authHeaders, clearToken, getToken } from '../auth'
 import AppLayout from '../components/AppLayout'
 
 interface CameraMotionStats {
@@ -39,9 +39,46 @@ function formatDuration(seconds: number): string {
   return `${h}h ${m}m`
 }
 
+interface LiveScore {
+  min: number
+  max: number
+}
+
 export default function StatsPage() {
   const navigate = useNavigate()
   const [stats, setStats] = useState<Stats | null>(null)
+  const [liveScores, setLiveScores] = useState<Record<string, LiveScore>>({})
+
+  // Stable key — only changes if the set of cameras changes (not on each poll)
+  const cameraIdsKey = (stats?.cameras ?? []).map(c => c.id).sort().join(',')
+
+  // SSE subscriptions — one per camera, (re)opened only when camera list changes
+  useEffect(() => {
+    if (!cameraIdsKey) return
+    const token = getToken()
+    if (!token) return
+    const ids = cameraIdsKey.split(',')
+
+    const sources = ids.map(id => {
+      const es = new EventSource(`/api/cameras/${id}/motion/live?token=${encodeURIComponent(token)}`)
+      es.onmessage = (e) => {
+        const ev = JSON.parse(e.data) as { score: number }
+        setLiveScores(prev => {
+          const cur = prev[id]
+          return {
+            ...prev,
+            [id]: {
+              min: cur ? Math.min(cur.min, ev.score) : ev.score,
+              max: cur ? Math.max(cur.max, ev.score) : ev.score,
+            },
+          }
+        })
+      }
+      return es
+    })
+
+    return () => sources.forEach(es => es.close())
+  }, [cameraIdsKey])
 
   useEffect(() => {
     const cancelled = { value: false }
@@ -160,19 +197,21 @@ export default function StatsPage() {
                 <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-4">Movimento hoje</p>
                 <div className="flex flex-col gap-3">
                   {stats.cameras.map(cam => {
-                    const hasData = cam.top_motion_score > 0
-                    const minPct = cam.min_motion_score * 100
-                    const maxPct = cam.top_motion_score * 100
+                    const live = liveScores[cam.id]
+                    const baseMin = cam.min_motion_score > 0 ? cam.min_motion_score : null
+                    const baseMax = cam.top_motion_score > 0 ? cam.top_motion_score : null
+                    const displayMin = live ? (baseMin !== null ? Math.min(baseMin, live.min) : live.min) : baseMin
+                    const displayMax = live ? (baseMax !== null ? Math.max(baseMax, live.max) : live.max) : baseMax
                     return (
                       <div key={cam.id} className="flex items-center justify-between gap-4">
                         <span className="text-sm text-gray-300 w-24 truncate shrink-0">{cam.id}</span>
-                        {hasData ? (
-                          <div className="flex items-center gap-3 flex-1 justify-end">
+                        {displayMax !== null ? (
+                          <div className="flex items-center gap-3 flex-1 justify-end font-mono">
                             <span className="text-xs text-gray-500">
-                              mín <span className="text-gray-300 font-medium">{cam.min_motion_score.toFixed(4)} ({minPct.toFixed(2)}%)</span>
+                              mín <span className="text-gray-300 font-medium">{displayMin}</span>
                             </span>
                             <span className="text-xs text-gray-500">
-                              máx <span className="text-blue-400 font-medium">{cam.top_motion_score.toFixed(4)} ({maxPct.toFixed(2)}%)</span>
+                              máx <span className="text-blue-400 font-medium">{displayMax}</span>
                             </span>
                           </div>
                         ) : (
