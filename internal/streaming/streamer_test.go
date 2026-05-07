@@ -198,6 +198,80 @@ func containsArg(haystack []string, s string) bool {
 	return false
 }
 
+func TestHLSStreamerUsesWideSegmentPattern(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream"}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantPattern := filepath.Join(tmpDir, "cam1", "%06d.ts")
+	if !containsArg(cmd.calls[0], wantPattern) {
+		t.Errorf("expected segment pattern %q in args, got %v", wantPattern, cmd.calls[0])
+	}
+}
+
+func TestHLSStreamerDVRDisabledUsesListSizeFiveWithDeleteSegments(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream"}
+	server := config.ServerConfig{SegmentsPath: tmpDir, HLSDVRSeconds: 0}
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := cmd.calls[0]
+	if !containsSequence(args, "-hls_list_size", "5") {
+		t.Error("expected -hls_list_size 5 when DVR disabled")
+	}
+	for i, a := range args {
+		if a == "-hls_flags" && i+1 < len(args) {
+			if !contains(args[i+1], "delete_segments") {
+				t.Errorf("expected delete_segments in -hls_flags when DVR disabled, got %q", args[i+1])
+			}
+			return
+		}
+	}
+	t.Error("expected -hls_flags in args")
+}
+
+func TestHLSStreamerDVREnabledUsesCalculatedListSizeAndNoDeleteSegments(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream"}
+	server := config.ServerConfig{SegmentsPath: tmpDir, HLSDVRSeconds: 1200} // 20 min
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := cmd.calls[0]
+	// 1200s / 2s per segment = 600
+	if !containsSequence(args, "-hls_list_size", "600") {
+		t.Errorf("expected -hls_list_size 600 for 1200s DVR, got args: %v", args)
+	}
+	for i, a := range args {
+		if a == "-hls_flags" && i+1 < len(args) {
+			flags := args[i+1]
+			if contains(flags, "delete_segments") {
+				t.Errorf("expected no delete_segments in DVR mode, got flags %q", flags)
+			}
+			if !contains(flags, "program_date_time") {
+				t.Errorf("expected program_date_time in DVR mode flags, got %q", flags)
+			}
+			return
+		}
+	}
+	t.Error("expected -hls_flags in args")
+}
+
 func TestHLSStreamerAddsAnFlagWhenNoAudio(t *testing.T) {
 	tmpDir := t.TempDir()
 	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://192.168.1.10:554/stream"}

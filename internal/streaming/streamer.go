@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"camera/internal/config"
 	"camera/internal/exec"
@@ -37,17 +39,20 @@ func (s *HLSStreamer) Start() error {
 		return err
 	}
 	playlist := filepath.Join(dir, "index.m3u8")
-	segmentPattern := filepath.Join(dir, "%03d.ts")
+	segmentPattern := filepath.Join(dir, "%06d.ts")
 	s.log.Debug("starting hls ffmpeg", "camera", s.camera.ID, "playlist", playlist)
 	args := []string{"-i", s.camera.RTSPURL, "-c", "copy"}
 	if !s.stream.HasAudio {
 		args = append(args, "-an")
 	}
+
+	const segmentSeconds = 2
+	listSize, hlsFlags := hlsListSizeAndFlags(s.server.HLSDVRSeconds, segmentSeconds)
 	args = append(args,
 		"-f", "hls",
-		"-hls_time", "2",
-		"-hls_list_size", "5",
-		"-hls_flags", "delete_segments+append_list+independent_segments",
+		"-hls_time", strconv.Itoa(segmentSeconds),
+		"-hls_list_size", strconv.Itoa(listSize),
+		"-hls_flags", hlsFlags,
 		"-hls_segment_filename", segmentPattern,
 		playlist,
 	)
@@ -67,4 +72,16 @@ func (s *HLSStreamer) Stop() {
 	s.log.Info("stopping hls streamer", "camera", s.camera.ID)
 	s.process.Terminate()
 	s.process.Wait()
+}
+
+func hlsListSizeAndFlags(dvrSeconds, segmentSeconds int) (listSize int, flags string) {
+	if dvrSeconds <= 0 {
+		return 5, "delete_segments+append_list+independent_segments"
+	}
+	size := dvrSeconds / segmentSeconds
+	if size < 5 {
+		size = 5
+	}
+	parts := []string{"append_list", "independent_segments", "program_date_time"}
+	return size, strings.Join(parts, "+")
 }

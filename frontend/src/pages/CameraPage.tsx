@@ -6,7 +6,7 @@ import { ptBR } from 'date-fns/locale'
 import 'react-day-picker/style.css'
 import { authHeaders, clearToken, getToken } from '../auth'
 import AppLayout from '../components/AppLayout'
-import HLSPlayer from '../components/HLSPlayer'
+import HLSPlayer, { type HLSPlayerHandle } from '../components/HLSPlayer'
 import ListPanel from '../components/ListPanel'
 import { useScrollToPlayer } from '../hooks/useScrollToPlayer'
 import { useEventSource } from '../hooks/useEventSource'
@@ -67,6 +67,7 @@ export default function CameraPage() {
   const playerRef = useRef<HTMLDivElement>(null)
   const pendingSeekRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const hlsPlayerRef = useRef<HLSPlayerHandle>(null)
 
   useScrollToPlayer(playerRef, activeRecording?.filename ?? null)
 
@@ -157,7 +158,12 @@ export default function CameraPage() {
         ? new Date(asc[i + 1].start).getTime()
         : recStart + 5 * 60 * 1000
       if (evTime >= recStart && evTime < nextStart) {
-        if (asc[i].is_recording) return
+        if (asc[i].is_recording) {
+          setActiveEventIdx(sortedIdx)
+          setActiveRecording(null)
+          hlsPlayerRef.current?.seekTo(ev.time)
+          return
+        }
         const seekTime = Math.max(0, (evTime - recStart) / 1000 - 10)
         setActiveEventIdx(sortedIdx)
         if (activeRecording?.filename === asc[i].filename) {
@@ -221,7 +227,7 @@ export default function CameraPage() {
               </div>
 
               {isLive ? (
-                <HLSPlayer src={liveUrl} className="w-full aspect-video bg-black" cameraId={id} />
+                <HLSPlayer ref={hlsPlayerRef} src={liveUrl} className="w-full aspect-video bg-black" cameraId={id} />
               ) : (
                 <video
                   ref={videoRef}
