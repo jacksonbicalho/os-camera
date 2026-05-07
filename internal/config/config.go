@@ -53,9 +53,10 @@ type StorageConfig struct {
 }
 
 type MotionConfig struct {
-	Enabled   bool    `yaml:"enabled"`
-	Threshold float64 `yaml:"threshold"` // 0–1, fraction of pixels changed; default 0.02
-	FPS       int     `yaml:"fps"`       // frames per second to sample; default 2
+	Enabled         bool    `yaml:"enabled"`
+	Threshold       float64 `yaml:"threshold"`        // 0–1, fraction of pixels changed; default 0.02
+	FPS             int     `yaml:"fps"`              // frames per second to sample; default 2
+	CooldownSeconds int     `yaml:"cooldown_seconds"` // min seconds between events; 0 = disabled
 }
 
 type DefaultsConfig struct {

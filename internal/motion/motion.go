@@ -41,7 +41,7 @@ func New(cam config.CameraConfig, stream ffprobe.StreamInfo, cfg config.MotionCo
 	if threshold <= 0 {
 		threshold = 0.02
 	}
-	effective := config.MotionConfig{Enabled: true, Threshold: threshold, FPS: fps}
+	effective := config.MotionConfig{Enabled: true, Threshold: threshold, FPS: fps, CooldownSeconds: cfg.CooldownSeconds}
 
 	events := make(chan Event, 64)
 	notify := func(ev Event) {
