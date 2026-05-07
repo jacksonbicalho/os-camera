@@ -13,8 +13,12 @@ Sistema de monitoramento residencial via RTSP. Cada câmera configurada tem trê
 ```bash
 go test ./...                                         # todos os testes
 go test ./internal/server/... -run TestLogin          # teste específico
-make build                                            # binário com versão git injetada
+make build                                            # binário local com versão git injetada
 make run                                              # sobe Docker dev (camera-dev)
+make all                                              # cross-compila para linux-amd64/arm64/arm e windows-amd64
+make linux-amd64                                      # binário específico em dist/
+make rpi                                              # alias para linux-arm64 (Raspberry Pi 3/4/5 64-bit)
+./camera init                                         # wizard interativo → gera camera.yaml
 ```
 
 ### Frontend (`frontend/src/`)
@@ -45,7 +49,7 @@ docker compose --profile production up camera --build        # produção: biná
 
 | Binário | Responsabilidade |
 |---|---|
-| `cmd/camera` | Servidor principal: grava, faz streaming HLS, detecta movimento e serve a SPA. |
+| `cmd/camera` | Servidor principal: grava, faz streaming HLS, detecta movimento e serve a SPA. Suporta o subcomando `camera init` — wizard interativo que gera `camera.yaml` no diretório atual. |
 | `cmd/mcp-ffprobe` | Servidor MCP (stdio) que expõe `probe_stream` — executa ffprobe em uma URL RTSP e retorna os metadados JSON do stream. Útil para inspeção de câmeras via ferramentas MCP. |
 
 ### Fluxo de inicialização (`cmd/camera/main.go`)
@@ -65,7 +69,7 @@ O `server.Server` é levantado em goroutine separada e serve a SPA + API REST.
 | `internal/recorder` | Grava RTSP em chunks MP4. Armazena em `{storage}/{camera_id}/{YYYY/MM/DD}/{YYYYMMDDHHmmss}.mp4`. |
 | `internal/streaming` | Gera playlist HLS ao vivo em `{segments_path}/{camera_id}/index.m3u8`. Modo padrão: janela de 5 segmentos de 2s. Modo DVR (quando `server.hls_dvr_seconds > 0`): mantém todos os segmentos da janela, adiciona `EXT-X-PROGRAM-DATE-TIME` para seek por timestamp. |
 | `internal/motion` | Detecta movimento via ffmpeg pipe raw (frames grayscale em 1/4 da resolução). Expõe dois canais: `Events()` para eventos acima do limiar (gravados em `{storage}/{camera_id}/motion.ndjson`) e `RawScores()` para o score bruto de cada frame diff (usado na visualização em tempo real). Cooldown configurável (`motion.cooldown_seconds`) suprime eventos consecutivos dentro da janela. |
-| `internal/storage` | `Cleaner` que apaga MP4s mais antigos que `retention_days` e monitora uso vs `max_size_gb`. |
+| `internal/storage` | `Cleaner` que apaga MP4s mais antigos que `retention_minutes` e monitora uso vs `max_size_gb`. |
 | `internal/ffprobe` | Executa e parseia saída JSON do ffprobe para detectar codec, áudio e dimensões do stream. |
 | `internal/server` | HTTP server com JWT HS256 (segredo gerado a cada boot, expira em 24h). Serve API REST, arquivos de gravação, segmentos HLS e a SPA React. Inclui dois endpoints SSE de movimento: `/api/cameras/{id}/motion/live` (eventos acima do limiar) e `/api/cameras/{id}/motion/scores` (score bruto por frame). |
 | `internal/config` | Lê `camera.yaml`; variáveis de ambiente sobrescrevem campos específicos (ver abaixo). |
