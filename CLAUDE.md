@@ -21,7 +21,9 @@ make run                                              # sobe Docker dev (camera-
 
 SPA React/Vite/Tailwind com quatro páginas: `LoginPage` → `DashboardPage` → `CameraPage` / `StatsPage`. Token JWT em `localStorage` (`auth.ts`). Em desenvolvimento, Vite faz proxy de `/api` e `/stream` para `localhost:8080`.
 
-Componentes reutilizáveis relevantes: `AppLayout`, `HLSPlayer`, `ListPanel`, `MotionScoreChart` (gráfico SVG em tempo real dos scores brutos via SSE, escala logarítmica, janela de 30 s).
+Componentes reutilizáveis: `AppLayout`, `HLSPlayer`, `ListPanel`, `StatCard`, `MotionScoreChart` (gráfico SVG em tempo real dos scores brutos via SSE, escala logarítmica, janela de 30 s).
+
+Hooks customizados: `useEventSource(path, onMessage)` — abre um `EventSource` autenticado via `?token=` e chama `onMessage` a cada evento; `path = null` fecha sem abrir. `useScrollToPlayer(ref, key)` — faz scroll suave até o elemento quando `key` muda.
 
 ```bash
 cd frontend
