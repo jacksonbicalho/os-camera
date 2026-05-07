@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type HlsType from 'hls.js'
 import { getToken } from '../auth'
+import { useEventSource } from '../hooks/useEventSource'
 
 interface HLSPlayerProps {
   src: string
@@ -54,23 +55,17 @@ export default function HLSPlayer({ src, className, cameraId }: HLSPlayerProps) 
     }
   }, [src])
 
-  useEffect(() => {
-    if (!cameraId) return
-    const token = getToken()
-    if (!token) return
+  const handleMotionMessage = useCallback((data: string) => {
+    const ev = JSON.parse(data) as { score: number }
+    setMotionAlert({ score: ev.score })
+    if (alertTimerRef.current) clearTimeout(alertTimerRef.current)
+    alertTimerRef.current = setTimeout(() => setMotionAlert(null), 4000)
+  }, [])
 
-    const es = new EventSource(`/api/cameras/${cameraId}/motion/live?token=${encodeURIComponent(token)}`)
-    es.onmessage = (e) => {
-      const ev = JSON.parse(e.data) as { score: number }
-      setMotionAlert({ score: ev.score })
-      if (alertTimerRef.current) clearTimeout(alertTimerRef.current)
-      alertTimerRef.current = setTimeout(() => setMotionAlert(null), 4000)
-    }
-    return () => {
-      es.close()
-      if (alertTimerRef.current) clearTimeout(alertTimerRef.current)
-    }
-  }, [cameraId])
+  useEventSource(
+    cameraId ? `/api/cameras/${cameraId}/motion/live` : null,
+    handleMotionMessage,
+  )
 
   function handleMute(e: React.MouseEvent) {
     e.stopPropagation()
