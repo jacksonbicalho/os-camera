@@ -10,28 +10,28 @@ import (
 )
 
 type Cleaner struct {
-	storagePath   string
-	retentionDays int
-	maxSizeGB     float64
-	warnPercent   float64
-	log           *slog.Logger
+	storagePath      string
+	retentionMinutes int
+	maxSizeGB        float64
+	warnPercent      float64
+	log              *slog.Logger
 }
 
-func New(storagePath string, retentionDays int, maxSizeGB float64, warnPercent float64, log *slog.Logger) *Cleaner {
+func New(storagePath string, retentionMinutes int, maxSizeGB float64, warnPercent float64, log *slog.Logger) *Cleaner {
 	return &Cleaner{
-		storagePath:   storagePath,
-		retentionDays: retentionDays,
-		maxSizeGB:     maxSizeGB,
-		warnPercent:   warnPercent,
-		log:           log,
+		storagePath:      storagePath,
+		retentionMinutes: retentionMinutes,
+		maxSizeGB:        maxSizeGB,
+		warnPercent:      warnPercent,
+		log:              log,
 	}
 }
 
 func (c *Cleaner) Clean() {
-	if c.retentionDays == 0 {
+	if c.retentionMinutes == 0 {
 		return
 	}
-	cutoff := time.Now().Add(-time.Duration(c.retentionDays) * 24 * time.Hour)
+	cutoff := time.Now().Add(-time.Duration(c.retentionMinutes) * time.Minute)
 	filepath.WalkDir(c.storagePath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || filepath.Ext(path) != ".mp4" {
 			return nil

@@ -132,14 +132,18 @@ func main() {
 		}
 	}
 
+	cleanInterval := time.Duration(cfg.Storage.IntervalMinutes) * time.Minute
+	if cleanInterval == 0 {
+		cleanInterval = time.Hour
+	}
 	cleaner := storage.New(
 		cfg.Storage.Path,
-		cfg.Storage.RetentionDays,
+		cfg.Storage.RetentionMinutes,
 		cfg.Storage.MaxSizeGB,
 		cfg.Storage.WarnPercent,
 		slog,
 	)
-	go cleaner.Run(ctx, time.Hour)
+	go cleaner.Run(ctx, cleanInterval)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
