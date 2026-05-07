@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
@@ -9,6 +9,7 @@ import AppLayout from '../components/AppLayout'
 import HLSPlayer from '../components/HLSPlayer'
 import ListPanel from '../components/ListPanel'
 import { useScrollToPlayer } from '../hooks/useScrollToPlayer'
+import { useEventSource } from '../hooks/useEventSource'
 
 interface Recording {
   filename: string
@@ -137,27 +138,24 @@ export default function CameraPage() {
     return () => clearInterval(interval)
   }, [selectedDate, id, navigate, hasMore, sortOrder])
 
-  useEffect(() => {
-    const today = new Date()
-    const isToday =
-      selectedDate.getFullYear() === today.getFullYear() &&
-      selectedDate.getMonth() === today.getMonth() &&
-      selectedDate.getDate() === today.getDate()
-    if (!isToday || !id) return
+  const today = new Date()
+  const isToday =
+    selectedDate.getFullYear() === today.getFullYear() &&
+    selectedDate.getMonth() === today.getMonth() &&
+    selectedDate.getDate() === today.getDate()
 
-    const token = getToken()
-    if (!token) return
+  const handleLiveMotion = useCallback((data: string) => {
+    const ev = JSON.parse(data) as MotionEvent
+    setMotionEvents(prev => {
+      if (prev.some(p => p.time === ev.time)) return prev
+      return [ev, ...prev]
+    })
+  }, [])
 
-    const es = new EventSource(`/api/cameras/${id}/motion/live?token=${encodeURIComponent(token)}`)
-    es.onmessage = (e) => {
-      const ev = JSON.parse(e.data) as MotionEvent
-      setMotionEvents(prev => {
-        if (prev.some(p => p.time === ev.time)) return prev
-        return [ev, ...prev]
-      })
-    }
-    return () => es.close()
-  }, [selectedDate, id])
+  useEventSource(
+    isToday && id ? `/api/cameras/${id}/motion/live` : null,
+    handleLiveMotion,
+  )
 
   async function loadMore() {
     setLoadingMore(true)
