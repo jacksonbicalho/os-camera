@@ -19,16 +19,18 @@ type frameCommander interface {
 }
 
 type detector struct {
-	cameraID   string
-	url        string
-	width      int
-	height     int
-	cfg        config.MotionConfig
-	commander  frameCommander
-	st         *store
-	log        *slog.Logger
-	notify     func(Event)
-	notifyRaw  func(Event)
+	cameraID  string
+	url       string
+	width     int
+	height    int
+	cfg       config.MotionConfig
+	commander frameCommander
+	st        *store
+	log       *slog.Logger
+	notify    func(Event)
+	notifyRaw func(Event)
+	now       func() time.Time
+	lastEvent time.Time
 }
 
 func newDetector(cameraID, url string, width, height int, cfg config.MotionConfig, cmd frameCommander, st *store, log *slog.Logger, notify func(Event), notifyRaw func(Event)) *detector {
@@ -43,7 +45,15 @@ func newDetector(cameraID, url string, width, height int, cfg config.MotionConfi
 		log:       log,
 		notify:    notify,
 		notifyRaw: notifyRaw,
+		now:       func() time.Time { return time.Now().UTC() },
 	}
+}
+
+func (d *detector) cooldownElapsed(now time.Time) bool {
+	if d.cfg.CooldownSeconds <= 0 {
+		return true
+	}
+	return now.Sub(d.lastEvent) >= time.Duration(d.cfg.CooldownSeconds)*time.Second
 }
 
 // processFrames starts the frame commander, reads frames until EOF,
@@ -74,14 +84,15 @@ func (d *detector) processFrames() {
 
 		if prev != nil {
 			score := diffFrames(prev, cur)
-			ts := time.Now().UTC()
+			ts := d.now()
 			if d.notifyRaw != nil {
 				d.notifyRaw(Event{Time: ts, Score: score})
 			}
-			if score >= d.cfg.Threshold {
+			if score >= d.cfg.Threshold && d.cooldownElapsed(ts) {
 				if err := d.st.record(d.cameraID, ts, score); err != nil {
 					d.log.Error("motion: failed to record event", "camera", d.cameraID, "error", err)
 				} else if d.notify != nil {
+					d.lastEvent = ts
 					d.notify(Event{Time: ts, Score: score})
 				}
 			}

@@ -27,6 +27,7 @@ motion:
   enabled: false      # habilita detecção de movimento por câmera
   threshold: 0.02     # fração mínima de pixels alterados para registrar evento (0.0–1.0)
   fps: 2              # frames por segundo capturados para análise de movimento
+  cooldown_seconds: 30  # tempo mínimo entre eventos consecutivos (0 = desabilitado)
 
 cameras:
   - id: entrada

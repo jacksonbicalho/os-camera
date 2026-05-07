@@ -159,6 +159,96 @@ func TestDetectorNotifyRawCalledAlongsideNotify(t *testing.T) {
 	}
 }
 
+func TestDetectorCooldownSuppressesEventsWithinWindow(t *testing.T) {
+	tmpDir := t.TempDir()
+	frameSize := 4
+	// 3 frames: black → white → black → two diffs of 1.0, both above threshold
+	frameData := append(bytes.Repeat([]byte{0}, frameSize),
+		append(bytes.Repeat([]byte{255}, frameSize),
+			bytes.Repeat([]byte{0}, frameSize)...)...)
+
+	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
+	cmd := &fakeFrameCommander{process: proc}
+	st := newStore(tmpDir)
+
+	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1, CooldownSeconds: 30}
+	var notified int
+	det := newDetector("cam", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(),
+		func(Event) { notified++ }, nil)
+
+	t0 := time.Date(2026, 5, 7, 10, 0, 0, 0, time.UTC)
+	call := 0
+	det.now = func() time.Time {
+		call++
+		if call == 1 {
+			return t0 // first diff: event fires
+		}
+		return t0.Add(10 * time.Second) // second diff: within 30s cooldown
+	}
+
+	det.processFrames()
+
+	if notified != 1 {
+		t.Errorf("expected 1 notify within cooldown, got %d", notified)
+	}
+}
+
+func TestDetectorCooldownAllowsEventAfterWindow(t *testing.T) {
+	tmpDir := t.TempDir()
+	frameSize := 4
+	frameData := append(bytes.Repeat([]byte{0}, frameSize),
+		append(bytes.Repeat([]byte{255}, frameSize),
+			bytes.Repeat([]byte{0}, frameSize)...)...)
+
+	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
+	cmd := &fakeFrameCommander{process: proc}
+	st := newStore(tmpDir)
+
+	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1, CooldownSeconds: 30}
+	var notified int
+	det := newDetector("cam", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(),
+		func(Event) { notified++ }, nil)
+
+	t0 := time.Date(2026, 5, 7, 10, 0, 0, 0, time.UTC)
+	call := 0
+	det.now = func() time.Time {
+		call++
+		if call == 1 {
+			return t0
+		}
+		return t0.Add(31 * time.Second) // after cooldown window
+	}
+
+	det.processFrames()
+
+	if notified != 2 {
+		t.Errorf("expected 2 notifies after cooldown expires, got %d", notified)
+	}
+}
+
+func TestDetectorCooldownZeroDisablesSuppression(t *testing.T) {
+	tmpDir := t.TempDir()
+	frameSize := 4
+	frameData := append(bytes.Repeat([]byte{0}, frameSize),
+		append(bytes.Repeat([]byte{255}, frameSize),
+			bytes.Repeat([]byte{0}, frameSize)...)...)
+
+	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
+	cmd := &fakeFrameCommander{process: proc}
+	st := newStore(tmpDir)
+
+	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1, CooldownSeconds: 0}
+	var notified int
+	det := newDetector("cam", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(),
+		func(Event) { notified++ }, nil)
+
+	det.processFrames()
+
+	if notified != 2 {
+		t.Errorf("expected 2 notifies when cooldown=0, got %d", notified)
+	}
+}
+
 func readAllEvents(t *testing.T, basePath, cameraID string) []map[string]any {
 	t.Helper()
 	var events []map[string]any
