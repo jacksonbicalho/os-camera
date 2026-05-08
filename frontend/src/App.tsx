@@ -6,6 +6,13 @@ import DashboardPage from './pages/DashboardPage'
 
 const CameraPage = lazy(() => import('./pages/CameraPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
+const StatsSettingsPage = lazy(() => import('./pages/settings/StatsSettingsPage'))
+const CamerasSettingsPage = lazy(() => import('./pages/settings/CamerasSettingsPage'))
+const CameraDetailSettingsPage = lazy(() => import('./pages/settings/CameraDetailSettingsPage'))
+const ServerSettingsPage = lazy(() => import('./pages/settings/ServerSettingsPage'))
+const StorageSettingsPage = lazy(() => import('./pages/settings/StorageSettingsPage'))
+const SystemSettingsPage = lazy(() => import('./pages/settings/SystemSettingsPage'))
+const AboutPage = lazy(() => import('./pages/settings/AboutPage'))
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation()
@@ -14,38 +21,28 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     : <Navigate to="/login" state={{ from: location.pathname + location.search }} replace />
 }
 
+function Lazy({ children }: { children: React.ReactNode }) {
+  return (
+    <RequireAuth>
+      <Suspense>{children}</Suspense>
+    </RequireAuth>
+  )
+}
+
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route
-        path="/"
-        element={
-          <RequireAuth>
-            <DashboardPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/cameras/:id"
-        element={
-          <RequireAuth>
-            <Suspense>
-              <CameraPage />
-            </Suspense>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/stats"
-        element={
-          <RequireAuth>
-            <Suspense>
-              <StatsPage />
-            </Suspense>
-          </RequireAuth>
-        }
-      />
+      <Route path="/" element={<RequireAuth><DashboardPage /></RequireAuth>} />
+      <Route path="/cameras/:id" element={<Lazy><CameraPage /></Lazy>} />
+      <Route path="/stats" element={<Lazy><StatsPage /></Lazy>} />
+      <Route path="/settings/stats" element={<Lazy><StatsSettingsPage /></Lazy>} />
+      <Route path="/settings/cameras" element={<Lazy><CamerasSettingsPage /></Lazy>} />
+      <Route path="/settings/cameras/:id" element={<Lazy><CameraDetailSettingsPage /></Lazy>} />
+      <Route path="/settings/server" element={<Lazy><ServerSettingsPage /></Lazy>} />
+      <Route path="/settings/storage" element={<Lazy><StorageSettingsPage /></Lazy>} />
+      <Route path="/settings/system" element={<Lazy><SystemSettingsPage /></Lazy>} />
+      <Route path="/settings/about" element={<Lazy><AboutPage /></Lazy>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

@@ -26,6 +26,8 @@ import (
 )
 
 var version = "dev"
+var commit = ""
+var builtAt = ""
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "init" {
@@ -104,6 +106,8 @@ func main() {
 			WithStorageConfig(cfg.Storage).
 			WithDefaults(cfg.Defaults).
 			WithVersion(version).
+			WithBuildInfo(commit, builtAt).
+			WithSystemConfig(cfg.Debug, cfg.Log).
 			WithMotionConfig(cfg.Motion)
 
 		for _, cam := range cfg.Cameras {

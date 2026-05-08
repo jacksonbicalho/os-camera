@@ -994,6 +994,250 @@ func TestCamerasIncludesMotionThreshold(t *testing.T) {
 	}
 }
 
+func TestGetSettingsReturnsFullConfig(t *testing.T) {
+	hasAudio := true
+	cameras := []config.CameraConfig{
+		{
+			ID:      "cam1",
+			RTSPURL: "rtsp://192.168.1.10:554/stream",
+		},
+		{
+			ID:       "cam2",
+			RTSPURL:  "rtsp://user:secret@192.168.1.11:554/stream",
+			HasAudio: &hasAudio,
+			Width:    1920, Height: 1080,
+			VideoCodec: "h264",
+		},
+	}
+	serverCfg := config.ServerConfig{Username: "admin", Password: "pw", Port: 8080, HLSDVRSeconds: 30}
+	storageCfg := config.StorageConfig{Path: "/data", RetentionMinutes: 1440, MaxSizeGB: 10, WarnPercent: 80}
+	motionCfg := config.MotionConfig{Enabled: true, Threshold: 0.02, FPS: 2, CooldownSeconds: 30}
+	defaultsCfg := config.DefaultsConfig{
+		ChunkDuration:     config.Duration(5 * time.Minute),
+		ReconnectInterval: config.Duration(10 * time.Second),
+	}
+
+	srv := server.NewServer(serverCfg, "America/Sao_Paulo", cameras, discardLogger(), nil).
+		WithStorageConfig(storageCfg).
+		WithMotionConfig(motionCfg).
+		WithDefaults(defaultsCfg)
+
+	token := loginAndGetToken(t, srv, "admin", "pw")
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp struct {
+		Timezone string `json:"timezone"`
+		Server   struct {
+			Port          int    `json:"port"`
+			Username      string `json:"username"`
+			HLSDVRSeconds int    `json:"hls_dvr_seconds"`
+		} `json:"server"`
+		Storage struct {
+			Path             string  `json:"path"`
+			RetentionMinutes int     `json:"retention_minutes"`
+			MaxSizeGB        float64 `json:"max_size_gb"`
+			WarnPercent      float64 `json:"warn_percent"`
+		} `json:"storage"`
+		Motion struct {
+			Enabled         bool    `json:"enabled"`
+			Threshold       float64 `json:"threshold"`
+			FPS             int     `json:"fps"`
+			CooldownSeconds int     `json:"cooldown_seconds"`
+		} `json:"motion"`
+		Defaults struct {
+			ChunkDuration     string `json:"chunk_duration"`
+			ReconnectInterval string `json:"reconnect_interval"`
+		} `json:"defaults"`
+		Cameras []struct {
+			ID         string  `json:"id"`
+			RTSPURL    string  `json:"rtsp_url"`
+			VideoCodec string  `json:"video_codec"`
+			Width      int     `json:"width"`
+			Height     int     `json:"height"`
+		} `json:"cameras"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Timezone != "America/Sao_Paulo" {
+		t.Errorf("expected timezone America/Sao_Paulo, got %q", resp.Timezone)
+	}
+	if resp.Server.Port != 8080 {
+		t.Errorf("expected port 8080, got %d", resp.Server.Port)
+	}
+	if resp.Server.Username != "admin" {
+		t.Errorf("expected username admin, got %q", resp.Server.Username)
+	}
+	if resp.Server.HLSDVRSeconds != 30 {
+		t.Errorf("expected hls_dvr_seconds 30, got %d", resp.Server.HLSDVRSeconds)
+	}
+	if resp.Storage.RetentionMinutes != 1440 {
+		t.Errorf("expected retention_minutes 1440, got %d", resp.Storage.RetentionMinutes)
+	}
+	if resp.Motion.Threshold != 0.02 {
+		t.Errorf("expected threshold 0.02, got %f", resp.Motion.Threshold)
+	}
+	if resp.Defaults.ChunkDuration != "5m0s" {
+		t.Errorf("expected chunk_duration 5m0s, got %q", resp.Defaults.ChunkDuration)
+	}
+	if resp.Defaults.ReconnectInterval != "10s" {
+		t.Errorf("expected reconnect_interval 10s, got %q", resp.Defaults.ReconnectInterval)
+	}
+	if len(resp.Cameras) != 2 {
+		t.Fatalf("expected 2 cameras, got %d", len(resp.Cameras))
+	}
+	if resp.Cameras[1].VideoCodec != "h264" {
+		t.Errorf("expected video_codec h264, got %q", resp.Cameras[1].VideoCodec)
+	}
+}
+
+func TestGetSettingsIncludesDebugAndLog(t *testing.T) {
+	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	logCfg := config.LogConfig{Output: "file", Path: "/var/log/camera"}
+	srv := server.NewServer(cfg, "UTC", nil, discardLogger(), nil).
+		WithSystemConfig(true, logCfg)
+
+	token := loginAndGetToken(t, srv, "u", "p")
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Debug bool `json:"debug"`
+		Log   struct {
+			Output string `json:"output"`
+			Path   string `json:"path"`
+		} `json:"log"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.Debug {
+		t.Error("expected debug=true")
+	}
+	if resp.Log.Output != "file" {
+		t.Errorf("expected log.output=file, got %q", resp.Log.Output)
+	}
+	if resp.Log.Path != "/var/log/camera" {
+		t.Errorf("expected log.path=/var/log/camera, got %q", resp.Log.Path)
+	}
+}
+
+func TestGetSettingsRequiresAuth(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestGetSettingsMasksRTSPCredentials(t *testing.T) {
+	cameras := []config.CameraConfig{
+		{ID: "cam1", RTSPURL: "rtsp://user:s3cr3t@192.168.1.10:554/live"},
+		{ID: "cam2", RTSPURL: "rtsp://192.168.1.11:554/stream"},
+	}
+	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+
+	token := loginAndGetToken(t, srv, "u", "p")
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	var resp struct {
+		Cameras []struct {
+			RTSPURL string `json:"rtsp_url"`
+		} `json:"cameras"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Cameras) != 2 {
+		t.Fatalf("expected 2 cameras, got %d", len(resp.Cameras))
+	}
+	if strings.Contains(resp.Cameras[0].RTSPURL, "s3cr3t") {
+		t.Errorf("password must not appear in rtsp_url, got %q", resp.Cameras[0].RTSPURL)
+	}
+	if !strings.Contains(resp.Cameras[0].RTSPURL, "user") {
+		t.Errorf("username should remain visible, got %q", resp.Cameras[0].RTSPURL)
+	}
+	if resp.Cameras[1].RTSPURL != "rtsp://192.168.1.11:554/stream" {
+		t.Errorf("url without credentials should remain unchanged, got %q", resp.Cameras[1].RTSPURL)
+	}
+}
+
+func TestGetAboutReturnsVersionAndUptime(t *testing.T) {
+	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	srv := server.NewServer(cfg, "UTC", nil, discardLogger(), nil).
+		WithVersion("v2.0.0").
+		WithBuildInfo("abc1234", "2026-05-08T12:00:00Z")
+
+	token := loginAndGetToken(t, srv, "u", "p")
+	req := httptest.NewRequest(http.MethodGet, "/api/about", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Version       string  `json:"version"`
+		Commit        string  `json:"commit"`
+		BuiltAt       string  `json:"built_at"`
+		UptimeSeconds float64 `json:"uptime_seconds"`
+		GoVersion     string  `json:"go_version"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Version != "v2.0.0" {
+		t.Errorf("expected version v2.0.0, got %q", resp.Version)
+	}
+	if resp.Commit != "abc1234" {
+		t.Errorf("expected commit abc1234, got %q", resp.Commit)
+	}
+	if resp.BuiltAt != "2026-05-08T12:00:00Z" {
+		t.Errorf("expected built_at 2026-05-08T12:00:00Z, got %q", resp.BuiltAt)
+	}
+	if resp.UptimeSeconds < 0 {
+		t.Errorf("expected uptime_seconds >= 0, got %f", resp.UptimeSeconds)
+	}
+	if resp.GoVersion == "" {
+		t.Errorf("expected non-empty go_version")
+	}
+}
+
+func TestGetAboutRequiresAuth(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	srv := server.NewServer(cfg, "UTC", nil, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/about", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
 func TestClientConfigIncludesVersion(t *testing.T) {
 	cfg := config.ServerConfig{Username: "u", Password: "p"}
 	srv := server.NewServer(cfg, "UTC", nil, discardLogger(), nil).

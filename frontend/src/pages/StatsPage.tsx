@@ -4,44 +4,17 @@ import { authHeaders, clearToken } from '../auth'
 import AppLayout from '../components/AppLayout'
 import MotionScoreChart from '../components/MotionScoreChart'
 import StatCard from '../components/StatCard'
+import { useStats } from '../hooks/useStats'
+import { formatBytes, formatDuration } from './statsUtils'
 
 interface CameraInfo {
   id: string
   motion_threshold: number
 }
 
-interface Stats {
-  recordings_bytes: number
-  recordings_count: number
-  recordings_duration_seconds: number
-  forecast_seconds: number
-  disk_total_bytes: number
-  disk_free_bytes: number
-  camera_count: number
-  connected_clients: number
-  max_size_bytes: number
-  warn_percent: number
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
-}
-
-function formatDuration(seconds: number): string {
-  if (seconds <= 0) return '—'
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  if (h === 0) return `${m}m`
-  if (m === 0) return `${h}h`
-  return `${h}h ${m}m`
-}
-
 export default function StatsPage() {
   const navigate = useNavigate()
-  const [stats, setStats] = useState<Stats | null>(null)
+  const stats = useStats('/stats')
   const [cameras, setCameras] = useState<CameraInfo[]>([])
   const [monitorOpen, setMonitorOpen] = useState(false)
   const [monitorCam, setMonitorCam] = useState<string | null>(null)
@@ -54,22 +27,6 @@ export default function StatsPage() {
       })
       .then(data => { if (Array.isArray(data)) setCameras(data) })
       .catch(() => {})
-  }, [navigate])
-
-  useEffect(() => {
-    const cancelled = { value: false }
-    function fetchStats() {
-      fetch('/api/stats', { headers: authHeaders() })
-        .then(res => {
-          if (res.status === 401) { clearToken(); navigate('/login', { state: { from: '/stats' }, replace: true }); return null }
-          return res.json()
-        })
-        .then(data => { if (!cancelled.value && data) setStats(data) })
-        .catch(() => {})
-    }
-    fetchStats()
-    const interval = setInterval(fetchStats, 30_000)
-    return () => { cancelled.value = true; clearInterval(interval) }
   }, [navigate])
 
   const hasLimit = (stats?.max_size_bytes ?? 0) > 0
