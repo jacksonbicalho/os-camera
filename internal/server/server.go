@@ -8,8 +8,10 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -75,8 +77,13 @@ type Server struct {
 	cfg                config.ServerConfig
 	storageCfg         config.StorageConfig
 	defaults           config.DefaultsConfig
+	logCfg             config.LogConfig
+	debug              bool
 	timezone           string
 	version            string
+	commit             string
+	builtAt            string
+	startTime          time.Time
 	cameras            []config.CameraConfig
 	log                *slog.Logger
 	secret             []byte
@@ -94,14 +101,15 @@ func NewServer(cfg config.ServerConfig, timezone string, cameras []config.Camera
 	rand.Read(secret)
 
 	s := &Server{
-		cfg:      cfg,
-		timezone: timezone,
-		cameras:  cameras,
-		log:      log,
-		secret:   secret,
-		frontend: frontend,
-		mux:      http.NewServeMux(),
+		cfg:        cfg,
+		timezone:   timezone,
+		cameras:    cameras,
+		log:        log,
+		secret:     secret,
+		frontend:   frontend,
+		mux:        http.NewServeMux(),
 		streamSeen: make(map[string]time.Time),
+		startTime:  time.Now(),
 	}
 	s.routes()
 	return s
@@ -119,6 +127,18 @@ func (s *Server) WithDefaults(cfg config.DefaultsConfig) *Server {
 
 func (s *Server) WithVersion(v string) *Server {
 	s.version = v
+	return s
+}
+
+func (s *Server) WithBuildInfo(commit, builtAt string) *Server {
+	s.commit = commit
+	s.builtAt = builtAt
+	return s
+}
+
+func (s *Server) WithSystemConfig(debug bool, logCfg config.LogConfig) *Server {
+	s.debug = debug
+	s.logCfg = logCfg
 	return s
 }
 
@@ -158,6 +178,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	s.mux.HandleFunc("GET /api/config", s.handleClientConfig)
+	s.mux.HandleFunc("GET /api/settings", s.requireAuth(s.handleSettings))
+	s.mux.HandleFunc("GET /api/about", s.requireAuth(s.handleAbout))
 	s.mux.HandleFunc("GET /api/cameras", s.requireAuth(s.handleCameras))
 
 	streamHandler := http.StripPrefix("/stream/", http.FileServer(http.Dir(s.cfg.SegmentsPath)))
@@ -256,6 +278,103 @@ func (s *Server) activeStreamClients(now time.Time) int {
 		active++
 	}
 	return active
+}
+
+func maskRTSP(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	return u.Redacted()
+}
+
+func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
+	type motionDTO struct {
+		Enabled         bool    `json:"enabled"`
+		Threshold       float64 `json:"threshold"`
+		FPS             int     `json:"fps"`
+		CooldownSeconds int     `json:"cooldown_seconds"`
+	}
+	type cameraDTO struct {
+		ID                string     `json:"id"`
+		RTSPURL           string     `json:"rtsp_url"`
+		ChunkDuration     string     `json:"chunk_duration"`
+		ReconnectInterval string     `json:"reconnect_interval"`
+		VideoCodec        string     `json:"video_codec"`
+		HasAudio          *bool      `json:"has_audio"`
+		Width             int        `json:"width"`
+		Height            int        `json:"height"`
+		Motion            *motionDTO `json:"motion"`
+	}
+	cameras := make([]cameraDTO, len(s.cameras))
+	for i, c := range s.cameras {
+		var motion *motionDTO
+		if c.Motion != nil {
+			motion = &motionDTO{
+				Enabled:         c.Motion.Enabled,
+				Threshold:       c.Motion.Threshold,
+				FPS:             c.Motion.FPS,
+				CooldownSeconds: c.Motion.CooldownSeconds,
+			}
+		}
+		cameras[i] = cameraDTO{
+			ID:                c.ID,
+			RTSPURL:           maskRTSP(c.RTSPURL),
+			ChunkDuration:     time.Duration(c.ChunkDuration).String(),
+			ReconnectInterval: time.Duration(c.ReconnectInterval).String(),
+			VideoCodec:        c.VideoCodec,
+			HasAudio:          c.HasAudio,
+			Width:             c.Width,
+			Height:            c.Height,
+			Motion:            motion,
+		}
+	}
+	resp := map[string]any{
+		"timezone": s.timezone,
+		"debug":    s.debug,
+		"log": map[string]any{
+			"output": s.logCfg.Output,
+			"path":   s.logCfg.Path,
+		},
+		"server": map[string]any{
+			"port":            s.cfg.Port,
+			"segments_path":   s.cfg.SegmentsPath,
+			"recordings_path": s.cfg.RecordingsPath,
+			"hls_dvr_seconds": s.cfg.HLSDVRSeconds,
+			"username":        s.cfg.Username,
+		},
+		"storage": map[string]any{
+			"path":              s.storageCfg.Path,
+			"retention_minutes": s.storageCfg.RetentionMinutes,
+			"interval_minutes":  s.storageCfg.IntervalMinutes,
+			"max_size_gb":       s.storageCfg.MaxSizeGB,
+			"warn_percent":      s.storageCfg.WarnPercent,
+		},
+		"motion": motionDTO{
+			Enabled:         s.motionCfg.Enabled,
+			Threshold:       s.motionCfg.Threshold,
+			FPS:             s.motionCfg.FPS,
+			CooldownSeconds: s.motionCfg.CooldownSeconds,
+		},
+		"defaults": map[string]any{
+			"chunk_duration":     time.Duration(s.defaults.ChunkDuration).String(),
+			"reconnect_interval": time.Duration(s.defaults.ReconnectInterval).String(),
+		},
+		"cameras": cameras,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) handleAbout(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"version":        s.version,
+		"commit":         s.commit,
+		"built_at":       s.builtAt,
+		"uptime_seconds": time.Since(s.startTime).Seconds(),
+		"go_version":     runtime.Version(),
+	})
 }
 
 func (s *Server) handleClientConfig(w http.ResponseWriter, r *http.Request) {
