@@ -1,36 +1,41 @@
-import { useState, useRef, useEffect } from 'react'
-import { useNavigate, NavLink, Link } from 'react-router-dom'
-import { clearToken } from '../auth'
+import { useState, useRef, useEffect } from "react";
+import { useNavigate, NavLink, Link } from "react-router-dom";
+import { clearToken } from "../auth";
 
 interface HeaderProps {
-  username?: string
+  username?: string;
 }
 
 function useDropdown() {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
-  return { open, setOpen, ref }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+  return { open, setOpen, ref };
 }
 
-export default function Header({ username = 'usuário' }: HeaderProps) {
-  const { open: userOpen, setOpen: setUserOpen, ref: userRef } = useDropdown()
-  const navigate = useNavigate()
+export default function Header({ username = "usuário" }: HeaderProps) {
+  const { open: userOpen, setOpen: setUserOpen, ref: userRef } = useDropdown();
+
+  const navigate = useNavigate();
 
   function logout() {
-    clearToken()
-    navigate('/login')
+    clearToken();
+    navigate("/login");
   }
 
   return (
     <header className="flex items-center justify-between px-6 py-3 bg-gray-900 border-b border-gray-800">
-      <Link to="/" className="text-white font-semibold tracking-wide hover:text-gray-200 transition-colors">
+      <Link
+        to="/"
+        className="text-white font-semibold tracking-wide hover:text-gray-200 transition-colors"
+      >
         📷 Camera
       </Link>
 
@@ -38,7 +43,7 @@ export default function Header({ username = 'usuário' }: HeaderProps) {
         <NavLink
           to="/settings/stats"
           className={({ isActive }) =>
-            `text-sm transition-colors ${isActive || location.pathname.startsWith('/settings') ? 'text-white' : 'text-gray-400 hover:text-white'}`
+            `text-sm transition-colors ${isActive || location.pathname.startsWith("/settings") ? "text-white" : "text-gray-400 hover:text-white"}`
           }
         >
           Configurações
@@ -46,12 +51,22 @@ export default function Header({ username = 'usuário' }: HeaderProps) {
 
         <div className="relative" ref={userRef}>
           <button
-            onClick={() => setUserOpen(v => !v)}
+            onClick={() => setUserOpen((v) => !v)}
             className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-colors"
           >
             {username}
-            <svg className={`w-4 h-4 transition-transform ${userOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            <svg
+              className={`w-4 h-4 transition-transform ${userOpen ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
             </svg>
           </button>
           {userOpen && (
@@ -67,5 +82,5 @@ export default function Header({ username = 'usuário' }: HeaderProps) {
         </div>
       </div>
     </header>
-  )
+  );
 }
