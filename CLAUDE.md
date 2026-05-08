@@ -21,6 +21,15 @@ make rpi                                              # alias para linux-arm64 (
 ./camera init                                         # wizard interativo → gera camera.yaml
 ```
 
+### Release
+
+```bash
+./scripts/release.sh             # calcula bump, gera changelog, cria tag anotada e faz push
+./scripts/release.sh --dry-run   # prévia sem criar nada
+```
+
+O script lê os commits convencionais desde a última tag, determina o bump (`feat` → minor, breaking → major, resto → patch), gera o changelog agrupado por tipo e cria uma tag no formato `vX.Y.Z-beta.N`. O push da tag dispara o GitHub Actions que publica a release. Todas as releases são beta enquanto o projeto não atingir estabilidade.
+
 ### Frontend (`frontend/src/`)
 
 SPA React/Vite/Tailwind. Páginas principais: `LoginPage` → `DashboardPage` → `CameraPage` / `StatsPage`. Seção de configurações em `/settings/*` com sidebar lateral (padrão GitHub Settings). Token JWT em `localStorage` (`auth.ts`). Em desenvolvimento, Vite faz proxy de `/api` e `/stream` para `localhost:8080`.
