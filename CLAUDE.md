@@ -21,6 +21,28 @@ make rpi                                              # alias para linux-arm64 (
 ./camera init                                         # wizard interativo → gera camera.yaml
 ```
 
+### CI e branch protection
+
+Todo PR para `master` dispara `.github/workflows/ci.yml` com dois jobs paralelos:
+- **Backend**: `go test ./...` + `go build ./...`
+- **Frontend**: `yarn lint` + `yarn test --run` + `yarn build`
+
+O branch `master` está protegido: push direto bloqueado, PR obrigatório, 1 aprovação humana obrigatória, checks `Backend` e `Frontend` obrigatórios. Para reaplicar as regras (ex: em novo repositório):
+
+```bash
+gh api repos/{owner}/{repo}/branches/master/protection \
+  --method PUT \
+  --header "Accept: application/vnd.github+json" \
+  --input - <<'EOF'
+{
+  "required_status_checks": { "strict": true, "contexts": ["Backend", "Frontend"] },
+  "enforce_admins": true,
+  "required_pull_request_reviews": { "dismiss_stale_reviews": true, "required_approving_review_count": 1 },
+  "restrictions": null
+}
+EOF
+```
+
 ### Release
 
 ```bash
