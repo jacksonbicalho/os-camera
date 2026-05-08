@@ -23,11 +23,11 @@ make rpi                                              # alias para linux-arm64 (
 
 ### Frontend (`frontend/src/`)
 
-SPA React/Vite/Tailwind com quatro páginas: `LoginPage` → `DashboardPage` → `CameraPage` / `StatsPage`. Token JWT em `localStorage` (`auth.ts`). Em desenvolvimento, Vite faz proxy de `/api` e `/stream` para `localhost:8080`.
+SPA React/Vite/Tailwind. Páginas principais: `LoginPage` → `DashboardPage` → `CameraPage` / `StatsPage`. Seção de configurações em `/settings/*` com sidebar lateral (padrão GitHub Settings). Token JWT em `localStorage` (`auth.ts`). Em desenvolvimento, Vite faz proxy de `/api` e `/stream` para `localhost:8080`.
 
-Componentes reutilizáveis: `AppLayout`, `HLSPlayer`, `ListPanel`, `StatCard`, `MotionScoreChart` (gráfico SVG em tempo real dos scores brutos via SSE, escala logarítmica, janela de 30 s).
+Componentes reutilizáveis: `AppLayout`, `SettingsLayout` (sidebar + conteúdo para `/settings/*`), `SettingsSection` (card com lista de campos label/valor), `HLSPlayer`, `ListPanel`, `StatCard`, `MotionScoreChart` (gráfico SVG em tempo real dos scores brutos via SSE, escala logarítmica, janela de 30 s).
 
-Hooks customizados: `useEventSource(path, onMessage)` — abre um `EventSource` autenticado via `?token=` e chama `onMessage` a cada evento; `path = null` fecha sem abrir. `useScrollToPlayer(ref, key)` — faz scroll suave até o elemento quando `key` muda.
+Hooks customizados: `useEventSource(path, onMessage)` — abre um `EventSource` autenticado via `?token=` e chama `onMessage` a cada evento; `path = null` fecha sem abrir. `useScrollToPlayer(ref, key)` — faz scroll suave até o elemento quando `key` muda. `useStats(redirectTo)` — busca `/api/stats` com polling de 30 s. `useSettings(redirectTo)` / `useAbout(redirectTo)` — buscam `/api/settings` e `/api/about`.
 
 ```bash
 cd frontend
@@ -71,7 +71,7 @@ O `server.Server` é levantado em goroutine separada e serve a SPA + API REST.
 | `internal/motion` | Detecta movimento via ffmpeg pipe raw (frames grayscale em 1/4 da resolução). Expõe dois canais: `Events()` para eventos acima do limiar (gravados em `{storage}/{camera_id}/motion.ndjson`) e `RawScores()` para o score bruto de cada frame diff (usado na visualização em tempo real). Cooldown configurável (`motion.cooldown_seconds`) suprime eventos consecutivos dentro da janela. |
 | `internal/storage` | `Cleaner` que apaga MP4s mais antigos que `retention_minutes` e monitora uso vs `max_size_gb`. |
 | `internal/ffprobe` | Executa e parseia saída JSON do ffprobe para detectar codec, áudio e dimensões do stream. |
-| `internal/server` | HTTP server com JWT HS256 (segredo gerado a cada boot, expira em 24h). Serve API REST, arquivos de gravação, segmentos HLS e a SPA React. Inclui dois endpoints SSE de movimento: `/api/cameras/{id}/motion/live` (eventos acima do limiar) e `/api/cameras/{id}/motion/scores` (score bruto por frame). |
+| `internal/server` | HTTP server com JWT HS256 (segredo gerado a cada boot, expira em 24h). Serve API REST, arquivos de gravação, segmentos HLS e a SPA React. Inclui dois endpoints SSE de movimento: `/api/cameras/{id}/motion/live` (eventos acima do limiar) e `/api/cameras/{id}/motion/scores` (score bruto por frame). Endpoints de configuração: `GET /api/settings` (configuração completa sanitizada, autenticado) e `GET /api/about` (versão, commit, uptime, versão do Go, autenticado). |
 | `internal/config` | Lê `camera.yaml`; variáveis de ambiente sobrescrevem campos específicos (ver abaixo). |
 | `internal/logger` | `stdout`: JSON em stdout. `file`: um arquivo por nível (`debug.log`, `info.log`, `warn.log`, `error.log`) no diretório configurado. |
 | `frontend/` | SPA React/Vite/Tailwind embutida via `go:embed all:dist`. |
@@ -79,6 +79,10 @@ O `server.Server` é levantado em goroutine separada e serve a SPA + API REST.
 ### Autenticação
 
 O JWT é assinado com um segredo aleatório gerado no boot — tokens não sobrevivem a reinicializações do servidor. O token é aceito via header `Authorization: Bearer <token>` ou query param `?token=<token>` (necessário para `<video src>` e `<HLSPlayer>`).
+
+### Build info
+
+`version`, `commit` e `builtAt` são injetados via `-ldflags` no `Makefile`. Em `main.go` são passados ao servidor via `WithVersion(version)` e `WithBuildInfo(commit, builtAt)`. O endpoint `GET /api/about` expõe esses valores junto com `uptime_seconds` e `go_version`.
 
 ## Variáveis de ambiente
 
@@ -94,14 +98,22 @@ O desenvolvimento segue **XP (Extreme Programming)** com **TDD red → green →
 - O **navigator** (usuário) define a história, revisa o código e aprova cada etapa.
 - O **driver** (Claude) implementa, sempre guiado pelos testes.
 
+### Histórias
+
+Histórias ficam em `stories/` (gitignored). Ao iniciar uma nova história:
+- Criar o arquivo `stories/STORY_<descricao>.md` com contexto, critérios de aceitação e notas técnicas.
+- Ao concluir a implementação, adicionar uma seção `## Revisão` no arquivo com checklist do que foi feito.
+- **Só proceder com commit e merge após o navigator aprovar marcando `[x] Aprovado` na seção Revisão.**
+
 ### Fluxo por história
 
-1. Abrir uma branch nova por história: `git checkout -b <tipo>/<descricao-curta>` a partir de `master`.
+1. Criar `stories/STORY_<descricao>.md` e abrir uma branch: `git checkout -b <tipo>/<descricao-curta>` a partir de `master`.
 2. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.
 3. Implementar o mínimo para o teste passar (**green**).
 4. Refatorar se necessário, mantendo os testes verdes (**refactor**).
 5. Executar `yarn lint` e `yarn test` (frontend) ou `go test ./...` (backend).
-6. Commitar com mensagem semântica e mergear em `master` com `--no-ff`.
+6. Adicionar seção `## Revisão` na história e aguardar aprovação do navigator.
+7. Commitar com mensagem semântica e mergear em `master` com `--no-ff`.
 
 ### Commits semânticos
 
