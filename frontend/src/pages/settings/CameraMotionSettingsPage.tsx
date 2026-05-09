@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import MotionScoreChart from '../../components/MotionScoreChart'
@@ -115,6 +115,13 @@ export default function CameraMotionSettingsPage() {
 
   return (
     <SettingsLayout>
+      <nav className="flex items-center gap-1.5 text-xs text-gray-500 mb-5">
+        <Link to="/settings/cameras" className="hover:text-gray-300 transition-colors">Câmeras</Link>
+        <span>/</span>
+        <Link to={`/settings/cameras/${id}`} className="hover:text-gray-300 transition-colors">{id}</Link>
+        <span>/</span>
+        <span className="text-gray-300">Detecção de movimento</span>
+      </nav>
       <h2 className="text-lg font-semibold text-gray-200 mb-6">{id} — detecção de movimento</h2>
       {!settings ? (
         <p className="text-gray-500 text-sm">Carregando...</p>

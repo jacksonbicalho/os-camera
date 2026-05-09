@@ -49,20 +49,18 @@ export default function CameraDetailSettingsPage() {
               { label: 'Intervalo de reconexão', value: cam.reconnect_interval === '0s' ? `herda global (${settings.defaults.reconnect_interval})` : cam.reconnect_interval },
             ]}
           />
-          <div className="bg-gray-900 border border-gray-800 rounded-lg px-5 py-4 flex items-center justify-between">
+          <Link
+            to={`/settings/cameras/${id}/motion`}
+            className="bg-gray-900 border border-gray-800 rounded-lg px-5 py-4 flex items-center justify-between hover:border-gray-700 hover:bg-gray-800/50 transition-colors group"
+          >
             <div>
               <p className="text-sm font-medium text-gray-300">Detecção de movimento</p>
               <p className="text-xs text-gray-500 mt-0.5">
                 {cam.motion ? 'configuração override ativa' : 'herda configuração global'}
               </p>
             </div>
-            <Link
-              to={`/settings/cameras/${id}/motion`}
-              className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
-            >
-              Ver detalhes →
-            </Link>
-          </div>
+            <span className="text-sm text-blue-400 group-hover:text-blue-300 transition-colors">Ver detalhes →</span>
+          </Link>
         </div>
       )}
     </SettingsLayout>
