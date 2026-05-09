@@ -94,6 +94,9 @@ type Server struct {
 	motionBroadcasters map[string]*broadcaster
 	rawBroadcasters    map[string]*broadcaster
 	motionCfg          config.MotionConfig
+	peakMu             sync.RWMutex
+	dailyPeakRaw       map[string]float64
+	dailyPeakDate      map[string]string
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
@@ -167,8 +170,33 @@ func (s *Server) WithRawFeed(cameraID string, events <-chan motion.Event) *Serve
 	}
 	s.rawBroadcasters[cameraID] = bc
 	s.mu.Unlock()
-	go bc.run(events)
+
+	tee := make(chan motion.Event, 256)
+	go func() {
+		defer close(tee)
+		for ev := range events {
+			s.updateDailyPeak(cameraID, ev)
+			tee <- ev
+		}
+	}()
+	go bc.run(tee)
 	return s
+}
+
+func (s *Server) updateDailyPeak(cameraID string, ev motion.Event) {
+	today := ev.Time.UTC().Format("2006-01-02")
+	s.peakMu.Lock()
+	defer s.peakMu.Unlock()
+	if s.dailyPeakRaw == nil {
+		s.dailyPeakRaw = make(map[string]float64)
+		s.dailyPeakDate = make(map[string]string)
+	}
+	if s.dailyPeakDate[cameraID] != today {
+		s.dailyPeakRaw[cameraID] = ev.Score
+		s.dailyPeakDate[cameraID] = today
+	} else if ev.Score > s.dailyPeakRaw[cameraID] {
+		s.dailyPeakRaw[cameraID] = ev.Score
+	}
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -192,6 +220,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion", s.requireAuth(s.handleMotionEvents))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/live", s.requireAuth(s.handleMotionLive))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/scores", s.requireAuth(s.handleMotionScores))
+	s.mux.HandleFunc("GET /api/cameras/{id}/motion/daily-peak", s.requireAuth(s.handleMotionDailyPeak))
 	s.mux.HandleFunc("GET /api/stats", s.requireAuth(s.handleStats))
 
 	if s.frontend != nil {
@@ -725,6 +754,36 @@ func (s *Server) handleMotionScores(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+func (s *Server) handleMotionDailyPeak(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	s.mu.Lock()
+	_, hasRaw := s.rawBroadcasters[id]
+	s.mu.Unlock()
+	if !hasRaw {
+		http.NotFound(w, r)
+		return
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	s.peakMu.RLock()
+	peak := s.dailyPeakRaw[id]
+	date := s.dailyPeakDate[id]
+	s.peakMu.RUnlock()
+
+	if date != today {
+		peak = 0
+		date = today
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"camera_id":      id,
+		"peak_raw_score": peak,
+		"date":           date,
+	})
 }
 
 func (s *Server) handleMotionEvents(w http.ResponseWriter, r *http.Request) {
