@@ -38,8 +38,10 @@ detect_arch() {
 }
 
 latest_version() {
-    curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+    # /releases/latest returns 404 for pre-release-only repos; use list instead
+    curl -fsSL "https://api.github.com/repos/${REPO}/releases" \
         | grep '"tag_name"' \
+        | head -1 \
         | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
 }
 
