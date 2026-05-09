@@ -368,6 +368,99 @@ cameras:
 	}
 }
 
+func TestEffectiveRetentionBothSet(t *testing.T) {
+	s := config.StorageConfig{
+		Retention: config.RetentionConfig{
+			WithMotionMinutes:    10080,
+			WithoutMotionMinutes: 1440,
+		},
+	}
+
+	withMotion, withoutMotion := s.EffectiveRetention()
+
+	if withMotion != 10080 {
+		t.Errorf("expected withMotion=10080, got %d", withMotion)
+	}
+	if withoutMotion != 1440 {
+		t.Errorf("expected withoutMotion=1440, got %d", withoutMotion)
+	}
+}
+
+func TestEffectiveRetentionOnlyWithMotionSet(t *testing.T) {
+	s := config.StorageConfig{
+		Retention: config.RetentionConfig{
+			WithMotionMinutes: 10080,
+		},
+	}
+
+	withMotion, withoutMotion := s.EffectiveRetention()
+
+	if withMotion != 10080 {
+		t.Errorf("expected withMotion=10080, got %d", withMotion)
+	}
+	if withoutMotion != 10080 {
+		t.Errorf("expected withoutMotion to inherit withMotion (10080), got %d", withoutMotion)
+	}
+}
+
+func TestEffectiveRetentionOnlyWithoutMotionSet(t *testing.T) {
+	s := config.StorageConfig{
+		Retention: config.RetentionConfig{
+			WithoutMotionMinutes: 1440,
+		},
+	}
+
+	withMotion, withoutMotion := s.EffectiveRetention()
+
+	if withMotion != 0 {
+		t.Errorf("expected withMotion=0 (keep indefinitely), got %d", withMotion)
+	}
+	if withoutMotion != 1440 {
+		t.Errorf("expected withoutMotion=1440, got %d", withoutMotion)
+	}
+}
+
+func TestEffectiveRetentionFallsBackToLegacyRetentionMinutes(t *testing.T) {
+	s := config.StorageConfig{
+		RetentionMinutes: 120,
+	}
+
+	withMotion, withoutMotion := s.EffectiveRetention()
+
+	if withMotion != 120 {
+		t.Errorf("expected withMotion=120 from legacy fallback, got %d", withMotion)
+	}
+	if withoutMotion != 120 {
+		t.Errorf("expected withoutMotion=120 from legacy fallback, got %d", withoutMotion)
+	}
+}
+
+func TestLoadParsesRetentionBlock(t *testing.T) {
+	path := writeTempYAML(t, `
+storage:
+  path: /tmp/recordings
+  retention:
+    with_motion_minutes: 10080
+    without_motion_minutes: 1440
+
+cameras:
+  - id: cam1
+    rtsp_url: rtsp://localhost:8554/stream
+`)
+
+	cfg, err := config.Load(path)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Storage.Retention.WithMotionMinutes != 10080 {
+		t.Errorf("expected WithMotionMinutes=10080, got %d", cfg.Storage.Retention.WithMotionMinutes)
+	}
+	if cfg.Storage.Retention.WithoutMotionMinutes != 1440 {
+		t.Errorf("expected WithoutMotionMinutes=1440, got %d", cfg.Storage.Retention.WithoutMotionMinutes)
+	}
+}
+
 func TestEffectiveMotionConfigFallsBackToGlobal(t *testing.T) {
 	cam := config.CameraConfig{}
 	global := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 4}

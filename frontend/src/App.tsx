@@ -9,6 +9,7 @@ const StatsPage = lazy(() => import('./pages/StatsPage'))
 const StatsSettingsPage = lazy(() => import('./pages/settings/StatsSettingsPage'))
 const CamerasSettingsPage = lazy(() => import('./pages/settings/CamerasSettingsPage'))
 const CameraDetailSettingsPage = lazy(() => import('./pages/settings/CameraDetailSettingsPage'))
+const CameraMotionSettingsPage = lazy(() => import('./pages/settings/CameraMotionSettingsPage'))
 const ServerSettingsPage = lazy(() => import('./pages/settings/ServerSettingsPage'))
 const StorageSettingsPage = lazy(() => import('./pages/settings/StorageSettingsPage'))
 const SystemSettingsPage = lazy(() => import('./pages/settings/SystemSettingsPage'))
@@ -39,6 +40,7 @@ export default function App() {
       <Route path="/settings/stats" element={<Lazy><StatsSettingsPage /></Lazy>} />
       <Route path="/settings/cameras" element={<Lazy><CamerasSettingsPage /></Lazy>} />
       <Route path="/settings/cameras/:id" element={<Lazy><CameraDetailSettingsPage /></Lazy>} />
+      <Route path="/settings/cameras/:id/motion" element={<Lazy><CameraMotionSettingsPage /></Lazy>} />
       <Route path="/settings/server" element={<Lazy><ServerSettingsPage /></Lazy>} />
       <Route path="/settings/storage" element={<Lazy><StorageSettingsPage /></Lazy>} />
       <Route path="/settings/system" element={<Lazy><SystemSettingsPage /></Lazy>} />

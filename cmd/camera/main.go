@@ -145,9 +145,16 @@ func main() {
 	if cleanInterval == 0 {
 		cleanInterval = time.Hour
 	}
+	chunkDuration := time.Duration(cfg.Defaults.ChunkDuration)
+	if chunkDuration == 0 {
+		chunkDuration = 5 * time.Minute
+	}
+	withMotion, withoutMotion := cfg.Storage.EffectiveRetention()
 	cleaner := storage.New(
 		cfg.Storage.Path,
-		cfg.Storage.RetentionMinutes,
+		withMotion,
+		withoutMotion,
+		chunkDuration,
 		cfg.Storage.MaxSizeGB,
 		cfg.Storage.WarnPercent,
 		slog,

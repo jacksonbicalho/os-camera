@@ -8,8 +8,11 @@ import { authHeaders, clearToken, getToken } from '../auth'
 import AppLayout from '../components/AppLayout'
 import HLSPlayer, { type HLSPlayerHandle } from '../components/HLSPlayer'
 import ListPanel from '../components/ListPanel'
+import MotionScoreChart from '../components/MotionScoreChart'
 import { useScrollToPlayer } from '../hooks/useScrollToPlayer'
 import { useEventSource } from '../hooks/useEventSource'
+import { useSettings } from '../hooks/useSettings'
+import { useMotionPeak } from '../hooks/useMotionPeak'
 import { mergeRecordings, eventsWithinRecordings } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 
@@ -176,6 +179,11 @@ export default function CameraPage() {
       }
     }
   }
+
+  const settings = useSettings(`/cameras/${id}`)
+  const motionPeak = useMotionPeak(id, `/cameras/${id}`)
+  const cam = settings?.cameras.find(c => c.id === id)
+  const effectiveThreshold = (cam?.motion ?? settings?.motion)?.threshold ?? 0
 
   const liveUrl = `/stream/${id}/index.m3u8`
   const isLive = activeRecording === null
@@ -378,6 +386,33 @@ export default function CameraPage() {
             </div>
           </div>
         </div>
+
+        {/* Detecção de movimento */}
+        <Link
+          to={`/settings/cameras/${id}/motion`}
+          className="mt-6 block bg-gray-900 border border-gray-800 rounded-lg overflow-hidden hover:border-gray-700 transition-colors group"
+        >
+          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Detecção de movimento</p>
+            <div className="flex items-center gap-3">
+              {motionPeak !== null && effectiveThreshold > 0 && (
+                <span className="text-xs text-gray-500 font-mono">
+                  pico {(() => {
+                    const v = motionPeak.peak_raw_score
+                    if (v <= 0) return '—'
+                    if (v >= 1) return v.toFixed(2)
+                    const d = Math.max(2, -Math.floor(Math.log10(v)) + 1)
+                    return v.toFixed(d)
+                  })()} · {(motionPeak.peak_raw_score / effectiveThreshold).toFixed(2)}× limiar
+                </span>
+              )}
+              <span className="text-xs text-blue-400 group-hover:text-blue-300 transition-colors">Configurar →</span>
+            </div>
+          </div>
+          <div className="px-5 py-4">
+            <MotionScoreChart cameraId={id!} threshold={effectiveThreshold} />
+          </div>
+        </Link>
     </AppLayout>
   )
 }

@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import { useSettings } from '../../hooks/useSettings'
@@ -49,21 +49,18 @@ export default function CameraDetailSettingsPage() {
               { label: 'Intervalo de reconexão', value: cam.reconnect_interval === '0s' ? `herda global (${settings.defaults.reconnect_interval})` : cam.reconnect_interval },
             ]}
           />
-          {cam.motion ? (
-            <SettingsSection
-              title="Detecção de movimento (override)"
-              fields={[
-                { label: 'Ativado', value: cam.motion.enabled ? 'sim' : 'não' },
-                { label: 'Limiar', value: cam.motion.threshold },
-                { label: 'FPS de amostragem', value: cam.motion.fps },
-                { label: 'Cooldown (segundos)', value: cam.motion.cooldown_seconds === 0 ? 'desativado' : cam.motion.cooldown_seconds },
-              ]}
-            />
-          ) : (
-            <div className="bg-gray-900 border border-gray-800 rounded-lg px-5 py-4">
-              <p className="text-xs text-gray-500">Detecção de movimento: herda configuração global</p>
+          <Link
+            to={`/settings/cameras/${id}/motion`}
+            className="bg-gray-900 border border-gray-800 rounded-lg px-5 py-4 flex items-center justify-between hover:border-gray-700 hover:bg-gray-800/50 transition-colors group"
+          >
+            <div>
+              <p className="text-sm font-medium text-gray-300">Detecção de movimento</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {cam.motion ? 'configuração override ativa' : 'herda configuração global'}
+              </p>
             </div>
-          )}
+            <span className="text-sm text-blue-400 group-hover:text-blue-300 transition-colors">Ver detalhes →</span>
+          </Link>
         </div>
       )}
     </SettingsLayout>

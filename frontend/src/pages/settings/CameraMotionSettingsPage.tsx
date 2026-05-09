@@ -1,0 +1,167 @@
+import { useParams, Link } from 'react-router-dom'
+import SettingsLayout from '../../components/SettingsLayout'
+import SettingsSection from '../../components/SettingsSection'
+import MotionScoreChart from '../../components/MotionScoreChart'
+import { useSettings } from '../../hooks/useSettings'
+import { useMotionPeak } from '../../hooks/useMotionPeak'
+
+function formatScore(v: number): string {
+  if (v <= 0) return '—'
+  if (v >= 1) return v.toFixed(2)
+  const decimals = Math.max(2, -Math.floor(Math.log10(v)) + 1)
+  return v.toFixed(decimals)
+}
+
+function ratioLabel(peak: number, threshold: number): React.ReactNode {
+  if (peak === 0 || threshold === 0) return '—'
+  const ratio = peak / threshold
+  const ratioStr = `${formatScore(peak)} / ${formatScore(threshold)} = ${ratio.toFixed(2)}×`
+
+  let hint: string
+  if (ratio >= 1) {
+    hint = 'Pico ultrapassou o limiar — eventos de movimento foram registrados hoje.'
+  } else if (ratio >= 0.5) {
+    hint = 'Pico próximo ao limiar — considere reduzir o limiar para capturar este nível de movimento.'
+  } else {
+    hint = 'Pico bem abaixo do limiar — nenhum evento foi disparado hoje.'
+  }
+
+  return (
+    <span>
+      {ratioStr}
+      <span className="block mt-1 text-xs text-gray-500 font-sans">{hint}</span>
+    </span>
+  )
+}
+
+function RatioGuide({ peak, threshold }: { peak: number; threshold: number }) {
+  const ratio = threshold > 0 ? peak / threshold : 0
+  const zone: 'high' | 'mid' | 'low' = ratio >= 1 ? 'high' : ratio >= 0.5 ? 'mid' : 'low'
+
+  const rows: Array<{
+    id: 'high' | 'mid' | 'low'
+    range: string
+    color: string
+    example: string
+    suggestion: string
+  }> = [
+    {
+      id: 'high',
+      range: '≥ 1×',
+      color: 'text-green-400',
+      example: zone === 'high' ? `${ratio.toFixed(2)}×` : '1.50×',
+      suggestion: zone === 'high'
+        ? `Limiar ${formatScore(threshold)} funcionando. Se houver falsos positivos, aumente para ~${formatScore(threshold * 2)}.`
+        : 'Pico ultrapassou o limiar — eventos registrados. Aumente o limiar se houver falsos positivos.',
+    },
+    {
+      id: 'mid',
+      range: '0.5× – 1×',
+      color: 'text-yellow-400',
+      example: zone === 'mid' ? `${ratio.toFixed(2)}×` : '0.75×',
+      suggestion: zone === 'mid'
+        ? `Pico (${formatScore(peak)}) próximo ao limiar (${formatScore(threshold)}). Reduza para ~${formatScore(peak * 0.8)} para capturar este movimento.`
+        : 'Próximo ao limiar. Reduza o limiar para capturar este nível de movimento.',
+    },
+    {
+      id: 'low',
+      range: '< 0.5×',
+      color: 'text-gray-500',
+      example: zone === 'low' ? `${ratio.toFixed(2)}×` : '0.41×',
+      suggestion: zone === 'low'
+        ? `Pico (${formatScore(peak)}) bem abaixo do limiar (${formatScore(threshold)}). Para detectar este nível, reduza para ~${formatScore(peak * 1.5)}.`
+        : 'Bem abaixo do limiar — nenhum evento disparado.',
+    },
+  ]
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-lg px-5 py-4">
+      <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">Como interpretar a relação</p>
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="border-b border-gray-800">
+            <th className="text-left text-gray-500 font-medium pb-2 pr-4">Situação</th>
+            <th className="text-left text-gray-500 font-medium pb-2 pr-4">Hoje</th>
+            <th className="text-left text-gray-500 font-medium pb-2">Sugestão</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-800">
+          {rows.map(row => {
+            const active = row.id === zone
+            return (
+              <tr key={row.id} className={active ? 'bg-gray-800/50' : 'opacity-40'}>
+                <td className={`py-2 pr-4 font-mono whitespace-nowrap ${row.color}`}>{row.range}</td>
+                <td className={`py-2 pr-4 font-mono whitespace-nowrap ${active ? 'text-white' : 'text-gray-400'}`}>
+                  {row.example}
+                </td>
+                <td className={`py-2 ${active ? 'text-gray-300' : 'text-gray-500'}`}>{row.suggestion}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+export default function CameraMotionSettingsPage() {
+  const { id } = useParams<{ id: string }>()
+  const settings = useSettings(`/settings/cameras/${id}/motion`)
+  const peak = useMotionPeak(id, `/settings/cameras/${id}/motion`)
+  const cam = settings?.cameras.find(c => c.id === id)
+
+  const effectiveMotion = cam?.motion ?? settings?.motion ?? null
+  const effectiveThreshold = effectiveMotion?.threshold ?? 0
+
+  return (
+    <SettingsLayout>
+      <nav className="flex items-center gap-1.5 text-xs text-gray-500 mb-5">
+        <Link to="/settings/cameras" className="hover:text-gray-300 transition-colors">Câmeras</Link>
+        <span>/</span>
+        <Link to={`/settings/cameras/${id}`} className="hover:text-gray-300 transition-colors">{id}</Link>
+        <span>/</span>
+        <span className="text-gray-300">Detecção de movimento</span>
+      </nav>
+      <h2 className="text-lg font-semibold text-gray-200 mb-6">{id} — detecção de movimento</h2>
+      {!settings ? (
+        <p className="text-gray-500 text-sm">Carregando...</p>
+      ) : !cam ? (
+        <p className="text-gray-500 text-sm">Câmera não encontrada.</p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-lg px-5 py-4">
+            <p className="text-xs font-medium text-gray-400 mb-3">Score em tempo real</p>
+            <MotionScoreChart cameraId={id!} threshold={effectiveThreshold} />
+          </div>
+
+          {peak !== null && (
+            <>
+              <SettingsSection
+                title="Hoje"
+                fields={[
+                  { label: 'Pico de score bruto', value: formatScore(peak.peak_raw_score) },
+                  { label: 'Limiar configurado', value: effectiveThreshold },
+                  {
+                    label: 'Relação pico / limiar',
+                    value: ratioLabel(peak.peak_raw_score, effectiveThreshold),
+                  },
+                ]}
+              />
+              <RatioGuide peak={peak.peak_raw_score} threshold={effectiveThreshold} />
+            </>
+          )}
+
+          <SettingsSection
+            title={cam.motion ? 'Configuração (override)' : 'Configuração (global)'}
+            fields={[
+              { label: 'Ativado', value: effectiveMotion?.enabled ? 'sim' : 'não' },
+              { label: 'Limiar', value: effectiveThreshold },
+              { label: 'FPS de amostragem', value: effectiveMotion?.fps ?? '—' },
+              { label: 'Cooldown (segundos)', value: effectiveMotion?.cooldown_seconds === 0 ? 'desativado' : effectiveMotion?.cooldown_seconds ?? '—' },
+            ]}
+          />
+        </div>
+      )}
+    </SettingsLayout>
+  )
+}

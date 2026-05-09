@@ -1010,7 +1010,7 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 		},
 	}
 	serverCfg := config.ServerConfig{Username: "admin", Password: "pw", Port: 8080, HLSDVRSeconds: 30}
-	storageCfg := config.StorageConfig{Path: "/data", RetentionMinutes: 1440, MaxSizeGB: 10, WarnPercent: 80}
+	storageCfg := config.StorageConfig{Path: "/data", Retention: config.RetentionConfig{WithMotionMinutes: 10080, WithoutMotionMinutes: 1440}, MaxSizeGB: 10, WarnPercent: 80}
 	motionCfg := config.MotionConfig{Enabled: true, Threshold: 0.02, FPS: 2, CooldownSeconds: 30}
 	defaultsCfg := config.DefaultsConfig{
 		ChunkDuration:     config.Duration(5 * time.Minute),
@@ -1040,10 +1040,11 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 			HLSDVRSeconds int    `json:"hls_dvr_seconds"`
 		} `json:"server"`
 		Storage struct {
-			Path             string  `json:"path"`
-			RetentionMinutes int     `json:"retention_minutes"`
-			MaxSizeGB        float64 `json:"max_size_gb"`
-			WarnPercent      float64 `json:"warn_percent"`
+			Path                 string  `json:"path"`
+			WithMotionMinutes    int     `json:"with_motion_minutes"`
+			WithoutMotionMinutes int     `json:"without_motion_minutes"`
+			MaxSizeGB            float64 `json:"max_size_gb"`
+			WarnPercent          float64 `json:"warn_percent"`
 		} `json:"storage"`
 		Motion struct {
 			Enabled         bool    `json:"enabled"`
@@ -1078,8 +1079,11 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 	if resp.Server.HLSDVRSeconds != 30 {
 		t.Errorf("expected hls_dvr_seconds 30, got %d", resp.Server.HLSDVRSeconds)
 	}
-	if resp.Storage.RetentionMinutes != 1440 {
-		t.Errorf("expected retention_minutes 1440, got %d", resp.Storage.RetentionMinutes)
+	if resp.Storage.WithMotionMinutes != 10080 {
+		t.Errorf("expected with_motion_minutes 10080, got %d", resp.Storage.WithMotionMinutes)
+	}
+	if resp.Storage.WithoutMotionMinutes != 1440 {
+		t.Errorf("expected without_motion_minutes 1440, got %d", resp.Storage.WithoutMotionMinutes)
 	}
 	if resp.Motion.Threshold != 0.02 {
 		t.Errorf("expected threshold 0.02, got %f", resp.Motion.Threshold)
@@ -1256,5 +1260,136 @@ func TestClientConfigIncludesVersion(t *testing.T) {
 	}
 	if resp["version"] != "v1.2.3" {
 		t.Errorf("expected version v1.2.3, got %q", resp["version"])
+	}
+}
+
+func TestMotionDailyPeakRequiresAuth(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/daily-peak", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestMotionDailyPeakReturns404WhenNoRawFeed(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+	token := loginAndGetToken(t, srv, "master", "secret")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/daily-peak", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestMotionDailyPeakReturnsZeroWhenNoEventsYet(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cameraID := "cam1"
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+
+	rawCh := make(chan motion.Event)
+	srv.WithRawFeed(cameraID, rawCh)
+	close(rawCh)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion/daily-peak", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		CameraID     string  `json:"camera_id"`
+		PeakRawScore float64 `json:"peak_raw_score"`
+		Date         string  `json:"date"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.PeakRawScore != 0 {
+		t.Errorf("expected peak_raw_score=0, got %f", resp.PeakRawScore)
+	}
+	if resp.CameraID != cameraID {
+		t.Errorf("expected camera_id=%q, got %q", cameraID, resp.CameraID)
+	}
+}
+
+func TestMotionDailyPeakReturnsPeakScore(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cameraID := "cam1"
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+
+	rawCh := make(chan motion.Event, 4)
+	srv.WithRawFeed(cameraID, rawCh)
+
+	today := time.Now().UTC()
+	rawCh <- motion.Event{Time: today, Score: 30.0}
+	rawCh <- motion.Event{Time: today, Score: 142.7}
+	rawCh <- motion.Event{Time: today, Score: 85.5}
+	close(rawCh)
+	time.Sleep(20 * time.Millisecond) // aguarda goroutine processar
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion/daily-peak", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		PeakRawScore float64 `json:"peak_raw_score"`
+		Date         string  `json:"date"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.PeakRawScore != 142.7 {
+		t.Errorf("expected peak_raw_score=142.7, got %f", resp.PeakRawScore)
+	}
+	wantDate := today.Format("2006-01-02")
+	if resp.Date != wantDate {
+		t.Errorf("expected date=%q, got %q", wantDate, resp.Date)
+	}
+}
+
+func TestMotionDailyPeakResetsOnNewDay(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cameraID := "cam1"
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+
+	rawCh := make(chan motion.Event, 2)
+	srv.WithRawFeed(cameraID, rawCh)
+
+	yesterday := time.Now().UTC().AddDate(0, 0, -1)
+	today := time.Now().UTC()
+	rawCh <- motion.Event{Time: yesterday, Score: 999.0}
+	rawCh <- motion.Event{Time: today, Score: 55.0}
+	close(rawCh)
+	time.Sleep(20 * time.Millisecond)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion/daily-peak", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		PeakRawScore float64 `json:"peak_raw_score"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.PeakRawScore != 55.0 {
+		t.Errorf("expected peak_raw_score=55.0 (ontem descartado), got %f", resp.PeakRawScore)
 	}
 }

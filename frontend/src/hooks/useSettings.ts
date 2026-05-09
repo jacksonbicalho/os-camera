@@ -37,7 +37,8 @@ export interface Settings {
   }
   storage: {
     path: string
-    retention_minutes: number
+    with_motion_minutes: number
+    without_motion_minutes: number
     interval_minutes: number
     max_size_gb: number
     warn_percent: number
