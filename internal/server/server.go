@@ -372,13 +372,17 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			"hls_dvr_seconds": s.cfg.HLSDVRSeconds,
 			"username":        s.cfg.Username,
 		},
-		"storage": map[string]any{
-			"path":              s.storageCfg.Path,
-			"retention_minutes": s.storageCfg.RetentionMinutes,
-			"interval_minutes":  s.storageCfg.IntervalMinutes,
-			"max_size_gb":       s.storageCfg.MaxSizeGB,
-			"warn_percent":      s.storageCfg.WarnPercent,
-		},
+		"storage": func() map[string]any {
+			withMotion, withoutMotion := s.storageCfg.EffectiveRetention()
+			return map[string]any{
+				"path":                   s.storageCfg.Path,
+				"with_motion_minutes":    withMotion,
+				"without_motion_minutes": withoutMotion,
+				"interval_minutes":       s.storageCfg.IntervalMinutes,
+				"max_size_gb":            s.storageCfg.MaxSizeGB,
+				"warn_percent":           s.storageCfg.WarnPercent,
+			}
+		}(),
 		"motion": motionDTO{
 			Enabled:         s.motionCfg.Enabled,
 			Threshold:       s.motionCfg.Threshold,
