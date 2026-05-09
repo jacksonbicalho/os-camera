@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -54,8 +54,16 @@ function formatRecordingTime(isoString: string, timezone: string): string {
 export default function CameraPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const [timezone, setTimezone] = useState('UTC')
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    const state = location.state as { eventTime?: string } | null
+    if (state?.eventTime) {
+      const t = new Date(state.eventTime)
+      return new Date(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())
+    }
+    return new Date()
+  })
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [hasMore, setHasMore] = useState(false)
   const [page, setPage] = useState(1)
@@ -63,7 +71,10 @@ export default function CameraPage() {
   const [activeRecording, setActiveRecording] = useState<Recording | null>(null)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [motionEvents, setMotionEvents] = useState<MotionEvent[]>([])
-  const [activeTab, setActiveTab] = useState<'recordings' | 'events'>('recordings')
+  const [activeTab, setActiveTab] = useState<'recordings' | 'events'>(() => {
+    const state = location.state as { eventTime?: string } | null
+    return state?.eventTime ? 'events' : 'recordings'
+  })
   const [eventsPage, setEventsPage] = useState(1)
   const [eventsSortOrder, setEventsSortOrder] = useState<'asc' | 'desc'>('desc')
   const [activeEventIdx, setActiveEventIdx] = useState<number | null>(null)
@@ -71,8 +82,25 @@ export default function CameraPage() {
   const pendingSeekRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsPlayerRef = useRef<HLSPlayerHandle>(null)
+  const pendingEventRef = useRef<string | null>(
+    (location.state as { eventTime?: string } | null)?.eventTime ?? null
+  )
+  // Tracks the eventTime already handled on mount so we skip re-processing it
+  const handledEventRef = useRef<string | null>(pendingEventRef.current)
 
   useScrollToPlayer(playerRef, activeRecording?.filename ?? null)
+
+  // Handles same-route navigation (component doesn't remount when already on this camera)
+  useEffect(() => {
+    const state = location.state as { eventTime?: string } | null
+    if (!state?.eventTime) return
+    if (handledEventRef.current === state.eventTime) return // already handled by lazy init
+    handledEventRef.current = state.eventTime
+    pendingEventRef.current = state.eventTime
+    const t = new Date(state.eventTime)
+    setSelectedDate(new Date(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()))
+    setActiveTab('events')
+  }, [location.state])
 
   useEffect(() => {
     fetch('/api/config')
@@ -98,10 +126,29 @@ export default function CameraPage() {
       setMotionEvents(events)
       setEventsPage(1)
       setActiveEventIdx(null)
+
+      const pendingTime = pendingEventRef.current
+      if (pendingTime) {
+        pendingEventRef.current = null
+        const ev = events.find(e => e.time === pendingTime)
+        if (ev) {
+          const sorted = eventsWithinRecordings(
+            [...events].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()),
+            result.recordings,
+          )
+          const sortedIdx = sorted.findIndex(e => e.time === pendingTime)
+          if (sortedIdx !== -1) {
+            const neededPage = Math.ceil((sortedIdx + 1) / PAGE_SIZE)
+            if (neededPage > 1) setEventsPage(neededPage)
+          }
+          playEventAt(ev, sortedIdx >= 0 ? sortedIdx : 0, result.recordings)
+        }
+      }
     }
 
     load()
     return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, id, navigate, sortOrder])
 
   useEffect(() => {
@@ -152,9 +199,9 @@ export default function CameraPage() {
     setLoadingMore(false)
   }
 
-  function playEventAt(ev: MotionEvent, sortedIdx: number) {
+  function playEventAt(ev: MotionEvent, sortedIdx: number, recs: Recording[] = recordings) {
     const evTime = new Date(ev.time).getTime()
-    const asc = [...recordings].sort((a, b) => a.filename.localeCompare(b.filename))
+    const asc = [...recs].sort((a, b) => a.filename.localeCompare(b.filename))
     for (let i = 0; i < asc.length; i++) {
       const recStart = new Date(asc[i].start).getTime()
       const nextStart = i + 1 < asc.length
