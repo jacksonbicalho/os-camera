@@ -44,12 +44,35 @@ type ServerConfig struct {
 	HLSDVRSeconds  int    `yaml:"hls_dvr_seconds"` // 0 = disabled; >0 = DVR window size
 }
 
+type RetentionConfig struct {
+	WithMotionMinutes    int `yaml:"with_motion_minutes"`
+	WithoutMotionMinutes int `yaml:"without_motion_minutes"`
+}
+
 type StorageConfig struct {
-	Path             string  `yaml:"path"`
-	RetentionMinutes int     `yaml:"retention_minutes"` // 0 = disabled
-	IntervalMinutes  int     `yaml:"interval_minutes"`  // 0 = default (60 min)
-	MaxSizeGB        float64 `yaml:"max_size_gb"`       // 0 = disabled
-	WarnPercent      float64 `yaml:"warn_percent"`      // % of max_size_gb to trigger warning
+	Path             string          `yaml:"path"`
+	RetentionMinutes int             `yaml:"retention_minutes"` // legacy fallback; 0 = disabled
+	Retention        RetentionConfig `yaml:"retention"`
+	IntervalMinutes  int             `yaml:"interval_minutes"` // 0 = default (60 min)
+	MaxSizeGB        float64         `yaml:"max_size_gb"`      // 0 = disabled
+	WarnPercent      float64         `yaml:"warn_percent"`     // % of max_size_gb to trigger warning
+}
+
+// EffectiveRetention returns (withMotionMinutes, withoutMotionMinutes).
+// Rules:
+//   - Both set: use each value independently.
+//   - Only with_motion set: without_motion inherits the same value.
+//   - Only without_motion set: with_motion = 0 (keep motion recordings indefinitely).
+//   - Neither set: fall back to legacy retention_minutes for both.
+func (s StorageConfig) EffectiveRetention() (withMotion, withoutMotion int) {
+	r := s.Retention
+	if r.WithMotionMinutes == 0 && r.WithoutMotionMinutes == 0 {
+		return s.RetentionMinutes, s.RetentionMinutes
+	}
+	if r.WithMotionMinutes > 0 && r.WithoutMotionMinutes == 0 {
+		return r.WithMotionMinutes, r.WithMotionMinutes
+	}
+	return r.WithMotionMinutes, r.WithoutMotionMinutes
 }
 
 type MotionConfig struct {

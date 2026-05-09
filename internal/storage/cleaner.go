@@ -1,47 +1,115 @@
 package storage
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 type Cleaner struct {
-	storagePath      string
-	retentionMinutes int
-	maxSizeGB        float64
-	warnPercent      float64
-	log              *slog.Logger
+	storagePath          string
+	withMotionMinutes    int
+	withoutMotionMinutes int
+	chunkDuration        time.Duration
+	maxSizeGB            float64
+	warnPercent          float64
+	log                  *slog.Logger
 }
 
-func New(storagePath string, retentionMinutes int, maxSizeGB float64, warnPercent float64, log *slog.Logger) *Cleaner {
+func New(storagePath string, withMotionMinutes, withoutMotionMinutes int, chunkDuration time.Duration, maxSizeGB float64, warnPercent float64, log *slog.Logger) *Cleaner {
 	return &Cleaner{
-		storagePath:      storagePath,
-		retentionMinutes: retentionMinutes,
-		maxSizeGB:        maxSizeGB,
-		warnPercent:      warnPercent,
-		log:              log,
+		storagePath:          storagePath,
+		withMotionMinutes:    withMotionMinutes,
+		withoutMotionMinutes: withoutMotionMinutes,
+		chunkDuration:        chunkDuration,
+		maxSizeGB:            maxSizeGB,
+		warnPercent:          warnPercent,
+		log:                  log,
 	}
+}
+
+// ChunkStartFromName parses the UTC start time from a filename like "20060102150405.mp4".
+func ChunkStartFromName(filename string) (time.Time, error) {
+	base := strings.TrimSuffix(filename, filepath.Ext(filename))
+	t, err := time.ParseInLocation("20060102150405", base, time.UTC)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cannot parse chunk start from %q: %w", filename, err)
+	}
+	return t, nil
+}
+
+// HasMotionInRange reports whether motion.ndjson at ndjsonPath contains any event
+// with timestamp in [start, end).
+func HasMotionInRange(ndjsonPath string, start, end time.Time) bool {
+	f, err := os.Open(ndjsonPath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var ev struct {
+			Time string `json:"time"`
+		}
+		if err := json.Unmarshal(line, &ev); err != nil {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, ev.Time)
+		if err != nil {
+			continue
+		}
+		if !t.Before(start) && t.Before(end) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Cleaner) Clean() {
-	if c.retentionMinutes == 0 {
+	if c.withMotionMinutes == 0 && c.withoutMotionMinutes == 0 {
 		return
 	}
-	cutoff := time.Now().Add(-time.Duration(c.retentionMinutes) * time.Minute)
+	now := time.Now().UTC()
 	filepath.WalkDir(c.storagePath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || filepath.Ext(path) != ".mp4" {
 			return nil
 		}
-		info, err := d.Info()
+		chunkStart, err := ChunkStartFromName(filepath.Base(path))
 		if err != nil {
 			return nil
 		}
-		if info.ModTime().Before(cutoff) {
-			c.log.Debug("deleting old recording", "path", path)
+		chunkEnd := chunkStart.Add(c.chunkDuration)
+		ndjsonPath := filepath.Join(filepath.Dir(path), "motion.ndjson")
+		hasMotion := HasMotionInRange(ndjsonPath, chunkStart, chunkEnd)
+
+		var retentionMinutes int
+		if hasMotion {
+			if c.withMotionMinutes == 0 {
+				return nil
+			}
+			retentionMinutes = c.withMotionMinutes
+		} else {
+			if c.withoutMotionMinutes == 0 {
+				return nil
+			}
+			retentionMinutes = c.withoutMotionMinutes
+		}
+
+		cutoff := now.Add(-time.Duration(retentionMinutes) * time.Minute)
+		if chunkStart.Before(cutoff) {
+			c.log.Debug("deleting old recording", "path", path, "has_motion", hasMotion)
 			if err := os.Remove(path); err != nil {
 				c.log.Warn("failed to delete recording", "path", path, "err", err)
 			}

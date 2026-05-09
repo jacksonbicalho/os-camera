@@ -14,7 +14,10 @@ server:
 
 storage:
   path: /data/recordings     # env: CAMERA_STORAGE_PATH
-  retention_minutes: 43200   # apaga gravações mais antigas que N minutos (0 = desabilitado; 43200 = 30 dias)
+  retention:
+    with_motion_minutes: 10080    # apaga gravações COM movimento após N minutos (0 = nunca apaga; 10080 = 7 dias)
+    without_motion_minutes: 1440  # apaga gravações SEM movimento após N minutos (0 = desabilitado; 1440 = 1 dia)
+  # retention_minutes: 43200   # campo legado: aplica o mesmo valor a ambas as categorias (ignorado se retention: estiver definido)
   interval_minutes: 60       # intervalo entre checagens de retenção e uso de disco (0 = 60 min)
   max_size_gb: 10            # tamanho máximo do diretório de gravações em GB (0 = desabilitado)
   warn_percent: 70           # avisa quando uso atingir X% do max_size_gb (ex: 70% de 10 GB = 7 GB)

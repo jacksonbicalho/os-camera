@@ -24,7 +24,8 @@ export default function StorageSettingsPage() {
           title="Armazenamento"
           fields={[
             { label: 'Diretório', value: s.path || '—' },
-            { label: 'Retenção', value: fmtMinutes(s.retention_minutes) },
+            { label: 'Retenção com movimento', value: s.with_motion_minutes === 0 ? 'indefinido' : fmtMinutes(s.with_motion_minutes) },
+            { label: 'Retenção sem movimento', value: fmtMinutes(s.without_motion_minutes) },
             { label: 'Intervalo do cleaner', value: s.interval_minutes === 0 ? 'padrão (60 min)' : fmtMinutes(s.interval_minutes) },
             { label: 'Tamanho máximo (GB)', value: s.max_size_gb === 0 ? 'desativado' : s.max_size_gb },
             { label: 'Alerta de uso', value: s.warn_percent === 0 ? 'desativado' : `${s.warn_percent}%` },

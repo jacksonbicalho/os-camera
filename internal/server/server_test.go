@@ -1010,7 +1010,7 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 		},
 	}
 	serverCfg := config.ServerConfig{Username: "admin", Password: "pw", Port: 8080, HLSDVRSeconds: 30}
-	storageCfg := config.StorageConfig{Path: "/data", RetentionMinutes: 1440, MaxSizeGB: 10, WarnPercent: 80}
+	storageCfg := config.StorageConfig{Path: "/data", Retention: config.RetentionConfig{WithMotionMinutes: 10080, WithoutMotionMinutes: 1440}, MaxSizeGB: 10, WarnPercent: 80}
 	motionCfg := config.MotionConfig{Enabled: true, Threshold: 0.02, FPS: 2, CooldownSeconds: 30}
 	defaultsCfg := config.DefaultsConfig{
 		ChunkDuration:     config.Duration(5 * time.Minute),
@@ -1040,10 +1040,11 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 			HLSDVRSeconds int    `json:"hls_dvr_seconds"`
 		} `json:"server"`
 		Storage struct {
-			Path             string  `json:"path"`
-			RetentionMinutes int     `json:"retention_minutes"`
-			MaxSizeGB        float64 `json:"max_size_gb"`
-			WarnPercent      float64 `json:"warn_percent"`
+			Path                 string  `json:"path"`
+			WithMotionMinutes    int     `json:"with_motion_minutes"`
+			WithoutMotionMinutes int     `json:"without_motion_minutes"`
+			MaxSizeGB            float64 `json:"max_size_gb"`
+			WarnPercent          float64 `json:"warn_percent"`
 		} `json:"storage"`
 		Motion struct {
 			Enabled         bool    `json:"enabled"`
@@ -1078,8 +1079,11 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 	if resp.Server.HLSDVRSeconds != 30 {
 		t.Errorf("expected hls_dvr_seconds 30, got %d", resp.Server.HLSDVRSeconds)
 	}
-	if resp.Storage.RetentionMinutes != 1440 {
-		t.Errorf("expected retention_minutes 1440, got %d", resp.Storage.RetentionMinutes)
+	if resp.Storage.WithMotionMinutes != 10080 {
+		t.Errorf("expected with_motion_minutes 10080, got %d", resp.Storage.WithMotionMinutes)
+	}
+	if resp.Storage.WithoutMotionMinutes != 1440 {
+		t.Errorf("expected without_motion_minutes 1440, got %d", resp.Storage.WithoutMotionMinutes)
 	}
 	if resp.Motion.Threshold != 0.02 {
 		t.Errorf("expected threshold 0.02, got %f", resp.Motion.Threshold)
