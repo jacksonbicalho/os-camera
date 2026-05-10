@@ -88,10 +88,26 @@ do_install() {
     info "Criando diretório de configuração ${CONFIG_DIR} ..."
     mkdir -p "$CONFIG_DIR"
 
-    if [ ! -f "$CONFIG_FILE" ]; then
-        info "Gerando configuração mínima em ${CONFIG_FILE} ..."
+    config_ready=0
+    if [ -f "$CONFIG_FILE" ]; then
+        warn "Config já existe — não foi sobrescrito: ${CONFIG_FILE}"
+        config_ready=1
+    elif [ -t 0 ]; then
+        # stdin é um terminal: rodar o wizard interativamente
+        info "Iniciando assistente de configuração..."
+        printf '\n'
+        if "${INSTALL_DIR}/${BINARY_NAME}" init --output "${CONFIG_FILE}"; then
+            config_ready=1
+        else
+            warn "Wizard cancelado ou falhou. Gerando config mínimo de exemplo em ${CONFIG_FILE}."
+        fi
+    fi
+
+    if [ "$config_ready" = "0" ]; then
+        # Instalação via pipe (curl | bash) ou wizard falhou: gerar placeholder
         cat > "$CONFIG_FILE" <<'YAML'
 # Configuração gerada pelo instalador. Edite conforme necessário.
+# Execute: camera init --output <este arquivo>
 # Documentação: https://github.com/jacksonbicalho/camera
 
 timezone: UTC   # ex: America/Sao_Paulo
@@ -110,18 +126,16 @@ storage:
   max_size_gb: 20
 
 motion:
-  enabled: false   # altere para true para ativar detecção de movimento
+  enabled: false
   threshold: 0.02
   fps: 2
   cooldown_seconds: 30
 
-cameras: []   # adicione suas câmeras aqui, ex:
+cameras: []   # adicione suas câmeras aqui e reinicie o serviço
 #   - id: entrada
 #     rtsp_url: rtsp://192.168.1.10:554/stream
 YAML
-        ok "Config criado"
-    else
-        warn "Config já existe — não foi sobrescrito: ${CONFIG_FILE}"
+        ok "Config mínimo criado em ${CONFIG_FILE}"
     fi
 
     info "Criando serviço systemd ${SERVICE_FILE} ..."
@@ -144,8 +158,14 @@ WantedBy=multi-user.target
 UNIT
 
     systemctl daemon-reload
-    systemctl enable --now "$SERVICE_NAME"
-    ok "Serviço iniciado"
+    systemctl enable "$SERVICE_NAME"
+
+    if [ "$config_ready" = "1" ]; then
+        systemctl start "$SERVICE_NAME"
+        ok "Serviço iniciado"
+    else
+        warn "Serviço habilitado mas NÃO iniciado — configure ${CONFIG_FILE} e execute: systemctl start ${SERVICE_NAME}"
+    fi
 
     # --- salvar estado e instalar desinstalador ---
 
@@ -185,13 +205,19 @@ WRAPPER
 
     printf '\n'
     info "Instalação concluída!"
-    printf '  Editar config:  %s\n'               "$CONFIG_FILE"
-    printf '  Reiniciar:      systemctl restart %s\n' "$SERVICE_NAME"
-    printf '  Ver logs:       journalctl -u %s -f\n'  "$SERVICE_NAME"
-    printf '  Status:         systemctl status %s\n'  "$SERVICE_NAME"
-    printf '  Desinstalar:    %s-uninstall\n'         "$BINARY_NAME"
+    if [ "$config_ready" = "0" ]; then
+        printf '  Configurar:     %s init --output %s\n' "$BINARY_NAME" "$CONFIG_FILE"
+        printf '  Iniciar:        systemctl start %s\n'    "$SERVICE_NAME"
+    fi
+    printf '  Editar config:  %s\n'                    "$CONFIG_FILE"
+    printf '  Reiniciar:      systemctl restart %s\n'  "$SERVICE_NAME"
+    printf '  Ver logs:       journalctl -u %s -f\n'   "$SERVICE_NAME"
+    printf '  Status:         systemctl status %s\n'   "$SERVICE_NAME"
+    printf '  Desinstalar:    %s-uninstall\n'          "$BINARY_NAME"
     printf '\n'
-    warn "Lembre-se de editar ${CONFIG_FILE} com suas câmeras e senha antes de usar."
+    if [ "$config_ready" = "0" ]; then
+        warn "Execute '${BINARY_NAME} init --output ${CONFIG_FILE}' para configurar suas câmeras antes de iniciar o serviço."
+    fi
 }
 
 # --- uninstall ---

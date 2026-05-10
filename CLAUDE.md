@@ -18,7 +18,8 @@ make run                                              # sobe Docker dev (camera-
 make all                                              # cross-compila para linux-amd64/arm64/arm e windows-amd64
 make linux-amd64                                      # binário específico em dist/
 make rpi                                              # alias para linux-arm64 (Raspberry Pi 3/4/5 64-bit)
-./camera init                                         # wizard interativo → gera camera.yaml
+./camera init                                         # wizard interativo → gera camera.yaml no diretório atual
+./camera init --output /etc/camera/camera.yaml        # wizard → grava no caminho especificado
 ./camera version                                      # imprime versão, commit e data do build
 ```
 
