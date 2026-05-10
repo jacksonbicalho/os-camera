@@ -225,6 +225,8 @@ Docker com live reload:
 make run   # docker compose --profile development
 ```
 
+> **Branch `master` protegido.** Todo código entra via Pull Request. Crie uma branch descritiva (`feat/…`, `fix/…`), abra o PR e aguarde os checks de CI (`go test ./...`, `yarn lint`, `yarn test`, `yarn build`) passarem antes do merge.
+
 ### Wizard de configuração
 
 O subcomando `init` gera um `camera.yaml` interativamente:
