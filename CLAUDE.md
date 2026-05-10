@@ -19,6 +19,7 @@ make all                                              # cross-compila para linux
 make linux-amd64                                      # binário específico em dist/
 make rpi                                              # alias para linux-arm64 (Raspberry Pi 3/4/5 64-bit)
 ./camera init                                         # wizard interativo → gera camera.yaml
+./camera version                                      # imprime versão, commit e data do build
 ```
 
 ### CI e branch protection
@@ -49,15 +50,22 @@ EOF
 # Instalar (detecta arch, baixa release, cria serviço systemd)
 curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh | sudo bash
 
-# Desinstalar (mantém config e dados por padrão)
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh | sudo bash -s -- --uninstall
+# Caminhos customizáveis (todos opcionais; os defaults estão abaixo)
+curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh \
+  | sudo bash -s -- \
+      --install-dir /usr/local/bin \
+      --config-dir  /etc/camera \
+      --data-dir    /data/recordings \
+      --service-name camera
 
-# Flags opcionais de desinstalação
-sudo bash -s -- --uninstall --remove-config   # remove /etc/camera/
-sudo bash -s -- --uninstall --remove-data     # remove /data/recordings/
+# Desinstalar (não requer internet — usa o desinstalador instalado localmente)
+sudo camera-uninstall                        # mantém config e dados
+sudo camera-uninstall --remove-config        # remove também /etc/camera/
+sudo camera-uninstall --remove-data          # remove também /data/recordings/
+sudo camera-uninstall --remove-config --remove-data
 ```
 
-O script (`scripts/install.sh`) é POSIX sh, detecta a arquitetura (`amd64`, `arm64`, `arm`), baixa o binário da última release e cria um serviço systemd em `/etc/systemd/system/camera.service`. Config gerado em `/etc/camera/camera.yaml` — **não sobrescrito** se já existir.
+O script (`scripts/install.sh`) é POSIX sh, detecta a arquitetura (`amd64`, `arm64`, `arm`), baixa o binário da última release e cria um serviço systemd em `/etc/systemd/system/camera.service`. Ao final da instalação, copia a si mesmo para `/usr/local/share/camera/install.sh`, salva os caminhos usados em `/var/lib/camera/install.conf` e cria o comando `camera-uninstall` em `/usr/local/bin`. Config gerado em `/etc/camera/camera.yaml` — **não sobrescrito** se já existir.
 
 ### Release
 
