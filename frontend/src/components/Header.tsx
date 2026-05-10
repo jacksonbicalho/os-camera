@@ -97,6 +97,8 @@ export default function Header({ username = "usuário" }: HeaderProps) {
     notifications, unreadCount,
     markRead, markSelectedRead, markAllUnread,
     remove, removeAll, removeSelected,
+    browserSupported, browserPermission, browserEnabled,
+    enableBrowserNotifications, disableBrowserNotifications,
   } = useNotifications();
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -338,6 +340,36 @@ export default function Header({ username = "usuário" }: HeaderProps) {
                   ))
                 )}
               </div>
+
+              {/* Rodapé: toggle de notificações do browser */}
+              {browserSupported && (
+                <div className="border-t border-gray-700 px-3 py-2 flex items-center justify-between">
+                  <span className="text-xs text-gray-400">Alertas do sistema</span>
+                  {browserPermission === 'denied' ? (
+                    <button
+                      onClick={enableBrowserNotifications}
+                      className="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                      title="Permissão negada pelo browser. Clique para tentar novamente ou libere em Configurações do site → Notificações."
+                    >
+                      Permissão negada — tentar
+                    </button>
+                  ) : browserEnabled ? (
+                    <button
+                      onClick={disableBrowserNotifications}
+                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      Desativar
+                    </button>
+                  ) : (
+                    <button
+                      onClick={enableBrowserNotifications}
+                      className="text-xs text-gray-400 hover:text-white transition-colors"
+                    >
+                      Ativar
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

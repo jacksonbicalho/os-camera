@@ -107,6 +107,13 @@ export default function CameraPage() {
 
   useEffect(() => { recordingsRef.current = recordings }, [recordings])
 
+  useEffect(() => {
+    if (!snapshotEvent) return
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setSnapshotEvent(null) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [snapshotEvent])
+
   function handleRateChange(requested: number) {
     const options = [1, 2, 4, 8, 16, 32]
     const requestedIdx = options.indexOf(requested)
