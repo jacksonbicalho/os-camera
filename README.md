@@ -45,10 +45,16 @@ sudo journalctl -u camera -f
 
 ```bash
 # Remove binário e serviço (mantém config e gravações)
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh | sudo bash -s -- --uninstall
+sudo camera-uninstall
+
+# Remove também a configuração
+sudo camera-uninstall --remove-config
+
+# Remove também as gravações
+sudo camera-uninstall --remove-data
 
 # Remove tudo
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh | sudo bash -s -- --uninstall --remove-config --remove-data
+sudo camera-uninstall --remove-config --remove-data
 ```
 
 ---

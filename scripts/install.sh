@@ -3,12 +3,16 @@ set -e
 
 REPO="jacksonbicalho/camera"
 BINARY_NAME="camera"
+
+# Defaults — sobrescritos por flags ou por install.conf (na desinstalação)
 INSTALL_DIR="/usr/local/bin"
-SERVICE_NAME="camera"
 CONFIG_DIR="/etc/camera"
-CONFIG_FILE="${CONFIG_DIR}/camera.yaml"
-SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 DATA_DIR="/data/recordings"
+SERVICE_NAME="camera"
+
+# Caminhos derivados (recalculados após parse de flags)
+STATE_DIR="/var/lib/camera"
+STATE_FILE="${STATE_DIR}/install.conf"
 
 # --- helpers ---
 
@@ -19,7 +23,7 @@ warn()  { printf '\033[1;33mWRN \033[0m%s\n' "$*" >&2; }
 
 require_root() {
     if [ "$(id -u)" -ne 0 ]; then
-        err "Este script precisa ser executado como root. Use: sudo bash -s -- $*"
+        err "Este script precisa ser executado como root. Use: sudo $0 $*"
     fi
 }
 
@@ -38,11 +42,17 @@ detect_arch() {
 }
 
 latest_version() {
-    # /releases/latest returns 404 for pre-release-only repos; use list instead
     curl -fsSL "https://api.github.com/repos/${REPO}/releases" \
         | grep '"tag_name"' \
         | head -1 \
         | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
+}
+
+derived_paths() {
+    SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+    CONFIG_FILE="${CONFIG_DIR}/${BINARY_NAME}.yaml"
+    SHARE_DIR="${INSTALL_DIR%/bin}/share/${BINARY_NAME}"
+    UNINSTALL_BIN="${INSTALL_DIR}/${BINARY_NAME}-uninstall"
 }
 
 # --- install ---
@@ -50,6 +60,8 @@ latest_version() {
 do_install() {
     require_cmd curl
     require_cmd systemctl
+
+    derived_paths
 
     info "Detectando sistema..."
     os="$(uname -s)"
@@ -69,6 +81,7 @@ do_install() {
     chmod +x "$tmp"
 
     info "Instalando em ${INSTALL_DIR}/${BINARY_NAME} ..."
+    mkdir -p "$INSTALL_DIR"
     mv "$tmp" "${INSTALL_DIR}/${BINARY_NAME}"
     ok "Binário instalado"
 
@@ -134,12 +147,49 @@ UNIT
     systemctl enable --now "$SERVICE_NAME"
     ok "Serviço iniciado"
 
+    # --- salvar estado e instalar desinstalador ---
+
+    info "Salvando estado da instalação em ${STATE_FILE} ..."
+    mkdir -p "$STATE_DIR"
+    cat > "$STATE_FILE" <<CONF
+INSTALL_DIR=${INSTALL_DIR}
+CONFIG_DIR=${CONFIG_DIR}
+DATA_DIR=${DATA_DIR}
+SERVICE_NAME=${SERVICE_NAME}
+SERVICE_FILE=${SERVICE_FILE}
+CONFIG_FILE=${CONFIG_FILE}
+SHARE_DIR=${SHARE_DIR}
+UNINSTALL_BIN=${UNINSTALL_BIN}
+CONF
+    ok "Estado salvo"
+
+    info "Instalando desinstalador em ${SHARE_DIR} ..."
+    mkdir -p "$SHARE_DIR"
+
+    # Se o script foi executado via "curl | bash", $0 é /dev/stdin — baixar uma cópia
+    if [ -f "$0" ] && [ "$0" != "/dev/stdin" ]; then
+        cp "$0" "${SHARE_DIR}/install.sh"
+    else
+        script_url="https://raw.githubusercontent.com/${REPO}/master/scripts/install.sh"
+        info "Baixando cópia do instalador de ${script_url} ..."
+        curl -fsSL "$script_url" -o "${SHARE_DIR}/install.sh"
+    fi
+    chmod +x "${SHARE_DIR}/install.sh"
+
+    cat > "$UNINSTALL_BIN" <<WRAPPER
+#!/bin/sh
+exec "${SHARE_DIR}/install.sh" --uninstall "\$@"
+WRAPPER
+    chmod +x "$UNINSTALL_BIN"
+    ok "Desinstalador disponível: ${BINARY_NAME}-uninstall"
+
     printf '\n'
     info "Instalação concluída!"
-    printf '  Editar config:  %s\n'        "$CONFIG_FILE"
+    printf '  Editar config:  %s\n'               "$CONFIG_FILE"
     printf '  Reiniciar:      systemctl restart %s\n' "$SERVICE_NAME"
     printf '  Ver logs:       journalctl -u %s -f\n'  "$SERVICE_NAME"
     printf '  Status:         systemctl status %s\n'  "$SERVICE_NAME"
+    printf '  Desinstalar:    %s-uninstall\n'         "$BINARY_NAME"
     printf '\n'
     warn "Lembre-se de editar ${CONFIG_FILE} com suas câmeras e senha antes de usar."
 }
@@ -154,8 +204,11 @@ do_uninstall() {
         case "$arg" in
             --remove-config) remove_config=1 ;;
             --remove-data)   remove_data=1   ;;
+            --uninstall)     ;;  # ignorado aqui, já processado no entrypoint
         esac
     done
+
+    derived_paths
 
     require_cmd systemctl
 
@@ -182,6 +235,23 @@ do_uninstall() {
         ok "Binário removido"
     fi
 
+    if [ -f "$UNINSTALL_BIN" ]; then
+        info "Removendo ${UNINSTALL_BIN} ..."
+        rm -f "$UNINSTALL_BIN"
+    fi
+
+    if [ -d "$SHARE_DIR" ]; then
+        info "Removendo ${SHARE_DIR} ..."
+        rm -rf "$SHARE_DIR"
+        ok "Arquivos do instalador removidos"
+    fi
+
+    if [ -f "$STATE_FILE" ]; then
+        info "Removendo ${STATE_FILE} ..."
+        rm -f "$STATE_FILE"
+        rmdir "$STATE_DIR" 2>/dev/null || true
+    fi
+
     if [ "$remove_config" = "1" ] && [ -d "$CONFIG_DIR" ]; then
         info "Removendo ${CONFIG_DIR} ..."
         rm -rf "$CONFIG_DIR"
@@ -198,38 +268,66 @@ do_uninstall() {
     ok "Desinstalação concluída."
     if [ "$remove_config" = "0" ] && [ -d "$CONFIG_DIR" ]; then
         printf '  Config mantido: %s\n' "$CONFIG_DIR"
-        printf '  Para remover:   ... | bash -s -- --uninstall --remove-config\n'
+        printf '  Para remover:   %s-uninstall --remove-config\n' "$BINARY_NAME"
     fi
     if [ "$remove_data" = "0" ] && [ -d "$DATA_DIR" ]; then
         printf '  Dados mantidos: %s\n' "$DATA_DIR"
-        printf '  Para remover:   ... | bash -s -- --uninstall --remove-data\n'
+        printf '  Para remover:   %s-uninstall --remove-data\n' "$BINARY_NAME"
     fi
 }
 
 # --- entrypoint ---
 
 UNINSTALL=0
-REMOVE_CONFIG=0
-REMOVE_DATA=0
 
+# Parse flags — aceita qualquer ordem
+REST=""
 for arg in "$@"; do
     case "$arg" in
-        --uninstall)     UNINSTALL=1     ;;
-        --remove-config) REMOVE_CONFIG=1 ;;
-        --remove-data)   REMOVE_DATA=1   ;;
+        --uninstall)     UNINSTALL=1 ;;
+        --remove-config) ;;  # repassado para do_uninstall via $@
+        --remove-data)   ;;  # idem
+        --install-dir=*) INSTALL_DIR="${arg#--install-dir=}" ;;
+        --config-dir=*)  CONFIG_DIR="${arg#--config-dir=}"   ;;
+        --data-dir=*)    DATA_DIR="${arg#--data-dir=}"       ;;
+        --service-name=*)SERVICE_NAME="${arg#--service-name=}";;
+        --install-dir)   REST="install-dir" ;;
+        --config-dir)    REST="config-dir"  ;;
+        --data-dir)      REST="data-dir"    ;;
+        --service-name)  REST="service-name";;
         --help|-h)
             printf 'Uso:\n'
-            printf '  instalar:        curl -fsSL <url>/install.sh | bash\n'
-            printf '  desinstalar:     curl -fsSL <url>/install.sh | bash -s -- --uninstall\n'
-            printf '  opções extras:   --remove-config  --remove-data\n'
+            printf '  instalar:   curl -fsSL <url>/install.sh | sudo bash\n'
+            printf '  opções:     --install-dir=DIR  --config-dir=DIR  --data-dir=DIR  --service-name=NAME\n'
+            printf '  desinstalar (local, sem internet):\n'
+            printf '              camera-uninstall [--remove-config] [--remove-data]\n'
             exit 0
             ;;
-        *) err "Argumento desconhecido: $arg" ;;
+        *)
+            if [ -n "$REST" ]; then
+                case "$REST" in
+                    install-dir)  INSTALL_DIR="$arg" ;;
+                    config-dir)   CONFIG_DIR="$arg"  ;;
+                    data-dir)     DATA_DIR="$arg"    ;;
+                    service-name) SERVICE_NAME="$arg";;
+                esac
+                REST=""
+            else
+                err "Argumento desconhecido: $arg"
+            fi
+            ;;
     esac
 done
 
 if [ "$UNINSTALL" = "1" ]; then
     require_root "$@"
+    # Carregar estado salvo para que os caminhos corretos sejam usados
+    if [ -f "$STATE_FILE" ]; then
+        # shellcheck disable=SC1090
+        . "$STATE_FILE"
+    else
+        warn "Arquivo de estado não encontrado (${STATE_FILE}). Usando caminhos padrão."
+    fi
     do_uninstall "$@"
 else
     require_root "$@"

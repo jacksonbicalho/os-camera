@@ -30,9 +30,15 @@ var commit = ""
 var builtAt = ""
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "init" {
-		runInit()
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "init":
+			runInit()
+			return
+		case "version", "--version", "-v":
+			fmt.Printf("camera %s (commit %s, built %s)\n", version, commit, builtAt)
+			return
+		}
 	}
 
 	configPath := flag.String("config", "camera.yaml", "path to config file")
