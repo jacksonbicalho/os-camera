@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, cleanup } from '@testing-library/react'
 import React from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import { NotificationProvider, useNotifications } from './NotificationContext'
 
 const STORAGE_KEY = 'camera_notifications'
@@ -37,7 +38,9 @@ function settingsResponse(cameraIds: string[]) {
 }
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
-  <NotificationProvider>{children}</NotificationProvider>
+  <MemoryRouter>
+    <NotificationProvider>{children}</NotificationProvider>
+  </MemoryRouter>
 )
 
 // Aguarda fetch → setCameraIds → re-render → EventSource

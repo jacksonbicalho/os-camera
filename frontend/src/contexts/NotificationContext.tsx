@@ -1,6 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getToken } from '../auth'
+import { useBrowserNotifications } from '../hooks/useBrowserNotifications'
 
 const STORAGE_KEY = 'camera_notifications'
 const MAX_NOTIFICATIONS = 100
@@ -25,6 +27,11 @@ interface NotificationContextValue {
   remove(id: string): void
   removeAll(): void
   removeSelected(ids: string[]): void
+  browserSupported: boolean
+  browserPermission: NotificationPermission | 'unavailable'
+  browserEnabled: boolean
+  enableBrowserNotifications(): Promise<void>
+  disableBrowserNotifications(): void
 }
 
 const NotificationContext = createContext<NotificationContextValue | null>(null)
@@ -48,6 +55,18 @@ function save(notifications: Notification[]) {
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>(load)
   const [cameraIds, setCameraIds] = useState<string[]>([])
+  const navigate = useNavigate()
+  const {
+    supported: browserSupported,
+    permission: browserPermission,
+    enabled: browserEnabled,
+    requestAndEnable: enableBrowserNotifications,
+    disable: disableBrowserNotifications,
+    notify: browserNotify,
+  } = useBrowserNotifications()
+
+  const browserNotifyRef = useRef(browserNotify)
+  useEffect(() => { browserNotifyRef.current = browserNotify }, [browserNotify])
 
   function update(next: Notification[]) {
     setNotifications(next)
@@ -92,18 +111,22 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         try {
           const payload = JSON.parse(e.data)
           const time: string = payload.time ?? new Date().toISOString()
+          const score: number = payload.score ?? 0
           const notification: Notification = {
             id: `${id}-${time}`,
             type: 'motion',
             cameraId: id,
             time,
-            score: payload.score ?? 0,
+            score,
             read: false,
           }
           setNotifications((current) => {
             const next = [notification, ...current].slice(0, MAX_NOTIFICATIONS)
             save(next)
             return next
+          })
+          browserNotifyRef.current(id, score, () => {
+            navigate(`/cameras/${id}`, { state: { eventTime: time } })
           })
         } catch {
           // ignore malformed events
@@ -114,7 +137,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     })
 
     return () => sources.forEach((es) => es.close())
-  }, [cameraIds])
+  }, [cameraIds, navigate])
 
   function markRead(id: string) {
     update(notifications.map((n) => (n.id === id ? { ...n, read: true } : n)))
@@ -151,7 +174,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   return (
     <NotificationContext.Provider
-      value={{ notifications, unreadCount, markRead, markAllRead, markSelectedRead, markAllUnread, remove, removeAll, removeSelected }}
+      value={{
+        notifications, unreadCount,
+        markRead, markAllRead, markSelectedRead, markAllUnread,
+        remove, removeAll, removeSelected,
+        browserSupported, browserPermission, browserEnabled,
+        enableBrowserNotifications, disableBrowserNotifications,
+      }}
     >
       {children}
     </NotificationContext.Provider>
