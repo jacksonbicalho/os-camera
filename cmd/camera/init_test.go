@@ -15,7 +15,8 @@ func TestInitWizardDefaultInputs(t *testing.T) {
 		"",                              // segments_path: /tmp/hls
 		"",                              // hls_dvr: 0
 		"",                              // storage path: /data/recordings
-		"",                              // retention: 43200
+		"",                              // with_motion_minutes: 10080
+		"",                              // without_motion_minutes: 1440
 		"",                              // max_size: 10
 		"",                              // warn_percent: 70
 		"",                              // timezone: America/Sao_Paulo
@@ -43,7 +44,8 @@ func TestInitWizardDefaultInputs(t *testing.T) {
 		"segments_path: /tmp/hls",
 		"hls_dvr_seconds: 0",
 		"path: /data/recordings",
-		"retention_minutes: 43200",
+		"with_motion_minutes: 10080",
+		"without_motion_minutes: 1440",
 		"max_size_gb: 10.0",
 		"warn_percent: 70.0",
 		"timezone: America/Sao_Paulo",
@@ -69,7 +71,8 @@ func TestInitWizardCustomValues(t *testing.T) {
 		"/var/hls",                       // segments_path
 		"1200",                           // hls_dvr
 		"/mnt/cams",                      // storage path
-		"10080",                          // retention (7 days)
+		"10080",                          // with_motion_minutes (7 days)
+		"2880",                           // without_motion_minutes (2 days)
 		"50",                             // max_size_gb
 		"80",                             // warn_percent
 		"America/Recife",                 // timezone
@@ -104,7 +107,8 @@ func TestInitWizardCustomValues(t *testing.T) {
 		"segments_path: /var/hls",
 		"hls_dvr_seconds: 1200",
 		"path: /mnt/cams",
-		"retention_minutes: 10080",
+		"with_motion_minutes: 10080",
+		"without_motion_minutes: 2880",
 		"max_size_gb: 50.0",
 		"warn_percent: 80.0",
 		"timezone: America/Recife",
@@ -131,7 +135,7 @@ func TestInitWizardNoCamerasReturnsError(t *testing.T) {
 	// All defaults, then immediately empty camera ID.
 	lines := []string{
 		"", "", "", "", "",
-		"", "", "", "",
+		"", "", "", "", "",
 		"",
 		"", "", "", "",
 		"", // camera id: empty = no cameras
