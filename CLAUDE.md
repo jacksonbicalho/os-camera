@@ -14,7 +14,7 @@ Sistema de monitoramento residencial via RTSP. Cada câmera configurada tem trê
 go test ./...                                         # todos os testes
 go test ./internal/server/... -run TestLogin          # teste específico
 make build                                            # binário local com versão git injetada
-make run                                              # sobe Docker dev (camera-dev)
+make run                                              # sobe Docker dev com live reload (camera-dev)
 make all                                              # cross-compila para linux-amd64/arm64/arm e windows-amd64
 make linux-amd64                                      # binário específico em dist/
 make rpi                                              # alias para linux-arm64 (Raspberry Pi 3/4/5 64-bit)
@@ -45,29 +45,6 @@ gh api repos/{owner}/{repo}/branches/master/protection \
 EOF
 ```
 
-### Instalação em servidor Linux
-
-```bash
-# Instalar (detecta arch, baixa release, cria serviço systemd)
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh | sudo bash
-
-# Caminhos customizáveis (todos opcionais; os defaults estão abaixo)
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh \
-  | sudo bash -s -- \
-      --install-dir /usr/local/bin \
-      --config-dir  /etc/camera \
-      --data-dir    /data/recordings \
-      --service-name camera
-
-# Desinstalar (não requer internet — usa o desinstalador instalado localmente)
-sudo camera-uninstall                        # mantém config e dados
-sudo camera-uninstall --remove-config        # remove também /etc/camera/
-sudo camera-uninstall --remove-data          # remove também /data/recordings/
-sudo camera-uninstall --remove-config --remove-data
-```
-
-O script (`scripts/install.sh`) é POSIX sh, detecta a arquitetura (`amd64`, `arm64`, `arm`), baixa o binário da última release e cria um serviço systemd em `/etc/systemd/system/camera.service`. Ao final da instalação, copia a si mesmo para `/usr/local/share/camera/install.sh`, salva os caminhos usados em `/var/lib/camera/install.conf` e cria o comando `camera-uninstall` em `/usr/local/bin`. Config gerado em `/etc/camera/camera.yaml` — **não sobrescrito** se já existir.
-
 ### Release
 
 ```bash
@@ -96,13 +73,6 @@ cd frontend
 yarn install
 yarn build    # gera frontend/dist (necessário antes do go build)
 yarn dev      # Vite dev server na porta 5173 (proxy /api e /stream para :8080)
-```
-
-### Docker
-
-```bash
-docker compose --profile development up camera-dev --build   # dev: yarn build + go run
-docker compose --profile production up camera --build        # produção: binário estático
 ```
 
 ## Arquitetura
@@ -160,12 +130,14 @@ O desenvolvimento segue **XP (Extreme Programming)** com **TDD red → green →
 - O **navigator** (usuário) define a história, revisa o código e aprova cada etapa.
 - O **driver** (Claude) implementa, sempre guiado pelos testes.
 
+> ⚠️ **`master` é protegido.** Push direto é bloqueado pelo GitHub. Todo código entra via Pull Request — nunca commite ou force-push diretamente em `master`.
+
 ### Histórias
 
 Histórias ficam em `stories/` (gitignored). Ao iniciar uma nova história:
 - Criar o arquivo `stories/STORY_<descricao>.md` com contexto, critérios de aceitação e notas técnicas.
 - Ao concluir a implementação, adicionar uma seção `## Revisão` no arquivo com checklist do que foi feito.
-- **Só proceder com commit e merge após o navigator aprovar marcando `[x] Aprovado` na seção Revisão.**
+- **Só proceder com PR após o navigator aprovar marcando `[x] Aprovado` na seção Revisão.**
 
 ### Fluxo por história
 
@@ -175,7 +147,7 @@ Histórias ficam em `stories/` (gitignored). Ao iniciar uma nova história:
 4. Refatorar se necessário, mantendo os testes verdes (**refactor**).
 5. Executar `yarn lint` e `yarn test` (frontend) ou `go test ./...` (backend).
 6. Adicionar seção `## Revisão` na história e aguardar aprovação do navigator.
-7. Commitar com mensagem semântica e mergear em `master` com `--no-ff`.
+7. Commitar com mensagem semântica na branch, fazer `git push origin <branch>`, abrir PR para `master` com `gh pr create` e aguardar CI verde. O merge é feito pelo GitHub após aprovação — nunca localmente em `master`.
 
 ### Commits semânticos
 
