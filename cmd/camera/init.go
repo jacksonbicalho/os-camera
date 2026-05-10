@@ -117,7 +117,8 @@ func initWizard(input io.Reader, output io.Writer) (string, error) {
 
 	fmt.Fprintln(output, "\n--- Storage ---")
 	storagePath := wi.ask("Path de gravações", "/data/recordings")
-	retentionMin := wi.askInt("Retenção em minutos (0 = desabilitado; 43200 = 30 dias)", 43200)
+	withMotionMin := wi.askInt("Retenção COM movimento em minutos (0 = desabilitado; 10080 = 7 dias)", 10080)
+	withoutMotionMin := wi.askInt("Retenção SEM movimento em minutos (0 = desabilitado; 1440 = 1 dia)", 1440)
 	maxSizeGB := wi.askFloat("Tamanho máximo em GB (0 = desabilitado)", 10)
 	warnPercent := wi.askFloat("Aviso de uso em %", 70)
 
@@ -175,7 +176,7 @@ func initWizard(input io.Reader, output io.Writer) (string, error) {
 	return buildInitYAML(initParams{
 		port: port, username: username, password: password,
 		segmentsPath: segmentsPath, hlsDVR: hlsDVR,
-		storagePath: storagePath, retentionMin: retentionMin,
+		storagePath: storagePath, withMotionMin: withMotionMin, withoutMotionMin: withoutMotionMin,
 		maxSizeGB: maxSizeGB, warnPercent: warnPercent,
 		timezone:        timezone,
 		motionEnabled:   motionEnabled,
@@ -187,16 +188,17 @@ func initWizard(input io.Reader, output io.Writer) (string, error) {
 }
 
 type initParams struct {
-	port         int
-	username     string
-	password     string
-	segmentsPath string
-	hlsDVR       int
-	storagePath  string
-	retentionMin int
-	maxSizeGB    float64
-	warnPercent  float64
-	timezone     string
+	port             int
+	username         string
+	password         string
+	segmentsPath     string
+	hlsDVR           int
+	storagePath      string
+	withMotionMin    int
+	withoutMotionMin int
+	maxSizeGB        float64
+	warnPercent      float64
+	timezone         string
 
 	motionEnabled   bool
 	motionThreshold float64
@@ -225,7 +227,9 @@ func buildInitYAML(p initParams) string {
 	fmt.Fprintf(&sb, "  hls_dvr_seconds: %d\n", p.hlsDVR)
 	fmt.Fprintf(&sb, "\nstorage:\n")
 	fmt.Fprintf(&sb, "  path: %s\n", p.storagePath)
-	fmt.Fprintf(&sb, "  retention_minutes: %d\n", p.retentionMin)
+	fmt.Fprintf(&sb, "  retention:\n")
+	fmt.Fprintf(&sb, "    with_motion_minutes: %d\n", p.withMotionMin)
+	fmt.Fprintf(&sb, "    without_motion_minutes: %d\n", p.withoutMotionMin)
 	fmt.Fprintf(&sb, "  interval_minutes: 60\n")
 	fmt.Fprintf(&sb, "  max_size_gb: %s\n", yamlFloat(p.maxSizeGB))
 	fmt.Fprintf(&sb, "  warn_percent: %s\n", yamlFloat(p.warnPercent))
