@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 
 	"camera/internal/config"
 	"camera/internal/motion"
+	"camera/internal/zones"
 )
 
 type broadcaster struct {
@@ -97,6 +99,8 @@ type Server struct {
 	peakMu             sync.RWMutex
 	dailyPeakRaw       map[string]float64
 	dailyPeakDate      map[string]string
+	zoneStore          *zones.Store
+	snapFn             func(ctx context.Context, rtspURL string) ([]byte, error)
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
@@ -162,6 +166,16 @@ func (s *Server) WithMotionConfig(cfg config.MotionConfig) *Server {
 	return s
 }
 
+func (s *Server) WithZoneStore(store *zones.Store) *Server {
+	s.zoneStore = store
+	return s
+}
+
+func (s *Server) WithSnapshotter(fn func(ctx context.Context, rtspURL string) ([]byte, error)) *Server {
+	s.snapFn = fn
+	return s
+}
+
 func (s *Server) WithRawFeed(cameraID string, events <-chan motion.Event) *Server {
 	bc := newBroadcaster()
 	s.mu.Lock()
@@ -221,6 +235,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/live", s.requireAuth(s.handleMotionLive))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/scores", s.requireAuth(s.handleMotionScores))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/daily-peak", s.requireAuth(s.handleMotionDailyPeak))
+	s.mux.HandleFunc("GET /api/cameras/{id}/motion/zones", s.requireAuth(s.handleMotionZonesGet))
+	s.mux.HandleFunc("PUT /api/cameras/{id}/motion/zones", s.requireAuth(s.handleMotionZonesPut))
+	s.mux.HandleFunc("GET /api/cameras/{id}/snapshot", s.requireAuth(s.handleSnapshot))
 	s.mux.HandleFunc("GET /api/stats", s.requireAuth(s.handleStats))
 
 	if s.frontend != nil {
@@ -788,6 +805,91 @@ func (s *Server) handleMotionDailyPeak(w http.ResponseWriter, r *http.Request) {
 		"peak_raw_score": peak,
 		"date":           date,
 	})
+}
+
+func (s *Server) cameraExists(id string) bool {
+	for _, c := range s.cameras {
+		if c.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) cameraRTSP(id string) string {
+	for _, c := range s.cameras {
+		if c.ID == id {
+			return c.RTSPURL
+		}
+	}
+	return ""
+}
+
+func (s *Server) handleMotionZonesGet(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !s.cameraExists(id) {
+		http.NotFound(w, r)
+		return
+	}
+	var zs []zones.Zone
+	if s.zoneStore != nil {
+		zs = s.zoneStore.Get(id)
+	} else {
+		zs = []zones.Zone{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(zs)
+}
+
+func (s *Server) handleMotionZonesPut(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !s.cameraExists(id) {
+		http.NotFound(w, r)
+		return
+	}
+	var zs []zones.Zone
+	if err := json.NewDecoder(r.Body).Decode(&zs); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	for _, z := range zs {
+		if z.X < 0 || z.Y < 0 || z.W <= 0 || z.H <= 0 ||
+			z.X > 1 || z.Y > 1 || z.X+z.W > 1 || z.Y+z.H > 1 {
+			http.Error(w, "zona inválida: coordenadas fora do intervalo [0,1]", http.StatusBadRequest)
+			return
+		}
+	}
+	if s.zoneStore == nil {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if err := s.zoneStore.Set(id, zs); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	rtsp := s.cameraRTSP(id)
+	if rtsp == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if s.snapFn == nil {
+		http.Error(w, "snapshot not available", http.StatusServiceUnavailable)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	data, err := s.snapFn(ctx, rtsp)
+	if err != nil || len(data) == 0 {
+		http.Error(w, "snapshot failed", http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Write(data)
 }
 
 func (s *Server) handleMotionEvents(w http.ResponseWriter, r *http.Request) {
