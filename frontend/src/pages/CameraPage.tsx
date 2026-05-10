@@ -79,16 +79,43 @@ export default function CameraPage() {
   const [eventsSortOrder, setEventsSortOrder] = useState<'asc' | 'desc'>('desc')
   const [activeEventIdx, setActiveEventIdx] = useState<number | null>(null)
   const [scrollNonce, setScrollNonce] = useState(0)
+  const [playbackRate, setPlaybackRate] = useState(1)
+  const [continuousPlay, setContinuousPlay] = useState(false)
+  const [browserMaxRate, setBrowserMaxRate] = useState<number | null>(null)
+  const [videoMuted, setVideoMuted] = useState(false)
   const playerRef = useRef<HTMLDivElement>(null)
   const pendingSeekRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsPlayerRef = useRef<HLSPlayerHandle>(null)
   const activeEventItemRef = useRef<HTMLButtonElement | null>(null)
+  const recordingsRef = useRef(recordings)
+  const activeEventIdxRef = useRef(activeEventIdx)
+  const visibleEventsRef = useRef<typeof visibleEvents>([])
+  const continuousPlayRef = useRef(continuousPlay)
   const pendingEventRef = useRef<string | null>(
     (location.state as { eventTime?: string } | null)?.eventTime ?? null
   )
   // Tracks the eventTime already handled on mount so we skip re-processing it
   const handledEventRef = useRef<string | null>(pendingEventRef.current)
+
+  useEffect(() => { recordingsRef.current = recordings }, [recordings])
+
+  function handleRateChange(requested: number) {
+    const options = [1, 2, 4, 8, 16, 32]
+    const requestedIdx = options.indexOf(requested)
+    const video = videoRef.current
+    for (let i = requestedIdx; i >= 0; i--) {
+      try {
+        if (video) video.playbackRate = options[i]
+        setPlaybackRate(options[i])
+        setBrowserMaxRate(i < requestedIdx ? options[i] : null)
+        return
+      } catch { /* try next lower */ }
+    }
+    if (video) video.playbackRate = 1
+    setPlaybackRate(1)
+    setBrowserMaxRate(null)
+  }
 
   useScrollToPlayer(playerRef, activeRecording?.filename ?? null)
 
@@ -224,7 +251,10 @@ export default function CameraPage() {
         const seekTime = Math.max(0, (evTime - recStart) / 1000 - 10)
         setActiveEventIdx(sortedIdx)
         if (activeRecording?.filename === asc[i].filename) {
-          if (videoRef.current) videoRef.current.currentTime = seekTime
+          if (videoRef.current) {
+            videoRef.current.currentTime = seekTime
+            videoRef.current.play().catch(() => {})
+          }
         } else {
           pendingSeekRef.current = seekTime
           setActiveRecording(asc[i])
@@ -277,6 +307,10 @@ export default function CameraPage() {
   )
   const visibleEvents = sortedEvents.slice(0, eventsPage * PAGE_SIZE)
   const hasMoreEvents = sortedEvents.length > eventsPage * PAGE_SIZE
+  // Keep refs in sync for use inside onEnded (avoids stale closure)
+  activeEventIdxRef.current = activeEventIdx
+  visibleEventsRef.current = visibleEvents
+  continuousPlayRef.current = continuousPlay
 
   return (
     <AppLayout mainClassName="max-w-6xl mx-auto w-full">
@@ -327,12 +361,85 @@ export default function CameraPage() {
                   autoPlay
                   playsInline
                   onLoadedMetadata={e => {
+                    try { e.currentTarget.playbackRate = playbackRate } catch { /* browser limit */ }
+                    e.currentTarget.muted = videoMuted
                     if (pendingSeekRef.current !== null) {
                       e.currentTarget.currentTime = pendingSeekRef.current
                       pendingSeekRef.current = null
                     }
                   }}
+                  onVolumeChange={e => setVideoMuted(e.currentTarget.muted)}
+                  onEnded={() => {
+                    if (!continuousPlayRef.current) return
+                    // Events mode: advance to next event
+                    const evIdx = activeEventIdxRef.current
+                    if (evIdx !== null) {
+                      const nextEv = visibleEventsRef.current[evIdx + 1]
+                      if (nextEv) playEventAt(nextEv, evIdx + 1)
+                      return
+                    }
+                    // Recordings mode: advance to next recording
+                    if (!activeRecording) return
+                    const asc = [...recordingsRef.current].sort((a, b) => a.filename.localeCompare(b.filename))
+                    const idx = asc.findIndex(r => r.filename === activeRecording.filename)
+                    const next = asc[idx + 1]
+                    if (next && !next.is_recording) setActiveRecording(next)
+                  }}
                 />
+              )}
+            </div>
+
+            {/* Controles de reprodução */}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 px-1">
+              <button
+                onClick={() => {
+                  const video = videoRef.current
+                  if (video) video.muted = !video.muted
+                  setVideoMuted(m => !m)
+                }}
+                disabled={isLive}
+                title={videoMuted ? 'Ativar áudio' : 'Silenciar'}
+                className="flex items-center text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {videoMuted ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M12 6v12m-3.536-9.536a5 5 0 000 7.072M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                  </svg>
+                )}
+              </button>
+              <label className="flex items-center gap-2 text-xs text-gray-400">
+                Velocidade
+                <select
+                  value={playbackRate}
+                  onChange={e => handleRateChange(Number(e.target.value))}
+                  disabled={isLive}
+                  className="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {[1, 2, 4, 8, 16, 32].map(v => (
+                    <option key={v} value={v}>{v}x</option>
+                  ))}
+                </select>
+              </label>
+              <label className={`flex items-center gap-2 text-xs ${isLive ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-pointer'}`}>
+                <input
+                  type="checkbox"
+                  checked={continuousPlay}
+                  onChange={e => setContinuousPlay(e.target.checked)}
+                  disabled={isLive}
+                  className="accent-blue-500 w-3 h-3 cursor-pointer"
+                />
+                Reprodução contínua
+              </label>
+              {continuousPlay && !isLive && (
+                <span className="text-xs text-blue-400">· reproduzindo em sequência</span>
+              )}
+              {browserMaxRate !== null && (
+                <span className="text-xs text-yellow-500">· {browserMaxRate}x é o máximo suportado</span>
               )}
             </div>
 
