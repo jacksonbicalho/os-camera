@@ -9,14 +9,23 @@ import (
 	"strings"
 )
 
-func runInit() {
+func runInit(args []string) {
+	outPath := "camera.yaml"
+	for i, a := range args {
+		switch {
+		case a == "--output" && i+1 < len(args):
+			outPath = args[i+1]
+		case strings.HasPrefix(a, "--output="):
+			outPath = strings.TrimPrefix(a, "--output=")
+		}
+	}
+
 	yaml, err := initWizard(os.Stdin, os.Stdout)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "erro: %v\n", err)
 		os.Exit(1)
 	}
 
-	const outPath = "camera.yaml"
 	if _, statErr := os.Stat(outPath); statErr == nil {
 		fmt.Printf("%s já existe. Sobrescrever? (s/n) [n]: ", outPath)
 		var answer string

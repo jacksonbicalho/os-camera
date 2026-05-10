@@ -26,19 +26,36 @@ Sistema de monitoramento residencial via RTSP. Um único binário estático grav
 curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh | sudo bash
 ```
 
-O script detecta a arquitetura (amd64, arm64, arm), baixa o binário da última release, cria `/etc/camera/camera.yaml` com configuração mínima e registra um serviço systemd.
+O script detecta a arquitetura (`amd64`, `arm64`, `arm`), baixa o binário da última release e registra um serviço systemd.
 
-**Pós-instalação:**
+- **Instalação interativa** (terminal direto): o assistente de configuração (`camera init`) é executado automaticamente para configurar câmeras, senha e demais opções; o serviço sobe ao final.
+- **Instalação via pipe** (`curl | bash`): um arquivo de configuração mínimo é criado em `/etc/camera/camera.yaml`; o serviço é habilitado mas **não iniciado** até que a configuração seja concluída.
+
+**Configurar câmeras após instalação via pipe:**
 
 ```bash
-# Editar configuração (adicionar câmeras e senha)
-sudo nano /etc/camera/camera.yaml
+sudo camera init --output /etc/camera/camera.yaml
+sudo systemctl start camera
+```
 
-# Reiniciar após editar
-sudo systemctl restart camera
+**Caminhos customizáveis:**
 
-# Acompanhar logs
-sudo journalctl -u camera -f
+```bash
+curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh \
+  | sudo bash -s -- \
+      --install-dir /usr/local/bin \
+      --config-dir  /etc/camera \
+      --data-dir    /data/recordings \
+      --service-name camera
+```
+
+**Outros comandos úteis:**
+
+```bash
+camera --version                   # versão instalada
+sudo systemctl restart camera      # reiniciar após editar config
+sudo journalctl -u camera -f       # acompanhar logs
+sudo systemctl status camera       # status do serviço
 ```
 
 ### Desinstalar
