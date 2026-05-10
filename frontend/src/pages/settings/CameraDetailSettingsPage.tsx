@@ -61,6 +61,18 @@ export default function CameraDetailSettingsPage() {
             </div>
             <span className="text-sm text-blue-400 group-hover:text-blue-300 transition-colors">Ver detalhes →</span>
           </Link>
+          <Link
+            to={`/settings/cameras/${id}/zones`}
+            className="bg-gray-900 border border-gray-800 rounded-lg px-5 py-4 flex items-center justify-between hover:border-gray-700 hover:bg-gray-800/50 transition-colors group"
+          >
+            <div>
+              <p className="text-sm font-medium text-gray-300">Zonas de exclusão</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Áreas do frame ignoradas na detecção de movimento
+              </p>
+            </div>
+            <span className="text-sm text-blue-400 group-hover:text-blue-300 transition-colors">Editar →</span>
+          </Link>
         </div>
       )}
     </SettingsLayout>

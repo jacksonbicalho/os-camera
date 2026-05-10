@@ -9,7 +9,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	osexec "os/exec"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -23,6 +25,7 @@ import (
 	"camera/internal/server"
 	"camera/internal/storage"
 	"camera/internal/streaming"
+	"camera/internal/zones"
 )
 
 var version = "dev"
@@ -66,6 +69,12 @@ func main() {
 	if len(cfg.Cameras) == 0 {
 		slog.Error("no cameras configured")
 		os.Exit(1)
+	}
+
+	zonesPath := filepath.Join(filepath.Dir(*configPath), "motion_zones.json")
+	zoneStore, err := zones.NewStore(zonesPath)
+	if err != nil {
+		log.Fatalf("failed to load zones: %v", err)
 	}
 
 	commander := exec.NewFFmpegCommander()
@@ -114,7 +123,9 @@ func main() {
 			WithVersion(version).
 			WithBuildInfo(commit, builtAt).
 			WithSystemConfig(cfg.Debug, cfg.Log).
-			WithMotionConfig(cfg.Motion)
+			WithMotionConfig(cfg.Motion).
+			WithZoneStore(zoneStore).
+			WithSnapshotter(takeSnapshot)
 
 		for _, cam := range cfg.Cameras {
 			motionCfg := cam.EffectiveMotionConfig(cfg.Motion)
@@ -122,7 +133,9 @@ func main() {
 				continue
 			}
 			stream := resolveStream(cam, prober, slog)
-			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, reconnect, slog)
+			camID := cam.ID
+			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, reconnect, slog,
+				func() []zones.Zone { return zoneStore.Get(camID) })
 			go mon.Run(ctx)
 			srv.WithMotionFeed(cam.ID, mon.Events())
 			srv.WithRawFeed(cam.ID, mon.RawScores())
@@ -142,7 +155,9 @@ func main() {
 				continue
 			}
 			stream := resolveStream(cam, prober, slog)
-			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, reconnect, slog)
+			camID := cam.ID
+			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, reconnect, slog,
+				func() []zones.Zone { return zoneStore.Get(camID) })
 			go mon.Run(ctx)
 		}
 	}
@@ -216,4 +231,17 @@ func resolveStream(cam config.CameraConfig, prober *ffprobe.Prober, log *slog.Lo
 		info.Height = cam.Height
 	}
 	return info
+}
+
+func takeSnapshot(ctx context.Context, rtspURL string) ([]byte, error) {
+	cmd := osexec.CommandContext(ctx,
+		"ffmpeg",
+		"-rtsp_transport", "tcp",
+		"-i", rtspURL,
+		"-frames:v", "1",
+		"-f", "image2",
+		"-vcodec", "mjpeg",
+		"-",
+	)
+	return cmd.Output()
 }

@@ -7,6 +7,7 @@ import (
 
 	"camera/internal/config"
 	"camera/internal/ffprobe"
+	"camera/internal/zones"
 )
 
 type Event struct {
@@ -23,7 +24,7 @@ type Monitor struct {
 	rawScores         chan Event
 }
 
-func New(cam config.CameraConfig, stream ffprobe.StreamInfo, cfg config.MotionConfig, storagePath string, reconnectInterval time.Duration, log *slog.Logger) *Monitor {
+func New(cam config.CameraConfig, stream ffprobe.StreamInfo, cfg config.MotionConfig, storagePath string, reconnectInterval time.Duration, log *slog.Logger, getZones func() []zones.Zone) *Monitor {
 	scaledW := stream.Width / 4
 	scaledH := stream.Height / 4
 	if scaledW < 1 {
@@ -61,7 +62,7 @@ func New(cam config.CameraConfig, stream ffprobe.StreamInfo, cfg config.MotionCo
 
 	cmd := newFFmpegFrameCommander()
 	st := newStore(storagePath)
-	det := newDetector(cam.ID, cam.RTSPURL, scaledW, scaledH, effective, cmd, st, log, notify, notifyRaw)
+	det := newDetector(cam.ID, cam.RTSPURL, scaledW, scaledH, effective, cmd, st, log, notify, notifyRaw, getZones)
 
 	return &Monitor{
 		det:               det,

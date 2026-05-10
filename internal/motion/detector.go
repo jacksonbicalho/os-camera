@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"camera/internal/config"
+	"camera/internal/zones"
 )
 
 type frameProcess interface {
@@ -29,11 +30,12 @@ type detector struct {
 	log       *slog.Logger
 	notify    func(Event)
 	notifyRaw func(Event)
+	getZones  func() []zones.Zone
 	now       func() time.Time
 	lastEvent time.Time
 }
 
-func newDetector(cameraID, url string, width, height int, cfg config.MotionConfig, cmd frameCommander, st *store, log *slog.Logger, notify func(Event), notifyRaw func(Event)) *detector {
+func newDetector(cameraID, url string, width, height int, cfg config.MotionConfig, cmd frameCommander, st *store, log *slog.Logger, notify func(Event), notifyRaw func(Event), getZones func() []zones.Zone) *detector {
 	return &detector{
 		cameraID:  cameraID,
 		url:       url,
@@ -45,6 +47,7 @@ func newDetector(cameraID, url string, width, height int, cfg config.MotionConfi
 		log:       log,
 		notify:    notify,
 		notifyRaw: notifyRaw,
+		getZones:  getZones,
 		now:       func() time.Time { return time.Now().UTC() },
 	}
 }
@@ -83,7 +86,11 @@ func (d *detector) processFrames() {
 		copy(cur, buf)
 
 		if prev != nil {
-			score := diffFrames(prev, cur)
+			var zs []zones.Zone
+			if d.getZones != nil {
+				zs = d.getZones()
+			}
+			score := diffFramesMasked(prev, cur, d.width, d.height, zs)
 			ts := d.now()
 			if d.notifyRaw != nil {
 				d.notifyRaw(Event{Time: ts, Score: score})

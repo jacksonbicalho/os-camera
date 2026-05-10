@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"camera/internal/config"
 	"camera/internal/motion"
 	"camera/internal/server"
+	"camera/internal/zones"
 )
 
 func discardLogger() *slog.Logger {
@@ -1391,5 +1393,170 @@ func TestMotionDailyPeakResetsOnNewDay(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&resp)
 	if resp.PeakRawScore != 55.0 {
 		t.Errorf("expected peak_raw_score=55.0 (ontem descartado), got %f", resp.PeakRawScore)
+	}
+}
+
+// --- Zonas de exclusão ---
+
+func newZoneServer(t *testing.T, cameraID string) (http.Handler, *zones.Store, string) {
+	t.Helper()
+	zStore, _ := zones.NewStore(filepath.Join(t.TempDir(), "motion_zones.json"))
+	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cameras := []config.CameraConfig{{ID: cameraID, RTSPURL: "rtsp://fake"}}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).
+		WithZoneStore(zStore)
+	token := loginAndGetToken(t, srv, "u", "p")
+	return srv, zStore, token
+}
+
+func TestGetMotionZonesEmptyByDefault(t *testing.T) {
+	srv, _, token := newZoneServer(t, "cam1")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/zones", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var got []zones.Zone
+	json.NewDecoder(w.Body).Decode(&got)
+	if len(got) != 0 {
+		t.Fatalf("expected empty zones, got %v", got)
+	}
+}
+
+func TestPutMotionZonesThenGet(t *testing.T) {
+	srv, _, token := newZoneServer(t, "cam1")
+
+	body := `[{"x":0.1,"y":0.2,"w":0.3,"h":0.4}]`
+	req := httptest.NewRequest(http.MethodPut, "/api/cameras/cam1/motion/zones", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/zones", nil)
+	req2.Header.Set("Authorization", "Bearer "+token)
+	w2 := httptest.NewRecorder()
+	srv.ServeHTTP(w2, req2)
+
+	var got []zones.Zone
+	json.NewDecoder(w2.Body).Decode(&got)
+	if len(got) != 1 || got[0].X != 0.1 || got[0].W != 0.3 {
+		t.Fatalf("unexpected zones after PUT: %v", got)
+	}
+}
+
+func TestPutMotionZonesValidation(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		code int
+	}{
+		{"x fora do range", `[{"x":1.5,"y":0,"w":0.1,"h":0.1}]`, http.StatusBadRequest},
+		{"x+w > 1", `[{"x":0.8,"y":0,"w":0.5,"h":0.1}]`, http.StatusBadRequest},
+		{"y+h > 1", `[{"x":0,"y":0.8,"w":0.1,"h":0.5}]`, http.StatusBadRequest},
+		{"negativo", `[{"x":-0.1,"y":0,"w":0.1,"h":0.1}]`, http.StatusBadRequest},
+		{"valido", `[{"x":0.1,"y":0.1,"w":0.5,"h":0.5}]`, http.StatusOK},
+		{"array vazio valido", `[]`, http.StatusOK},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, _, token := newZoneServer(t, "cam1")
+			req := httptest.NewRequest(http.MethodPut, "/api/cameras/cam1/motion/zones", strings.NewReader(tc.body))
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			srv.ServeHTTP(w, req)
+			if w.Code != tc.code {
+				t.Errorf("expected %d, got %d: %s", tc.code, w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestMotionZonesRequiresAuth(t *testing.T) {
+	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/zones", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestMotionZonesUnknownCameraReturns404(t *testing.T) {
+	srv, _, token := newZoneServer(t, "cam1")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/nonexistent/motion/zones", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+// --- Snapshot ---
+
+func TestSnapshotReturnsJPEG(t *testing.T) {
+	fakeJPEG := []byte{0xFF, 0xD8, 0xFF, 0xD9} // JPEG mínimo válido
+	snapFn := func(_ context.Context, _ string) ([]byte, error) { return fakeJPEG, nil }
+
+	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cameras := []config.CameraConfig{{ID: "cam1", RTSPURL: "rtsp://fake"}}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).
+		WithSnapshotter(snapFn)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/snapshot", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "image/jpeg" {
+		t.Errorf("expected image/jpeg, got %q", ct)
+	}
+	if got := w.Body.Bytes(); string(got) != string(fakeJPEG) {
+		t.Errorf("body mismatch")
+	}
+}
+
+func TestSnapshotUnknownCameraReturns404(t *testing.T) {
+	snapFn := func(_ context.Context, _ string) ([]byte, error) { return nil, nil }
+	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil).
+		WithSnapshotter(snapFn)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/nonexistent/snapshot", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestSnapshotRequiresAuth(t *testing.T) {
+	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/snapshot", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
 	}
 }

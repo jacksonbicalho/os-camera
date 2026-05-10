@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"camera/internal/config"
+	"camera/internal/zones"
 )
 
 type fakeFrameProcess struct {
@@ -49,7 +50,7 @@ func TestDetectorRecordsEventWhenDiffExceedsThreshold(t *testing.T) {
 	st := newStore(tmpDir)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
-	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil)
+	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
 
 	det.processFrames()
 
@@ -70,7 +71,7 @@ func TestDetectorIgnoresSmallDiff(t *testing.T) {
 	st := newStore(tmpDir)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
-	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil)
+	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
 
 	det.processFrames()
 
@@ -90,7 +91,7 @@ func TestDetectorTimestampIsApproxNow(t *testing.T) {
 	st := newStore(tmpDir)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
-	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil)
+	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
 
 	before := time.Now().UTC().Truncate(time.Second)
 	det.processFrames()
@@ -123,7 +124,7 @@ func TestDetectorNotifyRawCalledForSubThresholdDiff(t *testing.T) {
 	var rawEvents []Event
 	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, func(ev Event) {
 		rawEvents = append(rawEvents, ev)
-	})
+	}, nil)
 
 	det.processFrames()
 
@@ -147,6 +148,7 @@ func TestDetectorNotifyRawCalledAlongsideNotify(t *testing.T) {
 	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(),
 		func(ev Event) { notified++ },
 		func(ev Event) { rawNotified++ },
+		nil,
 	)
 
 	det.processFrames()
@@ -174,7 +176,7 @@ func TestDetectorCooldownSuppressesEventsWithinWindow(t *testing.T) {
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1, CooldownSeconds: 30}
 	var notified int
 	det := newDetector("cam", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(),
-		func(Event) { notified++ }, nil)
+		func(Event) { notified++ }, nil, nil)
 
 	t0 := time.Date(2026, 5, 7, 10, 0, 0, 0, time.UTC)
 	call := 0
@@ -207,7 +209,7 @@ func TestDetectorCooldownAllowsEventAfterWindow(t *testing.T) {
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1, CooldownSeconds: 30}
 	var notified int
 	det := newDetector("cam", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(),
-		func(Event) { notified++ }, nil)
+		func(Event) { notified++ }, nil, nil)
 
 	t0 := time.Date(2026, 5, 7, 10, 0, 0, 0, time.UTC)
 	call := 0
@@ -240,12 +242,35 @@ func TestDetectorCooldownZeroDisablesSuppression(t *testing.T) {
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1, CooldownSeconds: 0}
 	var notified int
 	det := newDetector("cam", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(),
-		func(Event) { notified++ }, nil)
+		func(Event) { notified++ }, nil, nil)
 
 	det.processFrames()
 
 	if notified != 2 {
 		t.Errorf("expected 2 notifies when cooldown=0, got %d", notified)
+	}
+}
+
+func TestDetectorExclusionZoneSuppressesEvent(t *testing.T) {
+	tmpDir := t.TempDir()
+	frameSize := 4 // 2×2 frame
+	// frame1=black, frame2=white → full diff; but whole frame is excluded → score=0, no event
+	frameData := append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...)
+
+	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
+	cmd := &fakeFrameCommander{process: proc}
+	st := newStore(tmpDir)
+
+	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
+	fullZone := zones.Zone{X: 0, Y: 0, W: 1, H: 1}
+	det := newDetector("cam", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil,
+		func() []zones.Zone { return []zones.Zone{fullZone} })
+
+	det.processFrames()
+
+	events := readAllEvents(t, tmpDir, "cam")
+	if len(events) != 0 {
+		t.Fatalf("expected 0 events with full exclusion zone, got %d", len(events))
 	}
 }
 
