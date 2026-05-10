@@ -11,6 +11,7 @@ interface HLSPlayerProps {
   src: string
   className?: string
   cameraId?: string
+  onGoToEvent?: (eventTime: string) => void
 }
 
 interface MotionAlert {
@@ -18,7 +19,7 @@ interface MotionAlert {
   time: string
 }
 
-const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer({ src, className, cameraId }, ref) {
+const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer({ src, className, cameraId, onGoToEvent }, ref) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [muted, setMuted] = useState(true)
@@ -118,9 +119,17 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
             <span className="text-xs font-mono text-gray-800">score: {motionAlert.score}</span>
             <div className="flex gap-2 mt-1">
               <button
-                onClick={() => handleSeekToEvent(motionAlert.time)}
+                onClick={() => {
+                  if (alertTimerRef.current) clearTimeout(alertTimerRef.current)
+                  setMotionAlert(null)
+                  if (onGoToEvent) {
+                    onGoToEvent(motionAlert.time)
+                  } else {
+                    handleSeekToEvent(motionAlert.time)
+                  }
+                }}
                 aria-label="Ir para o momento do evento"
-                className="px-3 py-1 text-xs font-medium text-gray-900 bg-yellow-300/70 hover:bg-yellow-300 rounded transition-colors"
+                className="px-3 py-1 text-xs font-medium text-gray-900 bg-yellow-300/70 hover:bg-yellow-300 rounded transition-colors cursor-pointer"
               >
                 Ir para este momento
               </button>
@@ -130,7 +139,7 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
                   setMotionAlert(null)
                 }}
                 aria-label="Fechar alerta"
-                className="px-3 py-1 text-xs font-medium text-gray-900 bg-yellow-300/70 hover:bg-yellow-300 rounded transition-colors"
+                className="px-3 py-1 text-xs font-medium text-gray-900 bg-yellow-300/70 hover:bg-yellow-300 rounded transition-colors cursor-pointer"
               >
                 Fechar
               </button>
