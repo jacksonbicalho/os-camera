@@ -127,23 +127,19 @@ export default function Header({ username = "usuário" }: HeaderProps) {
     });
   }
 
-  // IDs alvo: selecionados (se houver) ou todos
+  // Ações sempre aplicadas apenas aos selecionados
   function targetIds() {
-    return someSelected ? [...selectedIds] : notifications.map((n) => n.id);
+    return [...selectedIds];
   }
 
   function targetLabel() {
-    return someSelected
-      ? `${selectedIds.size} notificação(ões) selecionada(s)`
-      : `todas as ${notifications.length} notificações`;
+    return `${selectedIds.size} notificação(ões) selecionada(s)`;
   }
 
-  // Opções disponíveis com base no estado das notificações alvo
-  const targetNotifications = someSelected
-    ? notifications.filter((n) => selectedIds.has(n.id))
-    : notifications;
-  const canMarkRead = targetNotifications.some((n) => !n.read);
-  const canMarkUnread = targetNotifications.some((n) => n.read);
+  // Opções disponíveis com base no estado dos itens selecionados
+  const selectedNotifications = notifications.filter((n) => selectedIds.has(n.id));
+  const canMarkRead = selectedNotifications.some((n) => !n.read);
+  const canMarkUnread = selectedNotifications.some((n) => n.read);
 
   function ask(state: ConfirmState) {
     setKebabOpen(false);
@@ -171,15 +167,6 @@ export default function Header({ username = "usuário" }: HeaderProps) {
       </Link>
 
       <div className="flex items-center gap-4">
-        <NavLink
-          to="/settings/stats"
-          className={({ isActive }) =>
-            `text-sm transition-colors ${isActive || location.pathname.startsWith("/settings") ? "text-white" : "text-gray-400 hover:text-white"}`
-          }
-        >
-          Configurações
-        </NavLink>
-
         {/* Sino de notificações */}
         <div className="relative" ref={bellRef}>
           <button
@@ -211,23 +198,25 @@ export default function Header({ username = "usuário" }: HeaderProps) {
 
               {/* Linha 2: checkbox selecionar todos + kebab menu */}
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-700">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  ref={(el) => {
-                    if (el) el.indeterminate = someSelected && !allSelected;
-                  }}
-                  onChange={toggleAll}
-                  className="w-3 h-3 accent-blue-500 cursor-pointer"
-                  title="Selecionar todas"
-                />
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someSelected && !allSelected;
+                    }}
+                    onChange={toggleAll}
+                    className="w-3 h-3 accent-blue-500 cursor-pointer"
+                  />
+                  <span className="text-xs text-gray-400">Selecionar todos</span>
+                </label>
 
                 {/* Kebab (···) */}
                 <div className="relative" ref={kebabRef}>
                   <button
                     onClick={() => setKebabOpen((v) => !v)}
-                    disabled={notifications.length === 0}
-                    className="flex items-center gap-0.5 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    disabled={!someSelected}
+                    className="flex items-center gap-0.5 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     title="Ações"
                   >
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -352,6 +341,15 @@ export default function Header({ username = "usuário" }: HeaderProps) {
             </div>
           )}
         </div>
+
+        <NavLink
+          to="/settings/stats"
+          className={({ isActive }) =>
+            `text-sm transition-colors ${isActive || location.pathname.startsWith("/settings") ? "text-white" : "text-gray-400 hover:text-white"}`
+          }
+        >
+          Configurações
+        </NavLink>
 
         {/* Dropdown de usuário */}
         <div className="relative" ref={userRef}>
