@@ -182,6 +182,18 @@ describe('NotificationContext — operações', () => {
     expect(result.current.notifications).toHaveLength(0)
   })
 
+  it('markAllUnread marca notificações selecionadas como não lidas', async () => {
+    const result = await setupWithNotification()
+    const id = result.current.notifications[0].id
+
+    act(() => { result.current.markRead(id) })
+    expect(result.current.notifications[0].read).toBe(true)
+
+    act(() => { result.current.markAllUnread([id]) })
+    expect(result.current.notifications[0].read).toBe(false)
+    expect(result.current.unreadCount).toBe(1)
+  })
+
   it('removeAll limpa todas as notificações', async () => {
     const result = await setupWithNotification()
 

@@ -20,8 +20,11 @@ interface NotificationContextValue {
   unreadCount: number
   markRead(id: string): void
   markAllRead(): void
+  markSelectedRead(ids: string[]): void
+  markAllUnread(ids: string[]): void
   remove(id: string): void
   removeAll(): void
+  removeSelected(ids: string[]): void
 }
 
 const NotificationContext = createContext<NotificationContextValue | null>(null)
@@ -121,6 +124,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     update(notifications.map((n) => ({ ...n, read: true })))
   }
 
+  function markSelectedRead(ids: string[]) {
+    const idSet = new Set(ids)
+    update(notifications.map((n) => idSet.has(n.id) ? { ...n, read: true } : n))
+  }
+
+  function markAllUnread(ids: string[]) {
+    const idSet = new Set(ids)
+    update(notifications.map((n) => idSet.has(n.id) ? { ...n, read: false } : n))
+  }
+
   function remove(id: string) {
     update(notifications.filter((n) => n.id !== id))
   }
@@ -129,11 +142,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     update([])
   }
 
+  function removeSelected(ids: string[]) {
+    const idSet = new Set(ids)
+    update(notifications.filter((n) => !idSet.has(n.id)))
+  }
+
   const unreadCount = notifications.filter((n) => !n.read).length
 
   return (
     <NotificationContext.Provider
-      value={{ notifications, unreadCount, markRead, markAllRead, remove, removeAll }}
+      value={{ notifications, unreadCount, markRead, markAllRead, markSelectedRead, markAllUnread, remove, removeAll, removeSelected }}
     >
       {children}
     </NotificationContext.Provider>

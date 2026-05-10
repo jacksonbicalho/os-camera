@@ -60,7 +60,7 @@ export default function CameraPage() {
     const state = location.state as { eventTime?: string } | null
     if (state?.eventTime) {
       const t = new Date(state.eventTime)
-      return new Date(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())
+      return new Date(t.getFullYear(), t.getMonth(), t.getDate())
     }
     return new Date()
   })
@@ -78,10 +78,12 @@ export default function CameraPage() {
   const [eventsPage, setEventsPage] = useState(1)
   const [eventsSortOrder, setEventsSortOrder] = useState<'asc' | 'desc'>('desc')
   const [activeEventIdx, setActiveEventIdx] = useState<number | null>(null)
+  const [scrollNonce, setScrollNonce] = useState(0)
   const playerRef = useRef<HTMLDivElement>(null)
   const pendingSeekRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsPlayerRef = useRef<HLSPlayerHandle>(null)
+  const activeEventItemRef = useRef<HTMLButtonElement | null>(null)
   const pendingEventRef = useRef<string | null>(
     (location.state as { eventTime?: string } | null)?.eventTime ?? null
   )
@@ -89,6 +91,11 @@ export default function CameraPage() {
   const handledEventRef = useRef<string | null>(pendingEventRef.current)
 
   useScrollToPlayer(playerRef, activeRecording?.filename ?? null)
+
+  useEffect(() => {
+    if (activeEventIdx === null) return
+    activeEventItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [activeEventIdx, scrollNonce])
 
   // Handles same-route navigation (component doesn't remount when already on this camera)
   useEffect(() => {
@@ -98,7 +105,7 @@ export default function CameraPage() {
     handledEventRef.current = state.eventTime
     pendingEventRef.current = state.eventTime
     const t = new Date(state.eventTime)
-    setSelectedDate(new Date(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()))
+    setSelectedDate(new Date(t.getFullYear(), t.getMonth(), t.getDate()))
     setActiveTab('events')
   }, [location.state])
 
@@ -227,6 +234,33 @@ export default function CameraPage() {
     }
   }
 
+  function handleGoToEvent(eventTime: string) {
+    const t = new Date(eventTime)
+    const eventDate = new Date(t.getFullYear(), t.getMonth(), t.getDate())
+    setActiveTab('events')
+
+    // Se a data do evento difere da data selecionada, muda o calendário e usa o
+    // fluxo de pendingEventRef (igual ao clique em notificação) para carregar os dados
+    if (format(eventDate, 'yyyy-MM-dd') !== format(selectedDate, 'yyyy-MM-dd')) {
+      pendingEventRef.current = eventTime
+      setSelectedDate(eventDate)
+      return
+    }
+
+    // Mesma data: busca o evento diretamente (sem depender do filtro eventsWithinRecordings)
+    const ev = motionEvents.find(e => e.time === eventTime)
+    if (!ev) return
+
+    const sorted = eventsWithinRecordings(
+      [...motionEvents].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()),
+      recordings,
+    )
+    const idx = sorted.findIndex(e => e.time === eventTime)
+    playEventAt(ev, idx)
+    // Força o scroll mesmo que activeEventIdx já tenha o mesmo valor
+    setScrollNonce(n => n + 1)
+  }
+
   const settings = useSettings(`/cameras/${id}`)
   const motionPeak = useMotionPeak(id, `/cameras/${id}`)
   const cam = settings?.cameras.find(c => c.id === id)
@@ -282,7 +316,7 @@ export default function CameraPage() {
               </div>
 
               {isLive ? (
-                <HLSPlayer ref={hlsPlayerRef} src={liveUrl} className="w-full aspect-video bg-black" cameraId={id} />
+                <HLSPlayer ref={hlsPlayerRef} src={liveUrl} className="w-full aspect-video bg-black" cameraId={id} onGoToEvent={handleGoToEvent} />
               ) : (
                 <video
                   ref={videoRef}
@@ -301,6 +335,33 @@ export default function CameraPage() {
                 />
               )}
             </div>
+
+            {/* Detecção de movimento */}
+            <Link
+              to={`/settings/cameras/${id}/motion`}
+              className="block bg-gray-900 border border-gray-800 rounded-lg overflow-hidden hover:border-gray-700 transition-colors group"
+            >
+              <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Detecção de movimento</p>
+                <div className="flex items-center gap-3">
+                  {motionPeak !== null && effectiveThreshold > 0 && (
+                    <span className="text-xs text-gray-500 font-mono">
+                      pico {(() => {
+                        const v = motionPeak.peak_raw_score
+                        if (v <= 0) return '—'
+                        if (v >= 1) return v.toFixed(2)
+                        const d = Math.max(2, -Math.floor(Math.log10(v)) + 1)
+                        return v.toFixed(d)
+                      })()} · {(motionPeak.peak_raw_score / effectiveThreshold).toFixed(2)}× limiar
+                    </span>
+                  )}
+                  <span className="text-xs text-blue-400 group-hover:text-blue-300 transition-colors">Configurar →</span>
+                </div>
+              </div>
+              <div className="px-5 py-4">
+                <MotionScoreChart cameraId={id!} threshold={effectiveThreshold} />
+              </div>
+            </Link>
           </div>
 
           {/* Painel direito */}
@@ -412,7 +473,8 @@ export default function CameraPage() {
                     const isActive = activeEventIdx === i
                     return (
                       <button
-                        key={i}
+                        key={ev.time}
+                        ref={isActive ? (el) => { activeEventItemRef.current = el } : null}
                         onClick={() => playEventAt(ev, i)}
                         className={`w-full flex items-center justify-between px-3 py-2 transition-colors text-left ${
                           isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-gray-800'
@@ -434,32 +496,6 @@ export default function CameraPage() {
           </div>
         </div>
 
-        {/* Detecção de movimento */}
-        <Link
-          to={`/settings/cameras/${id}/motion`}
-          className="mt-6 block bg-gray-900 border border-gray-800 rounded-lg overflow-hidden hover:border-gray-700 transition-colors group"
-        >
-          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Detecção de movimento</p>
-            <div className="flex items-center gap-3">
-              {motionPeak !== null && effectiveThreshold > 0 && (
-                <span className="text-xs text-gray-500 font-mono">
-                  pico {(() => {
-                    const v = motionPeak.peak_raw_score
-                    if (v <= 0) return '—'
-                    if (v >= 1) return v.toFixed(2)
-                    const d = Math.max(2, -Math.floor(Math.log10(v)) + 1)
-                    return v.toFixed(d)
-                  })()} · {(motionPeak.peak_raw_score / effectiveThreshold).toFixed(2)}× limiar
-                </span>
-              )}
-              <span className="text-xs text-blue-400 group-hover:text-blue-300 transition-colors">Configurar →</span>
-            </div>
-          </div>
-          <div className="px-5 py-4">
-            <MotionScoreChart cameraId={id!} threshold={effectiveThreshold} />
-          </div>
-        </Link>
     </AppLayout>
   )
 }

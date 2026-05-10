@@ -7,3 +7,9 @@ body {
   font-family: system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+button:not(:disabled),
+a,
+[role="button"] {
+  cursor: pointer;
+}
