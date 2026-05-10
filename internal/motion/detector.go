@@ -96,7 +96,13 @@ func (d *detector) processFrames() {
 				d.notifyRaw(Event{Time: ts, Score: score})
 			}
 			if score >= d.cfg.Threshold && d.cooldownElapsed(ts) {
-				if err := d.st.record(d.cameraID, ts, score); err != nil {
+				bbox := computeBBox(prev, cur, d.width, d.height, zs)
+				jpegData := annotateFrame(cur, d.width, d.height, bbox, score)
+				frameName, saveErr := d.st.saveJPEG(d.cameraID, ts, jpegData)
+				if saveErr != nil {
+					d.log.Warn("motion: failed to save snapshot", "camera", d.cameraID, "error", saveErr)
+				}
+				if err := d.st.record(d.cameraID, ts, score, frameName, bbox); err != nil {
 					d.log.Error("motion: failed to record event", "camera", d.cameraID, "error", err)
 				} else if d.notify != nil {
 					d.lastEvent = ts

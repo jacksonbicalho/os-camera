@@ -100,3 +100,89 @@ func TestDiffFramesMaskedAllPixelsMaskedReturnsZero(t *testing.T) {
 		t.Errorf("expected 0.0, got %f", got)
 	}
 }
+
+// --- computeBBox ---
+
+// Frame 4×4, nenhum pixel diferente → bbox cobre frame inteiro
+func TestComputeBBoxNoDiff(t *testing.T) {
+	frame := make([]byte, 16)
+	got := computeBBox(frame, frame, 4, 4, nil)
+	want := BBox{X: 0, Y: 0, W: 1, H: 1}
+	if got != want {
+		t.Errorf("expected %+v, got %+v", want, got)
+	}
+}
+
+// Frame 4×4, todos os pixels diferentes → bbox cobre frame inteiro
+func TestComputeBBoxAllDiff(t *testing.T) {
+	a := make([]byte, 16)
+	b := make([]byte, 16)
+	for i := range b {
+		b[i] = 255
+	}
+	got := computeBBox(a, b, 4, 4, nil)
+	want := BBox{X: 0, Y: 0, W: 1, H: 1}
+	if got != want {
+		t.Errorf("expected %+v, got %+v", want, got)
+	}
+}
+
+// Frame 4×4, apenas o pixel (1,1) é diferente (centro-esquerda)
+// minX=1, minY=1, maxX=1, maxY=1
+// bbox normalizado: x=1/4, y=1/4, w=1/4, h=1/4
+func TestComputeBBoxSinglePixel(t *testing.T) {
+	a := make([]byte, 16)
+	b := make([]byte, 16)
+	// pixel (px=1, py=1) → índice = py*w + px = 1*4+1 = 5
+	b[5] = 200 // diff = 200 > threshold
+	got := computeBBox(a, b, 4, 4, nil)
+	want := BBox{X: 0.25, Y: 0.25, W: 0.25, H: 0.25}
+	if got != want {
+		t.Errorf("expected %+v, got %+v", want, got)
+	}
+}
+
+// Frame 4×4, região [col 1..2, row 1..2] → bbox deve cobrir exatamente essa região
+// pixels: (1,1)=5, (2,1)=6, (1,2)=9, (2,2)=10
+// bbox normalizado: x=1/4, y=1/4, w=2/4=0.5, h=2/4=0.5
+func TestComputeBBoxRegion(t *testing.T) {
+	a := make([]byte, 16)
+	b := make([]byte, 16)
+	for _, idx := range []int{5, 6, 9, 10} {
+		b[idx] = 200
+	}
+	got := computeBBox(a, b, 4, 4, nil)
+	want := BBox{X: 0.25, Y: 0.25, W: 0.5, H: 0.5}
+	if got != want {
+		t.Errorf("expected %+v, got %+v", want, got)
+	}
+}
+
+// Frame 4×1, apenas o pixel mais à direita (px=3) é diferente
+// bbox: x=3/4, y=0, w=1/4, h=1
+func TestComputeBBoxRightEdge(t *testing.T) {
+	a := make([]byte, 4)
+	b := make([]byte, 4)
+	b[3] = 200
+	got := computeBBox(a, b, 4, 1, nil)
+	want := BBox{X: 0.75, Y: 0, W: 0.25, H: 1}
+	if got != want {
+		t.Errorf("expected %+v, got %+v", want, got)
+	}
+}
+
+// Pixels mascarados não devem contar para o bbox
+// Frame 4×1: pixel 0 mascarado (diff alto) + pixel 3 não mascarado (diff alto)
+// → bbox deve ser apenas o pixel 3
+func TestComputeBBoxIgnoresMaskedPixels(t *testing.T) {
+	a := make([]byte, 4)
+	b := make([]byte, 4)
+	b[0] = 200 // mascarado
+	b[3] = 200 // não mascarado
+	z := []zones.Zone{{X: 0, Y: 0, W: 0.5, H: 1}} // mascara pixels 0 e 1
+	got := computeBBox(a, b, 4, 1, z)
+	want := BBox{X: 0.75, Y: 0, W: 0.25, H: 1}
+	if got != want {
+		t.Errorf("expected %+v, got %+v", want, got)
+	}
+}

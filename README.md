@@ -12,7 +12,7 @@ Sistema de monitoramento residencial via RTSP. Um único binário estático grav
 
 - **Gravação contínua** — chunks MP4 organizados por câmera e data (`{câmera}/{YYYY}/{MM}/{DD}/{HHmmss}.mp4`)
 - **Live view HLS** — stream ao vivo com latência baixa; modo DVR opcional para seek por timestamp
-- **Detecção de movimento** — diff de frames via ffmpeg, limiar configurável, cooldown e score em tempo real
+- **Detecção de movimento** — diff de frames via ffmpeg, limiar configurável, cooldown e score em tempo real; cada evento gera um snapshot JPEG anotado com bounding box e score sobrepostos
 - **Retenção inteligente** — gravações com movimento ficam mais tempo; sem movimento são apagadas mais cedo
 - **Interface web embarcada** — React/Tailwind embutido no binário, zero dependências de assets externos
 - **Multi-câmera** — número ilimitado de câmeras, cada uma com overrides individuais de codec, resolução e detecção
@@ -252,8 +252,9 @@ Armazenamento:
   {storage}/
   └── {camera_id}/
       └── {YYYY}/{MM}/{DD}/
-          ├── {HHmmss}.mp4     ← chunk gravado
-          └── motion.ndjson    ← eventos de movimento (JSON Lines)
+          ├── {HHmmss}.mp4              ← chunk gravado
+          ├── {YYYYMMDDHHmmss}_motion.jpg ← snapshot anotado do evento
+          └── motion.ndjson             ← eventos de movimento (JSON Lines)
 ```
 
 O servidor emite dois endpoints SSE por câmera:
@@ -266,7 +267,7 @@ O servidor emite dois endpoints SSE por câmera:
 |---|---|
 | `internal/recorder` | Grava RTSP → MP4 em chunks |
 | `internal/streaming` | Gera playlist HLS ao vivo |
-| `internal/motion` | Detecta movimento via ffmpeg pipe raw |
+| `internal/motion` | Detecta movimento via ffmpeg pipe raw; salva snapshot JPEG anotado por evento |
 | `internal/storage` | Apaga MP4s com retenção diferenciada por categoria |
 | `internal/server` | HTTP + JWT + API REST + SPA embarcada |
 | `internal/config` | Lê `camera.yaml` e aplica overrides de env vars |

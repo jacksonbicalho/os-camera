@@ -6,6 +6,57 @@ import (
 	"camera/internal/zones"
 )
 
+type BBox struct {
+	X, Y, W, H float64
+}
+
+// pixelThreshold é o delta mínimo (0–255) para considerar um pixel "diferente"
+// na computação do bounding box.
+const pixelThreshold = 30
+
+// computeBBox retorna o bounding box normalizado (0.0–1.0) da região com maior
+// diferença entre os frames. Pixels mascarados pelas zones são ignorados.
+// Se nenhum pixel ultrapassar o threshold, retorna o frame inteiro {0,0,1,1}.
+func computeBBox(prev, cur []byte, w, h int, zs []zones.Zone) BBox {
+	minX, minY := w, h
+	maxX, maxY := -1, -1
+	for i := range prev {
+		px := i % w
+		py := i / w
+		if isMasked(px, py, w, h, zs) {
+			continue
+		}
+		d := int(cur[i]) - int(prev[i])
+		if d < 0 {
+			d = -d
+		}
+		if d >= pixelThreshold {
+			if px < minX {
+				minX = px
+			}
+			if py < minY {
+				minY = py
+			}
+			if px > maxX {
+				maxX = px
+			}
+			if py > maxY {
+				maxY = py
+			}
+		}
+	}
+	if maxX < 0 {
+		return BBox{0, 0, 1, 1}
+	}
+	fw, fh := float64(w), float64(h)
+	return BBox{
+		X: float64(minX) / fw,
+		Y: float64(minY) / fh,
+		W: float64(maxX-minX+1) / fw,
+		H: float64(maxY-minY+1) / fh,
+	}
+}
+
 func diffFrames(a, b []byte) float64 {
 	return diffFramesMasked(a, b, len(a), 1, nil)
 }

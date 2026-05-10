@@ -340,6 +340,8 @@ export default function CameraZonesSettingsPage() {
         <span>/</span>
         <Link to={`/settings/cameras/${id}`} className="hover:text-gray-300 transition-colors">{id}</Link>
         <span>/</span>
+        <Link to={`/settings/cameras/${id}/motion`} className="hover:text-gray-300 transition-colors">Detecção de movimento</Link>
+        <span>/</span>
         <span className="text-gray-300">Zonas de exclusão</span>
       </nav>
 

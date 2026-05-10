@@ -15,7 +15,7 @@ func newStore(basePath string) *store {
 	return &store{basePath: basePath}
 }
 
-func (s *store) record(cameraID string, ts time.Time, score float64) error {
+func (s *store) record(cameraID string, ts time.Time, score float64, frame string, bbox BBox) error {
 	dir := filepath.Join(s.basePath, cameraID, ts.UTC().Format("2006/01/02"))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -27,8 +27,26 @@ func (s *store) record(cameraID string, ts time.Time, score float64) error {
 	}
 	defer f.Close()
 
-	return json.NewEncoder(f).Encode(map[string]any{
+	entry := map[string]any{
 		"time":  ts.UTC().Format(time.RFC3339),
 		"score": score,
-	})
+		"bbox":  map[string]float64{"x": bbox.X, "y": bbox.Y, "w": bbox.W, "h": bbox.H},
+	}
+	if frame != "" {
+		entry["frame"] = frame
+	}
+	return json.NewEncoder(f).Encode(entry)
+}
+
+func (s *store) saveJPEG(cameraID string, ts time.Time, data []byte) (string, error) {
+	dir := filepath.Join(s.basePath, cameraID, ts.UTC().Format("2006/01/02"))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	name := ts.UTC().Format("20060102150405") + "_motion.jpg"
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return "", err
+	}
+	return name, nil
 }
