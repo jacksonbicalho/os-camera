@@ -5,9 +5,18 @@ export interface Recording {
   is_recording: boolean
 }
 
+export interface MotionBBox {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
 export interface MotionEvent {
   time: string
   score: number
+  frame?: string
+  bbox?: MotionBBox
 }
 
 const FALLBACK_WINDOW_MS = 5 * 60 * 1000

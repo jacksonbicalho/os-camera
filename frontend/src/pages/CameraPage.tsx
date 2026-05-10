@@ -41,6 +41,12 @@ async function loadMotionEvents(cameraId: string, date: Date): Promise<MotionEve
   return data.events ?? []
 }
 
+function snapshotURL(cameraId: string, eventTime: string, frame: string): string {
+  const d = new Date(eventTime)
+  const dateDir = `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`
+  return `/recordings/${cameraId}/${dateDir}/${frame}?token=${getToken()}`
+}
+
 function formatRecordingTime(isoString: string, timezone: string): string {
   return new Date(isoString).toLocaleTimeString([], {
     timeZone: timezone,
@@ -83,6 +89,7 @@ export default function CameraPage() {
   const [continuousPlay, setContinuousPlay] = useState(false)
   const [browserMaxRate, setBrowserMaxRate] = useState<number | null>(null)
   const [videoMuted, setVideoMuted] = useState(false)
+  const [snapshotEvent, setSnapshotEvent] = useState<MotionEvent | null>(null)
   const playerRef = useRef<HTMLDivElement>(null)
   const pendingSeekRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -209,13 +216,9 @@ export default function CameraPage() {
     selectedDate.getMonth() === today.getMonth() &&
     selectedDate.getDate() === today.getDate()
 
-  const handleLiveMotion = useCallback((data: string) => {
-    const ev = JSON.parse(data) as MotionEvent
-    setMotionEvents(prev => {
-      if (prev.some(p => p.time === ev.time)) return prev
-      return [ev, ...prev]
-    })
-  }, [])
+  const handleLiveMotion = useCallback(() => {
+    loadMotionEvents(id!, selectedDate).then(setMotionEvents)
+  }, [id, selectedDate])
 
   useEventSource(
     isToday && id ? `/api/cameras/${id}/motion/live` : null,
@@ -578,6 +581,7 @@ export default function CameraPage() {
                 >
                   {visibleEvents.map((ev, i) => {
                     const isActive = activeEventIdx === i
+                    const thumbURL = ev.frame ? snapshotURL(id!, ev.time, ev.frame) : null
                     return (
                       <button
                         key={ev.time}
@@ -591,6 +595,14 @@ export default function CameraPage() {
                           {formatRecordingTime(ev.time, timezone)}
                         </span>
                         <div className="flex items-center gap-2">
+                          {thumbURL && (
+                            <img
+                              src={thumbURL}
+                              alt="snapshot"
+                              className="w-16 h-10 object-cover rounded cursor-zoom-in border border-gray-700"
+                              onClick={e => { e.stopPropagation(); setSnapshotEvent(ev) }}
+                            />
+                          )}
                           <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
                           <span className="text-xs text-gray-500">{(ev.score * 100).toFixed(1)}%</span>
                         </div>
@@ -602,6 +614,30 @@ export default function CameraPage() {
             </div>
           </div>
         </div>
+
+      {snapshotEvent && snapshotEvent.frame && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          onClick={() => setSnapshotEvent(null)}
+        >
+          <div className="relative max-w-3xl w-full mx-4" onClick={e => e.stopPropagation()}>
+            <button
+              className="absolute -top-8 right-0 text-gray-400 hover:text-white text-sm"
+              onClick={() => setSnapshotEvent(null)}
+            >
+              Fechar ✕
+            </button>
+            <img
+              src={snapshotURL(id!, snapshotEvent.time, snapshotEvent.frame)}
+              alt="snapshot de movimento"
+              className="w-full rounded-lg border border-gray-700"
+            />
+            <p className="mt-2 text-xs text-gray-400 text-center">
+              {formatRecordingTime(snapshotEvent.time, timezone)} — score: {(snapshotEvent.score * 100).toFixed(1)}%
+            </p>
+          </div>
+        </div>
+      )}
 
     </AppLayout>
   )
