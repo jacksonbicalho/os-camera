@@ -23,6 +23,7 @@ import (
 
 	"camera/internal/config"
 	"camera/internal/motion"
+	"camera/internal/storage"
 	"camera/internal/zones"
 )
 
@@ -231,6 +232,7 @@ func (s *Server) routes() {
 	s.mux.Handle("/recordings/", s.requireAuth(recHandler.ServeHTTP))
 
 	s.mux.HandleFunc("GET /api/cameras/{id}/recordings", s.requireAuth(s.handleRecordings))
+	s.mux.HandleFunc("DELETE /api/cameras/{id}/recordings/{filename}", s.requireAuth(s.handleDeleteRecording))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion", s.requireAuth(s.handleMotionEvents))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/live", s.requireAuth(s.handleMotionLive))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/scores", s.requireAuth(s.handleMotionScores))
@@ -556,7 +558,7 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"recordings": all[startIdx:endIdx], "hasMore": hasMore})
+	json.NewEncoder(w).Encode(map[string]any{"recordings": all[startIdx:endIdx], "hasMore": hasMore, "total": len(all)})
 }
 
 // utcDaysInRange returns the distinct UTC calendar days that overlap [start, end).
@@ -568,6 +570,48 @@ func utcDaysInRange(start, end time.Time) []time.Time {
 		d = d.AddDate(0, 0, 1)
 	}
 	return days
+}
+
+func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	filename := r.PathValue("filename")
+
+	var cam *config.CameraConfig
+	for i := range s.cameras {
+		if s.cameras[i].ID == id {
+			cam = &s.cameras[i]
+			break
+		}
+	}
+	if cam == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	chunkStart, err := storage.ChunkStartFromName(filename)
+	if err != nil {
+		http.Error(w, "invalid filename", http.StatusBadRequest)
+		return
+	}
+	chunkDuration := cam.EffectiveChunkDuration(s.defaults)
+	chunkEnd := chunkStart.Add(chunkDuration)
+
+	dateDir := chunkStart.UTC().Format("2006/01/02")
+	mp4Path := filepath.Join(s.cfg.RecordingsPath, id, dateDir, filename)
+	if err := os.Remove(mp4Path); os.IsNotExist(err) {
+		http.NotFound(w, r)
+		return
+	} else if err != nil {
+		http.Error(w, "failed to delete recording", http.StatusInternalServerError)
+		return
+	}
+
+	ndjsonPath := filepath.Join(s.cfg.RecordingsPath, id, dateDir, "motion.ndjson")
+	if err := storage.RemoveEventsInRange(ndjsonPath, chunkStart, chunkEnd); err != nil {
+		s.log.Warn("failed to clean motion events after recording deletion", "path", ndjsonPath, "err", err)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
