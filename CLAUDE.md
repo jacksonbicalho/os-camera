@@ -134,14 +134,18 @@ O desenvolvimento segue **XP (Extreme Programming)** com **TDD red → green →
 
 ### Histórias
 
-Histórias ficam em `stories/` (gitignored). Ao iniciar uma nova história:
-- Criar o arquivo `stories/STORY_<descricao>.md` com contexto, critérios de aceitação e notas técnicas.
+Histórias ficam em `stories/` (gitignored). O nome do arquivo usa timestamp no formato
+`YYYYMMDDHHmm_<descricao>.md` — igual às migrations de banco — garantindo ordenação
+cronológica natural ao listar o diretório.
+
+Ao iniciar uma nova história:
+- Criar o arquivo `stories/YYYYMMDDHHmm_<descricao>.md` com contexto, critérios de aceitação e notas técnicas.
 - Ao concluir a implementação, adicionar uma seção `## Revisão` no arquivo com checklist do que foi feito.
 - **Só proceder com PR após o navigator aprovar marcando `[x] Aprovado` na seção Revisão.**
 
 ### Fluxo por história
 
-1. Criar `stories/STORY_<descricao>.md` e abrir uma branch: `git checkout -b <tipo>/<descricao-curta>` a partir de `master`.
+1. Criar `stories/YYYYMMDDHHmm_<descricao>.md` e abrir uma branch: `git checkout -b <tipo>/<descricao-curta>` a partir de `master`.
 2. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.
 3. Implementar o mínimo para o teste passar (**green**).
 4. Refatorar se necessário, mantendo os testes verdes (**refactor**).
