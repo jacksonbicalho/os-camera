@@ -42,6 +42,7 @@ type ServerConfig struct {
 	Username       string `yaml:"username"`
 	Password       string `yaml:"password"`
 	HLSDVRSeconds  int    `yaml:"hls_dvr_seconds"` // 0 = disabled; >0 = DVR window size
+	JWTSecret      string `yaml:"jwt_secret"`
 }
 
 type RetentionConfig struct {
@@ -127,6 +128,9 @@ func Load(path string) (Config, error) {
 	}
 	if v := os.Getenv("CAMERA_TIMEZONE"); v != "" {
 		cfg.Timezone = v
+	}
+	if v := os.Getenv("CAMERA_SERVER_JWT_SECRET"); v != "" {
+		cfg.Server.JWTSecret = v
 	}
 	if cfg.Timezone == "" {
 		cfg.Timezone = "UTC"

@@ -495,3 +495,64 @@ func TestEffectiveMotionConfigUsesPerCameraOverride(t *testing.T) {
 		t.Errorf("expected FPS=1, got %d", got.FPS)
 	}
 }
+
+func TestLoadParsesJWTSecret(t *testing.T) {
+	path := writeTempYAML(t, `
+server:
+  port: 8080
+  jwt_secret: "my-super-secret-key-32chars-long!"
+
+cameras:
+  - id: cam1
+    rtsp_url: rtsp://localhost:8554/stream
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Server.JWTSecret != "my-super-secret-key-32chars-long!" {
+		t.Errorf("expected jwt_secret from file, got %q", cfg.Server.JWTSecret)
+	}
+}
+
+func TestLoadEnvVarOverridesJWTSecret(t *testing.T) {
+	t.Setenv("CAMERA_SERVER_JWT_SECRET", "env-secret")
+
+	path := writeTempYAML(t, `
+server:
+  port: 8080
+  jwt_secret: "file-secret"
+
+cameras:
+  - id: cam1
+    rtsp_url: rtsp://localhost:8554/stream
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Server.JWTSecret != "env-secret" {
+		t.Errorf("expected env-secret from env var, got %q", cfg.Server.JWTSecret)
+	}
+}
+
+func TestLoadEmptyJWTSecretWhenNotSet(t *testing.T) {
+	path := writeTempYAML(t, `
+server:
+  port: 8080
+
+cameras:
+  - id: cam1
+    rtsp_url: rtsp://localhost:8554/stream
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Server.JWTSecret != "" {
+		t.Errorf("expected empty JWTSecret when not configured, got %q", cfg.Server.JWTSecret)
+	}
+}

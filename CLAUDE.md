@@ -122,6 +122,7 @@ O JWT é assinado com um segredo aleatório gerado no boot — tokens não sobre
 |---|---|
 | `CAMERA_STORAGE_PATH` | `storage.path` |
 | `CAMERA_TIMEZONE` | `timezone` (fuso da instalação; usado pelo servidor para interpretar datas locais) |
+| `CAMERA_SERVER_JWT_SECRET` | `server.jwt_secret` (segredo JWT fixo; vazio = gerado aleatoriamente a cada boot) |
 
 ## Forma de trabalho
 

@@ -1672,3 +1672,39 @@ func TestDeleteRecordingCleansMotionEvents(t *testing.T) {
 		t.Error("expected motion.ndjson to be cleaned up after recording deletion")
 	}
 }
+
+func TestConfiguredJWTSecretSurvivesReinit(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret", JWTSecret: "fixed-secret-for-testing-32chars!"}
+
+	srv1 := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+	token := loginAndGetToken(t, srv1, "master", "secret")
+
+	srv2 := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv2.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 with same jwt_secret across instances, got %d", w.Code)
+	}
+}
+
+func TestRandomSecretWhenJWTSecretNotConfigured(t *testing.T) {
+	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+
+	srv1 := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+	token := loginAndGetToken(t, srv1, "master", "secret")
+
+	srv2 := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv2.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 when no jwt_secret (random per boot), got %d", w.Code)
+	}
+}
