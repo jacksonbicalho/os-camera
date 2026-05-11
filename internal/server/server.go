@@ -105,8 +105,13 @@ type Server struct {
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
-	secret := make([]byte, 32)
-	rand.Read(secret)
+	var secret []byte
+	if cfg.JWTSecret != "" {
+		secret = []byte(cfg.JWTSecret)
+	} else {
+		secret = make([]byte, 32)
+		rand.Read(secret)
+	}
 
 	s := &Server{
 		cfg:        cfg,
