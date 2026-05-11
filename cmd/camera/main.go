@@ -71,7 +71,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	zonesPath := filepath.Join(filepath.Dir(*configPath), "motion_zones.json")
+	zonesPath := filepath.Join(cfg.Storage.Path, "motion_zones.json")
 	zoneStore, err := zones.NewStore(zonesPath)
 	if err != nil {
 		log.Fatalf("failed to load zones: %v", err)
