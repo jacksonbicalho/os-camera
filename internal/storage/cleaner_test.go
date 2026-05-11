@@ -67,6 +67,128 @@ func mp4WithTimestamp(dir, cameraID string, ts time.Time) string {
 	return filepath.Join(dir, cameraID, day, name)
 }
 
+func writeMotionNDJSONWithFrames(t *testing.T, dir string, events []struct {
+	ts    time.Time
+	frame string
+}) string {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "motion.ndjson")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	enc := json.NewEncoder(f)
+	for _, ev := range events {
+		entry := map[string]any{"time": ev.ts.UTC().Format(time.RFC3339), "score": 0.05}
+		if ev.frame != "" {
+			entry["frame"] = ev.frame
+		}
+		if err := enc.Encode(entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return path
+}
+
+// --- RemoveEventsInRange ---
+
+func TestRemoveEventsInRange_NoopWhenFileAbsent(t *testing.T) {
+	err := storage.RemoveEventsInRange("/nonexistent/motion.ndjson", time.Now(), time.Now().Add(time.Minute))
+	if err != nil {
+		t.Errorf("expected nil error when file absent, got %v", err)
+	}
+}
+
+func TestRemoveEventsInRange_RemovesEventsInsideWindow(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
+	writeMotionNDJSON(t, dir, []time.Time{
+		base.Add(1 * time.Minute), // inside
+		base.Add(6 * time.Minute), // outside (after window)
+	})
+
+	err := storage.RemoveEventsInRange(filepath.Join(dir, "motion.ndjson"), base, base.Add(5*time.Minute))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := storage.HasMotionInRange(filepath.Join(dir, "motion.ndjson"), base, base.Add(5*time.Minute))
+	if got {
+		t.Error("expected no events inside window after removal")
+	}
+	still := storage.HasMotionInRange(filepath.Join(dir, "motion.ndjson"), base.Add(6*time.Minute), base.Add(10*time.Minute))
+	if !still {
+		t.Error("expected event outside window to be kept")
+	}
+}
+
+func TestRemoveEventsInRange_DeletesNDJSONWhenAllEventsRemoved(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
+	ndjson := writeMotionNDJSON(t, dir, []time.Time{base.Add(time.Minute)})
+
+	if err := storage.RemoveEventsInRange(ndjson, base, base.Add(5*time.Minute)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat(ndjson); !os.IsNotExist(err) {
+		t.Error("expected motion.ndjson to be deleted when empty")
+	}
+}
+
+func TestRemoveEventsInRange_DeletesReferencedJPEGs(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
+	jpegName := "20260511100100_motion.jpg"
+	jpegPath := filepath.Join(dir, jpegName)
+	if err := os.WriteFile(jpegPath, []byte("img"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	writeMotionNDJSONWithFrames(t, dir, []struct {
+		ts    time.Time
+		frame string
+	}{{ts: base.Add(time.Minute), frame: jpegName}})
+
+	if err := storage.RemoveEventsInRange(filepath.Join(dir, "motion.ndjson"), base, base.Add(5*time.Minute)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat(jpegPath); !os.IsNotExist(err) {
+		t.Error("expected _motion.jpg to be deleted along with event")
+	}
+}
+
+func TestRemoveEventsInRange_KeepsJPEGsOutsideWindow(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
+	jpegInside := "20260511100100_motion.jpg"
+	jpegOutside := "20260511100700_motion.jpg"
+	for _, name := range []string{jpegInside, jpegOutside} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("img"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeMotionNDJSONWithFrames(t, dir, []struct {
+		ts    time.Time
+		frame string
+	}{
+		{ts: base.Add(1 * time.Minute), frame: jpegInside},
+		{ts: base.Add(7 * time.Minute), frame: jpegOutside},
+	})
+
+	if err := storage.RemoveEventsInRange(filepath.Join(dir, "motion.ndjson"), base, base.Add(5*time.Minute)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, jpegOutside)); err != nil {
+		t.Error("expected JPEG outside window to be kept")
+	}
+	if _, err := os.Stat(filepath.Join(dir, jpegInside)); !os.IsNotExist(err) {
+		t.Error("expected JPEG inside window to be deleted")
+	}
+}
+
 // --- HasMotionInRange ---
 
 func TestHasMotionInRange_WithEventInRange(t *testing.T) {

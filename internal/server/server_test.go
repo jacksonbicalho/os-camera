@@ -1560,3 +1560,115 @@ func TestSnapshotRequiresAuth(t *testing.T) {
 		t.Fatalf("expected 401, got %d", w.Code)
 	}
 }
+
+// --- DELETE /api/cameras/{id}/recordings/{filename} ---
+
+func TestDeleteRecordingReturns204(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	filename := "20260511100000.mp4"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "05", "11")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dateDir, filename), []byte("fake"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/"+cameraID+"/recordings/"+filename, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+	if _, err := os.Stat(filepath.Join(dateDir, filename)); !os.IsNotExist(err) {
+		t.Error("expected MP4 to be deleted")
+	}
+}
+
+func TestDeleteRecordingReturns404WhenFileNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/cam1/recordings/20260511100000.mp4", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestDeleteRecordingReturns404WhenUnknownCamera(t *testing.T) {
+	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/unknown/recordings/20260511100000.mp4", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestDeleteRecordingRequiresAuth(t *testing.T) {
+	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/cam1/recordings/20260511100000.mp4", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestDeleteRecordingCleansMotionEvents(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	filename := "20260511100000.mp4"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "05", "11")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dateDir, filename), []byte("fake"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// motion event inside chunk window [10:00, 10:05)
+	chunkStart := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
+	ndjson := filepath.Join(dateDir, "motion.ndjson")
+	if err := os.WriteFile(ndjson, []byte(`{"time":"`+chunkStart.Add(time.Minute).UTC().Format(time.RFC3339)+`","score":0.05}`+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	defaults := config.DefaultsConfig{ChunkDuration: config.Duration(5 * time.Minute)}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil).
+		WithDefaults(defaults)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/"+cameraID+"/recordings/"+filename, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+	if _, err := os.Stat(ndjson); !os.IsNotExist(err) {
+		t.Error("expected motion.ndjson to be cleaned up after recording deletion")
+	}
+}

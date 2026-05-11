@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { mergeRecordings, eventsWithinRecordings } from './cameraUtils'
-import type { Recording, MotionEvent } from './cameraUtils'
+import { mergeRecordings } from './cameraUtils'
+import type { Recording } from './cameraUtils'
 
 function rec(filename: string): Recording {
   const ts = filename.replace('.mp4', '')
@@ -10,10 +10,6 @@ function rec(filename: string): Recording {
     url: `/recordings/${filename}`,
     is_recording: false,
   }
-}
-
-function event(timeISO: string, score = 0.05): MotionEvent {
-  return { time: timeISO, score }
 }
 
 // ─── mergeRecordings ────────────────────────────────────────────────────────
@@ -69,38 +65,3 @@ describe('mergeRecordings', () => {
   })
 })
 
-// ─── eventsWithinRecordings ─────────────────────────────────────────────────
-
-describe('eventsWithinRecordings', () => {
-  it('returns empty when no recordings', () => {
-    const ev = event('2026-05-06T10:00:30Z')
-    expect(eventsWithinRecordings([ev], [])).toHaveLength(0)
-  })
-
-  it('keeps event that falls within a recording range', () => {
-    const r = rec('20260506100000.mp4') // starts 10:00:00
-    const ev = event('2026-05-06T10:00:30Z')
-    expect(eventsWithinRecordings([ev], [r])).toHaveLength(1)
-  })
-
-  it('removes event that falls after all recordings (recording deleted)', () => {
-    // recording starts at 10:00, next would start at 10:05 (default window)
-    // event at 10:10 is outside → filtered out
-    const r = rec('20260506100000.mp4')
-    const ev = event('2026-05-06T10:10:00Z')
-    expect(eventsWithinRecordings([ev], [r])).toHaveLength(0)
-  })
-
-  it('keeps event between two consecutive recordings', () => {
-    const r1 = rec('20260506100000.mp4') // 10:00
-    const r2 = rec('20260506100100.mp4') // 10:01
-    const ev = event('2026-05-06T10:00:30Z') // between r1 start and r2 start
-    expect(eventsWithinRecordings([ev], [r1, r2])).toHaveLength(1)
-  })
-
-  it('removes event before first recording', () => {
-    const r = rec('20260506100000.mp4')
-    const ev = event('2026-05-06T09:59:00Z')
-    expect(eventsWithinRecordings([ev], [r])).toHaveLength(0)
-  })
-})

@@ -77,6 +77,59 @@ func HasMotionInRange(ndjsonPath string, start, end time.Time) bool {
 	return false
 }
 
+// RemoveEventsInRange remove do motion.ndjson as entradas cujo time cai em
+// [start, end) e apaga os _motion.jpg referenciados. Apaga o próprio arquivo
+// se ficar vazio. É um no-op se o arquivo não existir.
+func RemoveEventsInRange(ndjsonPath string, start, end time.Time) error {
+	data, err := os.ReadFile(ndjsonPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(ndjsonPath)
+	var kept [][]byte
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var ev struct {
+			Time  string `json:"time"`
+			Frame string `json:"frame"`
+		}
+		if err := json.Unmarshal(line, &ev); err != nil {
+			kept = append(kept, append([]byte{}, line...))
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, ev.Time)
+		if err != nil {
+			kept = append(kept, append([]byte{}, line...))
+			continue
+		}
+		if !t.Before(start) && t.Before(end) {
+			if ev.Frame != "" {
+				os.Remove(filepath.Join(dir, ev.Frame))
+			}
+		} else {
+			kept = append(kept, append([]byte{}, line...))
+		}
+	}
+
+	if len(kept) == 0 {
+		return os.Remove(ndjsonPath)
+	}
+	out := make([]byte, 0)
+	for _, line := range kept {
+		out = append(out, line...)
+		out = append(out, '\n')
+	}
+	return os.WriteFile(ndjsonPath, out, 0o644)
+}
+
 func (c *Cleaner) Clean() {
 	if c.withMotionMinutes == 0 && c.withoutMotionMinutes == 0 {
 		return

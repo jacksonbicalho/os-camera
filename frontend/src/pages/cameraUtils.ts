@@ -19,8 +19,6 @@ export interface MotionEvent {
   bbox?: MotionBBox
 }
 
-const FALLBACK_WINDOW_MS = 5 * 60 * 1000
-
 export function mergeRecordings(
   prev: Recording[],
   fresh: Recording[],
@@ -52,18 +50,3 @@ export function mergeRecordings(
   )
 }
 
-export function eventsWithinRecordings(events: MotionEvent[], recordings: Recording[]): MotionEvent[] {
-  if (recordings.length === 0) return []
-  const asc = [...recordings].sort((a, b) => a.filename.localeCompare(b.filename))
-  return events.filter(ev => {
-    const evTime = new Date(ev.time).getTime()
-    for (let i = 0; i < asc.length; i++) {
-      const recStart = new Date(asc[i].start).getTime()
-      const nextStart = i + 1 < asc.length
-        ? new Date(asc[i + 1].start).getTime()
-        : recStart + FALLBACK_WINDOW_MS
-      if (evTime >= recStart && evTime < nextStart) return true
-    }
-    return false
-  })
-}

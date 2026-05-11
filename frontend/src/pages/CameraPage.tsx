@@ -6,6 +6,7 @@ import { ptBR } from 'date-fns/locale'
 import 'react-day-picker/style.css'
 import { authHeaders, clearToken, getToken } from '../auth'
 import AppLayout from '../components/AppLayout'
+import ConfirmDialog from '../components/ConfirmDialog'
 import HLSPlayer, { type HLSPlayerHandle } from '../components/HLSPlayer'
 import ListPanel from '../components/ListPanel'
 import MotionScoreChart from '../components/MotionScoreChart'
@@ -13,24 +14,34 @@ import { useScrollToPlayer } from '../hooks/useScrollToPlayer'
 import { useEventSource } from '../hooks/useEventSource'
 import { useSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
-import { mergeRecordings, eventsWithinRecordings } from './cameraUtils'
+import { mergeRecordings } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 
 interface RecordingsResponse {
   recordings: Recording[]
   hasMore: boolean
+  total: number
 }
 
 const PAGE_SIZE = 10
+const ALL_RECORDINGS_LIMIT = 1000
 
-async function loadRecordingsData(cameraId: string, date: Date, page: number, order: 'asc' | 'desc'): Promise<RecordingsResponse | 401> {
+async function loadRecordingsData(cameraId: string, date: Date, page: number, order: 'asc' | 'desc', limit = PAGE_SIZE): Promise<RecordingsResponse | 401> {
   const dateStr = format(date, 'yyyy-MM-dd')
   const res = await fetch(
-    `/api/cameras/${cameraId}/recordings?date=${dateStr}&page=${page}&limit=${PAGE_SIZE}&order=${order}`,
+    `/api/cameras/${cameraId}/recordings?date=${dateStr}&page=${page}&limit=${limit}&order=${order}`,
     { headers: authHeaders() }
   )
   if (res.status === 401) return 401
   return res.json()
+}
+
+async function deleteRecording(cameraId: string, filename: string): Promise<boolean> {
+  const res = await fetch(`/api/cameras/${cameraId}/recordings/${filename}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  return res.status === 204
 }
 
 async function loadMotionEvents(cameraId: string, date: Date): Promise<MotionEvent[]> {
@@ -71,6 +82,7 @@ export default function CameraPage() {
     return new Date()
   })
   const [recordings, setRecordings] = useState<Recording[]>([])
+  const [recordingsTotal, setRecordingsTotal] = useState(0)
   const [hasMore, setHasMore] = useState(false)
   const [page, setPage] = useState(1)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -90,6 +102,7 @@ export default function CameraPage() {
   const [browserMaxRate, setBrowserMaxRate] = useState<number | null>(null)
   const [videoMuted, setVideoMuted] = useState(false)
   const [snapshotEvent, setSnapshotEvent] = useState<MotionEvent | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const playerRef = useRef<HTMLDivElement>(null)
   const pendingSeekRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -162,7 +175,7 @@ export default function CameraPage() {
 
     async function load() {
       const [result, events] = await Promise.all([
-        loadRecordingsData(id!, selectedDate, 1, sortOrder),
+        loadRecordingsData(id!, selectedDate, 1, sortOrder, ALL_RECORDINGS_LIMIT),
         loadMotionEvents(id!, selectedDate),
       ])
       if (cancelled) return
@@ -170,6 +183,7 @@ export default function CameraPage() {
       setPage(1)
       setActiveRecording(null)
       setRecordings(result.recordings)
+      setRecordingsTotal(result.total)
       setHasMore(result.hasMore)
       setMotionEvents(events)
       setEventsPage(1)
@@ -180,10 +194,7 @@ export default function CameraPage() {
         pendingEventRef.current = null
         const ev = events.find(e => e.time === pendingTime)
         if (ev) {
-          const sorted = eventsWithinRecordings(
-            [...events].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()),
-            result.recordings,
-          )
+          const sorted = [...events].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
           const sortedIdx = sorted.findIndex(e => e.time === pendingTime)
           if (sortedIdx !== -1) {
             const neededPage = Math.ceil((sortedIdx + 1) / PAGE_SIZE)
@@ -208,7 +219,7 @@ export default function CameraPage() {
     if (!isToday) return
 
     const interval = setInterval(async () => {
-      const result = await loadRecordingsData(id!, selectedDate, 1, sortOrder)
+      const result = await loadRecordingsData(id!, selectedDate, 1, sortOrder, ALL_RECORDINGS_LIMIT)
       if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
       setRecordings(prev => mergeRecordings(prev, result.recordings, sortOrder, result.hasMore))
       setHasMore(result.hasMore)
@@ -231,6 +242,29 @@ export default function CameraPage() {
     isToday && id ? `/api/cameras/${id}/motion/live` : null,
     handleLiveMotion,
   )
+
+  async function reloadRecordingsAndEvents() {
+    const [result, events] = await Promise.all([
+      loadRecordingsData(id!, selectedDate, 1, sortOrder, ALL_RECORDINGS_LIMIT),
+      loadMotionEvents(id!, selectedDate),
+    ])
+    if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
+    setPage(1)
+    setRecordings(result.recordings)
+    setRecordingsTotal(result.total)
+    setHasMore(result.hasMore)
+    setMotionEvents(events)
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return
+    setDeleteTarget(null)
+    const ok = await deleteRecording(id!, deleteTarget.rec.filename)
+    if (ok) {
+      if (activeRecording?.filename === deleteTarget.rec.filename) setActiveRecording(null)
+      await reloadRecordingsAndEvents()
+    }
+  }
 
   async function loadMore() {
     setLoadingMore(true)
@@ -291,10 +325,7 @@ export default function CameraPage() {
     const ev = motionEvents.find(e => e.time === eventTime)
     if (!ev) return
 
-    const sorted = eventsWithinRecordings(
-      [...motionEvents].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()),
-      recordings,
-    )
+    const sorted = [...motionEvents].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
     const idx = sorted.findIndex(e => e.time === eventTime)
     playEventAt(ev, idx)
     // Força o scroll mesmo que activeEventIdx já tenha o mesmo valor
@@ -308,13 +339,10 @@ export default function CameraPage() {
 
   const liveUrl = `/stream/${id}/index.m3u8`
   const isLive = activeRecording === null
-  const sortedEvents = eventsWithinRecordings(
-    [...motionEvents].sort((a, b) => {
-      const diff = new Date(a.time).getTime() - new Date(b.time).getTime()
-      return eventsSortOrder === 'asc' ? diff : -diff
-    }),
-    recordings,
-  )
+  const sortedEvents = [...motionEvents].sort((a, b) => {
+    const diff = new Date(a.time).getTime() - new Date(b.time).getTime()
+    return eventsSortOrder === 'asc' ? diff : -diff
+  })
   const visibleEvents = sortedEvents.slice(0, eventsPage * PAGE_SIZE)
   const hasMoreEvents = sortedEvents.length > eventsPage * PAGE_SIZE
   // Keep refs in sync for use inside onEnded (avoids stale closure)
@@ -519,7 +547,10 @@ export default function CameraPage() {
                         : 'text-gray-500 hover:text-gray-300'
                     }`}
                   >
-                    {tab === 'recordings' ? 'Gravações' : 'Eventos'}
+                    {tab === 'recordings'
+                      ? <>Gravações <span className="ml-1 text-gray-500">{recordingsTotal || recordings.length}</span></>
+                      : <>Eventos <span className="ml-1 text-gray-500">{motionEvents.length}</span></>
+                    }
                   </button>
                 ))}
               </div>
@@ -548,31 +579,46 @@ export default function CameraPage() {
                         return t >= recStart && t < nextStart
                       })
                       return (
-                        <button
+                        <div
                           key={rec.filename}
-                          disabled={rec.is_recording}
-                          onClick={() => !rec.is_recording && setActiveRecording(rec)}
-                          className={`w-full flex items-center justify-between px-3 py-2 transition-colors text-left ${
+                          className={`group flex items-center justify-between px-3 py-2 transition-colors ${
                             rec.is_recording
-                              ? 'opacity-50 cursor-not-allowed'
+                              ? 'opacity-50'
                               : isActive
                                 ? 'bg-blue-900/40 border-l-2 border-blue-500'
                                 : 'hover:bg-gray-800'
                           }`}
                         >
-                          <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
-                            {formatRecordingTime(rec.start, timezone)}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            {hasMotion && (
-                              <span className="w-2 h-2 rounded-full bg-orange-400" title="Movimento detectado" />
-                            )}
-                            {rec.is_recording
-                              ? <span className="text-xs text-red-400 font-medium">● REC</span>
-                              : <span className="text-xs text-gray-500">▶ MP4</span>
-                            }
-                          </div>
-                        </button>
+                          <button
+                            disabled={rec.is_recording}
+                            onClick={() => !rec.is_recording && setActiveRecording(rec)}
+                            className="flex-1 flex items-center justify-between text-left disabled:cursor-not-allowed"
+                          >
+                            <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
+                              {formatRecordingTime(rec.start, timezone)}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {hasMotion && (
+                                <span className="w-2 h-2 rounded-full bg-orange-400" title="Movimento detectado" />
+                              )}
+                              {rec.is_recording
+                                ? <span className="text-xs text-red-400 font-medium">● REC</span>
+                                : <span className="text-xs text-gray-500">▶ MP4</span>
+                              }
+                            </div>
+                          </button>
+                          {!rec.is_recording && (
+                            <button
+                              onClick={() => setDeleteTarget({ rec, hasMotion })}
+                              title="Excluir gravação"
+                              className="ml-2 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                       )
                     })
                   })()}
@@ -645,6 +691,20 @@ export default function CameraPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Excluir gravação"
+        message={
+          deleteTarget?.hasMotion
+            ? `Excluir esta gravação? Os eventos de movimento associados e seus snapshots também serão excluídos. Esta ação não pode ser desfeita.`
+            : `Excluir esta gravação? Esta ação não pode ser desfeita.`
+        }
+        confirmLabel="Excluir"
+        danger
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
 
     </AppLayout>
   )
