@@ -289,3 +289,4 @@ O servidor emite dois endpoints SSE por câmera:
 ```
 
 O script lê os commits convencionais desde a última tag, calcula o bump semântico e cria uma tag `vX.Y.Z-beta.N`. O push da tag dispara o GitHub Actions que compila e publica os binários automaticamente.
+.
