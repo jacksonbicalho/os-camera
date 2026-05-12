@@ -155,10 +155,12 @@ func (c *Cleaner) Clean() {
 		return
 	}
 	now := time.Now().UTC()
+	var scanned, removed, failed int
 	filepath.WalkDir(c.storagePath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || filepath.Ext(path) != ".mp4" {
 			return nil
 		}
+		scanned++
 		chunkStart, err := ChunkStartFromName(filepath.Base(path))
 		if err != nil {
 			return nil
@@ -185,11 +187,18 @@ func (c *Cleaner) Clean() {
 		if chunkEnd.Before(cutoff) {
 			c.log.Debug("deleting old recording", "path", path, "camera_id", cameraIDFromPath(path), "chunk_start", chunkStart, "chunk_duration", chunkDuration, "has_motion", hasMotion)
 			if err := os.Remove(path); err != nil {
+				failed++
 				c.log.Warn("failed to delete recording", "path", path, "err", err)
+			} else {
+				removed++
+				if err := RemoveEventsInRange(ndjsonPath, chunkStart, chunkEnd); err != nil {
+					c.log.Warn("failed to clean motion events after recording deletion", "path", ndjsonPath, "err", err)
+				}
 			}
 		}
 		return nil
 	})
+	c.log.Debug("storage cleaner finished", "scanned", scanned, "removed", removed, "failed", failed)
 }
 
 func (c *Cleaner) CheckSize() {

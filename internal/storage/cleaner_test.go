@@ -309,6 +309,56 @@ func TestClean_DeletesWithoutMotionChunkAfterWithoutMotionRetention(t *testing.T
 	}
 }
 
+func TestClean_DeletesAllExpiredWithoutMotionChunksInOneRun(t *testing.T) {
+	dir := t.TempDir()
+	starts := []time.Time{
+		time.Now().UTC().Add(-40 * time.Minute).Truncate(time.Second),
+		time.Now().UTC().Add(-39 * time.Minute).Truncate(time.Second),
+		time.Now().UTC().Add(-38 * time.Minute).Truncate(time.Second),
+	}
+	var paths []string
+	for _, chunkStart := range starts {
+		path := mp4WithTimestamp(dir, "cam1", chunkStart)
+		writeFile(t, path, chunkStart)
+		paths = append(paths, path)
+	}
+
+	storage.New(dir, 10080, 30, 5*time.Minute, nil, 0, 0, discardLogger()).Clean()
+
+	for _, path := range paths {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("expected expired chunk to be deleted in the same clean run: %s", path)
+		}
+	}
+}
+
+func TestClean_RemovesMotionEventsWhenDeletingExpiredMotionChunk(t *testing.T) {
+	dir := t.TempDir()
+	chunkStart := time.Now().UTC().Add(-66 * time.Minute).Truncate(time.Second)
+	path := mp4WithTimestamp(dir, "cam1", chunkStart)
+	writeFile(t, path, chunkStart)
+	frameName := chunkStart.Add(time.Minute).UTC().Format("20060102150405") + "_motion.jpg"
+	if err := os.WriteFile(filepath.Join(filepath.Dir(path), frameName), []byte("img"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	writeMotionNDJSONWithFrames(t, filepath.Dir(path), []struct {
+		ts    time.Time
+		frame string
+	}{{ts: chunkStart.Add(time.Minute), frame: frameName}})
+
+	storage.New(dir, 60, 30, 5*time.Minute, nil, 0, 0, discardLogger()).Clean()
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("expected expired motion chunk to be deleted")
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(path), frameName)); !os.IsNotExist(err) {
+		t.Error("expected motion snapshot to be deleted with expired chunk")
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(path), "motion.ndjson")); !os.IsNotExist(err) {
+		t.Error("expected motion.ndjson to be removed when deleted chunk had the only event")
+	}
+}
+
 func TestClean_KeepsWithMotionChunkAfterWithoutMotionRetention(t *testing.T) {
 	dir := t.TempDir()
 	chunkStart := time.Now().UTC().Add(-31 * time.Minute).Truncate(time.Second)
@@ -350,6 +400,33 @@ func TestClean_KeepsWithMotionChunkWhenWithMotionMinutesIsZero(t *testing.T) {
 
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("expected motion chunk to be kept when with_motion_minutes=0: %v", err)
+	}
+}
+
+func TestClean_KeepsMotionChunkIndefinitelyEvenWhenWithoutMotionRetentionIsShort(t *testing.T) {
+	dir := t.TempDir()
+	chunkStart := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
+	path := mp4WithTimestamp(dir, "cam1", chunkStart)
+	writeFile(t, path, chunkStart)
+	frameName := chunkStart.Add(time.Minute).UTC().Format("20060102150405") + "_motion.jpg"
+	if err := os.WriteFile(filepath.Join(filepath.Dir(path), frameName), []byte("img"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	writeMotionNDJSONWithFrames(t, filepath.Dir(path), []struct {
+		ts    time.Time
+		frame string
+	}{{ts: chunkStart.Add(time.Minute), frame: frameName}})
+
+	storage.New(dir, 0, 1, 5*time.Minute, nil, 0, 0, discardLogger()).Clean()
+
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("expected motion chunk to be kept when with_motion_minutes=0: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(path), frameName)); err != nil {
+		t.Errorf("expected motion snapshot to be kept with preserved motion chunk: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(path), "motion.ndjson")); err != nil {
+		t.Errorf("expected motion.ndjson to be kept with preserved motion chunk: %v", err)
 	}
 }
 
