@@ -182,7 +182,7 @@ func (c *Cleaner) Clean() {
 		}
 
 		cutoff := now.Add(-time.Duration(retentionMinutes) * time.Minute)
-		if chunkStart.Before(cutoff) {
+		if chunkEnd.Before(cutoff) {
 			c.log.Debug("deleting old recording", "path", path, "camera_id", cameraIDFromPath(path), "chunk_start", chunkStart, "chunk_duration", chunkDuration, "has_motion", hasMotion)
 			if err := os.Remove(path); err != nil {
 				c.log.Warn("failed to delete recording", "path", path, "err", err)
