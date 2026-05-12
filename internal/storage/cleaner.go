@@ -17,22 +17,42 @@ type Cleaner struct {
 	storagePath          string
 	withMotionMinutes    int
 	withoutMotionMinutes int
-	chunkDuration        time.Duration
+	defaultChunkDuration time.Duration
+	chunkDurationsByCam  map[string]time.Duration
 	maxSizeGB            float64
 	warnPercent          float64
 	log                  *slog.Logger
 }
 
-func New(storagePath string, withMotionMinutes, withoutMotionMinutes int, chunkDuration time.Duration, maxSizeGB float64, warnPercent float64, log *slog.Logger) *Cleaner {
+func New(storagePath string, withMotionMinutes, withoutMotionMinutes int, defaultChunkDuration time.Duration, chunkDurationsByCam map[string]time.Duration, maxSizeGB float64, warnPercent float64, log *slog.Logger) *Cleaner {
 	return &Cleaner{
 		storagePath:          storagePath,
 		withMotionMinutes:    withMotionMinutes,
 		withoutMotionMinutes: withoutMotionMinutes,
-		chunkDuration:        chunkDuration,
+		defaultChunkDuration: defaultChunkDuration,
+		chunkDurationsByCam:  chunkDurationsByCam,
 		maxSizeGB:            maxSizeGB,
 		warnPercent:          warnPercent,
 		log:                  log,
 	}
+}
+
+func cameraIDFromPath(path string) string {
+	parts := strings.Split(filepath.ToSlash(path), "/")
+	if len(parts) < 5 {
+		return ""
+	}
+	return parts[len(parts)-5]
+}
+
+func (c *Cleaner) chunkDurationForPath(path string) time.Duration {
+	cameraID := cameraIDFromPath(path)
+	if cameraID != "" {
+		if d, ok := c.chunkDurationsByCam[cameraID]; ok && d > 0 {
+			return d
+		}
+	}
+	return c.defaultChunkDuration
 }
 
 // ChunkStartFromName parses the UTC start time from a filename like "20060102150405.mp4".
@@ -143,7 +163,8 @@ func (c *Cleaner) Clean() {
 		if err != nil {
 			return nil
 		}
-		chunkEnd := chunkStart.Add(c.chunkDuration)
+		chunkDuration := c.chunkDurationForPath(path)
+		chunkEnd := chunkStart.Add(chunkDuration)
 		ndjsonPath := filepath.Join(filepath.Dir(path), "motion.ndjson")
 		hasMotion := HasMotionInRange(ndjsonPath, chunkStart, chunkEnd)
 
@@ -162,7 +183,7 @@ func (c *Cleaner) Clean() {
 
 		cutoff := now.Add(-time.Duration(retentionMinutes) * time.Minute)
 		if chunkStart.Before(cutoff) {
-			c.log.Debug("deleting old recording", "path", path, "has_motion", hasMotion)
+			c.log.Debug("deleting old recording", "path", path, "camera_id", cameraIDFromPath(path), "chunk_start", chunkStart, "chunk_duration", chunkDuration, "has_motion", hasMotion)
 			if err := os.Remove(path); err != nil {
 				c.log.Warn("failed to delete recording", "path", path, "err", err)
 			}
