@@ -170,12 +170,21 @@ func main() {
 	if chunkDuration == 0 {
 		chunkDuration = 5 * time.Minute
 	}
+	chunkDurationsByCam := make(map[string]time.Duration, len(cfg.Cameras))
+	for _, cam := range cfg.Cameras {
+		camChunkDuration := cam.EffectiveChunkDuration(cfg.Defaults)
+		if camChunkDuration <= 0 {
+			camChunkDuration = chunkDuration
+		}
+		chunkDurationsByCam[cam.ID] = camChunkDuration
+	}
 	withMotion, withoutMotion := cfg.Storage.EffectiveRetention()
 	cleaner := storage.New(
 		cfg.Storage.Path,
 		withMotion,
 		withoutMotion,
 		chunkDuration,
+		chunkDurationsByCam,
 		cfg.Storage.MaxSizeGB,
 		cfg.Storage.WarnPercent,
 		slog,

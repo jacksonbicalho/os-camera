@@ -68,6 +68,21 @@ function formatRecordingTime(isoString: string, timezone: string): string {
   })
 }
 
+function parseDurationToMs(raw?: string): number | null {
+  if (!raw) return null
+  const m = raw.trim().match(/^(\d+)(ms|s|m|h)$/)
+  if (!m) return null
+  const value = Number(m[1])
+  if (!Number.isFinite(value) || value <= 0) return null
+  switch (m[2]) {
+    case 'ms': return value
+    case 's': return value * 1000
+    case 'm': return value * 60 * 1000
+    case 'h': return value * 60 * 60 * 1000
+    default: return null
+  }
+}
+
 export default function CameraPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -117,10 +132,13 @@ export default function CameraPage() {
     (location.state as { eventTime?: string } | null)?.eventTime ?? null
   )
   // Tracks the eventTime already handled on mount so we skip re-processing it
-  const handledEventRef = useRef<string | null>(pendingEventRef.current)
+  const handledEventRef = useRef<string | null>(null)
 
   useEffect(() => { recordingsRef.current = recordings }, [recordings])
   useEffect(() => { allMotionEventsRef.current = motionEvents }, [motionEvents])
+  useEffect(() => { activeEventTimeRef.current = activeEventTime }, [activeEventTime])
+  useEffect(() => { continuousPlayRef.current = continuousPlay }, [continuousPlay])
+  useEffect(() => { recordingsDisplayPageRef.current = recordingsDisplayPage }, [recordingsDisplayPage])
 
   useEffect(() => {
     if (!snapshotEvent) return
@@ -174,6 +192,104 @@ export default function CameraPage() {
   }, [])
 
   useEffect(() => {
+    const today = new Date()
+    const isToday =
+      selectedDate.getFullYear() === today.getFullYear() &&
+      selectedDate.getMonth() === today.getMonth() &&
+      selectedDate.getDate() === today.getDate()
+    if (!isToday) return
+
+    const interval = setInterval(async () => {
+      const result = await loadRecordingsData(id!, selectedDate, 1, sortOrder, ALL_RECORDINGS_LIMIT)
+      if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
+      setRecordings(prev => mergeRecordings(prev, result.recordings, sortOrder, result.hasMore))
+      setHasMore(result.hasMore)
+    }, 30_000)
+
+    return () => clearInterval(interval)
+  }, [selectedDate, id, navigate, hasMore, sortOrder])
+
+  const today = new Date()
+  const isToday =
+    selectedDate.getFullYear() === today.getFullYear() &&
+    selectedDate.getMonth() === today.getMonth() &&
+    selectedDate.getDate() === today.getDate()
+
+  const handleLiveMotion = useCallback(() => {
+    loadMotionEvents(id!, selectedDate).then(setMotionEvents)
+  }, [id, selectedDate])
+
+  const settings = useSettings(`/cameras/${id}`)
+  const motionPeak = useMotionPeak(id, `/cameras/${id}`)
+  const cam = settings?.cameras.find(c => c.id === id)
+  const effectiveThreshold = (cam?.motion ?? settings?.motion)?.threshold ?? 0
+  const chunkDurationMs =
+    parseDurationToMs(cam?.chunk_duration) ??
+    parseDurationToMs(settings?.defaults?.chunk_duration) ??
+    5 * 60 * 1000
+
+  useEventSource(
+    isToday && id ? `/api/cameras/${id}/motion/live` : null,
+    handleLiveMotion,
+  )
+
+  async function reloadRecordingsAndEvents() {
+    const [result, events] = await Promise.all([
+      loadRecordingsData(id!, selectedDate, 1, sortOrder, ALL_RECORDINGS_LIMIT),
+      loadMotionEvents(id!, selectedDate),
+    ])
+    if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
+    setRecordings(result.recordings)
+    setRecordingsTotal(result.total)
+    setHasMore(result.hasMore)
+    setMotionEvents(events)
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return
+    setDeleteTarget(null)
+    const ok = await deleteRecording(id!, deleteTarget.rec.filename)
+    if (ok) {
+      if (activeRecording?.filename === deleteTarget.rec.filename) setActiveRecording(null)
+      await reloadRecordingsAndEvents()
+    }
+  }
+
+  const playEventAt = useCallback((ev: MotionEvent, recs?: Recording[], skipScroll = false) => {
+    const sourceRecordings = recs ?? recordingsRef.current
+    const evTime = new Date(ev.time).getTime()
+    const asc = [...sourceRecordings].sort((a, b) => a.filename.localeCompare(b.filename))
+    for (let i = 0; i < asc.length; i++) {
+      const recStart = new Date(asc[i].start).getTime()
+      const nextStart = i + 1 < asc.length
+        ? new Date(asc[i + 1].start).getTime()
+        : recStart + chunkDurationMs
+      if (evTime >= recStart && evTime < nextStart) {
+        if (asc[i].is_recording) {
+          setActiveEventTime(ev.time)
+          setActiveRecording(null)
+          hlsPlayerRef.current?.seekTo(ev.time)
+          if (!skipScroll) setScrollNonce(n => n + 1)
+          return
+        }
+        const seekTime = Math.max(0, (evTime - recStart) / 1000 - 10)
+        setActiveEventTime(ev.time)
+        if (!skipScroll) setScrollNonce(n => n + 1)
+        if (activeRecording?.filename === asc[i].filename) {
+          if (videoRef.current) {
+            videoRef.current.currentTime = seekTime
+            videoRef.current.play().catch(() => {})
+          }
+        } else {
+          pendingSeekRef.current = seekTime
+          setActiveRecording(asc[i])
+        }
+        return
+      }
+    }
+  }, [activeRecording?.filename, chunkDurationMs])
+
+  useEffect(() => {
     let cancelled = false
 
     async function load() {
@@ -205,94 +321,6 @@ export default function CameraPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, id, navigate, sortOrder])
 
-  useEffect(() => {
-    const today = new Date()
-    const isToday =
-      selectedDate.getFullYear() === today.getFullYear() &&
-      selectedDate.getMonth() === today.getMonth() &&
-      selectedDate.getDate() === today.getDate()
-    if (!isToday) return
-
-    const interval = setInterval(async () => {
-      const result = await loadRecordingsData(id!, selectedDate, 1, sortOrder, ALL_RECORDINGS_LIMIT)
-      if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
-      setRecordings(prev => mergeRecordings(prev, result.recordings, sortOrder, result.hasMore))
-      setHasMore(result.hasMore)
-    }, 30_000)
-
-    return () => clearInterval(interval)
-  }, [selectedDate, id, navigate, hasMore, sortOrder])
-
-  const today = new Date()
-  const isToday =
-    selectedDate.getFullYear() === today.getFullYear() &&
-    selectedDate.getMonth() === today.getMonth() &&
-    selectedDate.getDate() === today.getDate()
-
-  const handleLiveMotion = useCallback(() => {
-    loadMotionEvents(id!, selectedDate).then(setMotionEvents)
-  }, [id, selectedDate])
-
-  useEventSource(
-    isToday && id ? `/api/cameras/${id}/motion/live` : null,
-    handleLiveMotion,
-  )
-
-  async function reloadRecordingsAndEvents() {
-    const [result, events] = await Promise.all([
-      loadRecordingsData(id!, selectedDate, 1, sortOrder, ALL_RECORDINGS_LIMIT),
-      loadMotionEvents(id!, selectedDate),
-    ])
-    if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
-    setRecordings(result.recordings)
-    setRecordingsTotal(result.total)
-    setHasMore(result.hasMore)
-    setMotionEvents(events)
-  }
-
-  async function handleConfirmDelete() {
-    if (!deleteTarget) return
-    setDeleteTarget(null)
-    const ok = await deleteRecording(id!, deleteTarget.rec.filename)
-    if (ok) {
-      if (activeRecording?.filename === deleteTarget.rec.filename) setActiveRecording(null)
-      await reloadRecordingsAndEvents()
-    }
-  }
-
-  function playEventAt(ev: MotionEvent, recs: Recording[] = recordings, skipScroll = false) {
-    const evTime = new Date(ev.time).getTime()
-    const asc = [...recs].sort((a, b) => a.filename.localeCompare(b.filename))
-    for (let i = 0; i < asc.length; i++) {
-      const recStart = new Date(asc[i].start).getTime()
-      const nextStart = i + 1 < asc.length
-        ? new Date(asc[i + 1].start).getTime()
-        : recStart + 5 * 60 * 1000
-      if (evTime >= recStart && evTime < nextStart) {
-        if (asc[i].is_recording) {
-          setActiveEventTime(ev.time)
-          setActiveRecording(null)
-          hlsPlayerRef.current?.seekTo(ev.time)
-          if (!skipScroll) setScrollNonce(n => n + 1)
-          return
-        }
-        const seekTime = Math.max(0, (evTime - recStart) / 1000 - 10)
-        setActiveEventTime(ev.time)
-        if (!skipScroll) setScrollNonce(n => n + 1)
-        if (activeRecording?.filename === asc[i].filename) {
-          if (videoRef.current) {
-            videoRef.current.currentTime = seekTime
-            videoRef.current.play().catch(() => {})
-          }
-        } else {
-          pendingSeekRef.current = seekTime
-          setActiveRecording(asc[i])
-        }
-        return
-      }
-    }
-  }
-
   function handleGoToEvent(eventTime: string) {
     const t = new Date(eventTime)
     const eventDate = new Date(t.getFullYear(), t.getMonth(), t.getDate())
@@ -314,11 +342,6 @@ export default function CameraPage() {
     setScrollNonce(n => n + 1)
   }
 
-  const settings = useSettings(`/cameras/${id}`)
-  const motionPeak = useMotionPeak(id, `/cameras/${id}`)
-  const cam = settings?.cameras.find(c => c.id === id)
-  const effectiveThreshold = (cam?.motion ?? settings?.motion)?.threshold ?? 0
-
   const liveUrl = `/stream/${id}/index.m3u8`
   const isLive = activeRecording === null
   const sortedEvents = [...motionEvents].sort((a, b) => {
@@ -332,11 +355,7 @@ export default function CameraPage() {
   const displayedRecordings = recordings.slice(0, recordingsDisplayPage * PAGE_SIZE)
   const hasMoreDisplayedRecordings = displayedRecordings.length < recordings.length
 
-  // Keep refs in sync for use inside onEnded (avoids stale closure)
-  activeEventTimeRef.current = activeEventTime
-  visibleEventsRef.current = visibleEvents
-  continuousPlayRef.current = continuousPlay
-  recordingsDisplayPageRef.current = recordingsDisplayPage
+  useEffect(() => { visibleEventsRef.current = visibleEvents }, [visibleEvents])
 
   return (
     <AppLayout mainClassName="max-w-6xl mx-auto w-full">
@@ -567,7 +586,7 @@ export default function CameraPage() {
                       const idx = recordingsAsc.findIndex(r => r.filename === rec.filename)
                       const nextStart = idx + 1 < recordingsAsc.length
                         ? new Date(recordingsAsc[idx + 1].start).getTime()
-                        : recStart + 5 * 60 * 1000
+                        : recStart + chunkDurationMs
                       const hasMotion = motionEvents.some(ev => {
                         const t = new Date(ev.time).getTime()
                         return t >= recStart && t < nextStart
@@ -592,9 +611,10 @@ export default function CameraPage() {
                               {formatRecordingTime(rec.start, timezone)}
                             </span>
                             <div className="flex items-center gap-2">
-                              {hasMotion && (
-                                <span className="w-2 h-2 rounded-full bg-orange-400" title="Movimento detectado" />
-                              )}
+                              <span
+                                className={`w-2 h-2 rounded-full ${hasMotion ? 'bg-orange-400' : 'bg-gray-500'}`}
+                                title={hasMotion ? 'Movimento detectado' : 'Sem movimento detectado'}
+                              />
                               {rec.is_recording
                                 ? <span className="text-xs text-red-400 font-medium">● REC</span>
                                 : <span className="text-xs text-gray-500">▶ MP4</span>
