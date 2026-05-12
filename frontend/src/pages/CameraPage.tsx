@@ -14,7 +14,6 @@ import { useScrollToPlayer } from '../hooks/useScrollToPlayer'
 import { useEventSource } from '../hooks/useEventSource'
 import { useSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
-import { mergeRecordings } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 
 interface RecordingsResponse {
@@ -202,7 +201,8 @@ export default function CameraPage() {
     const interval = setInterval(async () => {
       const result = await loadRecordingsData(id!, selectedDate, 1, sortOrder, ALL_RECORDINGS_LIMIT)
       if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
-      setRecordings(prev => mergeRecordings(prev, result.recordings, sortOrder, result.hasMore))
+      setRecordings(result.recordings)
+      setRecordingsTotal(result.total)
       setHasMore(result.hasMore)
     }, 30_000)
 
