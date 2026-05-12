@@ -297,7 +297,7 @@ func TestChunkStartFromName_StripsExtension(t *testing.T) {
 
 func TestClean_DeletesWithoutMotionChunkAfterWithoutMotionRetention(t *testing.T) {
 	dir := t.TempDir()
-	chunkStart := time.Now().UTC().Add(-31 * time.Minute).Truncate(time.Second)
+	chunkStart := time.Now().UTC().Add(-36 * time.Minute).Truncate(time.Second)
 	path := mp4WithTimestamp(dir, "cam1", chunkStart)
 	writeFile(t, path, chunkStart)
 	// no motion.ndjson → no motion
@@ -326,7 +326,7 @@ func TestClean_KeepsWithMotionChunkAfterWithoutMotionRetention(t *testing.T) {
 
 func TestClean_DeletesWithMotionChunkAfterWithMotionRetention(t *testing.T) {
 	dir := t.TempDir()
-	chunkStart := time.Now().UTC().Add(-61 * time.Minute).Truncate(time.Second)
+	chunkStart := time.Now().UTC().Add(-66 * time.Minute).Truncate(time.Second)
 	path := mp4WithTimestamp(dir, "cam1", chunkStart)
 	writeFile(t, path, chunkStart)
 	writeMotionNDJSON(t, filepath.Dir(path), []time.Time{chunkStart.Add(1 * time.Minute)})
@@ -355,7 +355,7 @@ func TestClean_KeepsWithMotionChunkWhenWithMotionMinutesIsZero(t *testing.T) {
 
 func TestClean_DeletesWithoutMotionChunkUsingCameraSpecificChunkDuration(t *testing.T) {
 	dir := t.TempDir()
-	chunkStart := time.Now().UTC().Add(-3 * time.Minute).Truncate(time.Second)
+	chunkStart := time.Now().UTC().Add(-6 * time.Minute).Truncate(time.Second)
 	path := mp4WithTimestamp(dir, "cam3m", chunkStart)
 	writeFile(t, path, chunkStart)
 
@@ -367,9 +367,23 @@ func TestClean_DeletesWithoutMotionChunkUsingCameraSpecificChunkDuration(t *test
 	}
 }
 
-func TestClean_DoesNotLeakMotionFromAdjacentChunkWhenCameraChunkIs3Minutes(t *testing.T) {
+func TestClean_KeepsWithoutMotionChunkUntilChunkEndPassesRetention(t *testing.T) {
 	dir := t.TempDir()
 	chunkStart := time.Now().UTC().Add(-3 * time.Minute).Truncate(time.Second)
+	path := mp4WithTimestamp(dir, "cam3m", chunkStart)
+	writeFile(t, path, chunkStart)
+
+	durations := map[string]time.Duration{"cam3m": 3 * time.Minute}
+	storage.New(dir, 10080, 2, 5*time.Minute, durations, 0, 0, discardLogger()).Clean()
+
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("expected chunk to be kept until chunk end is older than retention: %v", err)
+	}
+}
+
+func TestClean_DoesNotLeakMotionFromAdjacentChunkWhenCameraChunkIs3Minutes(t *testing.T) {
+	dir := t.TempDir()
+	chunkStart := time.Now().UTC().Add(-6 * time.Minute).Truncate(time.Second)
 	path := mp4WithTimestamp(dir, "cam3m", chunkStart)
 	writeFile(t, path, chunkStart)
 	// Event is outside [start, start+3m), but inside [start, start+5m).
@@ -387,7 +401,7 @@ func TestClean_DoesNotLeakMotionFromAdjacentChunkWhenCameraChunkIs3Minutes(t *te
 
 func TestClean_DeletesOldFiles(t *testing.T) {
 	dir := t.TempDir()
-	chunkStart := time.Now().UTC().Add(-31 * time.Minute).Truncate(time.Second)
+	chunkStart := time.Now().UTC().Add(-36 * time.Minute).Truncate(time.Second)
 	old := mp4WithTimestamp(dir, "cam1", chunkStart)
 	writeFile(t, old, chunkStart)
 
