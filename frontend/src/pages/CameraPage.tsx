@@ -217,6 +217,7 @@ export default function CameraPage() {
       const result = await loadRecordingsData(id!, selectedDate, 1, sortOrder, ALL_RECORDINGS_LIMIT)
       if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
       setRecordings(prev => mergeRecordings(prev, result.recordings, sortOrder, result.hasMore))
+      setRecordingsTotal(result.total)
       setHasMore(result.hasMore)
     }, 30_000)
 
