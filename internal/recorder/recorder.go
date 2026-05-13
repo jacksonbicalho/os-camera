@@ -14,18 +14,16 @@ import (
 type Recorder struct {
 	camera    config.CameraConfig
 	storage   config.StorageConfig
-	defaults  config.DefaultsConfig
 	stream    ffprobe.StreamInfo
 	commander exec.Commander
 	log       *slog.Logger
 	process   exec.Process
 }
 
-func NewRecorder(camera config.CameraConfig, storage config.StorageConfig, defaults config.DefaultsConfig, stream ffprobe.StreamInfo, commander exec.Commander, log *slog.Logger) *Recorder {
+func NewRecorder(camera config.CameraConfig, storage config.StorageConfig, stream ffprobe.StreamInfo, commander exec.Commander, log *slog.Logger) *Recorder {
 	return &Recorder{
 		camera:    camera,
 		storage:   storage,
-		defaults:  defaults,
 		stream:    stream,
 		commander: commander,
 		log:       log,
@@ -39,7 +37,7 @@ func (r *Recorder) Start(now time.Time) error {
 		return err
 	}
 	pattern := OutputPattern(r.storage.Path, r.camera.ID, now)
-	duration := int(r.camera.EffectiveChunkDuration(r.defaults).Seconds())
+	duration := int(r.camera.EffectiveChunkDuration().Seconds())
 	r.log.Debug("starting ffmpeg", "camera", r.camera.ID, "pattern", pattern, "chunk_duration", duration)
 	args := []string{"-i", r.camera.RTSPURL, "-c", "copy"}
 	if !r.stream.HasAudio {

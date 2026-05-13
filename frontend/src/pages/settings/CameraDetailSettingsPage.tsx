@@ -45,8 +45,8 @@ export default function CameraDetailSettingsPage() {
           <SettingsSection
             title="Gravação"
             fields={[
-              { label: 'Duração do chunk', value: cam.chunk_duration === '0s' ? `herda global (${settings.defaults.chunk_duration})` : cam.chunk_duration },
-              { label: 'Intervalo de reconexão', value: cam.reconnect_interval === '0s' ? `herda global (${settings.defaults.reconnect_interval})` : cam.reconnect_interval },
+              { label: 'Duração do chunk', value: cam.chunk_duration },
+              { label: 'Intervalo de reconexão', value: cam.reconnect_interval },
             ]}
           />
           <Link

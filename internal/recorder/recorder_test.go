@@ -90,9 +90,8 @@ func TestRecorderCreatesDirectoryBeforeStarting(t *testing.T) {
 
 	camera := config.CameraConfig{ID: "entrada", RTSPURL: "rtsp://192.168.1.10:554/stream"}
 	storage := config.StorageConfig{Path: tmpDir}
-	defaults := config.DefaultsConfig{}
 
-	rec := recorder.NewRecorder(camera, storage, defaults, ffprobe.StreamInfo{}, &fakeCommander{}, discardLogger())
+	rec := recorder.NewRecorder(camera, storage, ffprobe.StreamInfo{}, &fakeCommander{}, discardLogger())
 	if err := rec.Start(ts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -113,10 +112,9 @@ func TestRecorderStartsFFmpegWithCorrectArguments(t *testing.T) {
 		ChunkDuration: config.Duration(5 * time.Minute),
 	}
 	storage := config.StorageConfig{Path: tmpDir}
-	defaults := config.DefaultsConfig{}
 
 	cmd := &fakeCommander{}
-	rec := recorder.NewRecorder(camera, storage, defaults, ffprobe.StreamInfo{}, cmd, discardLogger())
+	rec := recorder.NewRecorder(camera, storage, ffprobe.StreamInfo{}, cmd, discardLogger())
 	if err := rec.Start(ts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -158,12 +156,11 @@ func TestRecorderStopFinalizesChunk(t *testing.T) {
 
 	camera := config.CameraConfig{ID: "entrada", RTSPURL: "rtsp://192.168.1.10:554/stream"}
 	storage := config.StorageConfig{Path: tmpDir}
-	defaults := config.DefaultsConfig{}
 
 	proc := &trackingProcess{}
 	cmd := &fakeCommander{process: proc}
 
-	rec := recorder.NewRecorder(camera, storage, defaults, ffprobe.StreamInfo{}, cmd, discardLogger())
+	rec := recorder.NewRecorder(camera, storage, ffprobe.StreamInfo{}, cmd, discardLogger())
 	if err := rec.Start(ts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -187,7 +184,7 @@ func TestRecorderAddsAnFlagWhenNoAudio(t *testing.T) {
 	stream := ffprobe.StreamInfo{HasAudio: false}
 
 	cmd := &fakeCommander{}
-	rec := recorder.NewRecorder(camera, storage, config.DefaultsConfig{}, stream, cmd, discardLogger())
+	rec := recorder.NewRecorder(camera, storage, stream, cmd, discardLogger())
 	if err := rec.Start(ts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -206,7 +203,7 @@ func TestRecorderDoesNotAddAnFlagWhenHasAudio(t *testing.T) {
 	stream := ffprobe.StreamInfo{HasAudio: true}
 
 	cmd := &fakeCommander{}
-	rec := recorder.NewRecorder(camera, storage, config.DefaultsConfig{}, stream, cmd, discardLogger())
+	rec := recorder.NewRecorder(camera, storage, stream, cmd, discardLogger())
 	if err := rec.Start(ts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

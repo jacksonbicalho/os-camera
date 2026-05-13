@@ -338,6 +338,72 @@ func TestClean_DeletesWithMotionChunkAfterWithMotionRetention(t *testing.T) {
 	}
 }
 
+// --- Clean: inferência de chunkEnd pelo arquivo seguinte ---
+
+// Chunk A (1 min) sem motion; evento de motion no chunk B seguinte.
+// Com a janela correta (até o início de B), A não deve ser classificado como "com motion".
+func TestClean_AdjacentMotionEventDoesNotContaminateEarlierChunk(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Now().UTC().Add(-120 * time.Minute).Truncate(time.Second)
+	chunkA := base
+	chunkB := base.Add(1 * time.Minute)
+
+	pathA := mp4WithTimestamp(dir, "cam1", chunkA)
+	pathB := mp4WithTimestamp(dir, "cam1", chunkB)
+	writeFile(t, pathA, chunkA)
+	writeFile(t, pathB, chunkB)
+
+	// evento de motion aos 10s dentro do chunk B → fora da janela de A (1 min)
+	writeMotionNDJSON(t, filepath.Dir(pathA), []time.Time{chunkB.Add(10 * time.Second)})
+
+	// fallback de 5 min; sem ele o bug existia porque 5 min cobria o evento de B
+	storage.New(dir, 0, 60, 5*time.Minute, 0, 0, discardLogger()).Clean()
+
+	if _, err := os.Stat(pathA); !os.IsNotExist(err) {
+		t.Error("chunk A sem motion deveria ter sido deletado, mas foi retido (janela alargada)")
+	}
+	if _, err := os.Stat(pathB); err != nil {
+		t.Errorf("chunk B com motion deveria ser mantido: %v", err)
+	}
+}
+
+// Chunk com motion real dentro do seu próprio intervalo deve ser retido.
+func TestClean_MotionInsideChunkWindowKeepsChunk(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Now().UTC().Add(-120 * time.Minute).Truncate(time.Second)
+	chunkA := base
+	chunkB := base.Add(1 * time.Minute)
+
+	pathA := mp4WithTimestamp(dir, "cam1", chunkA)
+	pathB := mp4WithTimestamp(dir, "cam1", chunkB)
+	writeFile(t, pathA, chunkA)
+	writeFile(t, pathB, chunkB)
+
+	// evento de motion aos 30s dentro do chunk A → dentro da janela de A
+	writeMotionNDJSON(t, filepath.Dir(pathA), []time.Time{chunkA.Add(30 * time.Second)})
+
+	storage.New(dir, 0, 60, 5*time.Minute, 0, 0, discardLogger()).Clean()
+
+	if _, err := os.Stat(pathA); err != nil {
+		t.Errorf("chunk A com motion real deveria ser mantido: %v", err)
+	}
+}
+
+// Último arquivo do diretório (sem próximo) usa fallbackDuration; deve ser deletado se expirado.
+func TestClean_LastChunkInDirUsesFallbackDuration(t *testing.T) {
+	dir := t.TempDir()
+	chunkStart := time.Now().UTC().Add(-120 * time.Minute).Truncate(time.Second)
+	path := mp4WithTimestamp(dir, "cam1", chunkStart)
+	writeFile(t, path, chunkStart)
+	// sem motion.ndjson; fallback de 5 min não alcança nenhum evento
+
+	storage.New(dir, 0, 60, 5*time.Minute, 0, 0, discardLogger()).Clean()
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("último chunk sem motion deveria ter sido deletado usando fallback duration")
+	}
+}
+
 func TestClean_KeepsWithMotionChunkWhenWithMotionMinutesIsZero(t *testing.T) {
 	dir := t.TempDir()
 	chunkStart := time.Now().UTC().Add(-365 * 24 * time.Hour).Truncate(time.Second)

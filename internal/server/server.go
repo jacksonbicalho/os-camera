@@ -79,7 +79,6 @@ func (b *broadcaster) run(src <-chan motion.Event) {
 type Server struct {
 	cfg                config.ServerConfig
 	storageCfg         config.StorageConfig
-	defaults           config.DefaultsConfig
 	logCfg             config.LogConfig
 	debug              bool
 	timezone           string
@@ -133,10 +132,6 @@ func (s *Server) WithStorageConfig(cfg config.StorageConfig) *Server {
 	return s
 }
 
-func (s *Server) WithDefaults(cfg config.DefaultsConfig) *Server {
-	s.defaults = cfg
-	return s
-}
 
 func (s *Server) WithVersion(v string) *Server {
 	s.version = v
@@ -373,8 +368,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		cameras[i] = cameraDTO{
 			ID:                c.ID,
 			RTSPURL:           maskRTSP(c.RTSPURL),
-			ChunkDuration:     time.Duration(c.ChunkDuration).String(),
-			ReconnectInterval: time.Duration(c.ReconnectInterval).String(),
+			ChunkDuration:     c.EffectiveChunkDuration().String(),
+			ReconnectInterval: c.EffectiveReconnectInterval().String(),
 			VideoCodec:        c.VideoCodec,
 			HasAudio:          c.HasAudio,
 			Width:             c.Width,
@@ -414,8 +409,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			CooldownSeconds: s.motionCfg.CooldownSeconds,
 		},
 		"defaults": map[string]any{
-			"chunk_duration":     time.Duration(s.defaults.ChunkDuration).String(),
-			"reconnect_interval": time.Duration(s.defaults.ReconnectInterval).String(),
+			"chunk_duration":     config.DefaultChunkDuration.String(),
+			"reconnect_interval": config.DefaultReconnectInterval.String(),
 		},
 		"cameras": cameras,
 	}
@@ -598,7 +593,7 @@ func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid filename", http.StatusBadRequest)
 		return
 	}
-	chunkDuration := cam.EffectiveChunkDuration(s.defaults)
+	chunkDuration := cam.EffectiveChunkDuration()
 	chunkEnd := chunkStart.Add(chunkDuration)
 
 	dateDir := chunkStart.UTC().Format("2006/01/02")
@@ -642,10 +637,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 
 	maxSizeBytes := int64(s.storageCfg.MaxSizeGB * 1024 * 1024 * 1024)
 
-	chunkSec := int64(time.Duration(s.defaults.ChunkDuration).Seconds())
-	if chunkSec <= 0 {
-		chunkSec = 300 // default 5 min
-	}
+	chunkSec := int64(config.DefaultChunkDuration.Seconds())
 	durationSec := int64(recCount) * chunkSec
 
 	availableBytes := diskFree

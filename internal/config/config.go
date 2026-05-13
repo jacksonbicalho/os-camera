@@ -19,14 +19,16 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+const DefaultChunkDuration     = 5 * time.Minute
+const DefaultReconnectInterval = 10 * time.Second
+
 type Config struct {
-	Debug    bool           `yaml:"debug"`
-	Timezone string         `yaml:"timezone"`
-	Log      LogConfig      `yaml:"log"`
-	Server   ServerConfig   `yaml:"server"`
-	Storage  StorageConfig  `yaml:"storage"`
-	Motion   MotionConfig   `yaml:"motion"`
-	Defaults DefaultsConfig `yaml:"defaults"`
+	Debug    bool          `yaml:"debug"`
+	Timezone string        `yaml:"timezone"`
+	Log      LogConfig     `yaml:"log"`
+	Server   ServerConfig  `yaml:"server"`
+	Storage  StorageConfig `yaml:"storage"`
+	Motion   MotionConfig  `yaml:"motion"`
 	Cameras  []CameraConfig `yaml:"cameras"`
 }
 
@@ -83,11 +85,6 @@ type MotionConfig struct {
 	CooldownSeconds int     `yaml:"cooldown_seconds"` // min seconds between events; 0 = disabled
 }
 
-type DefaultsConfig struct {
-	ChunkDuration     Duration `yaml:"chunk_duration"`
-	ReconnectInterval Duration `yaml:"reconnect_interval"`
-}
-
 type CameraConfig struct {
 	ID                string        `yaml:"id"`
 	RTSPURL           string        `yaml:"rtsp_url"`
@@ -107,11 +104,18 @@ func (c CameraConfig) EffectiveMotionConfig(defaults MotionConfig) MotionConfig 
 	return defaults
 }
 
-func (c CameraConfig) EffectiveChunkDuration(defaults DefaultsConfig) time.Duration {
+func (c CameraConfig) EffectiveChunkDuration() time.Duration {
 	if c.ChunkDuration != 0 {
 		return time.Duration(c.ChunkDuration)
 	}
-	return time.Duration(defaults.ChunkDuration)
+	return DefaultChunkDuration
+}
+
+func (c CameraConfig) EffectiveReconnectInterval() time.Duration {
+	if c.ReconnectInterval != 0 {
+		return time.Duration(c.ReconnectInterval)
+	}
+	return DefaultReconnectInterval
 }
 
 func Load(path string) (Config, error) {
