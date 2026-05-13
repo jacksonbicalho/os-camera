@@ -507,11 +507,9 @@ func TestGetStatsIncludesRecordingsDurationAndForecast(t *testing.T) {
 		}
 	}
 
-	defaults := config.DefaultsConfig{ChunkDuration: config.Duration(5 * time.Minute)}
 	cameras := []config.CameraConfig{{ID: cameraID}}
 	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
-	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).
-		WithDefaults(defaults)
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
 
 	token := loginAndGetToken(t, srv, "u", "p")
 	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
@@ -1014,15 +1012,9 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 	serverCfg := config.ServerConfig{Username: "admin", Password: "pw", Port: 8080, HLSDVRSeconds: 30}
 	storageCfg := config.StorageConfig{Path: "/data", Retention: config.RetentionConfig{WithMotionMinutes: 10080, WithoutMotionMinutes: 1440}, MaxSizeGB: 10, WarnPercent: 80}
 	motionCfg := config.MotionConfig{Enabled: true, Threshold: 0.02, FPS: 2, CooldownSeconds: 30}
-	defaultsCfg := config.DefaultsConfig{
-		ChunkDuration:     config.Duration(5 * time.Minute),
-		ReconnectInterval: config.Duration(10 * time.Second),
-	}
-
 	srv := server.NewServer(serverCfg, "America/Sao_Paulo", cameras, discardLogger(), nil).
 		WithStorageConfig(storageCfg).
-		WithMotionConfig(motionCfg).
-		WithDefaults(defaultsCfg)
+		WithMotionConfig(motionCfg)
 
 	token := loginAndGetToken(t, srv, "admin", "pw")
 	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
@@ -1655,9 +1647,7 @@ func TestDeleteRecordingCleansMotionEvents(t *testing.T) {
 	}
 
 	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
-	defaults := config.DefaultsConfig{ChunkDuration: config.Duration(5 * time.Minute)}
-	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil).
-		WithDefaults(defaults)
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
 	token := loginAndGetToken(t, srv, "u", "p")
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/"+cameraID+"/recordings/"+filename, nil)

@@ -233,7 +233,6 @@ func buildInitYAML(p initParams) string {
 	fmt.Fprintf(&sb, "  interval_minutes: 60\n")
 	fmt.Fprintf(&sb, "  max_size_gb: %s\n", yamlFloat(p.maxSizeGB))
 	fmt.Fprintf(&sb, "  warn_percent: %s\n", yamlFloat(p.warnPercent))
-	fmt.Fprintf(&sb, "\ndefaults:\n  chunk_duration: 5m\n  reconnect_interval: 10s\n")
 	fmt.Fprintf(&sb, "\nmotion:\n")
 	fmt.Fprintf(&sb, "  enabled: %s\n", motionEnabledStr)
 	fmt.Fprintf(&sb, "  threshold: %s\n", yamlFloat(p.motionThreshold))

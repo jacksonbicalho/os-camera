@@ -23,10 +23,6 @@ storage:
   max_size_gb: 10            # tamanho máximo do diretório de gravações em GB (0 = desabilitado)
   warn_percent: 70           # avisa quando uso atingir X% do max_size_gb (ex: 70% de 10 GB = 7 GB)
 
-defaults:
-  chunk_duration: 5m         # env: CAMERA_CHUNK_DURATION
-  reconnect_interval: 10s    # env: CAMERA_RECONNECT_INTERVAL
-
 motion:
   enabled: false      # habilita detecção de movimento por câmera
   threshold: 0.02     # fração mínima de pixels alterados para registrar evento (0.0–1.0)
@@ -48,7 +44,8 @@ cameras:
 
   - id: quintal
     rtsp_url: rtsp://192.168.1.11:554/stream
-    chunk_duration: 10m      # sobrescreve o default
+    chunk_duration: 10m      # duração de cada chunk gravado (padrão: 5m)
+    # reconnect_interval: 30s  # intervalo de reconexão ao stream (padrão: 10s)
     has_audio: false         # câmera sem microfone — pula detecção por ffprobe
     motion:
       enabled: false         # desabilita detecção de movimento somente nesta câmera

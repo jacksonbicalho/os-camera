@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -135,40 +136,67 @@ func (c *Cleaner) Clean() {
 		return
 	}
 	now := time.Now().UTC()
+
+	// Collect MP4 files grouped by directory so we can determine each chunk's
+	// real end time from the next file's start time.
+	byDir := map[string][]string{}
 	filepath.WalkDir(c.storagePath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || filepath.Ext(path) != ".mp4" {
 			return nil
 		}
-		chunkStart, err := ChunkStartFromName(filepath.Base(path))
-		if err != nil {
-			return nil
-		}
-		chunkEnd := chunkStart.Add(c.chunkDuration)
-		ndjsonPath := filepath.Join(filepath.Dir(path), "motion.ndjson")
-		hasMotion := HasMotionInRange(ndjsonPath, chunkStart, chunkEnd)
-
-		var retentionMinutes int
-		if hasMotion {
-			if c.withMotionMinutes == 0 {
-				return nil
-			}
-			retentionMinutes = c.withMotionMinutes
-		} else {
-			if c.withoutMotionMinutes == 0 {
-				return nil
-			}
-			retentionMinutes = c.withoutMotionMinutes
-		}
-
-		cutoff := now.Add(-time.Duration(retentionMinutes) * time.Minute)
-		if chunkStart.Before(cutoff) {
-			c.log.Debug("deleting old recording", "path", path, "has_motion", hasMotion)
-			if err := os.Remove(path); err != nil {
-				c.log.Warn("failed to delete recording", "path", path, "err", err)
-			}
-		}
+		dir := filepath.Dir(path)
+		byDir[dir] = append(byDir[dir], filepath.Base(path))
 		return nil
 	})
+
+	for dir, files := range byDir {
+		sort.Strings(files)
+		ndjsonPath := filepath.Join(dir, "motion.ndjson")
+
+		for i, name := range files {
+			chunkStart, err := ChunkStartFromName(name)
+			if err != nil {
+				continue
+			}
+
+			// Use next file's start as chunkEnd; fall back to configured duration
+			// for the last file in the directory.
+			var chunkEnd time.Time
+			if i+1 < len(files) {
+				next, err := ChunkStartFromName(files[i+1])
+				if err == nil {
+					chunkEnd = next
+				}
+			}
+			if chunkEnd.IsZero() {
+				chunkEnd = chunkStart.Add(c.chunkDuration)
+			}
+
+			hasMotion := HasMotionInRange(ndjsonPath, chunkStart, chunkEnd)
+
+			var retentionMinutes int
+			if hasMotion {
+				if c.withMotionMinutes == 0 {
+					continue
+				}
+				retentionMinutes = c.withMotionMinutes
+			} else {
+				if c.withoutMotionMinutes == 0 {
+					continue
+				}
+				retentionMinutes = c.withoutMotionMinutes
+			}
+
+			cutoff := now.Add(-time.Duration(retentionMinutes) * time.Minute)
+			if chunkStart.Before(cutoff) {
+				path := filepath.Join(dir, name)
+				c.log.Debug("deleting old recording", "path", path, "has_motion", hasMotion)
+				if err := os.Remove(path); err != nil {
+					c.log.Warn("failed to delete recording", "path", path, "err", err)
+				}
+			}
+		}
+	}
 }
 
 func (c *Cleaner) CheckSize() {

@@ -84,7 +84,7 @@ func main() {
 
 	for _, cam := range cfg.Cameras {
 		stream := resolveStream(cam, prober, slog)
-		rec := recorder.NewRecorder(cam, cfg.Storage, cfg.Defaults, stream, commander, slog)
+		rec := recorder.NewRecorder(cam, cfg.Storage, stream, commander, slog)
 		if err := rec.Start(time.Now().UTC()); err != nil {
 			slog.Error("failed to start recorder", "camera", cam.ID, "error", err)
 			os.Exit(1)
@@ -104,11 +104,6 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	reconnect := time.Duration(cfg.Defaults.ReconnectInterval)
-	if reconnect == 0 {
-		reconnect = 5 * time.Second
-	}
-
 	if cfg.Server.Port > 0 {
 		if cfg.Server.RecordingsPath == "" {
 			cfg.Server.RecordingsPath = cfg.Storage.Path
@@ -119,7 +114,6 @@ func main() {
 		}
 		srv := server.NewServer(cfg.Server, cfg.Timezone, cfg.Cameras, slog, static).
 			WithStorageConfig(cfg.Storage).
-			WithDefaults(cfg.Defaults).
 			WithVersion(version).
 			WithBuildInfo(commit, builtAt).
 			WithSystemConfig(cfg.Debug, cfg.Log).
@@ -134,7 +128,7 @@ func main() {
 			}
 			stream := resolveStream(cam, prober, slog)
 			camID := cam.ID
-			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, reconnect, slog,
+			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, cam.EffectiveReconnectInterval(), slog,
 				func() []zones.Zone { return zoneStore.Get(camID) })
 			go mon.Run(ctx)
 			srv.WithMotionFeed(cam.ID, mon.Events())
@@ -156,7 +150,7 @@ func main() {
 			}
 			stream := resolveStream(cam, prober, slog)
 			camID := cam.ID
-			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, reconnect, slog,
+			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, cam.EffectiveReconnectInterval(), slog,
 				func() []zones.Zone { return zoneStore.Get(camID) })
 			go mon.Run(ctx)
 		}
@@ -166,16 +160,12 @@ func main() {
 	if cleanInterval == 0 {
 		cleanInterval = time.Hour
 	}
-	chunkDuration := time.Duration(cfg.Defaults.ChunkDuration)
-	if chunkDuration == 0 {
-		chunkDuration = 5 * time.Minute
-	}
 	withMotion, withoutMotion := cfg.Storage.EffectiveRetention()
 	cleaner := storage.New(
 		cfg.Storage.Path,
 		withMotion,
 		withoutMotion,
-		chunkDuration,
+		config.DefaultChunkDuration,
 		cfg.Storage.MaxSizeGB,
 		cfg.Storage.WarnPercent,
 		slog,

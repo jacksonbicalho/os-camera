@@ -83,13 +83,10 @@ cameras:
 	}
 }
 
-func TestLoadParsesDefaultChunkDuration(t *testing.T) {
+func TestEffectiveChunkDurationUsesConstantWhenNotSet(t *testing.T) {
 	path := writeTempYAML(t, `
 storage:
   path: /tmp/recordings
-
-defaults:
-  chunk_duration: 5m
 
 cameras:
   - id: cam1
@@ -101,8 +98,8 @@ cameras:
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if time.Duration(cfg.Defaults.ChunkDuration) != 5*time.Minute {
-		t.Errorf("expected 5m, got %v", cfg.Defaults.ChunkDuration)
+	if cfg.Cameras[0].EffectiveChunkDuration() != config.DefaultChunkDuration {
+		t.Errorf("expected DefaultChunkDuration (%v), got %v", config.DefaultChunkDuration, cfg.Cameras[0].EffectiveChunkDuration())
 	}
 }
 
@@ -110,9 +107,6 @@ func TestLoadCameraOverridesChunkDuration(t *testing.T) {
 	path := writeTempYAML(t, `
 storage:
   path: /tmp/recordings
-
-defaults:
-  chunk_duration: 5m
 
 cameras:
   - id: entrada
@@ -127,11 +121,11 @@ cameras:
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.Cameras[0].EffectiveChunkDuration(cfg.Defaults) != 10*time.Minute {
-		t.Errorf("expected 10m for camera with explicit duration, got %v", cfg.Cameras[0].EffectiveChunkDuration(cfg.Defaults))
+	if cfg.Cameras[0].EffectiveChunkDuration() != 10*time.Minute {
+		t.Errorf("expected 10m for camera with explicit duration, got %v", cfg.Cameras[0].EffectiveChunkDuration())
 	}
-	if cfg.Cameras[1].EffectiveChunkDuration(cfg.Defaults) != 5*time.Minute {
-		t.Errorf("expected 5m for camera falling back to default, got %v", cfg.Cameras[1].EffectiveChunkDuration(cfg.Defaults))
+	if cfg.Cameras[1].EffectiveChunkDuration() != config.DefaultChunkDuration {
+		t.Errorf("expected DefaultChunkDuration for camera without duration, got %v", cfg.Cameras[1].EffectiveChunkDuration())
 	}
 }
 
