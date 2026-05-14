@@ -6,7 +6,6 @@ import { useBrowserNotifications } from '../hooks/useBrowserNotifications'
 
 const STORAGE_KEY = 'camera_notifications'
 const MAX_NOTIFICATIONS = 100
-const POLL_INTERVAL_MS = 30_000
 
 export interface Notification {
   id: string
@@ -54,7 +53,6 @@ function save(notifications: Notification[]) {
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>(load)
-  const [cameraIds, setCameraIds] = useState<string[]>([])
   const navigate = useNavigate()
   const {
     supported: browserSupported,
@@ -73,71 +71,43 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     save(next)
   }
 
-  // Fetch camera list with 30s polling
+  // Single SSE connection that receives events from all accessible cameras
   useEffect(() => {
-    async function fetchCameras() {
-      const token = getToken()
-      if (!token) return
-
-      try {
-        const res = await fetch('/api/settings', {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (!res.ok) return
-        const data = await res.json()
-        const ids: string[] = (data.cameras ?? []).map((c: { id: string }) => c.id)
-        setCameraIds(ids)
-      } catch {
-        // silently ignore network errors
-      }
-    }
-
-    fetchCameras()
-    const timer = setInterval(fetchCameras, POLL_INTERVAL_MS)
-    return () => clearInterval(timer)
-  }, [])
-
-  // Open one EventSource per camera
-  useEffect(() => {
-    if (cameraIds.length === 0) return
     const token = getToken()
     if (!token) return
 
-    const sources = cameraIds.map((id) => {
-      const url = `/api/cameras/${id}/motion/live?token=${encodeURIComponent(token)}`
-      const es = new EventSource(url)
+    const url = `/api/motion/live?token=${encodeURIComponent(token)}`
+    const es = new EventSource(url)
 
-      es.onmessage = (e) => {
-        try {
-          const payload = JSON.parse(e.data)
-          const time: string = payload.time ?? new Date().toISOString()
-          const score: number = payload.score ?? 0
-          const notification: Notification = {
-            id: `${id}-${time}`,
-            type: 'motion',
-            cameraId: id,
-            time,
-            score,
-            read: false,
-          }
-          setNotifications((current) => {
-            const next = [notification, ...current].slice(0, MAX_NOTIFICATIONS)
-            save(next)
-            return next
-          })
-          browserNotifyRef.current(id, score, () => {
-            navigate(`/cameras/${id}`, { state: { eventTime: time } })
-          })
-        } catch {
-          // ignore malformed events
+    es.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data)
+        const id: string = payload.camera_id ?? 'unknown'
+        const time: string = payload.time ?? new Date().toISOString()
+        const score: number = payload.score ?? 0
+        const notification: Notification = {
+          id: `${id}-${time}`,
+          type: 'motion',
+          cameraId: id,
+          time,
+          score,
+          read: false,
         }
+        setNotifications((current) => {
+          const next = [notification, ...current].slice(0, MAX_NOTIFICATIONS)
+          save(next)
+          return next
+        })
+        browserNotifyRef.current(id, score, () => {
+          navigate(`/cameras/${id}`, { state: { eventTime: time } })
+        })
+      } catch {
+        // ignore malformed events
       }
+    }
 
-      return es
-    })
-
-    return () => sources.forEach((es) => es.close())
-  }, [cameraIds, navigate])
+    return () => es.close()
+  }, [navigate])
 
   function markRead(id: string) {
     update(notifications.map((n) => (n.id === id ? { ...n, read: true } : n)))
