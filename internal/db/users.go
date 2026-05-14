@@ -109,6 +109,27 @@ func UpdateUser(db *DB, id int64, username, password, role string) error {
 	return err
 }
 
+// PatchUser updates username and role. When newPassword is non-empty, also
+// replaces the password hash; otherwise the existing hash is preserved.
+func PatchUser(db *DB, id int64, username, role, newPassword string) error {
+	if newPassword != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), BcryptCost)
+		if err != nil {
+			return fmt.Errorf("hash password: %w", err)
+		}
+		_, err = db.Exec(
+			`UPDATE users SET username=?, password_hash=?, role=? WHERE id=?`,
+			username, string(hash), role, id,
+		)
+		return err
+	}
+	_, err := db.Exec(
+		`UPDATE users SET username=?, role=? WHERE id=?`,
+		username, role, id,
+	)
+	return err
+}
+
 // DeleteUser removes the user and cascades to user_cameras.
 func DeleteUser(db *DB, id int64) error {
 	_, err := db.Exec(`DELETE FROM users WHERE id=?`, id)

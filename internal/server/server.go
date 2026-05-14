@@ -249,6 +249,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/about", s.requireAuth(s.handleAbout))
 	s.mux.HandleFunc("GET /api/cameras", s.requireAuth(s.handleCameras))
 
+	s.mux.HandleFunc("GET /api/users", s.requireAdmin(s.handleListUsers))
+	s.mux.HandleFunc("POST /api/users", s.requireAdmin(s.handleCreateUser))
+	s.mux.HandleFunc("PUT /api/users/{id}", s.requireAdmin(s.handleUpdateUser))
+	s.mux.HandleFunc("DELETE /api/users/{id}", s.requireAdmin(s.handleDeleteUser))
+
 	streamHandler := http.StripPrefix("/stream/", http.FileServer(http.Dir(s.cfg.SegmentsPath)))
 	s.mux.Handle("/stream/", s.requireStreamAccess(streamHandler))
 
