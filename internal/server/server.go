@@ -22,11 +22,21 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"camera/internal/config"
+	"camera/internal/db"
 	"camera/internal/ffprobe"
 	"camera/internal/motion"
 	"camera/internal/storage"
 	"camera/internal/zones"
 )
+
+type contextKey int
+
+const claimsKey contextKey = 0
+
+type authClaims struct {
+	UserID int64
+	Role   string
+}
 
 type broadcaster struct {
 	mu   sync.Mutex
@@ -103,6 +113,7 @@ type Server struct {
 	zoneStore          *zones.Store
 	snapFn             func(ctx context.Context, rtspURL string) ([]byte, error)
 	probedStreams       map[string]ffprobe.StreamInfo
+	db                 *db.DB
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
@@ -127,6 +138,11 @@ func NewServer(cfg config.ServerConfig, timezone string, cameras []config.Camera
 		startTime:    time.Now(),
 	}
 	s.routes()
+	return s
+}
+
+func (s *Server) WithDB(database *db.DB) *Server {
+	s.db = database
 	return s
 }
 
@@ -290,7 +306,7 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		_, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
+		parsed, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, jwt.ErrSignatureInvalid
 			}
@@ -299,6 +315,16 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		if err != nil {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
+		}
+		if claims, ok := parsed.Claims.(jwt.MapClaims); ok {
+			var ac authClaims
+			if uid, ok := claims["user_id"].(float64); ok {
+				ac.UserID = int64(uid)
+			}
+			if roleStr, ok := claims["role"].(string); ok {
+				ac.Role = roleStr
+			}
+			r = r.WithContext(context.WithValue(r.Context(), claimsKey, ac))
 		}
 		if strings.HasPrefix(r.URL.Path, "/stream/") {
 			s.touchStreamClient(r)
@@ -739,14 +765,30 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	if creds.Username != s.cfg.Username || creds.Password != s.cfg.Password {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
+
+	var userID int64
+	var role string
+	if s.db != nil {
+		user, err := db.GetUserByUsername(s.db, creds.Username)
+		if err != nil || !db.CheckPassword(user.PasswordHash, creds.Password) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		userID = user.ID
+		role = user.Role
+	} else {
+		if creds.Username != s.cfg.Username || creds.Password != s.cfg.Password {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		role = "admin"
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": creds.Username,
-		"exp": time.Now().Add(24 * time.Hour).Unix(),
+		"sub":     creds.Username,
+		"exp":     time.Now().Add(24 * time.Hour).Unix(),
+		"user_id": userID,
+		"role":    role,
 	})
 	signed, err := token.SignedString(s.secret)
 	if err != nil {
