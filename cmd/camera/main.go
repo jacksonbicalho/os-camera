@@ -12,6 +12,7 @@ import (
 	osexec "os/exec"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -89,6 +90,10 @@ func main() {
 				slog.Warn("seed from YAML failed", "error", seedErr)
 			}
 		}
+		if dbCams, dbErr := db.ListCameras(database); dbErr == nil && len(dbCams) > 0 {
+			cfg.Cameras = dbCams
+			slog.Info("cameras loaded from database", "count", len(dbCams))
+		}
 	}
 
 	zonesPath := filepath.Join(cfg.Storage.Path, "motion_zones.json")
@@ -99,32 +104,93 @@ func main() {
 
 	commander := exec.NewFFmpegCommander()
 	prober := ffprobe.NewProber(&ffprobe.OSExecutor{})
-	recorders := make([]*recorder.Recorder, 0, len(cfg.Cameras))
-	streamers := make([]*streaming.HLSStreamer, 0, len(cfg.Cameras))
-	streams := make(map[string]ffprobe.StreamInfo, len(cfg.Cameras))
 
-	for _, cam := range cfg.Cameras {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	var (
+		camMu             sync.Mutex
+		recordersByID     = make(map[string]*recorder.Recorder)
+		streamersByID     = make(map[string]*streaming.HLSStreamer)
+		motionCancelsByID = make(map[string]context.CancelFunc)
+		motionMonsByID    = make(map[string]*motion.Monitor)
+		streamsByID       = make(map[string]ffprobe.StreamInfo)
+	)
+
+	// srv is assigned after NewServer; callbacks close over this variable.
+	var srv *server.Server
+
+	startCameraProcs := func(cam config.CameraConfig) {
 		stream := resolveStream(cam, prober, slog)
-		streams[cam.ID] = stream
+
 		rec := recorder.NewRecorder(cam, cfg.Storage, stream, commander, slog)
 		if err := rec.Start(time.Now().UTC()); err != nil {
 			slog.Error("failed to start recorder", "camera", cam.ID, "error", err)
-			os.Exit(1)
+			return
 		}
 		slog.Info("recording started", "camera", cam.ID)
-		recorders = append(recorders, rec)
+
+		camMu.Lock()
+		recordersByID[cam.ID] = rec
+		streamsByID[cam.ID] = stream
+		camMu.Unlock()
 
 		if cfg.Server.SegmentsPath != "" {
 			str := streaming.NewHLSStreamer(cam, cfg.Server, stream, commander, slog)
 			if err := str.Start(); err != nil {
 				slog.Error("failed to start hls streamer", "camera", cam.ID, "error", err)
-				os.Exit(1)
+			} else {
+				camMu.Lock()
+				streamersByID[cam.ID] = str
+				camMu.Unlock()
 			}
-			streamers = append(streamers, str)
+		}
+
+		motionCfg := cam.EffectiveMotionConfig(cfg.Motion)
+		if motionCfg.Enabled {
+			camID := cam.ID
+			motionCtx, motionCancel := context.WithCancel(ctx)
+			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, cam.EffectiveReconnectInterval(), slog,
+				func() []zones.Zone { return zoneStore.Get(camID) })
+			go mon.Run(motionCtx)
+
+			camMu.Lock()
+			motionCancelsByID[cam.ID] = motionCancel
+			motionMonsByID[cam.ID] = mon
+			camMu.Unlock()
+
+			if srv != nil {
+				srv.WithMotionFeed(cam.ID, mon.Events())
+				srv.WithRawFeed(cam.ID, mon.RawScores())
+			}
 		}
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	stopCameraProcs := func(id string) {
+		camMu.Lock()
+		rec := recordersByID[id]
+		str := streamersByID[id]
+		motionCancel := motionCancelsByID[id]
+		delete(recordersByID, id)
+		delete(streamersByID, id)
+		delete(motionCancelsByID, id)
+		delete(motionMonsByID, id)
+		delete(streamsByID, id)
+		camMu.Unlock()
+
+		if rec != nil {
+			rec.Stop()
+		}
+		if str != nil {
+			str.Stop()
+		}
+		if motionCancel != nil {
+			motionCancel()
+		}
+	}
+
+	for _, cam := range cfg.Cameras {
+		startCameraProcs(cam)
+	}
 
 	if cfg.Server.Port > 0 {
 		if cfg.Server.RecordingsPath == "" {
@@ -134,34 +200,28 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to sub frontend fs: %v", err)
 		}
-		srv := server.NewServer(cfg.Server, cfg.Timezone, cfg.Cameras, slog, static).
+		srv = server.NewServer(cfg.Server, cfg.Timezone, cfg.Cameras, slog, static).
 			WithStorageConfig(cfg.Storage).
 			WithVersion(version).
 			WithBuildInfo(commit, builtAt).
 			WithSystemConfig(cfg.Debug, cfg.Log).
 			WithMotionConfig(cfg.Motion).
 			WithZoneStore(zoneStore).
-			WithSnapshotter(takeSnapshot)
+			WithSnapshotter(takeSnapshot).
+			WithCameraCallbacks(startCameraProcs, stopCameraProcs)
 		if database != nil {
 			srv = srv.WithDB(database)
 		}
-		for id, si := range streams {
+
+		camMu.Lock()
+		for id, si := range streamsByID {
 			srv.WithStreamInfo(id, si)
 		}
-
-		for _, cam := range cfg.Cameras {
-			motionCfg := cam.EffectiveMotionConfig(cfg.Motion)
-			if !motionCfg.Enabled {
-				continue
-			}
-			stream := resolveStream(cam, prober, slog)
-			camID := cam.ID
-			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, cam.EffectiveReconnectInterval(), slog,
-				func() []zones.Zone { return zoneStore.Get(camID) })
-			go mon.Run(ctx)
-			srv.WithMotionFeed(cam.ID, mon.Events())
-			srv.WithRawFeed(cam.ID, mon.RawScores())
+		for id, mon := range motionMonsByID {
+			srv.WithMotionFeed(id, mon.Events())
+			srv.WithRawFeed(id, mon.RawScores())
 		}
+		camMu.Unlock()
 
 		addr := fmt.Sprintf(":%d", cfg.Server.Port)
 		slog.Info("http server starting", "addr", addr)
@@ -170,18 +230,6 @@ func main() {
 				slog.Error("http server error", "error", err)
 			}
 		}()
-	} else {
-		for _, cam := range cfg.Cameras {
-			motionCfg := cam.EffectiveMotionConfig(cfg.Motion)
-			if !motionCfg.Enabled {
-				continue
-			}
-			stream := resolveStream(cam, prober, slog)
-			camID := cam.ID
-			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, cam.EffectiveReconnectInterval(), slog,
-				func() []zones.Zone { return zoneStore.Get(camID) })
-			go mon.Run(ctx)
-		}
 	}
 
 	cleanInterval := time.Duration(cfg.Storage.IntervalMinutes) * time.Minute
@@ -206,10 +254,22 @@ func main() {
 	cancel()
 
 	slog.Info("shutting down, finalizing chunks...")
-	for _, str := range streamers {
+
+	camMu.Lock()
+	strs := make([]*streaming.HLSStreamer, 0, len(streamersByID))
+	for _, str := range streamersByID {
+		strs = append(strs, str)
+	}
+	recs := make([]*recorder.Recorder, 0, len(recordersByID))
+	for _, rec := range recordersByID {
+		recs = append(recs, rec)
+	}
+	camMu.Unlock()
+
+	for _, str := range strs {
 		str.Stop()
 	}
-	for _, rec := range recorders {
+	for _, rec := range recs {
 		rec.Stop()
 	}
 	slog.Info("done")

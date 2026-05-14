@@ -114,6 +114,8 @@ type Server struct {
 	snapFn             func(ctx context.Context, rtspURL string) ([]byte, error)
 	probedStreams       map[string]ffprobe.StreamInfo
 	db                 *db.DB
+	onCameraStart      func(config.CameraConfig)
+	onCameraStop       func(string)
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
@@ -143,6 +145,12 @@ func NewServer(cfg config.ServerConfig, timezone string, cameras []config.Camera
 
 func (s *Server) WithDB(database *db.DB) *Server {
 	s.db = database
+	return s
+}
+
+func (s *Server) WithCameraCallbacks(start func(config.CameraConfig), stop func(string)) *Server {
+	s.onCameraStart = start
+	s.onCameraStop = stop
 	return s
 }
 
@@ -249,6 +257,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/about", s.requireAuth(s.handleAbout))
 	s.mux.HandleFunc("GET /api/cameras", s.requireAuth(s.handleCameras))
 
+	s.mux.HandleFunc("GET /api/settings/cameras", s.requireAdmin(s.handleListSettingsCameras))
+	s.mux.HandleFunc("POST /api/settings/cameras", s.requireAdmin(s.handleCreateCamera))
+	s.mux.HandleFunc("PUT /api/settings/cameras/{id}", s.requireAdmin(s.handleUpdateCamera))
+	s.mux.HandleFunc("DELETE /api/settings/cameras/{id}", s.requireAdmin(s.handleDeleteCamera))
+
 	s.mux.HandleFunc("GET /api/users", s.requireAdmin(s.handleListUsers))
 	s.mux.HandleFunc("POST /api/users", s.requireAdmin(s.handleCreateUser))
 	s.mux.HandleFunc("PUT /api/users/{id}", s.requireAdmin(s.handleUpdateUser))
@@ -263,6 +276,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/cameras/{id}/recordings", s.requireCameraAccess(s.handleRecordings))
 	s.mux.HandleFunc("DELETE /api/cameras/{id}/recordings/{filename}", s.requireAdmin(s.handleDeleteRecording))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion", s.requireCameraAccess(s.handleMotionEvents))
+	s.mux.HandleFunc("GET /api/motion/live", s.requireAuth(s.handleAllMotionLive))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/live", s.requireCameraAccess(s.handleMotionLive))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/scores", s.requireCameraAccess(s.handleMotionScores))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/daily-peak", s.requireCameraAccess(s.handleMotionDailyPeak))
@@ -931,6 +945,92 @@ func (s *Server) handleMotionLive(w http.ResponseWriter, r *http.Request) {
 			data, _ := json.Marshal(map[string]any{
 				"time":  ev.Time.Format(time.RFC3339),
 				"score": ev.Score,
+			})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+func (s *Server) handleAllMotionLive(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	s.mu.Lock()
+	type entry struct {
+		id string
+		bc *broadcaster
+	}
+	var entries []entry
+	for id, bc := range s.motionBroadcasters {
+		if s.canAccessCamera(r, id) {
+			entries = append(entries, entry{id, bc})
+		}
+	}
+	s.mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	if len(entries) == 0 {
+		<-r.Context().Done()
+		return
+	}
+
+	type taggedEvent struct {
+		cameraID string
+		ev       motion.Event
+	}
+	merged := make(chan taggedEvent, 64)
+
+	var wg sync.WaitGroup
+	for _, e := range entries {
+		camID := e.id
+		bc := e.bc
+		sub := bc.subscribe()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer bc.unsubscribe(sub)
+			for {
+				select {
+				case ev, ok := <-sub:
+					if !ok {
+						return
+					}
+					select {
+					case merged <- taggedEvent{cameraID: camID, ev: ev}:
+					case <-r.Context().Done():
+						return
+					}
+				case <-r.Context().Done():
+					return
+				}
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(merged)
+	}()
+
+	for {
+		select {
+		case te, ok := <-merged:
+			if !ok {
+				return
+			}
+			data, _ := json.Marshal(map[string]any{
+				"camera_id": te.cameraID,
+				"time":      te.ev.Time.Format(time.RFC3339),
+				"score":     te.ev.Score,
 			})
 			fmt.Fprintf(w, "data: %s\n\n", data)
 			flusher.Flush()

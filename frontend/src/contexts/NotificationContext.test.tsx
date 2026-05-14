@@ -28,22 +28,13 @@ class FakeEventSource {
   }
 }
 
-function settingsResponse(cameraIds: string[]) {
-  return {
-    ok: true,
-    json: async () => ({
-      cameras: cameraIds.map((id) => ({ id })),
-    }),
-  }
-}
-
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <MemoryRouter>
     <NotificationProvider>{children}</NotificationProvider>
   </MemoryRouter>
 )
 
-// Aguarda fetch → setCameraIds → re-render → EventSource
+// Aguarda efeitos assíncronos
 const flush = () => act(async () => {
   await new Promise((r) => setTimeout(r, 0))
 })
@@ -53,8 +44,6 @@ beforeEach(() => {
   FakeEventSource.instances = []
   vi.stubGlobal('EventSource', FakeEventSource)
   localStorage.clear()
-
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(settingsResponse(['cam1'])))
   localStorage.setItem('camera_token', 'fake-token')
 })
 
@@ -88,11 +77,11 @@ describe('NotificationContext — recebimento de eventos SSE', () => {
 
     await flush()
 
-    const es = FakeEventSource.instances.find((e) => e.url.includes('cam1'))
+    const es = FakeEventSource.instances.find((e) => e.url.includes('/api/motion/live'))
     expect(es).toBeDefined()
 
     act(() => {
-      es!.emit(JSON.stringify({ score: 0.42, time: '2026-01-01T12:00:00Z' }))
+      es!.emit(JSON.stringify({ camera_id: 'cam1', score: 0.42, time: '2026-01-01T12:00:00Z' }))
     })
 
     expect(result.current.notifications).toHaveLength(1)
@@ -107,10 +96,10 @@ describe('NotificationContext — recebimento de eventos SSE', () => {
 
     await flush()
 
-    const es = FakeEventSource.instances.find((e) => e.url.includes('cam1'))!
+    const es = FakeEventSource.instances.find((e) => e.url.includes('/api/motion/live'))!
 
     act(() => {
-      es.emit(JSON.stringify({ score: 0.3, time: '2026-01-01T12:00:00Z' }))
+      es.emit(JSON.stringify({ camera_id: 'cam1', score: 0.3, time: '2026-01-01T12:00:00Z' }))
     })
 
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]')
@@ -133,10 +122,10 @@ describe('NotificationContext — recebimento de eventos SSE', () => {
 
     await flush()
 
-    const es = FakeEventSource.instances.find((e) => e.url.includes('cam1'))!
+    const es = FakeEventSource.instances.find((e) => e.url.includes('/api/motion/live'))!
 
     act(() => {
-      es.emit(JSON.stringify({ score: 0.9, time: '2026-01-02T00:00:00Z' }))
+      es.emit(JSON.stringify({ camera_id: 'cam1', score: 0.9, time: '2026-01-02T00:00:00Z' }))
     })
 
     expect(result.current.notifications).toHaveLength(100)
@@ -150,9 +139,9 @@ describe('NotificationContext — operações', () => {
     const { result } = renderHook(() => useNotifications(), { wrapper })
     await flush()
 
-    const es = FakeEventSource.instances.find((e) => e.url.includes('cam1'))!
+    const es = FakeEventSource.instances.find((e) => e.url.includes('/api/motion/live'))!
     act(() => {
-      es.emit(JSON.stringify({ score: 0.5, time: '2026-01-01T12:00:00Z' }))
+      es.emit(JSON.stringify({ camera_id: 'cam1', score: 0.5, time: '2026-01-01T12:00:00Z' }))
     })
     return result
   }
@@ -209,15 +198,13 @@ describe('NotificationContext — operações', () => {
 })
 
 describe('NotificationContext — sem token', () => {
-  it('não faz fetch nem abre EventSource quando não há token', async () => {
+  it('não abre EventSource quando não há token', async () => {
     localStorage.removeItem('camera_token')
 
-    const { result } = renderHook(() => useNotifications(), { wrapper })
+    renderHook(() => useNotifications(), { wrapper })
 
     await flush()
 
-    expect(vi.mocked(fetch)).not.toHaveBeenCalled()
     expect(FakeEventSource.instances).toHaveLength(0)
-    expect(result.current.notifications).toHaveLength(0)
   })
 })
