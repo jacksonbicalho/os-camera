@@ -245,25 +245,25 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	s.mux.HandleFunc("GET /api/config", s.handleClientConfig)
-	s.mux.HandleFunc("GET /api/settings", s.requireAuth(s.handleSettings))
+	s.mux.HandleFunc("GET /api/settings", s.requireAdmin(s.handleSettings))
 	s.mux.HandleFunc("GET /api/about", s.requireAuth(s.handleAbout))
 	s.mux.HandleFunc("GET /api/cameras", s.requireAuth(s.handleCameras))
 
 	streamHandler := http.StripPrefix("/stream/", http.FileServer(http.Dir(s.cfg.SegmentsPath)))
-	s.mux.Handle("/stream/", s.requireAuth(streamHandler.ServeHTTP))
+	s.mux.Handle("/stream/", s.requireStreamAccess(streamHandler))
 
 	recHandler := http.StripPrefix("/recordings/", http.FileServer(http.Dir(s.cfg.RecordingsPath)))
-	s.mux.Handle("/recordings/", s.requireAuth(recHandler.ServeHTTP))
+	s.mux.Handle("/recordings/", s.requireRecordingsAccess(recHandler))
 
-	s.mux.HandleFunc("GET /api/cameras/{id}/recordings", s.requireAuth(s.handleRecordings))
-	s.mux.HandleFunc("DELETE /api/cameras/{id}/recordings/{filename}", s.requireAuth(s.handleDeleteRecording))
-	s.mux.HandleFunc("GET /api/cameras/{id}/motion", s.requireAuth(s.handleMotionEvents))
-	s.mux.HandleFunc("GET /api/cameras/{id}/motion/live", s.requireAuth(s.handleMotionLive))
-	s.mux.HandleFunc("GET /api/cameras/{id}/motion/scores", s.requireAuth(s.handleMotionScores))
-	s.mux.HandleFunc("GET /api/cameras/{id}/motion/daily-peak", s.requireAuth(s.handleMotionDailyPeak))
-	s.mux.HandleFunc("GET /api/cameras/{id}/motion/zones", s.requireAuth(s.handleMotionZonesGet))
-	s.mux.HandleFunc("PUT /api/cameras/{id}/motion/zones", s.requireAuth(s.handleMotionZonesPut))
-	s.mux.HandleFunc("GET /api/cameras/{id}/snapshot", s.requireAuth(s.handleSnapshot))
+	s.mux.HandleFunc("GET /api/cameras/{id}/recordings", s.requireCameraAccess(s.handleRecordings))
+	s.mux.HandleFunc("DELETE /api/cameras/{id}/recordings/{filename}", s.requireAdmin(s.handleDeleteRecording))
+	s.mux.HandleFunc("GET /api/cameras/{id}/motion", s.requireCameraAccess(s.handleMotionEvents))
+	s.mux.HandleFunc("GET /api/cameras/{id}/motion/live", s.requireCameraAccess(s.handleMotionLive))
+	s.mux.HandleFunc("GET /api/cameras/{id}/motion/scores", s.requireCameraAccess(s.handleMotionScores))
+	s.mux.HandleFunc("GET /api/cameras/{id}/motion/daily-peak", s.requireCameraAccess(s.handleMotionDailyPeak))
+	s.mux.HandleFunc("GET /api/cameras/{id}/motion/zones", s.requireCameraAccess(s.handleMotionZonesGet))
+	s.mux.HandleFunc("PUT /api/cameras/{id}/motion/zones", s.requireCameraAccess(s.handleMotionZonesPut))
+	s.mux.HandleFunc("GET /api/cameras/{id}/snapshot", s.requireCameraAccess(s.handleSnapshot))
 	s.mux.HandleFunc("GET /api/stats", s.requireAuth(s.handleStats))
 
 	if s.frontend != nil {
@@ -291,6 +291,77 @@ func (s *Server) spaHandler() http.Handler {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(data)
+	})
+}
+
+func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return s.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		ac, _ := r.Context().Value(claimsKey).(authClaims)
+		if ac.Role != "admin" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	})
+}
+
+func (s *Server) canAccessCamera(r *http.Request, cameraID string) bool {
+	if s.db == nil {
+		return true
+	}
+	ac, _ := r.Context().Value(claimsKey).(authClaims)
+	if ac.Role == "admin" {
+		return true
+	}
+	cameras, err := db.GetUserCameras(s.db, ac.UserID)
+	if err != nil {
+		return false
+	}
+	for _, id := range cameras {
+		if id == cameraID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) requireCameraAccess(next http.HandlerFunc) http.HandlerFunc {
+	return s.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if !s.canAccessCamera(r, r.PathValue("id")) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	})
+}
+
+func (s *Server) requireStreamAccess(next http.Handler) http.HandlerFunc {
+	return s.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/stream/"), "/", 2)
+		if len(parts) == 0 || parts[0] == "" {
+			http.NotFound(w, r)
+			return
+		}
+		if !s.canAccessCamera(r, parts[0]) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) requireRecordingsAccess(next http.Handler) http.HandlerFunc {
+	return s.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/recordings/"), "/", 2)
+		if len(parts) == 0 || parts[0] == "" {
+			http.NotFound(w, r)
+			return
+		}
+		if !s.canAccessCamera(r, parts[0]) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
@@ -489,8 +560,30 @@ func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
 		ID              string  `json:"id"`
 		MotionThreshold float64 `json:"motion_threshold"`
 	}
-	list := make([]cameraInfo, len(s.cameras))
-	for i, c := range s.cameras {
+
+	cameras := s.cameras
+	if s.db != nil {
+		ac, _ := r.Context().Value(claimsKey).(authClaims)
+		if ac.Role != "admin" {
+			allowed, err := db.GetUserCameras(s.db, ac.UserID)
+			if err == nil {
+				allowedSet := make(map[string]struct{}, len(allowed))
+				for _, id := range allowed {
+					allowedSet[id] = struct{}{}
+				}
+				var filtered []config.CameraConfig
+				for _, c := range s.cameras {
+					if _, ok := allowedSet[c.ID]; ok {
+						filtered = append(filtered, c)
+					}
+				}
+				cameras = filtered
+			}
+		}
+	}
+
+	list := make([]cameraInfo, len(cameras))
+	for i, c := range cameras {
 		list[i] = cameraInfo{
 			ID:              c.ID,
 			MotionThreshold: c.EffectiveMotionConfig(s.motionCfg).Threshold,
