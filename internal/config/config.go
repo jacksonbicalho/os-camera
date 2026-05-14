@@ -90,11 +90,12 @@ type CameraConfig struct {
 	RTSPURL           string        `yaml:"rtsp_url"`
 	ChunkDuration     Duration      `yaml:"chunk_duration"`
 	ReconnectInterval Duration      `yaml:"reconnect_interval"`
-	VideoCodec        string        `yaml:"video_codec"` // "" = auto-detect via ffprobe
-	HasAudio          *bool         `yaml:"has_audio"`   // nil = auto-detect via ffprobe
-	Width             int           `yaml:"width"`       // 0 = auto-detect via ffprobe
-	Height            int           `yaml:"height"`      // 0 = auto-detect via ffprobe
-	Motion            *MotionConfig `yaml:"motion"`      // nil = use global default
+	VideoCodec        string        `yaml:"video_codec"`   // "" = auto-detect via ffprobe
+	HasAudio          *bool         `yaml:"has_audio"`     // nil = auto-detect via ffprobe
+	Width             int           `yaml:"width"`         // 0 = auto-detect via ffprobe
+	Height            int           `yaml:"height"`        // 0 = auto-detect via ffprobe
+	DisplayOrder      int           `yaml:"display_order"` // ordem de exibição na interface
+	Motion            *MotionConfig `yaml:"motion"`        // nil = use global default
 }
 
 func (c CameraConfig) EffectiveMotionConfig(defaults MotionConfig) MotionConfig {

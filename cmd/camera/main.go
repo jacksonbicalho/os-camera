@@ -17,6 +17,7 @@ import (
 
 	"camera/frontend"
 	"camera/internal/config"
+	"camera/internal/db"
 	"camera/internal/exec"
 	"camera/internal/ffprobe"
 	"camera/internal/logger"
@@ -71,6 +72,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	dbDir := cfg.Storage.Path
+	if dbDir == "" {
+		dbDir = "."
+	}
+	var database *db.DB
+	database, err = db.Open(filepath.Join(dbDir, "camera.db"))
+	if err != nil {
+		slog.Warn("failed to open database, running without DB features", "error", err)
+		database = nil
+	} else {
+		defer database.Close()
+		if database.IsNew {
+			slog.Info("new database, seeding from YAML", "yaml", *configPath)
+			if seedErr := db.SeedFromYAML(database, *configPath); seedErr != nil {
+				slog.Warn("seed from YAML failed", "error", seedErr)
+			}
+		}
+	}
+
 	zonesPath := filepath.Join(cfg.Storage.Path, "motion_zones.json")
 	zoneStore, err := zones.NewStore(zonesPath)
 	if err != nil {
@@ -122,6 +142,9 @@ func main() {
 			WithMotionConfig(cfg.Motion).
 			WithZoneStore(zoneStore).
 			WithSnapshotter(takeSnapshot)
+		if database != nil {
+			srv = srv.WithDB(database)
+		}
 		for id, si := range streams {
 			srv.WithStreamInfo(id, si)
 		}
