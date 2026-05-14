@@ -22,6 +22,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"camera/internal/config"
+	"camera/internal/ffprobe"
 	"camera/internal/motion"
 	"camera/internal/storage"
 	"camera/internal/zones"
@@ -101,6 +102,7 @@ type Server struct {
 	dailyPeakDate      map[string]string
 	zoneStore          *zones.Store
 	snapFn             func(ctx context.Context, rtspURL string) ([]byte, error)
+	probedStreams       map[string]ffprobe.StreamInfo
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
@@ -120,8 +122,9 @@ func NewServer(cfg config.ServerConfig, timezone string, cameras []config.Camera
 		secret:     secret,
 		frontend:   frontend,
 		mux:        http.NewServeMux(),
-		streamSeen: make(map[string]time.Time),
-		startTime:  time.Now(),
+		streamSeen:   make(map[string]time.Time),
+		probedStreams: make(map[string]ffprobe.StreamInfo),
+		startTime:    time.Now(),
 	}
 	s.routes()
 	return s
@@ -129,6 +132,11 @@ func NewServer(cfg config.ServerConfig, timezone string, cameras []config.Camera
 
 func (s *Server) WithStorageConfig(cfg config.StorageConfig) *Server {
 	s.storageCfg = cfg
+	return s
+}
+
+func (s *Server) WithStreamInfo(id string, info ffprobe.StreamInfo) *Server {
+	s.probedStreams[id] = info
 	return s
 }
 
@@ -365,15 +373,31 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 				CooldownSeconds: c.Motion.CooldownSeconds,
 			}
 		}
+		videoCodec := c.VideoCodec
+		hasAudio := c.HasAudio
+		width, height := c.Width, c.Height
+		if probed, ok := s.probedStreams[c.ID]; ok {
+			if videoCodec == "" {
+				videoCodec = probed.VideoCodec
+			}
+			if hasAudio == nil {
+				ha := probed.HasAudio
+				hasAudio = &ha
+			}
+			if width == 0 {
+				width = probed.Width
+				height = probed.Height
+			}
+		}
 		cameras[i] = cameraDTO{
 			ID:                c.ID,
 			RTSPURL:           maskRTSP(c.RTSPURL),
 			ChunkDuration:     c.EffectiveChunkDuration().String(),
 			ReconnectInterval: c.EffectiveReconnectInterval().String(),
-			VideoCodec:        c.VideoCodec,
-			HasAudio:          c.HasAudio,
-			Width:             c.Width,
-			Height:            c.Height,
+			VideoCodec:        videoCodec,
+			HasAudio:          hasAudio,
+			Width:             width,
+			Height:            height,
 			Motion:            motion,
 		}
 	}

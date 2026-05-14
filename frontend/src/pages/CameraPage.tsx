@@ -100,11 +100,17 @@ export default function CameraPage() {
   const [continuousPlay, setContinuousPlay] = useState(false)
   const [browserMaxRate, setBrowserMaxRate] = useState<number | null>(null)
   const [videoMuted, setVideoMuted] = useState(false)
+  const [recPlaying, setRecPlaying] = useState(false)
+  const [recCurrentTime, setRecCurrentTime] = useState(0)
+  const [recDuration, setRecDuration] = useState(0)
+  const [recControlsVisible, setRecControlsVisible] = useState(true)
   const [snapshotEvent, setSnapshotEvent] = useState<MotionEvent | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const playerRef = useRef<HTMLDivElement>(null)
   const pendingSeekRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const recPlayerRef = useRef<HTMLDivElement>(null)
+  const recHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hlsPlayerRef = useRef<HLSPlayerHandle>(null)
   const activeEventItemRef = useRef<HTMLButtonElement | null>(null)
   const recordingsRef = useRef(recordings)
@@ -320,6 +326,32 @@ export default function CameraPage() {
   const cam = settings?.cameras.find(c => c.id === id)
   const effectiveThreshold = (cam?.motion ?? settings?.motion)?.threshold ?? 0
 
+
+  function formatRecTime(s: number): string {
+    if (!isFinite(s) || isNaN(s)) return '0:00'
+    const m = Math.floor(s / 60)
+    const sec = Math.floor(s % 60)
+    return `${m}:${sec.toString().padStart(2, '0')}`
+  }
+
+  function showRecControls() {
+    setRecControlsVisible(true)
+    if (recHideTimerRef.current) clearTimeout(recHideTimerRef.current)
+    recHideTimerRef.current = setTimeout(() => setRecControlsVisible(false), 3000)
+  }
+
+  function togglePlayRecording() {
+    const v = videoRef.current
+    if (!v) return
+    if (v.paused) v.play().catch(() => {})
+    else v.pause()
+  }
+
+  function toggleRecFullscreen() {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+    else recPlayerRef.current?.requestFullscreen().catch(() => {})
+  }
+
   const liveUrl = `/stream/${id}/index.m3u8`
   const isLive = activeRecording === null
   const sortedEvents = [...motionEvents].sort((a, b) => {
@@ -379,47 +411,111 @@ export default function CameraPage() {
               {isLive ? (
                 <HLSPlayer ref={hlsPlayerRef} src={liveUrl} className="w-full aspect-video bg-black" cameraId={id} onGoToEvent={handleGoToEvent} />
               ) : (
-                <video
-                  ref={videoRef}
-                  key={activeRecording.url}
-                  src={`${activeRecording.url}?token=${getToken()}`}
-                  className="w-full aspect-video bg-black"
-                  controls
-                  autoPlay
-                  playsInline
-                  onLoadedMetadata={e => {
-                    try { e.currentTarget.playbackRate = playbackRate } catch { /* browser limit */ }
-                    e.currentTarget.muted = videoMuted
-                    if (pendingSeekRef.current !== null) {
-                      e.currentTarget.currentTime = pendingSeekRef.current
-                      pendingSeekRef.current = null
-                    }
-                  }}
-                  onVolumeChange={e => setVideoMuted(e.currentTarget.muted)}
-                  onEnded={() => {
-                    if (!continuousPlayRef.current) return
-                    // Events mode: advance to next event in ascending chronological order
-                    if (activeEventTimeRef.current !== null) {
-                      const allAsc = [...allMotionEventsRef.current]
-                        .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
-                      const curIdx = allAsc.findIndex(e => e.time === activeEventTimeRef.current)
-                      const next = curIdx !== -1 ? allAsc[curIdx + 1] : null
-                      if (next) playEventAt(next, recordingsRef.current, true)
-                      return
-                    }
-                    // Recordings mode: advance to next recording in ascending chronological order
-                    if (!activeRecording) return
-                    const asc = [...recordingsRef.current].sort((a, b) => a.filename.localeCompare(b.filename))
-                    const idx = asc.findIndex(r => r.filename === activeRecording.filename)
-                    const next = asc[idx + 1]
-                    if (next && !next.is_recording) {
-                      const displayedCount = recordingsDisplayPageRef.current * PAGE_SIZE
-                      const isVisible = recordingsRef.current.slice(0, displayedCount).some(r => r.filename === next.filename)
-                      if (!isVisible) setRecordingsDisplayPage(p => p + 1)
-                      setActiveRecording(next)
-                    }
-                  }}
-                />
+                <div
+                  ref={recPlayerRef}
+                  className="relative"
+                  onMouseMove={showRecControls}
+                  onMouseLeave={() => { if (recPlaying) setRecControlsVisible(false) }}
+                >
+                  <video
+                    ref={videoRef}
+                    key={activeRecording.url}
+                    src={`${activeRecording.url}?token=${getToken()}`}
+                    className="w-full aspect-video bg-black cursor-pointer"
+                    autoPlay
+                    playsInline
+                    onClick={togglePlayRecording}
+                    onPlay={() => { setRecPlaying(true); showRecControls() }}
+                    onPause={() => { setRecPlaying(false); setRecControlsVisible(true) }}
+                    onTimeUpdate={e => setRecCurrentTime(e.currentTarget.currentTime)}
+                    onDurationChange={e => setRecDuration(e.currentTarget.duration)}
+                    onLoadedMetadata={e => {
+                      setRecCurrentTime(0)
+                      setRecDuration(e.currentTarget.duration)
+                      setRecControlsVisible(true)
+                      if (recHideTimerRef.current) clearTimeout(recHideTimerRef.current)
+                      try { e.currentTarget.playbackRate = playbackRate } catch { /* browser limit */ }
+                      e.currentTarget.muted = videoMuted
+                      if (pendingSeekRef.current !== null) {
+                        e.currentTarget.currentTime = pendingSeekRef.current
+                        pendingSeekRef.current = null
+                      }
+                    }}
+                    onVolumeChange={e => setVideoMuted(e.currentTarget.muted)}
+                    onEnded={() => {
+                      if (!continuousPlayRef.current) return
+                      if (activeEventTimeRef.current !== null) {
+                        const allAsc = [...allMotionEventsRef.current]
+                          .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+                        const curIdx = allAsc.findIndex(e => e.time === activeEventTimeRef.current)
+                        const next = curIdx !== -1 ? allAsc[curIdx + 1] : null
+                        if (next) playEventAt(next, recordingsRef.current, true)
+                        return
+                      }
+                      if (!activeRecording) return
+                      const asc = [...recordingsRef.current].sort((a, b) => a.filename.localeCompare(b.filename))
+                      const idx = asc.findIndex(r => r.filename === activeRecording.filename)
+                      const next = asc[idx + 1]
+                      if (next && !next.is_recording) {
+                        const displayedCount = recordingsDisplayPageRef.current * PAGE_SIZE
+                        const isVisible = recordingsRef.current.slice(0, displayedCount).some(r => r.filename === next.filename)
+                        if (!isVisible) setRecordingsDisplayPage(p => p + 1)
+                        setActiveRecording(next)
+                      }
+                    }}
+                  />
+                  {/* Custom controls overlay */}
+                  <div className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 transition-opacity duration-200 pointer-events-none ${recControlsVisible || !recPlaying ? 'opacity-100' : 'opacity-0'}`}>
+                    {/* Progress bar */}
+                    <div
+                      className="h-1 rounded-full bg-white/30 cursor-pointer relative mb-2 pointer-events-auto"
+                      onClick={e => {
+                        if (!videoRef.current || !recDuration) return
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+                        videoRef.current.currentTime = fraction * recDuration
+                      }}
+                    >
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full bg-blue-500 pointer-events-none"
+                        style={{ width: `${recDuration ? (recCurrentTime / recDuration) * 100 : 0}%` }}
+                      />
+                    </div>
+                    {/* Buttons */}
+                    <div className="flex items-center gap-2 pointer-events-auto">
+                      <button onClick={togglePlayRecording} aria-label={recPlaying ? 'Pausar' : 'Reproduzir'} className="p-1 text-white/80 hover:text-white transition-colors">
+                        {recPlaying ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6" />
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        )}
+                      </button>
+                      <span className="text-xs text-white/70 tabular-nums">{formatRecTime(recCurrentTime)} / {formatRecTime(recDuration)}</span>
+                      <div className="flex-1" />
+                      <button onClick={() => { if (videoRef.current) videoRef.current.muted = !videoRef.current.muted }} aria-label={videoMuted ? 'Ativar áudio' : 'Silenciar'} className="p-1 text-white/80 hover:text-white transition-colors">
+                        {videoMuted ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M12 6v12m-3.536-9.536a5 5 0 000 7.072M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                          </svg>
+                        )}
+                      </button>
+                      <button onClick={toggleRecFullscreen} aria-label="Tela inteira" className="p-1 text-white/80 hover:text-white transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V6a2 2 0 012-2h2M4 16v2a2 2 0 002 2h2m8-16h2a2 2 0 012 2v2m0 8v2a2 2 0 01-2 2h-2" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
 
