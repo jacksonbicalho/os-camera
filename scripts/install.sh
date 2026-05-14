@@ -7,7 +7,8 @@ BINARY_NAME="camera"
 # Defaults — sobrescritos por flags ou por install.conf (na desinstalação)
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/camera"
-DATA_DIR="/data/recordings"
+DATA_DIR="/var/data/recordings"
+SEGMENTS_DIR="/var/data/hls"
 SERVICE_NAME="camera"
 
 # Caminhos derivados (recalculados após parse de flags)
@@ -105,7 +106,7 @@ do_install() {
 
     if [ "$config_ready" = "0" ]; then
         # Instalação via pipe (curl | bash) ou wizard falhou: gerar placeholder
-        cat > "$CONFIG_FILE" <<'YAML'
+        cat > "$CONFIG_FILE" <<YAML
 # Configuração gerada pelo instalador. Edite conforme necessário.
 # Execute: camera init --output <este arquivo>
 # Documentação: https://github.com/jacksonbicalho/camera
@@ -114,12 +115,12 @@ timezone: UTC   # ex: America/Sao_Paulo
 
 server:
   port: 8080
-  segments_path: /tmp/hls
+  segments_path: ${SEGMENTS_DIR}
   username: admin
   password: troque-esta-senha   # ALTERE antes de expor na rede
 
 storage:
-  path: /data/recordings
+  path: ${DATA_DIR}
   retention:
     with_motion_minutes: 10080    # 7 dias
     without_motion_minutes: 1440  # 1 dia
@@ -175,6 +176,7 @@ UNIT
 INSTALL_DIR=${INSTALL_DIR}
 CONFIG_DIR=${CONFIG_DIR}
 DATA_DIR=${DATA_DIR}
+SEGMENTS_DIR=${SEGMENTS_DIR}
 SERVICE_NAME=${SERVICE_NAME}
 SERVICE_FILE=${SERVICE_FILE}
 CONFIG_FILE=${CONFIG_FILE}
@@ -313,18 +315,20 @@ for arg in "$@"; do
         --uninstall)     UNINSTALL=1 ;;
         --remove-config) ;;  # repassado para do_uninstall via $@
         --remove-data)   ;;  # idem
-        --install-dir=*) INSTALL_DIR="${arg#--install-dir=}" ;;
-        --config-dir=*)  CONFIG_DIR="${arg#--config-dir=}"   ;;
-        --data-dir=*)    DATA_DIR="${arg#--data-dir=}"       ;;
-        --service-name=*)SERVICE_NAME="${arg#--service-name=}";;
-        --install-dir)   REST="install-dir" ;;
-        --config-dir)    REST="config-dir"  ;;
-        --data-dir)      REST="data-dir"    ;;
-        --service-name)  REST="service-name";;
+        --install-dir=*)   INSTALL_DIR="${arg#--install-dir=}"   ;;
+        --config-dir=*)    CONFIG_DIR="${arg#--config-dir=}"     ;;
+        --data-dir=*)      DATA_DIR="${arg#--data-dir=}"         ;;
+        --segments-dir=*)  SEGMENTS_DIR="${arg#--segments-dir=}" ;;
+        --service-name=*)  SERVICE_NAME="${arg#--service-name=}" ;;
+        --install-dir)     REST="install-dir"   ;;
+        --config-dir)      REST="config-dir"    ;;
+        --data-dir)        REST="data-dir"      ;;
+        --segments-dir)    REST="segments-dir"  ;;
+        --service-name)    REST="service-name"  ;;
         --help|-h)
             printf 'Uso:\n'
             printf '  instalar:   curl -fsSL <url>/install.sh | sudo bash\n'
-            printf '  opções:     --install-dir=DIR  --config-dir=DIR  --data-dir=DIR  --service-name=NAME\n'
+            printf '  opções:     --install-dir=DIR  --config-dir=DIR  --data-dir=DIR  --segments-dir=DIR  --service-name=NAME\n'
             printf '  desinstalar (local, sem internet):\n'
             printf '              camera-uninstall [--remove-config] [--remove-data]\n'
             exit 0
@@ -332,10 +336,11 @@ for arg in "$@"; do
         *)
             if [ -n "$REST" ]; then
                 case "$REST" in
-                    install-dir)  INSTALL_DIR="$arg" ;;
-                    config-dir)   CONFIG_DIR="$arg"  ;;
-                    data-dir)     DATA_DIR="$arg"    ;;
-                    service-name) SERVICE_NAME="$arg";;
+                    install-dir)   INSTALL_DIR="$arg"   ;;
+                    config-dir)    CONFIG_DIR="$arg"    ;;
+                    data-dir)      DATA_DIR="$arg"      ;;
+                    segments-dir)  SEGMENTS_DIR="$arg"  ;;
+                    service-name)  SERVICE_NAME="$arg"  ;;
                 esac
                 REST=""
             else
