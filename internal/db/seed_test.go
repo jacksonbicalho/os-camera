@@ -102,12 +102,9 @@ func TestSeedFromYAML(t *testing.T) {
 		t.Error("senha do admin não confere")
 	}
 
-	// yaml deve ser renomeado para .migrated
-	if _, err := os.Stat(yamlPath); !os.IsNotExist(err) {
-		t.Error("camera.yaml deveria ter sido renomeado para .migrated")
-	}
-	if _, err := os.Stat(yamlPath + ".migrated"); err != nil {
-		t.Errorf("camera.yaml.migrated não encontrado: %v", err)
+	// yaml deve permanecer intacto (IsNew já evita re-seed)
+	if _, err := os.Stat(yamlPath); err != nil {
+		t.Errorf("camera.yaml deveria permanecer após seed: %v", err)
 	}
 }
 

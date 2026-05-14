@@ -35,7 +35,18 @@ func (s *Server) userToDTO(u db.User) (userDTO, error) {
 	}, nil
 }
 
+func (s *Server) requireDB(w http.ResponseWriter) bool {
+	if s.db == nil {
+		http.Error(w, "not available without database", http.StatusServiceUnavailable)
+		return false
+	}
+	return true
+}
+
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
 	users, err := db.ListUsers(s.db)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -55,6 +66,9 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
 	var req struct {
 		Username string   `json:"username"`
 		Password string   `json:"password"`
@@ -108,6 +122,9 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
@@ -166,6 +183,9 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)

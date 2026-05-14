@@ -15,6 +15,7 @@ const ServerSettingsPage = lazy(() => import('./pages/settings/ServerSettingsPag
 const StorageSettingsPage = lazy(() => import('./pages/settings/StorageSettingsPage'))
 const SystemSettingsPage = lazy(() => import('./pages/settings/SystemSettingsPage'))
 const AboutPage = lazy(() => import('./pages/settings/AboutPage'))
+const UsersSettingsPage = lazy(() => import('./pages/settings/UsersSettingsPage'))
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation()
@@ -47,6 +48,7 @@ export default function App() {
       <Route path="/settings/storage" element={<Lazy><StorageSettingsPage /></Lazy>} />
       <Route path="/settings/system" element={<Lazy><SystemSettingsPage /></Lazy>} />
       <Route path="/settings/about" element={<Lazy><AboutPage /></Lazy>} />
+      <Route path="/settings/users" element={<Lazy><UsersSettingsPage /></Lazy>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

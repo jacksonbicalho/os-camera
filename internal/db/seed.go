@@ -2,7 +2,6 @@ package db
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 
 	"camera/internal/config"
@@ -47,11 +46,6 @@ func SeedFromYAML(database *DB, yamlPath string) error {
 	}
 	if _, err := CreateUser(database, username, password, "admin"); err != nil {
 		return fmt.Errorf("seed: create admin user: %w", err)
-	}
-
-	// rename yaml to prevent re-seeding
-	if err := os.Rename(yamlPath, yamlPath+".migrated"); err != nil {
-		return fmt.Errorf("seed: rename yaml: %w", err)
 	}
 
 	return nil
