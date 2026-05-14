@@ -81,9 +81,11 @@ func main() {
 	prober := ffprobe.NewProber(&ffprobe.OSExecutor{})
 	recorders := make([]*recorder.Recorder, 0, len(cfg.Cameras))
 	streamers := make([]*streaming.HLSStreamer, 0, len(cfg.Cameras))
+	streams := make(map[string]ffprobe.StreamInfo, len(cfg.Cameras))
 
 	for _, cam := range cfg.Cameras {
 		stream := resolveStream(cam, prober, slog)
+		streams[cam.ID] = stream
 		rec := recorder.NewRecorder(cam, cfg.Storage, stream, commander, slog)
 		if err := rec.Start(time.Now().UTC()); err != nil {
 			slog.Error("failed to start recorder", "camera", cam.ID, "error", err)
@@ -120,6 +122,9 @@ func main() {
 			WithMotionConfig(cfg.Motion).
 			WithZoneStore(zoneStore).
 			WithSnapshotter(takeSnapshot)
+		for id, si := range streams {
+			srv.WithStreamInfo(id, si)
+		}
 
 		for _, cam := range cfg.Cameras {
 			motionCfg := cam.EffectiveMotionConfig(cfg.Motion)

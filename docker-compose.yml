@@ -9,10 +9,9 @@ services:
         VERSION: ${VERSION:-dev}
     volumes:
       - ./camera.yaml:/app/camera.yaml:ro
-      - ./storage:/data/recordings
-      - ./storage/logs:/data/logs
+      - ./storage:/data
     environment:
-      - STORAGE_PATH=/data/recordings
+      - CAMERA_STORAGE_PATH=/data/recordings
     restart: unless-stopped
 
   camera-dev:
@@ -25,8 +24,7 @@ services:
       - .:/app
       - frontend_dist:/app/frontend/dist
       - frontend_node_modules:/app/frontend/node_modules
-      - ./storage:/data/recordings
-      - ./storage/logs:/data/logs
+      - ./storage:/data
     ports:
       - 8080:8080
     environment:
