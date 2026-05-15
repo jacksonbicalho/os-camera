@@ -81,17 +81,20 @@ yarn dev      # Vite dev server na porta 5173 (proxy /api e /stream para :8080)
 
 | Binário | Responsabilidade |
 |---|---|
-| `cmd/camera` | Servidor principal: grava, faz streaming HLS, detecta movimento e serve a SPA. Suporta o subcomando `camera init` — wizard interativo que gera `camera.yaml` no diretório atual. |
+| `cmd/camera` | Servidor principal: grava, faz streaming HLS, detecta movimento e serve a SPA. Suporta o subcomando `camera init` — wizard interativo que gera o arquivo de bootstrap (`camera.yaml`) com porta, `db_path`, storage e credenciais do admin inicial. |
 | `cmd/mcp-ffprobe` | Servidor MCP (stdio) que expõe `probe_stream` — executa ffprobe em uma URL RTSP e retorna os metadados JSON do stream. Útil para inspeção de câmeras via ferramentas MCP. |
 
 ### Fluxo de inicialização (`cmd/camera/main.go`)
 
-Para cada câmera configurada, `main` cria e inicia:
-1. Um `recorder.Recorder` — grava RTSP → MP4 chunk
-2. Um `streaming.HLSStreamer` — grava RTSP → segmentos HLS para live
-3. Um `motion.Monitor` — detecta movimento via ffmpeg pipe raw (se `motion.enabled: true`)
-
-O `server.Server` é levantado em goroutine separada e serve a SPA + API REST.
+1. Lê o arquivo de bootstrap (`camera.yaml`) com porta, `db_path`, storage e credenciais do admin.
+2. Abre o banco SQLite e executa as migrations pendentes.
+3. Na primeira execução, cria o usuário admin com `must_change_password = true`.
+4. Lê câmeras do banco e para cada câmera habilitada inicia:
+   - Um `recorder.Recorder` — grava RTSP → MP4 chunk
+   - Um `streaming.HLSStreamer` — grava RTSP → segmentos HLS para live
+   - Um `motion.Monitor` — detecta movimento via ffmpeg pipe raw (se motion habilitado)
+5. O `server.Server` é levantado em goroutine separada e serve a SPA + API REST.
+6. Câmeras adicionadas/removidas via API ativam callbacks `onCameraStart` / `onCameraStop` (em goroutine, para não bloquear o handler HTTP).
 
 ### Pacotes internos
 
@@ -100,17 +103,20 @@ O `server.Server` é levantado em goroutine separada e serve a SPA + API REST.
 | `internal/exec` | Interfaces `Commander` / `Process` e implementação real com `os/exec`. Injetadas nos pacotes abaixo para permitir testes sem ffmpeg. |
 | `internal/recorder` | Grava RTSP em chunks MP4. Armazena em `{storage}/{camera_id}/{YYYY/MM/DD}/{YYYYMMDDHHmmss}.mp4`. |
 | `internal/streaming` | Gera playlist HLS ao vivo em `{segments_path}/{camera_id}/index.m3u8`. Modo padrão: janela de 5 segmentos de 2s. Modo DVR (quando `server.hls_dvr_seconds > 0`): mantém todos os segmentos da janela, adiciona `EXT-X-PROGRAM-DATE-TIME` para seek por timestamp. |
-| `internal/motion` | Detecta movimento via ffmpeg pipe raw (frames grayscale em 1/4 da resolução). Expõe dois canais: `Events()` para eventos acima do limiar (gravados em `{storage}/{camera_id}/motion.ndjson`) e `RawScores()` para o score bruto de cada frame diff (usado na visualização em tempo real). Cooldown configurável (`motion.cooldown_seconds`) suprime eventos consecutivos dentro da janela. A cada evento, salva um JPEG anotado (`{YYYYMMDDHHmmss}_motion.jpg`) com: retângulo laranja de 2px ao redor da região de maior diferença (`computeBBox`) e o score no canto superior direito, também em laranja (`annotateFrame`). A entrada no `motion.ndjson` inclui os campos `frame` (nome do JPEG) e `bbox` (`{x,y,w,h}` normalizados). |
-| `internal/storage` | `Cleaner` que apaga MP4s com retenção diferenciada por categoria (com/sem movimento) e monitora uso vs `max_size_gb`. Cada MP4 é classificado via `HasMotionInRange` que consulta o `motion.ndjson` do mesmo diretório. O timestamp de início do chunk é extraído do nome do arquivo (`YYYYMMDDHHmmss`). |
+| `internal/motion` | Detecta movimento via ffmpeg pipe raw (frames grayscale em 1/4 da resolução). Expõe dois canais: `Events()` para eventos acima do limiar e `RawScores()` para o score bruto de cada frame diff. A cada evento persiste no banco (`motion_events`) e em `motion.ndjson`, e salva um JPEG anotado com bounding box e score. |
+| `internal/storage` | `Cleaner` com retenção diferenciada por categoria. Quando o banco está disponível: `syncRecordings()` varre o filesystem e sincroniza MP4s para a tabela `recordings` (`INSERT OR IGNORE`), atualizando `has_motion` via join com `motion_events`; `cleanFromDB()` consulta `recordings` para decisões de exclusão. Sem banco: consulta `motion.ndjson` diretamente. |
+| `internal/db` | Acesso ao SQLite (`modernc.org/sqlite`). Executa migrations em `internal/db/migrations/` na inicialização. Tabelas: `cameras`, `camera_recording_config`, `camera_motion_config`, `camera_motion_zones`, `users` (com `must_change_password`), `settings`, `recordings`, `motion_events`. |
 | `internal/ffprobe` | Executa e parseia saída JSON do ffprobe para detectar codec, áudio e dimensões do stream. |
-| `internal/server` | HTTP server com JWT HS256 (segredo gerado a cada boot, expira em 24h). Serve API REST, arquivos de gravação (incluindo snapshots `_motion.jpg`), segmentos HLS e a SPA React. Inclui dois endpoints SSE de movimento: `/api/cameras/{id}/motion/live` (eventos acima do limiar) e `/api/cameras/{id}/motion/scores` (score bruto por frame). Endpoints de configuração: `GET /api/settings` (configuração completa sanitizada, autenticado) e `GET /api/about` (versão, commit, uptime, versão do Go, autenticado). |
-| `internal/config` | Lê `camera.yaml`; variáveis de ambiente sobrescrevem campos específicos (ver abaixo). |
+| `internal/server` | HTTP server com JWT HS256 (segredo gerado a cada boot, expira em 24h). O claim `must_change_password=true` bloqueia todos os endpoints exceto `POST /api/auth/change-password`. Serve API REST, arquivos de gravação (incluindo snapshots `_motion.jpg`), segmentos HLS e a SPA React. Endpoints SSE de movimento: `/api/cameras/{id}/motion/live` e `/api/cameras/{id}/motion/scores`. `GET /api/stats` usa `SUM(size_bytes)` da tabela `recordings` quando banco disponível. |
+| `internal/config` | Lê o arquivo de bootstrap (`camera.yaml`) com porta, `db_path`, storage e credenciais do admin. Variáveis de ambiente sobrescrevem campos específicos (ver abaixo). |
 | `internal/logger` | `stdout`: JSON em stdout. `file`: um arquivo por nível (`debug.log`, `info.log`, `warn.log`, `error.log`) no diretório configurado. |
-| `frontend/` | SPA React/Vite/Tailwind embutida via `go:embed all:dist`. |
+| `frontend/` | SPA React/Vite/Tailwind embutida via `go:embed all:dist`. `ChangePasswordPage` — tela obrigatória no primeiro login; bloqueia acesso ao restante da UI enquanto `must_change_password=true` no JWT. |
 
 ### Autenticação
 
 O JWT é assinado com um segredo aleatório gerado no boot — tokens não sobrevivem a reinicializações do servidor. O token é aceito via header `Authorization: Bearer <token>` ou query param `?token=<token>` (necessário para `<video src>` e `<HLSPlayer>`).
+
+Fluxo de primeiro acesso: o admin inicial é criado com `must_change_password = true`. No primeiro login o servidor emite um token com esse claim; o frontend redireciona obrigatoriamente para `ChangePasswordPage`. Após a troca a flag é zerada no banco e o acesso normal é liberado. A senha do bootstrap não precisa ser atualizada — serve apenas na criação inicial.
 
 ### Build info
 
@@ -174,7 +180,7 @@ Formato: `<tipo>(<escopo opcional>): <descrição curta em inglês>`
 
 ## Convenções de teste
 
-Testes usam `httptest.NewRecorder` (server), `fakeCommander` com `trackingProcess` (recorder/streamer) e implementações fake das interfaces de `internal/exec`. Não há banco de dados nem mocks externos — cada pacote é testado em isolamento via injeção de dependência.
+Testes usam `httptest.NewRecorder` (server), `fakeCommander` com `trackingProcess` (recorder/streamer) e implementações fake das interfaces de `internal/exec`. O banco SQLite é criado em memória (`:memory:`) nos testes de server e db — nenhum mock externo. Cada pacote é testado em isolamento via injeção de dependência.
 
 ## Diretrizes de Desenvolvimento Go
 
