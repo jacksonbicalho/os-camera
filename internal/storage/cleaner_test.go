@@ -302,7 +302,7 @@ func TestClean_DeletesWithoutMotionChunkAfterWithoutMotionRetention(t *testing.T
 	writeFile(t, path, chunkStart)
 	// no motion.ndjson → no motion
 
-	storage.New(dir, 10080, 30, 5*time.Minute, 0, 0, discardLogger()).Clean()
+	storage.New(dir, 10080, 30, 5*time.Minute, 0, 0, nil, discardLogger()).Clean()
 
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Error("expected without-motion chunk to be deleted after without_motion retention")
@@ -317,7 +317,7 @@ func TestClean_KeepsWithMotionChunkAfterWithoutMotionRetention(t *testing.T) {
 	// write motion event inside chunk range
 	writeMotionNDJSON(t, filepath.Dir(path), []time.Time{chunkStart.Add(1 * time.Minute)})
 
-	storage.New(dir, 10080, 30, 5*time.Minute, 0, 0, discardLogger()).Clean()
+	storage.New(dir, 10080, 30, 5*time.Minute, 0, 0, nil, discardLogger()).Clean()
 
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("expected with-motion chunk to be kept (within with_motion retention): %v", err)
@@ -331,7 +331,7 @@ func TestClean_DeletesWithMotionChunkAfterWithMotionRetention(t *testing.T) {
 	writeFile(t, path, chunkStart)
 	writeMotionNDJSON(t, filepath.Dir(path), []time.Time{chunkStart.Add(1 * time.Minute)})
 
-	storage.New(dir, 60, 30, 5*time.Minute, 0, 0, discardLogger()).Clean()
+	storage.New(dir, 60, 30, 5*time.Minute, 0, 0, nil, discardLogger()).Clean()
 
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Error("expected with-motion chunk to be deleted after with_motion retention")
@@ -357,7 +357,7 @@ func TestClean_AdjacentMotionEventDoesNotContaminateEarlierChunk(t *testing.T) {
 	writeMotionNDJSON(t, filepath.Dir(pathA), []time.Time{chunkB.Add(10 * time.Second)})
 
 	// fallback de 5 min; sem ele o bug existia porque 5 min cobria o evento de B
-	storage.New(dir, 0, 60, 5*time.Minute, 0, 0, discardLogger()).Clean()
+	storage.New(dir, 0, 60, 5*time.Minute, 0, 0, nil, discardLogger()).Clean()
 
 	if _, err := os.Stat(pathA); !os.IsNotExist(err) {
 		t.Error("chunk A sem motion deveria ter sido deletado, mas foi retido (janela alargada)")
@@ -382,7 +382,7 @@ func TestClean_MotionInsideChunkWindowKeepsChunk(t *testing.T) {
 	// evento de motion aos 30s dentro do chunk A → dentro da janela de A
 	writeMotionNDJSON(t, filepath.Dir(pathA), []time.Time{chunkA.Add(30 * time.Second)})
 
-	storage.New(dir, 0, 60, 5*time.Minute, 0, 0, discardLogger()).Clean()
+	storage.New(dir, 0, 60, 5*time.Minute, 0, 0, nil, discardLogger()).Clean()
 
 	if _, err := os.Stat(pathA); err != nil {
 		t.Errorf("chunk A com motion real deveria ser mantido: %v", err)
@@ -397,7 +397,7 @@ func TestClean_LastChunkInDirUsesFallbackDuration(t *testing.T) {
 	writeFile(t, path, chunkStart)
 	// sem motion.ndjson; fallback de 5 min não alcança nenhum evento
 
-	storage.New(dir, 0, 60, 5*time.Minute, 0, 0, discardLogger()).Clean()
+	storage.New(dir, 0, 60, 5*time.Minute, 0, 0, nil, discardLogger()).Clean()
 
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Error("último chunk sem motion deveria ter sido deletado usando fallback duration")
@@ -412,7 +412,7 @@ func TestClean_KeepsWithMotionChunkWhenWithMotionMinutesIsZero(t *testing.T) {
 	writeMotionNDJSON(t, filepath.Dir(path), []time.Time{chunkStart.Add(1 * time.Minute)})
 
 	// withMotion=0 → keep motion recordings indefinitely
-	storage.New(dir, 0, 1440, 5*time.Minute, 0, 0, discardLogger()).Clean()
+	storage.New(dir, 0, 1440, 5*time.Minute, 0, 0, nil, discardLogger()).Clean()
 
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("expected motion chunk to be kept when with_motion_minutes=0: %v", err)
@@ -427,7 +427,7 @@ func TestClean_DeletesOldFiles(t *testing.T) {
 	old := mp4WithTimestamp(dir, "cam1", chunkStart)
 	writeFile(t, old, chunkStart)
 
-	storage.New(dir, 30, 30, 5*time.Minute, 0, 0, discardLogger()).Clean()
+	storage.New(dir, 30, 30, 5*time.Minute, 0, 0, nil, discardLogger()).Clean()
 
 	if _, err := os.Stat(old); !os.IsNotExist(err) {
 		t.Error("expected old file to be deleted")
@@ -440,7 +440,7 @@ func TestClean_KeepsRecentFiles(t *testing.T) {
 	recent := mp4WithTimestamp(dir, "cam1", chunkStart)
 	writeFile(t, recent, chunkStart)
 
-	storage.New(dir, 30, 30, 5*time.Minute, 0, 0, discardLogger()).Clean()
+	storage.New(dir, 30, 30, 5*time.Minute, 0, 0, nil, discardLogger()).Clean()
 
 	if _, err := os.Stat(recent); err != nil {
 		t.Errorf("expected recent file to exist: %v", err)
@@ -453,7 +453,7 @@ func TestClean_DisabledWhenRetentionMinutesZero(t *testing.T) {
 	old := mp4WithTimestamp(dir, "cam1", chunkStart)
 	writeFile(t, old, chunkStart)
 
-	storage.New(dir, 0, 0, 5*time.Minute, 0, 0, discardLogger()).Clean()
+	storage.New(dir, 0, 0, 5*time.Minute, 0, 0, nil, discardLogger()).Clean()
 
 	if _, err := os.Stat(old); err != nil {
 		t.Errorf("expected file to exist when retention disabled: %v", err)
@@ -465,7 +465,7 @@ func TestClean_IgnoresNonMp4Files(t *testing.T) {
 	ts := filepath.Join(dir, "cam1", "2026", "01", "01", "001.ts")
 	writeFile(t, ts, time.Now().Add(-31*time.Minute))
 
-	storage.New(dir, 30, 30, 5*time.Minute, 0, 0, discardLogger()).Clean()
+	storage.New(dir, 30, 30, 5*time.Minute, 0, 0, nil, discardLogger()).Clean()
 
 	if _, err := os.Stat(ts); err != nil {
 		t.Errorf("expected non-mp4 file to be preserved: %v", err)
@@ -482,7 +482,7 @@ func TestCheckSize_LogsWarnWhenAboveThreshold(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 	const maxSizeGB = 1e-7 // ~107 bytes
-	storage.New(dir, 0, 0, 5*time.Minute, maxSizeGB, 70, log).CheckSize()
+	storage.New(dir, 0, 0, 5*time.Minute, maxSizeGB, 70, nil, log).CheckSize()
 
 	if !strings.Contains(buf.String(), "storage usage high") {
 		t.Errorf("expected storage usage warning, got: %s", buf.String())
@@ -498,7 +498,7 @@ func TestCheckSize_NoWarnWhenBelowThreshold(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 	const maxSizeGB = 1e-7 // ~107 bytes
-	storage.New(dir, 0, 0, 5*time.Minute, maxSizeGB, 70, log).CheckSize()
+	storage.New(dir, 0, 0, 5*time.Minute, maxSizeGB, 70, nil, log).CheckSize()
 
 	if strings.Contains(buf.String(), "storage usage high") {
 		t.Errorf("unexpected storage usage warning below threshold")

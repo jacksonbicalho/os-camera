@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,19 +12,9 @@ import (
 	"camera/internal/server"
 )
 
-func openServerTestDB(t *testing.T) *db.DB {
-	t.Helper()
-	d, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("open test db: %v", err)
-	}
-	t.Cleanup(func() { d.Close() })
-	return d
-}
-
 func TestLoginWithDB_ValidCredentials(t *testing.T) {
 	database := openServerTestDB(t)
-	if _, err := db.CreateUser(database, "alice", "pass123", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "alice", "pass123", "admin", false); err != nil {
 		t.Fatalf("criar usuário: %v", err)
 	}
 
@@ -50,7 +39,7 @@ func TestLoginWithDB_ValidCredentials(t *testing.T) {
 
 func TestLoginWithDB_InvalidPassword(t *testing.T) {
 	database := openServerTestDB(t)
-	if _, err := db.CreateUser(database, "alice", "pass123", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "alice", "pass123", "admin", false); err != nil {
 		t.Fatalf("criar usuário: %v", err)
 	}
 
@@ -87,7 +76,7 @@ func TestLoginWithDB_UnknownUser(t *testing.T) {
 
 func TestLoginWithDB_TokenAuthorizesProtectedEndpoint(t *testing.T) {
 	database := openServerTestDB(t)
-	if _, err := db.CreateUser(database, "alice", "pass123", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "alice", "pass123", "admin", false); err != nil {
 		t.Fatalf("criar usuário: %v", err)
 	}
 

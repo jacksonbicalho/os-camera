@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"camera/internal/config"
 	"camera/internal/db"
@@ -19,10 +20,10 @@ func setupCamerasServer(t *testing.T) (http.Handler, string, string) {
 	t.Helper()
 	database := openServerTestDB(t)
 
-	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
 		t.Fatalf("criar admin: %v", err)
 	}
-	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer")
+	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer", false)
 	if err != nil {
 		t.Fatalf("criar viewer: %v", err)
 	}
@@ -196,7 +197,7 @@ func TestUpdateCamera_NotFound(t *testing.T) {
 
 func TestDeleteCamera_Success(t *testing.T) {
 	database := openServerTestDB(t)
-	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
 		t.Fatalf("criar admin: %v", err)
 	}
 	if err := db.CreateCamera(database, config.CameraConfig{ID: "todelete", RTSPURL: "rtsp://x"}, nil); err != nil {
@@ -254,7 +255,7 @@ func TestDeleteCamera_ForbiddenForViewer(t *testing.T) {
 
 func TestCreateCamera_CallsOnCameraStart(t *testing.T) {
 	database := openServerTestDB(t)
-	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
 		t.Fatalf("criar admin: %v", err)
 	}
 
@@ -273,6 +274,7 @@ func TestCreateCamera_CallsOnCameraStart(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
+	time.Sleep(50 * time.Millisecond)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", w.Code)
@@ -284,7 +286,7 @@ func TestCreateCamera_CallsOnCameraStart(t *testing.T) {
 
 func TestDeleteCamera_CallsOnCameraStop(t *testing.T) {
 	database := openServerTestDB(t)
-	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
 		t.Fatalf("criar admin: %v", err)
 	}
 	if err := db.CreateCamera(database, config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://x"}, nil); err != nil {
@@ -313,7 +315,7 @@ func TestDeleteCamera_CallsOnCameraStop(t *testing.T) {
 
 func TestUpdateCamera_CallsStopThenStart(t *testing.T) {
 	database := openServerTestDB(t)
-	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
 		t.Fatalf("criar admin: %v", err)
 	}
 	if err := db.CreateCamera(database, config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://old"}, nil); err != nil {
@@ -336,6 +338,7 @@ func TestUpdateCamera_CallsStopThenStart(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
+	time.Sleep(50 * time.Millisecond)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)

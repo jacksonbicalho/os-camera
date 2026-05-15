@@ -1,51 +1,31 @@
-debug: false                         # env: CAMERA_DEBUG
-timezone: America/Sao_Paulo          # env: CAMERA_TIMEZONE — fuso horário da instalação (padrão: UTC)
+# camera.yaml — arquivo de bootstrap mínimo
+# Câmeras, motion e zonas de exclusão são gerenciados via UI/API (banco de dados).
+# Este arquivo só precisa existir para o sistema iniciar pela primeira vez.
+
+debug: false
+timezone: America/Sao_Paulo       # env: CAMERA_TIMEZONE — fuso horário da instalação (padrão: UTC)
+
+db_path: /data/camera.db           # caminho do banco SQLite (criado automaticamente)
 
 log:
-  output: stdout     # stdout | file — env: CAMERA_LOG_OUTPUT
-  path:              # diretório quando output: file — env: CAMERA_LOG_PATH
+  output: stdout                   # stdout | file
+  path:                            # diretório quando output: file
 
 server:
-  port: 8080                        # env: CAMERA_SERVER_PORT
-  segments_path: /tmp/hls           # env: CAMERA_SEGMENTS_PATH
-  username: master                  # env: CAMERA_SERVER_USERNAME
-  password: ""                      # env: CAMERA_SERVER_PASSWORD
-  hls_dvr_seconds: 0                # janela DVR do HLS em segundos (0 = desabilitado; ex: 1200 = 20 min)
-  jwt_secret: ""                    # env: CAMERA_SERVER_JWT_SECRET — segredo JWT fixo; tokens sobrevivem a reinicializações (mínimo 32 chars recomendado; vazio = gera aleatório a cada boot)
+  port: 8080
+  segments_path: /tmp/hls          # diretório para segmentos HLS do streaming ao vivo
+  hls_dvr_seconds: 0               # 0 = DVR desabilitado; >0 = janela DVR em segundos
+  jwt_secret: ""                   # env: CAMERA_SERVER_JWT_SECRET — vazio = gerado aleatoriamente a cada boot
 
 storage:
-  path: /data/recordings     # env: CAMERA_STORAGE_PATH
+  path: /data/recordings           # env: CAMERA_STORAGE_PATH — diretório de gravações
   retention:
-    with_motion_minutes: 10080    # apaga gravações COM movimento após N minutos (0 = nunca apaga; 10080 = 7 dias)
-    without_motion_minutes: 1440  # apaga gravações SEM movimento após N minutos (0 = desabilitado; 1440 = 1 dia)
-  # retention_minutes: 43200   # campo legado: aplica o mesmo valor a ambas as categorias (ignorado se retention: estiver definido)
-  interval_minutes: 60       # intervalo entre checagens de retenção e uso de disco (0 = 60 min)
-  max_size_gb: 10            # tamanho máximo do diretório de gravações em GB (0 = desabilitado)
-  warn_percent: 70           # avisa quando uso atingir X% do max_size_gb (ex: 70% de 10 GB = 7 GB)
+    with_motion_minutes: 10080     # 7 dias — 0 = nunca apaga gravações com movimento
+    without_motion_minutes: 1440   # 1 dia  — 0 = desabilitado
+  interval_minutes: 60             # intervalo entre limpezas (0 = 60 min)
+  max_size_gb: 0                   # tamanho máximo em GB (0 = desabilitado)
+  warn_percent: 90                 # % do max_size_gb para emitir aviso
 
-motion:
-  enabled: false      # habilita detecção de movimento por câmera
-  threshold: 0.02     # fração mínima de pixels alterados para registrar evento (0.0–1.0)
-  fps: 2              # frames por segundo capturados para análise de movimento
-  cooldown_seconds: 30  # tempo mínimo entre eventos consecutivos (0 = desabilitado)
-
-cameras:
-  - id: entrada
-    rtsp_url: rtsp://192.168.1.10:554/stream
-    # Configurações de stream (opcionais — detectadas via ffprobe se omitidas):
-    # video_codec: h264      # codec do vídeo (ex: h264, hevc)
-    # has_audio: false       # false = adiciona -an no ffmpeg; true = mantém áudio
-    # width: 1920            # largura do vídeo em pixels
-    # height: 1080           # altura do vídeo em pixels
-    # motion:                # sobrescreve o bloco global motion para esta câmera
-    #   enabled: true
-    #   threshold: 0.03
-    #   fps: 2
-
-  - id: quintal
-    rtsp_url: rtsp://192.168.1.11:554/stream
-    chunk_duration: 10m      # duração de cada chunk gravado (padrão: 5m)
-    # reconnect_interval: 30s  # intervalo de reconexão ao stream (padrão: 10s)
-    has_audio: false         # câmera sem microfone — pula detecção por ffprobe
-    motion:
-      enabled: false         # desabilita detecção de movimento somente nesta câmera
+admin:
+  username: admin                  # usuário administrador criado na primeira inicialização
+  password: changeme               # senha inicial — troca obrigatória no primeiro login

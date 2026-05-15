@@ -19,10 +19,10 @@ func setupRolesServer(t *testing.T) (http.Handler, string, string) {
 	t.Helper()
 	database := openServerTestDB(t)
 
-	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
 		t.Fatalf("criar admin: %v", err)
 	}
-	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer")
+	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer", false)
 	if err != nil {
 		t.Fatalf("criar viewer: %v", err)
 	}
@@ -33,6 +33,11 @@ func setupRolesServer(t *testing.T) (http.Handler, string, string) {
 	cameras := []config.CameraConfig{
 		{ID: "cam1", RTSPURL: "rtsp://fake1"},
 		{ID: "cam2", RTSPURL: "rtsp://fake2"},
+	}
+	for _, cam := range cameras {
+		if err := db.CreateCamera(database, cam, nil); err != nil {
+			t.Fatalf("seed camera %q: %v", cam.ID, err)
+		}
 	}
 	srv := server.NewServer(config.ServerConfig{}, "UTC", cameras, discardLogger(), nil).
 		WithDB(database)
@@ -145,10 +150,10 @@ func TestCameraEndpointAllowedForViewerWithAccess(t *testing.T) {
 	tmpDir := t.TempDir()
 	database := openServerTestDB(t)
 
-	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
 		t.Fatalf("criar admin: %v", err)
 	}
-	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer")
+	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer", false)
 	if err != nil {
 		t.Fatalf("criar viewer: %v", err)
 	}
@@ -195,10 +200,10 @@ func TestStreamNotForbiddenForViewerWithAccess(t *testing.T) {
 	tmpDir := t.TempDir()
 	database := openServerTestDB(t)
 
-	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
 		t.Fatalf("criar admin: %v", err)
 	}
-	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer")
+	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer", false)
 	if err != nil {
 		t.Fatalf("criar viewer: %v", err)
 	}
@@ -243,10 +248,10 @@ func TestRecordingsNotForbiddenForViewerWithAccess(t *testing.T) {
 	tmpDir := t.TempDir()
 	database := openServerTestDB(t)
 
-	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
 		t.Fatalf("criar admin: %v", err)
 	}
-	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer")
+	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer", false)
 	if err != nil {
 		t.Fatalf("criar viewer: %v", err)
 	}

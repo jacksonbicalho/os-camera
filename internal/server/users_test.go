@@ -18,10 +18,10 @@ func setupUsersServer(t *testing.T) (http.Handler, string, string) {
 	t.Helper()
 	database := openServerTestDB(t)
 
-	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
 		t.Fatalf("criar admin: %v", err)
 	}
-	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer")
+	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer", false)
 	if err != nil {
 		t.Fatalf("criar viewer: %v", err)
 	}
@@ -176,10 +176,10 @@ func TestCreateUser_InvalidRole(t *testing.T) {
 
 func TestUpdateUser_ChangeRole(t *testing.T) {
 	database := openServerTestDB(t)
-	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
 		t.Fatalf("criar admin: %v", err)
 	}
-	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer")
+	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer", false)
 	if err != nil {
 		t.Fatalf("criar viewer: %v", err)
 	}
@@ -206,10 +206,10 @@ func TestUpdateUser_ChangeRole(t *testing.T) {
 
 func TestUpdateUser_SetCameras(t *testing.T) {
 	database := openServerTestDB(t)
-	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
 		t.Fatalf("criar admin: %v", err)
 	}
-	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer")
+	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer", false)
 	if err != nil {
 		t.Fatalf("criar viewer: %v", err)
 	}
@@ -237,10 +237,10 @@ func TestUpdateUser_SetCameras(t *testing.T) {
 
 func TestUpdateUser_NoPasswordChange(t *testing.T) {
 	database := openServerTestDB(t)
-	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
 		t.Fatalf("criar admin: %v", err)
 	}
-	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer")
+	viewerID, err := db.CreateUser(database, "viewer_user", "viewerpw", "viewer", false)
 	if err != nil {
 		t.Fatalf("criar viewer: %v", err)
 	}
@@ -282,10 +282,10 @@ func TestUpdateUser_ForbiddenForViewer(t *testing.T) {
 
 func TestDeleteUser_Success(t *testing.T) {
 	database := openServerTestDB(t)
-	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin"); err != nil {
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
 		t.Fatalf("criar admin: %v", err)
 	}
-	targetID, err := db.CreateUser(database, "todelete", "pw", "viewer")
+	targetID, err := db.CreateUser(database, "todelete", "pw", "viewer", false)
 	if err != nil {
 		t.Fatalf("criar viewer: %v", err)
 	}

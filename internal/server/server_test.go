@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"camera/internal/config"
+	"camera/internal/db"
 	"camera/internal/motion"
 	"camera/internal/server"
 	"camera/internal/zones"
@@ -24,7 +25,7 @@ func discardLogger() *slog.Logger {
 }
 
 func TestLoginReturnsTokenForValidCredentials(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
 
 	body := `{"username":"master","password":"secret"}`
@@ -34,13 +35,8 @@ func TestLoginReturnsTokenForValidCredentials(t *testing.T) {
 
 	srv.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-	var resp map[string]string
-	json.NewDecoder(w.Body).Decode(&resp)
-	if resp["token"] == "" {
-		t.Error("expected non-empty token in response")
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", w.Code)
 	}
 }
 
@@ -57,7 +53,7 @@ func loginAndGetToken(t *testing.T, srv http.Handler, username, password string)
 }
 
 func TestLoginReturnsUnauthorizedForInvalidCredentials(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
 
 	body := `{"username":"master","password":"wrong"}`
@@ -67,18 +63,19 @@ func TestLoginReturnsUnauthorizedForInvalidCredentials(t *testing.T) {
 
 	srv.ServeHTTP(w, req)
 
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", w.Code)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", w.Code)
 	}
 }
 
 func TestGetCamerasReturnsList(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	cameras := []config.CameraConfig{
 		{ID: "entrada", RTSPURL: "rtsp://192.168.1.10:554/stream"},
 		{ID: "quintal", RTSPURL: "rtsp://192.168.1.11:554/stream"},
 	}
 	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+	srv = withTestUsersAndCameras(t, srv, cameras)
 
 	token := loginAndGetToken(t, srv, "master", "secret")
 
@@ -102,7 +99,7 @@ func TestGetCamerasReturnsList(t *testing.T) {
 }
 
 func TestGetCamerasRequiresAuth(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras", nil)
@@ -127,9 +124,10 @@ func TestStreamServesHLSPlaylist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := config.ServerConfig{Username: "master", Password: "secret", SegmentsPath: tmpDir}
+	cfg := config.ServerConfig{SegmentsPath: tmpDir}
 	cameras := []config.CameraConfig{{ID: cameraID}}
 	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 
 	token := loginAndGetToken(t, srv, "master", "secret")
 
@@ -145,7 +143,7 @@ func TestStreamServesHLSPlaylist(t *testing.T) {
 }
 
 func TestStreamRequiresAuth(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret", SegmentsPath: t.TempDir()}
+	cfg := config.ServerConfig{SegmentsPath: t.TempDir()}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/stream/entrada/index.m3u8", nil)
@@ -171,9 +169,10 @@ func TestRecordingsReturnsChunksForDate(t *testing.T) {
 		}
 	}
 
-	cfg := config.ServerConfig{Username: "master", Password: "secret", RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
 	cameras := []config.CameraConfig{{ID: cameraID}}
 	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 
 	token := loginAndGetToken(t, srv, "master", "secret")
 
@@ -221,8 +220,9 @@ func TestRecordingsDefaultOrderIsNewestFirst(t *testing.T) {
 		}
 	}
 
-	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "u", "p")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-04-30&page=1&limit=10", nil)
@@ -255,8 +255,9 @@ func TestRecordingsAscOrderIsOldestFirst(t *testing.T) {
 		}
 	}
 
-	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "u", "p")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-04-30&page=1&limit=10&order=asc", nil)
@@ -294,8 +295,9 @@ func TestRecordingsMarksActiveFileAsRecording(t *testing.T) {
 	old := time.Now().Add(-10 * time.Minute)
 	os.Chtimes(oldFile, old, old)
 
-	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "u", "p")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-04-30&page=1&limit=10", nil)
@@ -346,8 +348,9 @@ func TestRecordingsOnlyLatestFileIsMarkedAsRecording(t *testing.T) {
 		}
 	}
 
-	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "u", "p")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-04-30&page=1&limit=10", nil)
@@ -397,8 +400,9 @@ func TestRecordingsSpansMidnightUTCWhenTimezoneOffset(t *testing.T) {
 	// 04:00 UTC do dia 03 → 01:00 Sao Paulo do dia 03 → NÃO pertence ao dia local 02 ✗
 	os.WriteFile(filepath.Join(day03Dir, "20260503040000.mp4"), []byte("x"), 0644)
 
-	cfg := config.ServerConfig{Username: "master", Password: "secret", RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
 	srv := server.NewServer(cfg, "America/Sao_Paulo", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 
 	token := loginAndGetToken(t, srv, "master", "secret")
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-05-02&page=1&limit=10", nil)
@@ -426,7 +430,7 @@ func TestRecordingsSpansMidnightUTCWhenTimezoneOffset(t *testing.T) {
 }
 
 func TestRecordingsRequiresAuth(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret", SegmentsPath: t.TempDir()}
+	cfg := config.ServerConfig{SegmentsPath: t.TempDir()}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/entrada/recordings?date=2026-04-30", nil)
@@ -446,16 +450,33 @@ func TestGetStatsReturnsStorageInfo(t *testing.T) {
 	if err := os.MkdirAll(dateDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dateDir, "20260501100000.mp4"), []byte("abcde"), 0644); err != nil {
+	path1 := filepath.Join(dateDir, "20260501100000.mp4")
+	path2 := filepath.Join(dateDir, "20260501101500.mp4")
+	if err := os.WriteFile(path1, []byte("abcde"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dateDir, "20260501101500.mp4"), []byte("xyz"), 0644); err != nil {
+	if err := os.WriteFile(path2, []byte("xyz"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	cameras := []config.CameraConfig{{ID: "entrada"}, {ID: "quintal"}}
-	cfg := config.ServerConfig{Username: "master", Password: "secret", RecordingsPath: tmpDir}
-	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	for _, cam := range cameras {
+		if err := db.CreateCamera(database, cam, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t1, _ := time.ParseInLocation("20060102150405", "20260501100000", time.UTC)
+	t2, _ := time.ParseInLocation("20060102150405", "20260501101500", time.UTC)
+	db.InsertRecording(database, db.Recording{CameraID: "entrada", StartedAt: t1, Path: path1, SizeBytes: 5})
+	db.InsertRecording(database, db.Recording{CameraID: "entrada", StartedAt: t2, Path: path2, SizeBytes: 3})
+
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).WithDB(database)
 
 	token := loginAndGetToken(t, srv, "master", "secret")
 	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
@@ -501,15 +522,31 @@ func TestGetStatsIncludesRecordingsDurationAndForecast(t *testing.T) {
 	if err := os.MkdirAll(dateDir, 0755); err != nil {
 		t.Fatal(err)
 	}
+	var paths []string
 	for _, name := range []string{"20260501100000.mp4", "20260501100500.mp4"} {
-		if err := os.WriteFile(filepath.Join(dateDir, name), []byte("abcdefgh"), 0644); err != nil {
+		p := filepath.Join(dateDir, name)
+		if err := os.WriteFile(p, []byte("abcdefgh"), 0644); err != nil {
 			t.Fatal(err)
 		}
+		paths = append(paths, p)
 	}
 
 	cameras := []config.CameraConfig{{ID: cameraID}}
-	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
-	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "u", "p", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateCamera(database, cameras[0], nil); err != nil {
+		t.Fatal(err)
+	}
+	for i, name := range []string{"20260501100000", "20260501100500"} {
+		ts, _ := time.ParseInLocation("20060102150405", name, time.UTC)
+		db.InsertRecording(database, db.Recording{CameraID: cameraID, StartedAt: ts, Path: paths[i], SizeBytes: 8})
+	}
+
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).WithDB(database)
 
 	token := loginAndGetToken(t, srv, "u", "p")
 	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
@@ -535,10 +572,11 @@ func TestGetStatsIncludesRecordingsDurationAndForecast(t *testing.T) {
 
 func TestGetStatsIncludesMaxSizeWhenConfigured(t *testing.T) {
 	tmpDir := t.TempDir()
-	cfg := config.ServerConfig{Username: "master", Password: "secret", RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
 	storageCfg := config.StorageConfig{MaxSizeGB: 1.0, WarnPercent: 80}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil).
 		WithStorageConfig(storageCfg)
+	srv = withTestUsers(t, srv)
 
 	token := loginAndGetToken(t, srv, "master", "secret")
 	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
@@ -567,7 +605,7 @@ func TestGetStatsIncludesMaxSizeWhenConfigured(t *testing.T) {
 }
 
 func TestGetStatsRequiresAuth(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
@@ -592,12 +630,11 @@ func TestGetStatsIncludesConnectedClients(t *testing.T) {
 	}
 
 	cfg := config.ServerConfig{
-		Username:       "master",
-		Password:       "secret",
 		RecordingsPath: tmpDir,
 		SegmentsPath:   tmpDir,
 	}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "master", "secret")
 
 	streamReq := httptest.NewRequest(http.MethodGet, "/stream/"+cameraID+"/index.m3u8", nil)
@@ -640,8 +677,18 @@ func TestGetStatsIncludesTopMotionScorePerCamera(t *testing.T) {
 	}
 
 	cameras := []config.CameraConfig{{ID: "entrada"}, {ID: "quintal"}}
-	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
-	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "u", "p", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	for _, cam := range cameras {
+		if err := db.CreateCamera(database, cam, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).WithDB(database)
 
 	token := loginAndGetToken(t, srv, "u", "p")
 	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
@@ -698,9 +745,10 @@ func TestMotionEventsReturnsEventsForDate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := config.ServerConfig{Username: "master", Password: "secret", RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
 	cameras := []config.CameraConfig{{ID: cameraID}}
 	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 
 	token := loginAndGetToken(t, srv, "master", "secret")
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion?date=2026-05-03", nil)
@@ -727,7 +775,7 @@ func TestMotionEventsReturnsEventsForDate(t *testing.T) {
 }
 
 func TestMotionEventsRequiresAuth(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/entrada/motion?date=2026-05-03", nil)
@@ -742,9 +790,10 @@ func TestMotionEventsRequiresAuth(t *testing.T) {
 
 func TestMotionEventsReturnsEmptyWhenNoFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	cfg := config.ServerConfig{Username: "master", Password: "secret", RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
 	cameras := []config.CameraConfig{{ID: "entrada"}}
 	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 
 	token := loginAndGetToken(t, srv, "master", "secret")
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/entrada/motion?date=2026-05-03", nil)
@@ -787,8 +836,9 @@ func TestMotionEventsSpansMidnightUTCWhenTimezoneOffset(t *testing.T) {
 		`{"time":"2026-05-03T04:00:00Z","score":0.9}` + "\n"
 	os.WriteFile(filepath.Join(day03Dir, "motion.ndjson"), []byte(ndjson03), 0644)
 
-	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
 	srv := server.NewServer(cfg, "America/Sao_Paulo", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 
 	token := loginAndGetToken(t, srv, "u", "p")
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion?date=2026-05-02", nil)
@@ -815,7 +865,7 @@ func TestMotionEventsSpansMidnightUTCWhenTimezoneOffset(t *testing.T) {
 }
 
 func TestMotionLiveRequiresAuth(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/live", nil)
@@ -828,8 +878,9 @@ func TestMotionLiveRequiresAuth(t *testing.T) {
 }
 
 func TestMotionLiveReturns404WhenNoFeed(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "master", "secret")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/live", nil)
@@ -843,9 +894,10 @@ func TestMotionLiveReturns404WhenNoFeed(t *testing.T) {
 }
 
 func TestMotionLiveStreamsSSEEvents(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	cameraID := "cam1"
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 
 	srcCh := make(chan motion.Event, 1)
 	srv.WithMotionFeed(cameraID, srcCh)
@@ -883,9 +935,10 @@ func TestMotionLiveStreamsSSEEvents(t *testing.T) {
 }
 
 func TestMotionLiveAcceptsTokenViaQueryParam(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	cameraID := "cam1"
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 
 	srcCh := make(chan motion.Event)
 	srv.WithMotionFeed(cameraID, srcCh)
@@ -902,7 +955,7 @@ func TestMotionLiveAcceptsTokenViaQueryParam(t *testing.T) {
 }
 
 func TestMotionScoresRequiresAuth(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/scores", nil)
@@ -915,8 +968,9 @@ func TestMotionScoresRequiresAuth(t *testing.T) {
 }
 
 func TestMotionScoresReturns404WhenNoFeed(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "master", "secret")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/scores", nil)
@@ -930,9 +984,10 @@ func TestMotionScoresReturns404WhenNoFeed(t *testing.T) {
 }
 
 func TestMotionScoresStreamsSSEEvents(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	cameraID := "cam1"
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 
 	srcCh := make(chan motion.Event, 1)
 	srv.WithRawFeed(cameraID, srcCh)
@@ -963,11 +1018,12 @@ func TestMotionScoresStreamsSSEEvents(t *testing.T) {
 }
 
 func TestCamerasIncludesMotionThreshold(t *testing.T) {
-	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cfg := config.ServerConfig{}
 	cameras := []config.CameraConfig{{ID: "cam1"}}
 	motionCfg := config.MotionConfig{Enabled: true, Threshold: 0.03, FPS: 2}
 	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).
 		WithMotionConfig(motionCfg)
+	srv = withTestUsersAndCameras(t, srv, cameras)
 
 	token := loginAndGetToken(t, srv, "u", "p")
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras", nil)
@@ -1009,12 +1065,13 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 			VideoCodec: "h264",
 		},
 	}
-	serverCfg := config.ServerConfig{Username: "admin", Password: "pw", Port: 8080, HLSDVRSeconds: 30}
+	serverCfg := config.ServerConfig{Port: 8080, HLSDVRSeconds: 30}
 	storageCfg := config.StorageConfig{Path: "/data", Retention: config.RetentionConfig{WithMotionMinutes: 10080, WithoutMotionMinutes: 1440}, MaxSizeGB: 10, WarnPercent: 80}
 	motionCfg := config.MotionConfig{Enabled: true, Threshold: 0.02, FPS: 2, CooldownSeconds: 30}
 	srv := server.NewServer(serverCfg, "America/Sao_Paulo", cameras, discardLogger(), nil).
 		WithStorageConfig(storageCfg).
 		WithMotionConfig(motionCfg)
+	srv = withTestUsers(t, srv)
 
 	token := loginAndGetToken(t, srv, "admin", "pw")
 	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
@@ -1029,9 +1086,8 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 	var resp struct {
 		Timezone string `json:"timezone"`
 		Server   struct {
-			Port          int    `json:"port"`
-			Username      string `json:"username"`
-			HLSDVRSeconds int    `json:"hls_dvr_seconds"`
+			Port          int `json:"port"`
+			HLSDVRSeconds int `json:"hls_dvr_seconds"`
 		} `json:"server"`
 		Storage struct {
 			Path                 string  `json:"path"`
@@ -1051,11 +1107,11 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 			ReconnectInterval string `json:"reconnect_interval"`
 		} `json:"defaults"`
 		Cameras []struct {
-			ID         string  `json:"id"`
-			RTSPURL    string  `json:"rtsp_url"`
-			VideoCodec string  `json:"video_codec"`
-			Width      int     `json:"width"`
-			Height     int     `json:"height"`
+			ID         string `json:"id"`
+			RTSPURL    string `json:"rtsp_url"`
+			VideoCodec string `json:"video_codec"`
+			Width      int    `json:"width"`
+			Height     int    `json:"height"`
 		} `json:"cameras"`
 	}
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
@@ -1066,9 +1122,6 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 	}
 	if resp.Server.Port != 8080 {
 		t.Errorf("expected port 8080, got %d", resp.Server.Port)
-	}
-	if resp.Server.Username != "admin" {
-		t.Errorf("expected username admin, got %q", resp.Server.Username)
 	}
 	if resp.Server.HLSDVRSeconds != 30 {
 		t.Errorf("expected hls_dvr_seconds 30, got %d", resp.Server.HLSDVRSeconds)
@@ -1097,10 +1150,11 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 }
 
 func TestGetSettingsIncludesDebugAndLog(t *testing.T) {
-	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cfg := config.ServerConfig{}
 	logCfg := config.LogConfig{Output: "file", Path: "/var/log/camera"}
 	srv := server.NewServer(cfg, "UTC", nil, discardLogger(), nil).
 		WithSystemConfig(true, logCfg)
+	srv = withTestUsers(t, srv)
 
 	token := loginAndGetToken(t, srv, "u", "p")
 	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
@@ -1133,7 +1187,7 @@ func TestGetSettingsIncludesDebugAndLog(t *testing.T) {
 }
 
 func TestGetSettingsRequiresAuth(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
@@ -1150,8 +1204,9 @@ func TestGetSettingsMasksRTSPCredentials(t *testing.T) {
 		{ID: "cam1", RTSPURL: "rtsp://user:s3cr3t@192.168.1.10:554/live"},
 		{ID: "cam2", RTSPURL: "rtsp://192.168.1.11:554/stream"},
 	}
-	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 
 	token := loginAndGetToken(t, srv, "u", "p")
 	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
@@ -1182,10 +1237,11 @@ func TestGetSettingsMasksRTSPCredentials(t *testing.T) {
 }
 
 func TestGetAboutReturnsVersionAndUptime(t *testing.T) {
-	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", nil, discardLogger(), nil).
 		WithVersion("v2.0.0").
 		WithBuildInfo("abc1234", "2026-05-08T12:00:00Z")
+	srv = withTestUsers(t, srv)
 
 	token := loginAndGetToken(t, srv, "u", "p")
 	req := httptest.NewRequest(http.MethodGet, "/api/about", nil)
@@ -1224,7 +1280,7 @@ func TestGetAboutReturnsVersionAndUptime(t *testing.T) {
 }
 
 func TestGetAboutRequiresAuth(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", nil, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/about", nil)
@@ -1237,7 +1293,7 @@ func TestGetAboutRequiresAuth(t *testing.T) {
 }
 
 func TestClientConfigIncludesVersion(t *testing.T) {
-	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", nil, discardLogger(), nil).
 		WithVersion("v1.2.3")
 
@@ -1258,7 +1314,7 @@ func TestClientConfigIncludesVersion(t *testing.T) {
 }
 
 func TestMotionDailyPeakRequiresAuth(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/daily-peak", nil)
@@ -1271,8 +1327,9 @@ func TestMotionDailyPeakRequiresAuth(t *testing.T) {
 }
 
 func TestMotionDailyPeakReturns404WhenNoRawFeed(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "master", "secret")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/daily-peak", nil)
@@ -1286,9 +1343,10 @@ func TestMotionDailyPeakReturns404WhenNoRawFeed(t *testing.T) {
 }
 
 func TestMotionDailyPeakReturnsZeroWhenNoEventsYet(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	cameraID := "cam1"
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 
 	rawCh := make(chan motion.Event)
 	srv.WithRawFeed(cameraID, rawCh)
@@ -1318,9 +1376,10 @@ func TestMotionDailyPeakReturnsZeroWhenNoEventsYet(t *testing.T) {
 }
 
 func TestMotionDailyPeakReturnsPeakScore(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	cameraID := "cam1"
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 
 	rawCh := make(chan motion.Event, 4)
 	srv.WithRawFeed(cameraID, rawCh)
@@ -1356,9 +1415,10 @@ func TestMotionDailyPeakReturnsPeakScore(t *testing.T) {
 }
 
 func TestMotionDailyPeakResetsOnNewDay(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 	cameraID := "cam1"
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 
 	rawCh := make(chan motion.Event, 2)
 	srv.WithRawFeed(cameraID, rawCh)
@@ -1393,10 +1453,11 @@ func TestMotionDailyPeakResetsOnNewDay(t *testing.T) {
 func newZoneServer(t *testing.T, cameraID string) (http.Handler, *zones.Store, string) {
 	t.Helper()
 	zStore, _ := zones.NewStore(filepath.Join(t.TempDir(), "motion_zones.json"))
-	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cfg := config.ServerConfig{}
 	cameras := []config.CameraConfig{{ID: cameraID, RTSPURL: "rtsp://fake"}}
 	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).
 		WithZoneStore(zStore)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "u", "p")
 	return srv, zStore, token
 }
@@ -1475,7 +1536,7 @@ func TestPutMotionZonesValidation(t *testing.T) {
 }
 
 func TestMotionZonesRequiresAuth(t *testing.T) {
-	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/zones", nil)
@@ -1504,10 +1565,11 @@ func TestSnapshotReturnsJPEG(t *testing.T) {
 	fakeJPEG := []byte{0xFF, 0xD8, 0xFF, 0xD9} // JPEG mínimo válido
 	snapFn := func(_ context.Context, _ string) ([]byte, error) { return fakeJPEG, nil }
 
-	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cfg := config.ServerConfig{}
 	cameras := []config.CameraConfig{{ID: "cam1", RTSPURL: "rtsp://fake"}}
 	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).
 		WithSnapshotter(snapFn)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "u", "p")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/snapshot", nil)
@@ -1528,9 +1590,10 @@ func TestSnapshotReturnsJPEG(t *testing.T) {
 
 func TestSnapshotUnknownCameraReturns404(t *testing.T) {
 	snapFn := func(_ context.Context, _ string) ([]byte, error) { return nil, nil }
-	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil).
 		WithSnapshotter(snapFn)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "u", "p")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/nonexistent/snapshot", nil)
@@ -1543,7 +1606,7 @@ func TestSnapshotUnknownCameraReturns404(t *testing.T) {
 }
 
 func TestSnapshotRequiresAuth(t *testing.T) {
-	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/snapshot", nil)
 	w := httptest.NewRecorder()
@@ -1567,8 +1630,9 @@ func TestDeleteRecordingReturns204(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "u", "p")
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/"+cameraID+"/recordings/"+filename, nil)
@@ -1586,8 +1650,9 @@ func TestDeleteRecordingReturns204(t *testing.T) {
 
 func TestDeleteRecordingReturns404WhenFileNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
-	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "u", "p")
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/cam1/recordings/20260511100000.mp4", nil)
@@ -1601,8 +1666,9 @@ func TestDeleteRecordingReturns404WhenFileNotFound(t *testing.T) {
 }
 
 func TestDeleteRecordingReturns404WhenUnknownCamera(t *testing.T) {
-	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "u", "p")
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/unknown/recordings/20260511100000.mp4", nil)
@@ -1616,7 +1682,7 @@ func TestDeleteRecordingReturns404WhenUnknownCamera(t *testing.T) {
 }
 
 func TestDeleteRecordingRequiresAuth(t *testing.T) {
-	cfg := config.ServerConfig{Username: "u", Password: "p"}
+	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/cam1/recordings/20260511100000.mp4", nil)
@@ -1646,8 +1712,9 @@ func TestDeleteRecordingCleansMotionEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := config.ServerConfig{Username: "u", Password: "p", RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
 	token := loginAndGetToken(t, srv, "u", "p")
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/"+cameraID+"/recordings/"+filename, nil)
@@ -1664,12 +1731,16 @@ func TestDeleteRecordingCleansMotionEvents(t *testing.T) {
 }
 
 func TestConfiguredJWTSecretSurvivesReinit(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret", JWTSecret: "fixed-secret-for-testing-32chars!"}
+	cfg := config.ServerConfig{JWTSecret: "fixed-secret-for-testing-32chars!"}
 
-	srv1 := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	srv1 := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil).WithDB(database)
 	token := loginAndGetToken(t, srv1, "master", "secret")
 
-	srv2 := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+	srv2 := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil).WithDB(database)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -1682,12 +1753,20 @@ func TestConfiguredJWTSecretSurvivesReinit(t *testing.T) {
 }
 
 func TestRandomSecretWhenJWTSecretNotConfigured(t *testing.T) {
-	cfg := config.ServerConfig{Username: "master", Password: "secret"}
+	cfg := config.ServerConfig{}
 
-	srv1 := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+	database1 := openServerTestDB(t)
+	if _, err := db.CreateUser(database1, "master", "secret", "admin", false); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	srv1 := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil).WithDB(database1)
 	token := loginAndGetToken(t, srv1, "master", "secret")
 
-	srv2 := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+	database2 := openServerTestDB(t)
+	if _, err := db.CreateUser(database2, "master", "secret", "admin", false); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	srv2 := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil).WithDB(database2)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras", nil)
 	req.Header.Set("Authorization", "Bearer "+token)

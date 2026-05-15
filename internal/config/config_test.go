@@ -29,114 +29,10 @@ func TestLoadReturnsErrorWhenFileNotFound(t *testing.T) {
 	}
 }
 
-func TestLoadParsesCamera(t *testing.T) {
-	path := writeTempYAML(t, `
-storage:
-  path: /tmp/recordings
-
-cameras:
-  - id: entrada
-    rtsp_url: rtsp://192.168.1.10:554/stream
-`)
-
-	cfg, err := config.Load(path)
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(cfg.Cameras) != 1 {
-		t.Fatalf("expected 1 camera, got %d", len(cfg.Cameras))
-	}
-	if cfg.Cameras[0].ID != "entrada" {
-		t.Errorf("expected id %q, got %q", "entrada", cfg.Cameras[0].ID)
-	}
-	if cfg.Cameras[0].RTSPURL != "rtsp://192.168.1.10:554/stream" {
-		t.Errorf("expected rtsp_url %q, got %q", "rtsp://192.168.1.10:554/stream", cfg.Cameras[0].RTSPURL)
-	}
-}
-
-func TestLoadParsesMultipleCameras(t *testing.T) {
-	path := writeTempYAML(t, `
-storage:
-  path: /tmp/recordings
-
-cameras:
-  - id: entrada
-    rtsp_url: rtsp://192.168.1.10:554/stream
-  - id: quintal
-    rtsp_url: rtsp://192.168.1.11:554/stream
-`)
-
-	cfg, err := config.Load(path)
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(cfg.Cameras) != 2 {
-		t.Fatalf("expected 2 cameras, got %d", len(cfg.Cameras))
-	}
-	if cfg.Cameras[1].ID != "quintal" {
-		t.Errorf("expected id %q, got %q", "quintal", cfg.Cameras[1].ID)
-	}
-	if cfg.Cameras[1].RTSPURL != "rtsp://192.168.1.11:554/stream" {
-		t.Errorf("expected rtsp_url %q, got %q", "rtsp://192.168.1.11:554/stream", cfg.Cameras[1].RTSPURL)
-	}
-}
-
-func TestEffectiveChunkDurationUsesConstantWhenNotSet(t *testing.T) {
-	path := writeTempYAML(t, `
-storage:
-  path: /tmp/recordings
-
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
-`)
-
-	cfg, err := config.Load(path)
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if cfg.Cameras[0].EffectiveChunkDuration() != config.DefaultChunkDuration {
-		t.Errorf("expected DefaultChunkDuration (%v), got %v", config.DefaultChunkDuration, cfg.Cameras[0].EffectiveChunkDuration())
-	}
-}
-
-func TestLoadCameraOverridesChunkDuration(t *testing.T) {
-	path := writeTempYAML(t, `
-storage:
-  path: /tmp/recordings
-
-cameras:
-  - id: entrada
-    rtsp_url: rtsp://192.168.1.10:554/stream
-    chunk_duration: 10m
-  - id: quintal
-    rtsp_url: rtsp://192.168.1.11:554/stream
-`)
-
-	cfg, err := config.Load(path)
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if cfg.Cameras[0].EffectiveChunkDuration() != 10*time.Minute {
-		t.Errorf("expected 10m for camera with explicit duration, got %v", cfg.Cameras[0].EffectiveChunkDuration())
-	}
-	if cfg.Cameras[1].EffectiveChunkDuration() != config.DefaultChunkDuration {
-		t.Errorf("expected DefaultChunkDuration for camera without duration, got %v", cfg.Cameras[1].EffectiveChunkDuration())
-	}
-}
-
 func TestLoadParsesStoragePath(t *testing.T) {
 	path := writeTempYAML(t, `
 storage:
   path: /tmp/recordings
-
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
 `)
 
 	cfg, err := config.Load(path)
@@ -149,15 +45,48 @@ cameras:
 	}
 }
 
+func TestLoadParsesDBPath(t *testing.T) {
+	path := writeTempYAML(t, `
+db_path: /data/camera.db
+storage:
+  path: /tmp/recordings
+`)
+
+	cfg, err := config.Load(path)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.DBPath != "/data/camera.db" {
+		t.Errorf("expected db_path /data/camera.db, got %q", cfg.DBPath)
+	}
+}
+
+func TestLoadParsesAdminConfig(t *testing.T) {
+	path := writeTempYAML(t, `
+admin:
+  username: master
+  password: secret123
+`)
+
+	cfg, err := config.Load(path)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Admin.Username != "master" {
+		t.Errorf("expected username %q, got %q", "master", cfg.Admin.Username)
+	}
+	if cfg.Admin.Password != "secret123" {
+		t.Errorf("expected password %q, got %q", "secret123", cfg.Admin.Password)
+	}
+}
+
 func TestLoadParsesLogConfig(t *testing.T) {
 	path := writeTempYAML(t, `
 log:
   output: file
   path: /var/log/camera
-
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
 `)
 
 	cfg, err := config.Load(path)
@@ -174,13 +103,7 @@ cameras:
 }
 
 func TestLoadParsesDebugField(t *testing.T) {
-	path := writeTempYAML(t, `
-debug: true
-
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
-`)
+	path := writeTempYAML(t, `debug: true`)
 
 	cfg, err := config.Load(path)
 
@@ -193,11 +116,8 @@ cameras:
 }
 
 func TestLoadDebugDefaultsToFalse(t *testing.T) {
-	path := writeTempYAML(t, `
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
-`)
+	path := writeTempYAML(t, `storage:
+  path: /tmp`)
 
 	cfg, err := config.Load(path)
 
@@ -214,12 +134,6 @@ func TestLoadParsesServerConfig(t *testing.T) {
 server:
   port: 8080
   segments_path: /tmp/hls
-  username: master
-  password: secret
-
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
 `)
 
 	cfg, err := config.Load(path)
@@ -233,22 +147,10 @@ cameras:
 	if cfg.Server.SegmentsPath != "/tmp/hls" {
 		t.Errorf("expected segments_path /tmp/hls, got %q", cfg.Server.SegmentsPath)
 	}
-	if cfg.Server.Username != "master" {
-		t.Errorf("expected username %q, got %q", "master", cfg.Server.Username)
-	}
-	if cfg.Server.Password != "secret" {
-		t.Errorf("expected password %q, got %q", "secret", cfg.Server.Password)
-	}
 }
 
 func TestLoadParsesTimezoneAtRoot(t *testing.T) {
-	path := writeTempYAML(t, `
-timezone: America/Sao_Paulo
-
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
-`)
+	path := writeTempYAML(t, `timezone: America/Sao_Paulo`)
 
 	cfg, err := config.Load(path)
 
@@ -261,11 +163,8 @@ cameras:
 }
 
 func TestLoadTimezoneDefaultsToUTC(t *testing.T) {
-	path := writeTempYAML(t, `
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
-`)
+	path := writeTempYAML(t, `storage:
+  path: /tmp`)
 
 	cfg, err := config.Load(path)
 
@@ -280,13 +179,7 @@ cameras:
 func TestLoadEnvVarOverridesTimezone(t *testing.T) {
 	t.Setenv("CAMERA_TIMEZONE", "America/Manaus")
 
-	path := writeTempYAML(t, `
-timezone: America/Sao_Paulo
-
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
-`)
+	path := writeTempYAML(t, `timezone: America/Sao_Paulo`)
 
 	cfg, err := config.Load(path)
 
@@ -303,10 +196,6 @@ func TestLoadParsesRetentionMinutes(t *testing.T) {
 storage:
   path: /tmp/recordings
   retention_minutes: 120
-
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
 `)
 
 	cfg, err := config.Load(path)
@@ -324,10 +213,6 @@ func TestLoadParsesIntervalMinutes(t *testing.T) {
 storage:
   path: /tmp/recordings
   interval_minutes: 5
-
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
 `)
 
 	cfg, err := config.Load(path)
@@ -346,10 +231,6 @@ func TestLoadEnvVarOverridesStoragePath(t *testing.T) {
 	path := writeTempYAML(t, `
 storage:
   path: /tmp/from-file
-
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
 `)
 
 	cfg, err := config.Load(path)
@@ -436,10 +317,6 @@ storage:
   retention:
     with_motion_minutes: 10080
     without_motion_minutes: 1440
-
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
 `)
 
 	cfg, err := config.Load(path)
@@ -455,32 +332,24 @@ cameras:
 	}
 }
 
-func TestEffectiveMotionConfigFallsBackToGlobal(t *testing.T) {
+func TestEffectiveMotionConfigReturnsZeroWhenNil(t *testing.T) {
 	cam := config.CameraConfig{}
-	global := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 4}
 
-	got := cam.EffectiveMotionConfig(global)
+	got := cam.EffectiveMotionConfig()
 
-	if !got.Enabled {
-		t.Error("expected Enabled=true from global")
-	}
-	if got.Threshold != 0.05 {
-		t.Errorf("expected Threshold=0.05, got %v", got.Threshold)
-	}
-	if got.FPS != 4 {
-		t.Errorf("expected FPS=4, got %d", got.FPS)
+	if got.Enabled {
+		t.Error("expected Enabled=false when no motion config")
 	}
 }
 
 func TestEffectiveMotionConfigUsesPerCameraOverride(t *testing.T) {
-	override := config.MotionConfig{Enabled: false, Threshold: 0.10, FPS: 1}
+	override := config.MotionConfig{Enabled: true, Threshold: 0.10, FPS: 1}
 	cam := config.CameraConfig{Motion: &override}
-	global := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 4}
 
-	got := cam.EffectiveMotionConfig(global)
+	got := cam.EffectiveMotionConfig()
 
-	if got.Enabled {
-		t.Error("expected Enabled=false from camera override")
+	if !got.Enabled {
+		t.Error("expected Enabled=true from camera override")
 	}
 	if got.Threshold != 0.10 {
 		t.Errorf("expected Threshold=0.10, got %v", got.Threshold)
@@ -490,15 +359,27 @@ func TestEffectiveMotionConfigUsesPerCameraOverride(t *testing.T) {
 	}
 }
 
+func TestEffectiveChunkDurationUsesConstantWhenNotSet(t *testing.T) {
+	cam := config.CameraConfig{}
+
+	if cam.EffectiveChunkDuration() != config.DefaultChunkDuration {
+		t.Errorf("expected DefaultChunkDuration (%v), got %v", config.DefaultChunkDuration, cam.EffectiveChunkDuration())
+	}
+}
+
+func TestEffectiveChunkDurationUsesExplicitValue(t *testing.T) {
+	cam := config.CameraConfig{ChunkDuration: config.Duration(10 * time.Minute)}
+
+	if cam.EffectiveChunkDuration() != 10*time.Minute {
+		t.Errorf("expected 10m, got %v", cam.EffectiveChunkDuration())
+	}
+}
+
 func TestLoadParsesJWTSecret(t *testing.T) {
 	path := writeTempYAML(t, `
 server:
   port: 8080
   jwt_secret: "my-super-secret-key-32chars-long!"
-
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
 `)
 
 	cfg, err := config.Load(path)
@@ -517,10 +398,6 @@ func TestLoadEnvVarOverridesJWTSecret(t *testing.T) {
 server:
   port: 8080
   jwt_secret: "file-secret"
-
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
 `)
 
 	cfg, err := config.Load(path)
@@ -533,13 +410,8 @@ cameras:
 }
 
 func TestLoadEmptyJWTSecretWhenNotSet(t *testing.T) {
-	path := writeTempYAML(t, `
-server:
+	path := writeTempYAML(t, `server:
   port: 8080
-
-cameras:
-  - id: cam1
-    rtsp_url: rtsp://localhost:8554/stream
 `)
 
 	cfg, err := config.Load(path)

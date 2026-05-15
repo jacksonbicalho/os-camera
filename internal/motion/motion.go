@@ -24,7 +24,10 @@ type Monitor struct {
 	rawScores         chan Event
 }
 
-func New(cam config.CameraConfig, stream ffprobe.StreamInfo, cfg config.MotionConfig, storagePath string, reconnectInterval time.Duration, log *slog.Logger, getZones func() []zones.Zone) *Monitor {
+// New creates a Monitor. onEvent, if non-nil, is called for every motion event
+// in addition to writing the NDJSON file. It receives the full event data
+// including frame filename and bounding box.
+func New(cam config.CameraConfig, stream ffprobe.StreamInfo, cfg config.MotionConfig, storagePath string, reconnectInterval time.Duration, log *slog.Logger, getZones func() []zones.Zone, onEvent func(cameraID string, t time.Time, score float64, frame string, bbox BBox)) *Monitor {
 	scaledW := stream.Width / 4
 	scaledH := stream.Height / 4
 	if scaledW < 1 {
@@ -61,7 +64,7 @@ func New(cam config.CameraConfig, stream ffprobe.StreamInfo, cfg config.MotionCo
 	}
 
 	cmd := newFFmpegFrameCommander()
-	st := newStore(storagePath)
+	st := newStore(storagePath, onEvent)
 	det := newDetector(cam.ID, cam.RTSPURL, scaledW, scaledH, effective, cmd, st, log, notify, notifyRaw, getZones)
 
 	return &Monitor{

@@ -80,27 +80,19 @@ func (wi *wizardReader) askFloat(prompt string, def float64) float64 {
 	return v
 }
 
-func (wi *wizardReader) askBool(prompt string, def bool) bool {
-	defStr := "n"
-	if def {
-		defStr = "s"
-	}
-	s := wi.ask(prompt+" (s/n)", defStr)
-	return strings.ToLower(strings.TrimSpace(s)) == "s"
-}
-
-type initCamera struct {
-	id       string
-	rtspURL  string
-	hasAudio string // "true", "false", "" (auto-detect)
-	motion   *initMotion
-}
-
-type initMotion struct {
-	enabled  bool
-	threshold float64
-	fps      int
-	cooldown int
+type initParams struct {
+	port             int
+	dbPath           string
+	timezone         string
+	segmentsPath     string
+	hlsDVR           int
+	storagePath      string
+	withMotionMin    int
+	withoutMotionMin int
+	maxSizeGB        float64
+	warnPercent      float64
+	adminUsername    string
+	adminPassword    string
 }
 
 func initWizard(input io.Reader, output io.Writer) (string, error) {
@@ -110,121 +102,52 @@ func initWizard(input io.Reader, output io.Writer) (string, error) {
 
 	fmt.Fprintln(output, "\n--- Servidor ---")
 	port := wi.askInt("Porta HTTP", 8080)
-	username := wi.ask("Usuário", "master")
-	password := wi.ask("Senha", "")
-	segmentsPath := wi.ask("Path dos segmentos HLS", "/tmp/hls")
+	dbPath := wi.ask("Caminho do banco de dados", "/data/camera.db")
+	segmentsPath := wi.ask("Caminho dos segmentos HLS", "/tmp/hls")
 	hlsDVR := wi.askInt("Segundos de janela DVR (0 = desabilitado)", 0)
 
 	fmt.Fprintln(output, "\n--- Storage ---")
-	storagePath := wi.ask("Path de gravações", "/data/recordings")
-	withMotionMin := wi.askInt("Retenção COM movimento em minutos (0 = desabilitado; 10080 = 7 dias)", 10080)
-	withoutMotionMin := wi.askInt("Retenção SEM movimento em minutos (0 = desabilitado; 1440 = 1 dia)", 1440)
+	storagePath := wi.ask("Caminho de gravações", "/data/recordings")
+	withMotionMin := wi.askInt("Retenção COM movimento em minutos (0 = nunca apaga; 10080 = 7 dias)", 10080)
+	withoutMotionMin := wi.askInt("Retenção SEM movimento em minutos (0 = nunca apaga; 1440 = 1 dia)", 1440)
 	maxSizeGB := wi.askFloat("Tamanho máximo em GB (0 = desabilitado)", 10)
 	warnPercent := wi.askFloat("Aviso de uso em %", 70)
 
 	fmt.Fprintln(output, "\n--- Geral ---")
 	timezone := wi.ask("Fuso horário", "America/Sao_Paulo")
 
-	fmt.Fprintln(output, "\n--- Detecção de movimento (padrão global) ---")
-	motionEnabled := wi.askBool("Habilitar por padrão", false)
-	motionThreshold := wi.askFloat("Threshold (0.0–1.0)", 0.02)
-	motionFPS := wi.askInt("FPS de análise", 2)
-	motionCooldown := wi.askInt("Cooldown entre eventos em segundos (0 = desabilitado)", 30)
-
-	var cameras []initCamera
-	fmt.Fprintln(output, "\n--- Câmeras (ID vazio para encerrar) ---")
-	for {
-		fmt.Fprintln(output)
-		id := wi.ask("ID da câmera", "")
-		if id == "" {
-			break
-		}
-		rtsp := wi.ask("URL RTSP", "")
-		if rtsp == "" {
-			fmt.Fprintln(output, "URL RTSP não pode ser vazia. Câmera ignorada.")
-			continue
-		}
-
-		audioStr := wi.ask("Áudio (s/n/auto)", "auto")
-		var hasAudio string
-		switch strings.ToLower(audioStr) {
-		case "s", "sim":
-			hasAudio = "true"
-		case "n", "não", "nao":
-			hasAudio = "false"
-		}
-
-		cam := initCamera{id: id, rtspURL: rtsp, hasAudio: hasAudio}
-		motionOpt := wi.ask("Motion (s/n/global)", "global")
-		switch strings.ToLower(motionOpt) {
-		case "s", "sim":
-			m := &initMotion{enabled: true}
-			m.threshold = wi.askFloat("  Threshold", motionThreshold)
-			m.fps = wi.askInt("  FPS", motionFPS)
-			m.cooldown = wi.askInt("  Cooldown (s)", motionCooldown)
-			cam.motion = m
-		case "n", "não", "nao":
-			cam.motion = &initMotion{enabled: false}
-		}
-		cameras = append(cameras, cam)
-	}
-
-	if len(cameras) == 0 {
-		return "", fmt.Errorf("nenhuma câmera configurada")
-	}
+	fmt.Fprintln(output, "\n--- Administrador inicial ---")
+	adminUsername := wi.ask("Usuário administrador", "admin")
+	adminPassword := wi.ask("Senha inicial (obrigatório trocar no primeiro login)", "changeme")
 
 	return buildInitYAML(initParams{
-		port: port, username: username, password: password,
-		segmentsPath: segmentsPath, hlsDVR: hlsDVR,
-		storagePath: storagePath, withMotionMin: withMotionMin, withoutMotionMin: withoutMotionMin,
-		maxSizeGB: maxSizeGB, warnPercent: warnPercent,
-		timezone:        timezone,
-		motionEnabled:   motionEnabled,
-		motionThreshold: motionThreshold,
-		motionFPS:       motionFPS,
-		motionCooldown:  motionCooldown,
-		cameras:         cameras,
+		port:             port,
+		dbPath:           dbPath,
+		timezone:         timezone,
+		segmentsPath:     segmentsPath,
+		hlsDVR:           hlsDVR,
+		storagePath:      storagePath,
+		withMotionMin:    withMotionMin,
+		withoutMotionMin: withoutMotionMin,
+		maxSizeGB:        maxSizeGB,
+		warnPercent:      warnPercent,
+		adminUsername:    adminUsername,
+		adminPassword:    adminPassword,
 	}), nil
-}
-
-type initParams struct {
-	port             int
-	username         string
-	password         string
-	segmentsPath     string
-	hlsDVR           int
-	storagePath      string
-	withMotionMin    int
-	withoutMotionMin int
-	maxSizeGB        float64
-	warnPercent      float64
-	timezone         string
-
-	motionEnabled   bool
-	motionThreshold float64
-	motionFPS       int
-	motionCooldown  int
-
-	cameras []initCamera
 }
 
 func buildInitYAML(p initParams) string {
 	var sb strings.Builder
 
-	motionEnabledStr := "false"
-	if p.motionEnabled {
-		motionEnabledStr = "true"
-	}
-
 	fmt.Fprintf(&sb, "debug: false\n")
 	fmt.Fprintf(&sb, "timezone: %s\n", p.timezone)
+	fmt.Fprintf(&sb, "\ndb_path: %s\n", p.dbPath)
 	fmt.Fprintf(&sb, "\nlog:\n  output: stdout\n  path:\n")
 	fmt.Fprintf(&sb, "\nserver:\n")
 	fmt.Fprintf(&sb, "  port: %d\n", p.port)
 	fmt.Fprintf(&sb, "  segments_path: %s\n", p.segmentsPath)
-	fmt.Fprintf(&sb, "  username: %s\n", p.username)
-	fmt.Fprintf(&sb, "  password: %s\n", yamlStringValue(p.password))
 	fmt.Fprintf(&sb, "  hls_dvr_seconds: %d\n", p.hlsDVR)
+	fmt.Fprintf(&sb, "  jwt_secret: \"\"\n")
 	fmt.Fprintf(&sb, "\nstorage:\n")
 	fmt.Fprintf(&sb, "  path: %s\n", p.storagePath)
 	fmt.Fprintf(&sb, "  retention:\n")
@@ -233,29 +156,9 @@ func buildInitYAML(p initParams) string {
 	fmt.Fprintf(&sb, "  interval_minutes: 60\n")
 	fmt.Fprintf(&sb, "  max_size_gb: %s\n", yamlFloat(p.maxSizeGB))
 	fmt.Fprintf(&sb, "  warn_percent: %s\n", yamlFloat(p.warnPercent))
-	fmt.Fprintf(&sb, "\nmotion:\n")
-	fmt.Fprintf(&sb, "  enabled: %s\n", motionEnabledStr)
-	fmt.Fprintf(&sb, "  threshold: %s\n", yamlFloat(p.motionThreshold))
-	fmt.Fprintf(&sb, "  fps: %d\n", p.motionFPS)
-	fmt.Fprintf(&sb, "  cooldown_seconds: %d\n", p.motionCooldown)
-	fmt.Fprintf(&sb, "\ncameras:\n")
-
-	for _, cam := range p.cameras {
-		fmt.Fprintf(&sb, "  - id: %s\n", cam.id)
-		fmt.Fprintf(&sb, "    rtsp_url: %s\n", cam.rtspURL)
-		if cam.hasAudio != "" {
-			fmt.Fprintf(&sb, "    has_audio: %s\n", cam.hasAudio)
-		}
-		if cam.motion != nil {
-			fmt.Fprintf(&sb, "    motion:\n")
-			fmt.Fprintf(&sb, "      enabled: %v\n", cam.motion.enabled)
-			if cam.motion.enabled {
-				fmt.Fprintf(&sb, "      threshold: %s\n", yamlFloat(cam.motion.threshold))
-				fmt.Fprintf(&sb, "      fps: %d\n", cam.motion.fps)
-				fmt.Fprintf(&sb, "      cooldown_seconds: %d\n", cam.motion.cooldown)
-			}
-		}
-	}
+	fmt.Fprintf(&sb, "\nadmin:\n")
+	fmt.Fprintf(&sb, "  username: %s\n", p.adminUsername)
+	fmt.Fprintf(&sb, "  password: %s\n", yamlStringValue(p.adminPassword))
 
 	return sb.String()
 }

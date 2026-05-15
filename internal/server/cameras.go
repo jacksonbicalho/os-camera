@@ -151,7 +151,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.onCameraStart != nil {
-		s.onCameraStart(created)
+		go s.onCameraStart(created)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -225,10 +225,6 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.onCameraStop != nil {
-		s.onCameraStop(id)
-	}
-
 	s.reloadCamerasFromDB()
 
 	updated, err := db.GetCamera(s.db, id)
@@ -237,8 +233,16 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.onCameraStart != nil {
-		s.onCameraStart(updated)
+	if s.onCameraStop != nil || s.onCameraStart != nil {
+		snap := updated
+		go func() {
+			if s.onCameraStop != nil {
+				s.onCameraStop(id)
+			}
+			if s.onCameraStart != nil {
+				s.onCameraStart(snap)
+			}
+		}()
 	}
 
 	w.Header().Set("Content-Type", "application/json")

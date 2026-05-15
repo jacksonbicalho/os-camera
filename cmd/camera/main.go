@@ -68,33 +68,37 @@ func main() {
 		log.Fatalf("failed to initialize logger: %v", err)
 	}
 
-	if len(cfg.Cameras) == 0 {
-		slog.Error("no cameras configured")
-		os.Exit(1)
+	dbPath := cfg.DBPath
+	if dbPath == "" {
+		dbDir := cfg.Storage.Path
+		if dbDir == "" {
+			dbDir = "."
+		}
+		dbPath = filepath.Join(dbDir, "camera.db")
 	}
 
-	dbDir := cfg.Storage.Path
-	if dbDir == "" {
-		dbDir = "."
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		log.Fatalf("failed to create database directory: %v", err)
 	}
-	var database *db.DB
-	database, err = db.Open(filepath.Join(dbDir, "camera.db"))
+
+	database, err := db.Open(dbPath)
 	if err != nil {
-		slog.Warn("failed to open database, running without DB features", "error", err)
-		database = nil
-	} else {
-		defer database.Close()
-		if database.IsNew {
-			slog.Info("new database, seeding from YAML", "yaml", *configPath)
-			if seedErr := db.SeedFromYAML(database, *configPath); seedErr != nil {
-				slog.Warn("seed from YAML failed", "error", seedErr)
-			}
-		}
-		if dbCams, dbErr := db.ListCameras(database); dbErr == nil && len(dbCams) > 0 {
-			cfg.Cameras = dbCams
-			slog.Info("cameras loaded from database", "count", len(dbCams))
+		log.Fatalf("failed to open database: %v", err)
+	}
+	defer database.Close()
+
+	if database.IsNew {
+		slog.Info("new database, seeding admin user from bootstrap config")
+		if seedErr := db.SeedFromBootstrap(database, cfg); seedErr != nil {
+			slog.Warn("seed from bootstrap failed", "error", seedErr)
 		}
 	}
+
+	cameras, err := db.ListCameras(database)
+	if err != nil {
+		log.Fatalf("failed to load cameras from database: %v", err)
+	}
+	slog.Info("cameras loaded from database", "count", len(cameras))
 
 	zonesPath := filepath.Join(cfg.Storage.Path, "motion_zones.json")
 	zoneStore, err := zones.NewStore(zonesPath)
@@ -118,6 +122,25 @@ func main() {
 
 	// srv is assigned after NewServer; callbacks close over this variable.
 	var srv *server.Server
+
+	onMotionEvent := func(cameraID string, t time.Time, score float64, frame string, bbox motion.BBox) {
+		ev := db.MotionEvent{
+			CameraID:   cameraID,
+			OccurredAt: t,
+			Score:      score,
+			FramePath:  frame,
+			BboxX:      bbox.X,
+			BboxY:      bbox.Y,
+			BboxW:      bbox.W,
+			BboxH:      bbox.H,
+		}
+		if err := db.InsertMotionEvent(database, ev); err != nil {
+			slog.Warn("failed to record motion event in DB", "camera", cameraID, "error", err)
+		}
+		if err := db.MarkRecordingHasMotion(database, cameraID, t, t.Add(time.Second)); err != nil {
+			slog.Warn("failed to mark recording has_motion", "camera", cameraID, "error", err)
+		}
+	}
 
 	startCameraProcs := func(cam config.CameraConfig) {
 		stream := resolveStream(cam, prober, slog)
@@ -145,12 +168,13 @@ func main() {
 			}
 		}
 
-		motionCfg := cam.EffectiveMotionConfig(cfg.Motion)
+		motionCfg := cam.EffectiveMotionConfig()
 		if motionCfg.Enabled {
 			camID := cam.ID
 			motionCtx, motionCancel := context.WithCancel(ctx)
 			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, cam.EffectiveReconnectInterval(), slog,
-				func() []zones.Zone { return zoneStore.Get(camID) })
+				func() []zones.Zone { return zoneStore.Get(camID) },
+				onMotionEvent)
 			go mon.Run(motionCtx)
 
 			camMu.Lock()
@@ -188,7 +212,7 @@ func main() {
 		}
 	}
 
-	for _, cam := range cfg.Cameras {
+	for _, cam := range cameras {
 		startCameraProcs(cam)
 	}
 
@@ -200,18 +224,15 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to sub frontend fs: %v", err)
 		}
-		srv = server.NewServer(cfg.Server, cfg.Timezone, cfg.Cameras, slog, static).
+		srv = server.NewServer(cfg.Server, cfg.Timezone, cameras, slog, static).
 			WithStorageConfig(cfg.Storage).
 			WithVersion(version).
 			WithBuildInfo(commit, builtAt).
 			WithSystemConfig(cfg.Debug, cfg.Log).
-			WithMotionConfig(cfg.Motion).
 			WithZoneStore(zoneStore).
 			WithSnapshotter(takeSnapshot).
-			WithCameraCallbacks(startCameraProcs, stopCameraProcs)
-		if database != nil {
-			srv = srv.WithDB(database)
-		}
+			WithCameraCallbacks(startCameraProcs, stopCameraProcs).
+			WithDB(database)
 
 		camMu.Lock()
 		for id, si := range streamsByID {
@@ -244,6 +265,7 @@ func main() {
 		config.DefaultChunkDuration,
 		cfg.Storage.MaxSizeGB,
 		cfg.Storage.WarnPercent,
+		database,
 		slog,
 	)
 	go cleaner.Run(ctx, cleanInterval)

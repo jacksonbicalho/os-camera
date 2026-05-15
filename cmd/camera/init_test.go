@@ -7,28 +7,19 @@ import (
 )
 
 func TestInitWizardDefaultInputs(t *testing.T) {
-	// Simulate user accepting all defaults, one camera, then empty ID to finish.
 	lines := []string{
-		"",                              // port: 8080
-		"",                              // username: master
-		"",                              // password: ""
-		"",                              // segments_path: /tmp/hls
-		"",                              // hls_dvr: 0
-		"",                              // storage path: /data/recordings
-		"",                              // with_motion_minutes: 10080
-		"",                              // without_motion_minutes: 1440
-		"",                              // max_size: 10
-		"",                              // warn_percent: 70
-		"",                              // timezone: America/Sao_Paulo
-		"",                              // motion enabled: n
-		"",                              // threshold: 0.02
-		"",                              // fps: 2
-		"",                              // cooldown: 30
-		"garage",                        // camera id
-		"rtsp://192.168.1.10:554/stream", // rtsp url
-		"",                              // has_audio: auto
-		"",                              // motion: global
-		"",                              // next camera id: empty = stop
+		"",         // port: 8080
+		"",         // db_path: /data/camera.db
+		"",         // segments_path: /tmp/hls
+		"",         // hls_dvr: 0
+		"",         // storage path: /data/recordings
+		"",         // with_motion_minutes: 10080
+		"",         // without_motion_minutes: 1440
+		"",         // max_size: 10
+		"",         // warn_percent: 70
+		"",         // timezone: America/Sao_Paulo
+		"",         // admin username: admin
+		"changeme", // admin password
 	}
 	input := strings.Join(lines, "\n") + "\n"
 
@@ -39,8 +30,7 @@ func TestInitWizardDefaultInputs(t *testing.T) {
 
 	wants := []string{
 		"port: 8080",
-		"username: master",
-		"password: \"\"",
+		"db_path: /data/camera.db",
 		"segments_path: /tmp/hls",
 		"hls_dvr_seconds: 0",
 		"path: /data/recordings",
@@ -49,49 +39,37 @@ func TestInitWizardDefaultInputs(t *testing.T) {
 		"max_size_gb: 10.0",
 		"warn_percent: 70.0",
 		"timezone: America/Sao_Paulo",
-		"enabled: false",
-		"threshold: 0.02",
-		"fps: 2",
-		"cooldown_seconds: 30",
-		"id: garage",
-		"rtsp_url: rtsp://192.168.1.10:554/stream",
+		"username: admin",
+		"password: changeme",
 	}
 	for _, want := range wants {
 		if !strings.Contains(yaml, want) {
 			t.Errorf("YAML missing %q\n\nGot:\n%s", want, yaml)
 		}
 	}
+
+	// Must NOT contain old-format camera/motion sections
+	for _, must_not := range []string{"cameras:", "motion:", "username: master"} {
+		if strings.Contains(yaml, must_not) {
+			t.Errorf("YAML should not contain %q\n\nGot:\n%s", must_not, yaml)
+		}
+	}
 }
 
 func TestInitWizardCustomValues(t *testing.T) {
 	lines := []string{
-		"9000",                           // port
-		"admin",                          // username
-		"s3cr3t",                         // password
-		"/var/hls",                       // segments_path
-		"1200",                           // hls_dvr
-		"/mnt/cams",                      // storage path
-		"10080",                          // with_motion_minutes (7 days)
-		"2880",                           // without_motion_minutes (2 days)
-		"50",                             // max_size_gb
-		"80",                             // warn_percent
-		"America/Recife",                 // timezone
-		"s",                              // motion enabled
-		"0.03",                           // threshold
-		"4",                              // fps
-		"60",                             // cooldown
-		"entrada",                        // camera 1 id
-		"rtsp://10.0.0.1:554/ch0",        // rtsp
-		"n",                              // has_audio: false
-		"s",                              // motion: sim (override)
-		"0.05",                           // threshold
-		"3",                              // fps
-		"45",                             // cooldown
-		"quintal",                        // camera 2 id
-		"rtsp://10.0.0.2:554/ch0",        // rtsp
-		"s",                              // has_audio: true
-		"n",                              // motion: disabled for this cam
-		"",                               // stop
+		"9000",          // port
+		"/var/camera.db", // db_path
+		"/var/hls",      // segments_path
+		"1200",          // hls_dvr
+		"/mnt/cams",     // storage path
+		"10080",         // with_motion_minutes
+		"2880",          // without_motion_minutes
+		"50",            // max_size_gb
+		"80",            // warn_percent
+		"America/Recife", // timezone
+		"master",        // admin username
+		"s3cr3t!",       // admin password (has special char)
 	}
 	input := strings.Join(lines, "\n") + "\n"
 
@@ -102,8 +80,7 @@ func TestInitWizardCustomValues(t *testing.T) {
 
 	wants := []string{
 		"port: 9000",
-		"username: admin",
-		"password: s3cr3t",
+		"db_path: /var/camera.db",
 		"segments_path: /var/hls",
 		"hls_dvr_seconds: 1200",
 		"path: /mnt/cams",
@@ -112,17 +89,8 @@ func TestInitWizardCustomValues(t *testing.T) {
 		"max_size_gb: 50.0",
 		"warn_percent: 80.0",
 		"timezone: America/Recife",
-		"threshold: 0.03",
-		"fps: 4",
-		"cooldown_seconds: 60",
-		"id: entrada",
-		"has_audio: false",
-		"      threshold: 0.05",
-		"      fps: 3",
-		"      cooldown_seconds: 45",
-		"id: quintal",
-		"has_audio: true",
-		"      enabled: false",
+		"username: master",
+		`password: "s3cr3t!"`,
 	}
 	for _, want := range wants {
 		if !strings.Contains(yaml, want) {
@@ -131,19 +99,25 @@ func TestInitWizardCustomValues(t *testing.T) {
 	}
 }
 
-func TestInitWizardNoCamerasReturnsError(t *testing.T) {
-	// All defaults, then immediately empty camera ID.
+func TestInitWizardNoCamerasIsNotError(t *testing.T) {
 	lines := []string{
-		"", "", "", "", "",
-		"", "", "", "", "",
-		"",
-		"", "", "", "",
-		"", // camera id: empty = no cameras
+		"", // port
+		"", // db_path
+		"", // segments_path
+		"", // hls_dvr
+		"", // storage path
+		"", // with_motion_minutes
+		"", // without_motion_minutes
+		"", // max_size_gb
+		"", // warn_percent
+		"", // timezone
+		"", // admin username
+		"", // admin password (empty = default "changeme")
 	}
 	input := strings.Join(lines, "\n") + "\n"
 
 	_, err := initWizard(strings.NewReader(input), io.Discard)
-	if err == nil {
-		t.Fatal("expected error for no cameras, got nil")
+	if err != nil {
+		t.Fatalf("wizard with no cameras should not return error, got: %v", err)
 	}
 }

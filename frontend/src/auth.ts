@@ -45,6 +45,27 @@ export function getRole(): string | null {
   }
 }
 
+export function mustChangePassword(): boolean {
+  const token = getToken()
+  if (!token) return false
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return payload.must_change_password === true
+  } catch {
+    return false
+  }
+}
+
+export async function changePassword(newPassword: string): Promise<void> {
+  const token = getToken()
+  const res = await fetch('/api/auth/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ password: newPassword }),
+  })
+  if (!res.ok) throw new Error('Falha ao alterar senha')
+}
+
 export function authHeaders(): HeadersInit {
   const token = getToken()
   return token ? { Authorization: `Bearer ${token}` } : {}

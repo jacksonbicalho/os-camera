@@ -34,8 +34,9 @@ type contextKey int
 const claimsKey contextKey = 0
 
 type authClaims struct {
-	UserID int64
-	Role   string
+	UserID             int64
+	Role               string
+	MustChangePassword bool
 }
 
 type broadcaster struct {
@@ -252,10 +253,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+	s.mux.HandleFunc("POST /api/auth/change-password", s.requireAuth(s.handleChangePassword))
 	s.mux.HandleFunc("GET /api/config", s.handleClientConfig)
 	s.mux.HandleFunc("GET /api/settings", s.requireAdmin(s.handleSettings))
-	s.mux.HandleFunc("GET /api/about", s.requireAuth(s.handleAbout))
-	s.mux.HandleFunc("GET /api/cameras", s.requireAuth(s.handleCameras))
+	s.mux.HandleFunc("GET /api/about", s.requireFullAuth(s.handleAbout))
+	s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 
 	s.mux.HandleFunc("GET /api/settings/cameras", s.requireAdmin(s.handleListSettingsCameras))
 	s.mux.HandleFunc("POST /api/settings/cameras", s.requireAdmin(s.handleCreateCamera))
@@ -276,14 +278,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/cameras/{id}/recordings", s.requireCameraAccess(s.handleRecordings))
 	s.mux.HandleFunc("DELETE /api/cameras/{id}/recordings/{filename}", s.requireAdmin(s.handleDeleteRecording))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion", s.requireCameraAccess(s.handleMotionEvents))
-	s.mux.HandleFunc("GET /api/motion/live", s.requireAuth(s.handleAllMotionLive))
+	s.mux.HandleFunc("GET /api/motion/live", s.requireFullAuth(s.handleAllMotionLive))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/live", s.requireCameraAccess(s.handleMotionLive))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/scores", s.requireCameraAccess(s.handleMotionScores))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/daily-peak", s.requireCameraAccess(s.handleMotionDailyPeak))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/zones", s.requireCameraAccess(s.handleMotionZonesGet))
 	s.mux.HandleFunc("PUT /api/cameras/{id}/motion/zones", s.requireCameraAccess(s.handleMotionZonesPut))
 	s.mux.HandleFunc("GET /api/cameras/{id}/snapshot", s.requireCameraAccess(s.handleSnapshot))
-	s.mux.HandleFunc("GET /api/stats", s.requireAuth(s.handleStats))
+	s.mux.HandleFunc("GET /api/stats", s.requireFullAuth(s.handleStats))
 
 	if s.frontend != nil {
 		s.mux.Handle("/", s.spaHandler())
@@ -313,8 +315,21 @@ func (s *Server) spaHandler() http.Handler {
 	})
 }
 
-func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+// requireFullAuth wraps requireAuth and additionally rejects tokens that have
+// must_change_password=true. Only /api/auth/change-password is exempt.
+func (s *Server) requireFullAuth(next http.HandlerFunc) http.HandlerFunc {
 	return s.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		ac, _ := r.Context().Value(claimsKey).(authClaims)
+		if ac.MustChangePassword {
+			http.Error(w, "password change required", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	})
+}
+
+func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return s.requireFullAuth(func(w http.ResponseWriter, r *http.Request) {
 		ac, _ := r.Context().Value(claimsKey).(authClaims)
 		if ac.Role != "admin" {
 			http.Error(w, "forbidden", http.StatusForbidden)
@@ -413,6 +428,9 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			}
 			if roleStr, ok := claims["role"].(string); ok {
 				ac.Role = roleStr
+			}
+			if mcp, ok := claims["must_change_password"].(bool); ok {
+				ac.MustChangePassword = mcp
 			}
 			r = r.WithContext(context.WithValue(r.Context(), claimsKey, ac))
 		}
@@ -529,7 +547,6 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			"segments_path":   s.cfg.SegmentsPath,
 			"recordings_path": s.cfg.RecordingsPath,
 			"hls_dvr_seconds": s.cfg.HLSDVRSeconds,
-			"username":        s.cfg.Username,
 		},
 		"storage": func() map[string]any {
 			withMotion, withoutMotion := s.storageCfg.EffectiveRetention()
@@ -582,6 +599,10 @@ func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
 
 	cameras := s.cameras
 	if s.db != nil {
+		all, err := db.ListCameras(s.db)
+		if err == nil {
+			cameras = all
+		}
 		ac, _ := r.Context().Value(claimsKey).(authClaims)
 		if ac.Role != "admin" {
 			allowed, err := db.GetUserCameras(s.db, ac.UserID)
@@ -591,7 +612,7 @@ func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
 					allowedSet[id] = struct{}{}
 				}
 				var filtered []config.CameraConfig
-				for _, c := range s.cameras {
+				for _, c := range cameras {
 					if _, ok := allowedSet[c.ID]; ok {
 						filtered = append(filtered, c)
 					}
@@ -603,9 +624,13 @@ func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
 
 	list := make([]cameraInfo, len(cameras))
 	for i, c := range cameras {
+		threshold := s.motionCfg.Threshold
+		if mc := c.EffectiveMotionConfig(); mc.Threshold != 0 {
+			threshold = mc.Threshold
+		}
 		list[i] = cameraInfo{
 			ID:              c.ID,
-			MotionThreshold: c.EffectiveMotionConfig(s.motionCfg).Threshold,
+			MotionThreshold: threshold,
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -778,19 +803,26 @@ func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	var recBytes int64
-	var recCount int
-	filepath.WalkDir(s.cfg.RecordingsPath, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || filepath.Ext(path) != ".mp4" {
-			return nil
+	var recCount int64
+
+	if s.db != nil {
+		if c, b, err := db.StatsRecordings(s.db); err == nil {
+			recCount, recBytes = c, b
 		}
-		info, err := d.Info()
-		if err != nil {
+	} else {
+		filepath.WalkDir(s.cfg.RecordingsPath, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || filepath.Ext(path) != ".mp4" {
+				return nil
+			}
+			info, err := d.Info()
+			if err != nil {
+				return nil
+			}
+			recBytes += info.Size()
+			recCount++
 			return nil
-		}
-		recBytes += info.Size()
-		recCount++
-		return nil
-	})
+		})
+	}
 
 	var diskTotal, diskFree int64
 	if s.cfg.RecordingsPath != "" {
@@ -800,7 +832,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	maxSizeBytes := int64(s.storageCfg.MaxSizeGB * 1024 * 1024 * 1024)
 
 	chunkSec := int64(config.DefaultChunkDuration.Seconds())
-	durationSec := int64(recCount) * chunkSec
+	durationSec := recCount * chunkSec
 
 	availableBytes := diskFree
 	if maxSizeBytes > 0 {
@@ -813,14 +845,21 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		forecastSec = availableBytes * durationSec / recBytes
 	}
 
+	allCameras := s.cameras
+	if s.db != nil {
+		if cams, err := db.ListCameras(s.db); err == nil {
+			allCameras = cams
+		}
+	}
+
 	type cameraStats struct {
 		ID             string  `json:"id"`
 		TopMotionScore float64 `json:"top_motion_score"`
 		MinMotionScore float64 `json:"min_motion_score"`
 	}
 	today := time.Now().UTC().Format("2006/01/02")
-	cameras := make([]cameraStats, len(s.cameras))
-	for i, cam := range s.cameras {
+	cameras := make([]cameraStats, len(allCameras))
+	for i, cam := range allCameras {
 		mn, mx := motionScoreRange(s.cfg.RecordingsPath, cam.ID, today)
 		cameras[i] = cameraStats{ID: cam.ID, TopMotionScore: mx, MinMotionScore: mn}
 	}
@@ -833,7 +872,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		"forecast_seconds":            forecastSec,
 		"disk_total_bytes":            diskTotal,
 		"disk_free_bytes":             diskFree,
-		"camera_count":                len(s.cameras),
+		"camera_count":                len(allCameras),
 		"connected_clients":           s.activeStreamClients(time.Now()),
 		"max_size_bytes":              maxSizeBytes,
 		"warn_percent":                s.storageCfg.WarnPercent,
@@ -878,29 +917,22 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userID int64
-	var role string
-	if s.db != nil {
-		user, err := db.GetUserByUsername(s.db, creds.Username)
-		if err != nil || !db.CheckPassword(user.PasswordHash, creds.Password) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		userID = user.ID
-		role = user.Role
-	} else {
-		if creds.Username != s.cfg.Username || creds.Password != s.cfg.Password {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		role = "admin"
+	if s.db == nil {
+		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	user, err := db.GetUserByUsername(s.db, creds.Username)
+	if err != nil || !db.CheckPassword(user.PasswordHash, creds.Password) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":     creds.Username,
-		"exp":     time.Now().Add(24 * time.Hour).Unix(),
-		"user_id": userID,
-		"role":    role,
+		"sub":                  creds.Username,
+		"exp":                  time.Now().Add(24 * time.Hour).Unix(),
+		"user_id":              user.ID,
+		"role":                 user.Role,
+		"must_change_password": user.MustChangePassword,
 	})
 	signed, err := token.SignedString(s.secret)
 	if err != nil {
@@ -910,6 +942,25 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"token": signed})
+}
+
+func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	ac, _ := r.Context().Value(claimsKey).(authClaims)
+
+	var body struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Password == "" {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	if err := db.ClearMustChangePassword(s.db, ac.UserID, body.Password); err != nil {
+		s.log.Error("change password failed", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleMotionLive(w http.ResponseWriter, r *http.Request) {
