@@ -99,6 +99,68 @@ func TestDeleteCamera(t *testing.T) {
 	}
 }
 
+func TestUpdateCameraStreamInfo(t *testing.T) {
+	database := openTestDB(t)
+
+	// Camera criada sem valores de stream (tudo "auto")
+	if err := db.CreateCamera(database, makeCamera("cam"), nil); err != nil {
+		t.Fatalf("CreateCamera: %v", err)
+	}
+
+	hasAudio := true
+	if err := db.UpdateCameraStreamInfo(database, "cam", "h264", &hasAudio, 1920, 1080); err != nil {
+		t.Fatalf("UpdateCameraStreamInfo: %v", err)
+	}
+
+	got, err := db.GetCamera(database, "cam")
+	if err != nil {
+		t.Fatalf("GetCamera: %v", err)
+	}
+	if got.VideoCodec != "h264" {
+		t.Errorf("video_codec: got %q, want %q", got.VideoCodec, "h264")
+	}
+	if got.HasAudio == nil || !*got.HasAudio {
+		t.Errorf("has_audio: got %v, want true", got.HasAudio)
+	}
+	if got.Width != 1920 {
+		t.Errorf("width: got %d, want 1920", got.Width)
+	}
+	if got.Height != 1080 {
+		t.Errorf("height: got %d, want 1080", got.Height)
+	}
+}
+
+func TestUpdateCameraStreamInfo_SkipsZeroValues(t *testing.T) {
+	database := openTestDB(t)
+
+	// Camera criada com codec e resolução explícitos
+	cam := makeCamera("cam")
+	cam.VideoCodec = "hevc"
+	cam.Width = 2560
+	cam.Height = 1440
+	hasAudio := false
+	cam.HasAudio = &hasAudio
+	if err := db.CreateCamera(database, cam, nil); err != nil {
+		t.Fatalf("CreateCamera: %v", err)
+	}
+
+	// Probe retornou valores zerados (falhou) — não deve sobrescrever
+	if err := db.UpdateCameraStreamInfo(database, "cam", "", nil, 0, 0); err != nil {
+		t.Fatalf("UpdateCameraStreamInfo: %v", err)
+	}
+
+	got, err := db.GetCamera(database, "cam")
+	if err != nil {
+		t.Fatalf("GetCamera: %v", err)
+	}
+	if got.VideoCodec != "hevc" {
+		t.Errorf("video_codec: got %q, want %q", got.VideoCodec, "hevc")
+	}
+	if got.Width != 2560 {
+		t.Errorf("width: got %d, want 2560", got.Width)
+	}
+}
+
 func TestCreateCamera_WithMotion(t *testing.T) {
 	database := openTestDB(t)
 
