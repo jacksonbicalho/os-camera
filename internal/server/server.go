@@ -503,8 +503,14 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		Height            int        `json:"height"`
 		Motion            *motionDTO `json:"motion"`
 	}
-	cameras := make([]cameraDTO, len(s.cameras))
-	for i, c := range s.cameras {
+	camList := s.cameras
+	if s.db != nil {
+		if all, err := db.ListCameras(s.db); err == nil {
+			camList = all
+		}
+	}
+	cameras := make([]cameraDTO, len(camList))
+	for i, c := range camList {
 		var motion *motionDTO
 		if c.Motion != nil {
 			motion = &motionDTO{
