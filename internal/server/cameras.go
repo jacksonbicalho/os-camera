@@ -301,8 +301,13 @@ func (s *Server) handleDeleteCamera(w http.ResponseWriter, r *http.Request) {
 		s.onCameraStop(id)
 	}
 
-	if deleteData && s.storageCfg.Path != "" {
-		_ = os.RemoveAll(filepath.Join(s.storageCfg.Path, id))
+	if deleteData {
+		if s.storageCfg.Path != "" {
+			_ = os.RemoveAll(filepath.Join(s.storageCfg.Path, id))
+		}
+		if s.cfg.SegmentsPath != "" {
+			_ = os.RemoveAll(filepath.Join(s.cfg.SegmentsPath, id))
+		}
 	}
 
 	s.reloadCamerasFromDB()
