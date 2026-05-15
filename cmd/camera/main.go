@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
-	"log/slog"
 	"net/http"
 	"os"
 	osexec "os/exec"
@@ -143,7 +142,20 @@ func main() {
 	}
 
 	startCameraProcs := func(cam config.CameraConfig) {
-		stream := resolveStream(cam, prober, slog)
+		stream := ffprobe.Resolve(context.Background(), ffprobe.Resolver{
+			VideoCodec: cam.VideoCodec,
+			HasAudio:   cam.HasAudio,
+			Width:      cam.Width,
+			Height:     cam.Height,
+			RTSPURL:    cam.RTSPURL,
+		}, prober, slog)
+
+		// Persist auto-detected values back to DB so settings page reflects real data.
+		if database != nil && cam.VideoCodec == "" && cam.HasAudio == nil && cam.Width == 0 && cam.Height == 0 {
+			if err := db.UpdateCameraStreamInfo(database, cam.ID, stream.VideoCodec, &stream.HasAudio, stream.Width, stream.Height); err != nil {
+				slog.Warn("failed to persist stream info", "camera", cam.ID, "error", err)
+			}
+		}
 
 		rec := recorder.NewRecorder(cam, cfg.Storage, stream, commander, slog)
 		if err := rec.Start(time.Now().UTC()); err != nil {
@@ -232,7 +244,8 @@ func main() {
 			WithZoneStore(zoneStore).
 			WithSnapshotter(takeSnapshot).
 			WithCameraCallbacks(startCameraProcs, stopCameraProcs).
-			WithDB(database)
+			WithDB(database).
+			WithProber(prober)
 
 		camMu.Lock()
 		for id, si := range streamsByID {
@@ -295,42 +308,6 @@ func main() {
 		rec.Stop()
 	}
 	slog.Info("done")
-}
-
-func resolveStream(cam config.CameraConfig, prober *ffprobe.Prober, log *slog.Logger) ffprobe.StreamInfo {
-	needsProbe := cam.VideoCodec == "" && cam.HasAudio == nil && cam.Width == 0 && cam.Height == 0
-	var info ffprobe.StreamInfo
-	if needsProbe {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		raw, err := prober.Probe(ctx, cam.RTSPURL)
-		if err != nil {
-			log.Warn("ffprobe failed, assuming audio present", "camera", cam.ID, "error", err)
-			info.HasAudio = true
-			return info
-		}
-		info, err = ffprobe.Parse(raw)
-		if err != nil {
-			log.Warn("ffprobe parse failed, assuming audio present", "camera", cam.ID, "error", err)
-			info.HasAudio = true
-			return info
-		}
-		log.Info("stream probed", "camera", cam.ID, "codec", info.VideoCodec,
-			"has_audio", info.HasAudio, "width", info.Width, "height", info.Height)
-	}
-	if cam.VideoCodec != "" {
-		info.VideoCodec = cam.VideoCodec
-	}
-	if cam.HasAudio != nil {
-		info.HasAudio = *cam.HasAudio
-	}
-	if cam.Width != 0 {
-		info.Width = cam.Width
-	}
-	if cam.Height != 0 {
-		info.Height = cam.Height
-	}
-	return info
 }
 
 func takeSnapshot(ctx context.Context, rtspURL string) ([]byte, error) {

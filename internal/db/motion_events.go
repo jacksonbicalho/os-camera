@@ -39,6 +39,13 @@ func InsertMotionEvent(db *DB, ev MotionEvent) error {
 	return nil
 }
 
+// CountMotionEvents returns the total number of motion events recorded for a camera.
+func CountMotionEvents(db *DB, cameraID string) (int64, error) {
+	var n int64
+	err := db.QueryRow(`SELECT COUNT(*) FROM motion_events WHERE camera_id=?`, cameraID).Scan(&n)
+	return n, err
+}
+
 // DeleteMotionEventsInRange removes motion events for a camera in [start, end).
 func DeleteMotionEventsInRange(db *DB, cameraID string, start, end time.Time) error {
 	_, err := db.Exec(`

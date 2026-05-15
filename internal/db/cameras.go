@@ -195,6 +195,26 @@ func UpdateCamera(db *DB, cam config.CameraConfig, motion *config.MotionConfig) 
 	return tx.Commit()
 }
 
+// UpdateCameraStreamInfo persists auto-detected stream values (codec, audio,
+// resolution) back to the DB. Fields are only updated when the new value is
+// non-zero/non-nil, so a failed probe doesn't overwrite explicit user config.
+func UpdateCameraStreamInfo(database *DB, id, codec string, hasAudio *bool, width, height int) error {
+	_, err := database.Exec(
+		`UPDATE cameras
+		 SET video_codec  = CASE WHEN ? != '' THEN ?  ELSE video_codec  END,
+		     has_audio    = CASE WHEN ? IS NOT NULL THEN ? ELSE has_audio END,
+		     width        = CASE WHEN ? != 0  THEN ?  ELSE width        END,
+		     height       = CASE WHEN ? != 0  THEN ?  ELSE height       END
+		 WHERE id = ?`,
+		codec, codec,
+		boolPtr(hasAudio), boolPtr(hasAudio),
+		nullInt(width), nullInt(width),
+		nullInt(height), nullInt(height),
+		id,
+	)
+	return err
+}
+
 // DeleteCamera removes the camera (cascades to camera_motion).
 func DeleteCamera(db *DB, id string) error {
 	_, err := db.Exec(`DELETE FROM cameras WHERE id=?`, id)
@@ -239,9 +259,28 @@ func getMotion(db *sql.DB, cameraID string) (*config.MotionConfig, error) {
 
 func durationToStr(d config.Duration, def time.Duration) string {
 	if d == 0 {
-		return def.String()
+		return formatDuration(def)
 	}
-	return time.Duration(d).String()
+	return formatDuration(time.Duration(d))
+}
+
+// formatDuration returns a clean duration string without trailing zero units.
+// e.g. 5m0s → "5m", 1h0m0s → "1h", 30s → "30s".
+func formatDuration(d time.Duration) string {
+	if d == 0 {
+		return "0s"
+	}
+	total := int64(d)
+	if total%int64(time.Hour) == 0 {
+		return fmt.Sprintf("%dh", total/int64(time.Hour))
+	}
+	if total%int64(time.Minute) == 0 {
+		return fmt.Sprintf("%dm", total/int64(time.Minute))
+	}
+	if total%int64(time.Second) == 0 {
+		return fmt.Sprintf("%ds", total/int64(time.Second))
+	}
+	return d.String()
 }
 
 func parseDuration(s string) config.Duration {

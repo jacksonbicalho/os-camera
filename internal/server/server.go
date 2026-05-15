@@ -115,6 +115,7 @@ type Server struct {
 	snapFn             func(ctx context.Context, rtspURL string) ([]byte, error)
 	probedStreams       map[string]ffprobe.StreamInfo
 	db                 *db.DB
+	prober             *ffprobe.Prober
 	onCameraStart      func(config.CameraConfig)
 	onCameraStop       func(string)
 }
@@ -162,6 +163,11 @@ func (s *Server) WithStorageConfig(cfg config.StorageConfig) *Server {
 
 func (s *Server) WithStreamInfo(id string, info ffprobe.StreamInfo) *Server {
 	s.probedStreams[id] = info
+	return s
+}
+
+func (s *Server) WithProber(p *ffprobe.Prober) *Server {
+	s.prober = p
 	return s
 }
 
@@ -285,6 +291,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/zones", s.requireCameraAccess(s.handleMotionZonesGet))
 	s.mux.HandleFunc("PUT /api/cameras/{id}/motion/zones", s.requireCameraAccess(s.handleMotionZonesPut))
 	s.mux.HandleFunc("GET /api/cameras/{id}/snapshot", s.requireCameraAccess(s.handleSnapshot))
+	s.mux.HandleFunc("GET /api/cameras/{id}/stats", s.requireCameraAccess(s.handleCameraStats))
 	s.mux.HandleFunc("GET /api/stats", s.requireFullAuth(s.handleStats))
 
 	if s.frontend != nil {

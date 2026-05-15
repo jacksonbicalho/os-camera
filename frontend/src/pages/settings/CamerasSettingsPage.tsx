@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { authHeaders, clearToken, getRole } from '../../auth'
@@ -219,13 +219,17 @@ function CameraForm({ initial, onSave, onCancel, saving }: CameraFormProps) {
 
 export default function CamerasSettingsPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const isAdmin = getRole() === 'admin'
   const [cameras, setCameras] = useState<Camera[]>([])
   const [loading, setLoading] = useState(isAdmin)
   const [creating, setCreating] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(
+    (location.state as { editId?: string } | null)?.editId ?? null
+  )
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleteData, setDeleteData] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [noDb, setNoDb] = useState(false)
 
@@ -278,10 +282,13 @@ export default function CamerasSettingsPage() {
 
   const handleDelete = async () => {
     if (!deleteId) return
+    const url = deleteData
+      ? `/api/settings/cameras/${deleteId}?delete_data=true`
+      : `/api/settings/cameras/${deleteId}`
     try {
-      await fetch(`/api/settings/cameras/${deleteId}`, { method: 'DELETE', headers: authHeaders() })
+      await fetch(url, { method: 'DELETE', headers: authHeaders() })
       await reloadCameras()
-    } finally { setDeleteId(null) }
+    } finally { setDeleteId(null); setDeleteData(false) }
   }
 
   const camToDelete = cameras.find(c => c.id === deleteId)
@@ -407,12 +414,22 @@ export default function CamerasSettingsPage() {
       <ConfirmDialog
         open={deleteId != null}
         title="Remover câmera"
-        message={`Remover câmera "${camToDelete?.id}"? As gravações e segmentos existentes não serão apagados.`}
+        message={`Remover câmera "${camToDelete?.id}"?`}
         confirmLabel="Remover"
         danger
         onConfirm={handleDelete}
-        onCancel={() => setDeleteId(null)}
-      />
+        onCancel={() => { setDeleteId(null); setDeleteData(false) }}
+      >
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={deleteData}
+            onChange={e => setDeleteData(e.target.checked)}
+            className="accent-red-500"
+          />
+          <span className="text-xs text-gray-300">Apagar também as gravações do disco</span>
+        </label>
+      </ConfirmDialog>
     </SettingsLayout>
   )
 }
