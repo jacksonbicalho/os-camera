@@ -22,14 +22,16 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 const DefaultChunkDuration     = 5 * time.Minute
 const DefaultReconnectInterval = 10 * time.Second
 
+// Config holds the minimal bootstrap configuration read from the YAML file.
+// All camera settings, motion config and user data live in the SQLite database.
 type Config struct {
 	Debug    bool          `yaml:"debug"`
 	Timezone string        `yaml:"timezone"`
+	DBPath   string        `yaml:"db_path"`
 	Log      LogConfig     `yaml:"log"`
 	Server   ServerConfig  `yaml:"server"`
 	Storage  StorageConfig `yaml:"storage"`
-	Motion   MotionConfig  `yaml:"motion"`
-	Cameras  []CameraConfig `yaml:"cameras"`
+	Admin    AdminConfig   `yaml:"admin"`
 }
 
 type LogConfig struct {
@@ -37,13 +39,16 @@ type LogConfig struct {
 	Path   string `yaml:"path"`
 }
 
+type AdminConfig struct {
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
 type ServerConfig struct {
 	Port           int    `yaml:"port"`
 	SegmentsPath   string `yaml:"segments_path"`
 	RecordingsPath string `yaml:"recordings_path"`
-	Username       string `yaml:"username"`
-	Password       string `yaml:"password"`
-	HLSDVRSeconds  int    `yaml:"hls_dvr_seconds"` // 0 = disabled; >0 = DVR window size
+	HLSDVRSeconds  int    `yaml:"hls_dvr_seconds"`
 	JWTSecret      string `yaml:"jwt_secret"`
 }
 
@@ -58,15 +63,10 @@ type StorageConfig struct {
 	Retention        RetentionConfig `yaml:"retention"`
 	IntervalMinutes  int             `yaml:"interval_minutes"` // 0 = default (60 min)
 	MaxSizeGB        float64         `yaml:"max_size_gb"`      // 0 = disabled
-	WarnPercent      float64         `yaml:"warn_percent"`     // % of max_size_gb to trigger warning
+	WarnPercent      float64         `yaml:"warn_percent"`
 }
 
 // EffectiveRetention returns (withMotionMinutes, withoutMotionMinutes).
-// Rules:
-//   - Both set: use each value independently.
-//   - Only with_motion set: without_motion inherits the same value.
-//   - Only without_motion set: with_motion = 0 (keep motion recordings indefinitely).
-//   - Neither set: fall back to legacy retention_minutes for both.
 func (s StorageConfig) EffectiveRetention() (withMotion, withoutMotion int) {
 	r := s.Retention
 	if r.WithMotionMinutes == 0 && r.WithoutMotionMinutes == 0 {
@@ -78,31 +78,33 @@ func (s StorageConfig) EffectiveRetention() (withMotion, withoutMotion int) {
 	return r.WithMotionMinutes, r.WithoutMotionMinutes
 }
 
+// MotionConfig holds per-camera motion detection settings (used by the DB layer).
 type MotionConfig struct {
 	Enabled         bool    `yaml:"enabled"`
-	Threshold       float64 `yaml:"threshold"`        // 0–1, fraction of pixels changed; default 0.02
-	FPS             int     `yaml:"fps"`              // frames per second to sample; default 2
-	CooldownSeconds int     `yaml:"cooldown_seconds"` // min seconds between events; 0 = disabled
+	Threshold       float64 `yaml:"threshold"`
+	FPS             int     `yaml:"fps"`
+	CooldownSeconds int     `yaml:"cooldown_seconds"`
 }
 
+// CameraConfig holds per-camera settings loaded from the database.
 type CameraConfig struct {
 	ID                string        `yaml:"id"`
 	RTSPURL           string        `yaml:"rtsp_url"`
 	ChunkDuration     Duration      `yaml:"chunk_duration"`
 	ReconnectInterval Duration      `yaml:"reconnect_interval"`
-	VideoCodec        string        `yaml:"video_codec"`   // "" = auto-detect via ffprobe
-	HasAudio          *bool         `yaml:"has_audio"`     // nil = auto-detect via ffprobe
-	Width             int           `yaml:"width"`         // 0 = auto-detect via ffprobe
-	Height            int           `yaml:"height"`        // 0 = auto-detect via ffprobe
-	DisplayOrder      int           `yaml:"display_order"` // ordem de exibição na interface
-	Motion            *MotionConfig `yaml:"motion"`        // nil = use global default
+	VideoCodec        string        `yaml:"video_codec"`
+	HasAudio          *bool         `yaml:"has_audio"`
+	Width             int           `yaml:"width"`
+	Height            int           `yaml:"height"`
+	DisplayOrder      int           `yaml:"display_order"`
+	Motion            *MotionConfig `yaml:"motion"`
 }
 
-func (c CameraConfig) EffectiveMotionConfig(defaults MotionConfig) MotionConfig {
+func (c CameraConfig) EffectiveMotionConfig() MotionConfig {
 	if c.Motion != nil {
 		return *c.Motion
 	}
-	return defaults
+	return MotionConfig{}
 }
 
 func (c CameraConfig) EffectiveChunkDuration() time.Duration {

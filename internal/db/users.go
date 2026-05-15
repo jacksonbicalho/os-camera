@@ -15,24 +15,26 @@ var BcryptCost = 12
 
 // User represents a row from the users table.
 type User struct {
-	ID           int64
-	Username     string
-	PasswordHash string
-	Role         string
-	CreatedAt    time.Time
+	ID                 int64
+	Username           string
+	PasswordHash       string
+	Role               string
+	CreatedAt          time.Time
+	MustChangePassword bool
 }
 
 // CreateUser inserts a new user, hashing the password with bcrypt. Returns
-// the new user's ID.
-func CreateUser(db *DB, username, password, role string) (int64, error) {
+// the new user's ID. When mustChange is true the user must reset the password
+// on first login.
+func CreateUser(db *DB, username, password, role string, mustChange bool) (int64, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), BcryptCost)
 	if err != nil {
 		return 0, fmt.Errorf("hash password: %w", err)
 	}
 
 	res, err := db.Exec(
-		`INSERT INTO users(username, password_hash, role) VALUES(?,?,?)`,
-		username, string(hash), role,
+		`INSERT INTO users(username, password_hash, role, must_change_password) VALUES(?,?,?,?)`,
+		username, string(hash), role, boolToInt(mustChange),
 	)
 	if err != nil {
 		return 0, fmt.Errorf("insert user: %w", err)
@@ -40,40 +42,55 @@ func CreateUser(db *DB, username, password, role string) (int64, error) {
 	return res.LastInsertId()
 }
 
+// ClearMustChangePassword resets the must_change_password flag and updates the
+// password hash for the given user.
+func ClearMustChangePassword(db *DB, id int64, newPassword string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), BcryptCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	_, err = db.Exec(
+		`UPDATE users SET password_hash=?, must_change_password=0 WHERE id=?`,
+		string(hash), id,
+	)
+	return err
+}
+
 // GetUserByID returns the user with the given ID.
 func GetUserByID(db *DB, id int64) (User, error) {
 	return scanUser(db.QueryRow(
-		`SELECT id, username, password_hash, role, created_at FROM users WHERE id=?`, id,
+		`SELECT id, username, password_hash, role, created_at, must_change_password FROM users WHERE id=?`, id,
 	))
 }
 
 // GetUserByUsername returns the user with the given username.
 func GetUserByUsername(db *DB, username string) (User, error) {
 	return scanUser(db.QueryRow(
-		`SELECT id, username, password_hash, role, created_at FROM users WHERE username=?`, username,
+		`SELECT id, username, password_hash, role, created_at, must_change_password FROM users WHERE username=?`, username,
 	))
 }
 
 func scanUser(row *sql.Row) (User, error) {
 	var u User
 	var createdAt string
-	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &createdAt); err != nil {
+	var mustChange int
+	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &createdAt, &mustChange); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, fmt.Errorf("user not found")
 		}
 		return User{}, fmt.Errorf("scan user: %w", err)
 	}
-	t, err := time.Parse("2006-01-02 15:04:05", createdAt)
-	if err == nil {
+	if t, err := time.Parse("2006-01-02 15:04:05", createdAt); err == nil {
 		u.CreatedAt = t
 	}
+	u.MustChangePassword = mustChange != 0
 	return u, nil
 }
 
 // ListUsers returns all users ordered by id.
 func ListUsers(db *DB) ([]User, error) {
 	rows, err := db.Query(
-		`SELECT id, username, password_hash, role, created_at FROM users ORDER BY id`,
+		`SELECT id, username, password_hash, role, created_at, must_change_password FROM users ORDER BY id`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
@@ -84,12 +101,14 @@ func ListUsers(db *DB) ([]User, error) {
 	for rows.Next() {
 		var u User
 		var createdAt string
-		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &createdAt); err != nil {
+		var mustChange int
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &createdAt, &mustChange); err != nil {
 			return nil, fmt.Errorf("scan user row: %w", err)
 		}
 		if t, err := time.Parse("2006-01-02 15:04:05", createdAt); err == nil {
 			u.CreatedAt = t
 		}
+		u.MustChangePassword = mustChange != 0
 		users = append(users, u)
 	}
 	return users, rows.Err()

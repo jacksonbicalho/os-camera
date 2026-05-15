@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { setToken, clearToken, getUsername } from './auth'
+import { setToken, clearToken, getUsername, mustChangePassword } from './auth'
 
 function makeJwt(payload: object): string {
   const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
@@ -22,5 +22,28 @@ describe('getUsername', () => {
   it('returns null when token is malformed', () => {
     setToken('not.a.jwt')
     expect(getUsername()).toBeNull()
+  })
+})
+
+describe('mustChangePassword', () => {
+  afterEach(() => clearToken())
+
+  it('returns false when no token is stored', () => {
+    expect(mustChangePassword()).toBe(false)
+  })
+
+  it('returns true when claim is true', () => {
+    setToken(makeJwt({ sub: 'admin', must_change_password: true }))
+    expect(mustChangePassword()).toBe(true)
+  })
+
+  it('returns false when claim is false', () => {
+    setToken(makeJwt({ sub: 'admin', must_change_password: false }))
+    expect(mustChangePassword()).toBe(false)
+  })
+
+  it('returns false when claim is absent', () => {
+    setToken(makeJwt({ sub: 'admin' }))
+    expect(mustChangePassword()).toBe(false)
   })
 })

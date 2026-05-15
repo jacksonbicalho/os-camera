@@ -47,7 +47,7 @@ func TestDetectorRecordsEventWhenDiffExceedsThreshold(t *testing.T) {
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
-	st := newStore(tmpDir)
+	st := newStore(tmpDir, nil)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
 	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
@@ -68,7 +68,7 @@ func TestDetectorIgnoresSmallDiff(t *testing.T) {
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
-	st := newStore(tmpDir)
+	st := newStore(tmpDir, nil)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
 	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
@@ -88,7 +88,7 @@ func TestDetectorTimestampIsApproxNow(t *testing.T) {
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
-	st := newStore(tmpDir)
+	st := newStore(tmpDir, nil)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
 	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
@@ -118,7 +118,7 @@ func TestDetectorNotifyRawCalledForSubThresholdDiff(t *testing.T) {
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
-	st := newStore(tmpDir)
+	st := newStore(tmpDir, nil)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
 	var rawEvents []Event
@@ -141,7 +141,7 @@ func TestDetectorNotifyRawCalledAlongsideNotify(t *testing.T) {
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
-	st := newStore(tmpDir)
+	st := newStore(tmpDir, nil)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
 	var notified, rawNotified int
@@ -171,7 +171,7 @@ func TestDetectorCooldownSuppressesEventsWithinWindow(t *testing.T) {
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
-	st := newStore(tmpDir)
+	st := newStore(tmpDir, nil)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1, CooldownSeconds: 30}
 	var notified int
@@ -204,7 +204,7 @@ func TestDetectorCooldownAllowsEventAfterWindow(t *testing.T) {
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
-	st := newStore(tmpDir)
+	st := newStore(tmpDir, nil)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1, CooldownSeconds: 30}
 	var notified int
@@ -237,7 +237,7 @@ func TestDetectorCooldownZeroDisablesSuppression(t *testing.T) {
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
-	st := newStore(tmpDir)
+	st := newStore(tmpDir, nil)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1, CooldownSeconds: 0}
 	var notified int
@@ -259,7 +259,7 @@ func TestDetectorExclusionZoneSuppressesEvent(t *testing.T) {
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
-	st := newStore(tmpDir)
+	st := newStore(tmpDir, nil)
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
 	fullZone := zones.Zone{X: 0, Y: 0, W: 1, H: 1}

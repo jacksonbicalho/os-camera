@@ -88,7 +88,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := db.CreateUser(s.db, req.Username, req.Password, req.Role)
+	id, err := db.CreateUser(s.db, req.Username, req.Password, req.Role, false)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			http.Error(w, "username already exists", http.StatusConflict)

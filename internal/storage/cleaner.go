@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"camera/internal/db"
 )
 
 type Cleaner struct {
@@ -21,10 +23,11 @@ type Cleaner struct {
 	chunkDuration        time.Duration
 	maxSizeGB            float64
 	warnPercent          float64
+	db                   *db.DB
 	log                  *slog.Logger
 }
 
-func New(storagePath string, withMotionMinutes, withoutMotionMinutes int, chunkDuration time.Duration, maxSizeGB float64, warnPercent float64, log *slog.Logger) *Cleaner {
+func New(storagePath string, withMotionMinutes, withoutMotionMinutes int, chunkDuration time.Duration, maxSizeGB float64, warnPercent float64, database *db.DB, log *slog.Logger) *Cleaner {
 	return &Cleaner{
 		storagePath:          storagePath,
 		withMotionMinutes:    withMotionMinutes,
@@ -32,6 +35,7 @@ func New(storagePath string, withMotionMinutes, withoutMotionMinutes int, chunkD
 		chunkDuration:        chunkDuration,
 		maxSizeGB:            maxSizeGB,
 		warnPercent:          warnPercent,
+		db:                   database,
 		log:                  log,
 	}
 }
@@ -131,7 +135,144 @@ func RemoveEventsInRange(ndjsonPath string, start, end time.Time) error {
 	return os.WriteFile(ndjsonPath, out, 0o644)
 }
 
-func (c *Cleaner) Clean() {
+func (c *Cleaner) syncRecordings() {
+	// Collect MP4 files grouped by directory so we can determine each chunk's
+	// real end time from the next file's start time.
+	byDir := map[string][]string{}
+	filepath.WalkDir(c.storagePath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Ext(path) != ".mp4" {
+			return nil
+		}
+		dir := filepath.Dir(path)
+		byDir[dir] = append(byDir[dir], filepath.Base(path))
+		return nil
+	})
+
+	for dir, files := range byDir {
+		sort.Strings(files)
+
+		for i, name := range files {
+			chunkStart, err := ChunkStartFromName(name)
+			if err != nil {
+				continue
+			}
+
+			// Use next file's start as chunkEnd; fall back to configured duration
+			// for the last file in the directory.
+			var chunkEnd time.Time
+			if i+1 < len(files) {
+				next, err := ChunkStartFromName(files[i+1])
+				if err == nil {
+					chunkEnd = next
+				}
+			}
+
+			fullPath := filepath.Join(dir, name)
+			info, err := os.Stat(fullPath)
+			if err != nil {
+				continue
+			}
+
+			// Extract cameraID: first path component relative to storagePath.
+			rel, err := filepath.Rel(c.storagePath, fullPath)
+			if err != nil {
+				continue
+			}
+			parts := strings.SplitN(rel, string(filepath.Separator), 2)
+			if len(parts) == 0 {
+				continue
+			}
+			cameraID := parts[0]
+
+			rec := db.Recording{
+				CameraID:  cameraID,
+				StartedAt: chunkStart,
+				EndedAt:   chunkEnd,
+				Path:      fullPath,
+				SizeBytes: info.Size(),
+				HasMotion: false,
+			}
+			if err := db.InsertRecording(c.db, rec); err != nil {
+				c.log.Warn("failed to insert recording", "path", fullPath, "err", err)
+			}
+		}
+	}
+
+	// Batch-update has_motion for recordings that have overlapping motion events.
+	_, err := c.db.Exec(`
+		UPDATE recordings SET has_motion=1
+		WHERE has_motion=0
+		AND EXISTS (
+			SELECT 1 FROM motion_events me
+			WHERE me.camera_id = recordings.camera_id
+			AND me.occurred_at >= recordings.started_at
+			AND (recordings.ended_at IS NULL OR me.occurred_at < recordings.ended_at)
+		)`)
+	if err != nil {
+		c.log.Warn("failed to update has_motion from motion_events", "err", err)
+	}
+}
+
+func (c *Cleaner) cleanFromDB() {
+	if c.withMotionMinutes == 0 && c.withoutMotionMinutes == 0 {
+		return
+	}
+	now := time.Now().UTC()
+
+	type row struct {
+		path      string
+		hasMotion bool
+	}
+	var toDelete []row
+
+	if c.withoutMotionMinutes > 0 {
+		cutoff := now.Add(-time.Duration(c.withoutMotionMinutes) * time.Minute).Format(time.RFC3339)
+		rows, err := c.db.Query(`SELECT path FROM recordings WHERE has_motion=0 AND started_at < ?`, cutoff)
+		if err != nil {
+			c.log.Warn("failed to query without-motion recordings", "err", err)
+		} else {
+			defer rows.Close()
+			for rows.Next() {
+				var path string
+				if err := rows.Scan(&path); err != nil {
+					c.log.Warn("failed to scan recording path", "err", err)
+					continue
+				}
+				toDelete = append(toDelete, row{path: path, hasMotion: false})
+			}
+		}
+	}
+
+	if c.withMotionMinutes > 0 {
+		cutoff := now.Add(-time.Duration(c.withMotionMinutes) * time.Minute).Format(time.RFC3339)
+		rows, err := c.db.Query(`SELECT path FROM recordings WHERE has_motion=1 AND started_at < ?`, cutoff)
+		if err != nil {
+			c.log.Warn("failed to query with-motion recordings", "err", err)
+		} else {
+			defer rows.Close()
+			for rows.Next() {
+				var path string
+				if err := rows.Scan(&path); err != nil {
+					c.log.Warn("failed to scan recording path", "err", err)
+					continue
+				}
+				toDelete = append(toDelete, row{path: path, hasMotion: true})
+			}
+		}
+	}
+
+	for _, r := range toDelete {
+		c.log.Debug("deleting old recording", "path", r.path, "has_motion", r.hasMotion)
+		if err := os.Remove(r.path); err != nil && !os.IsNotExist(err) {
+			c.log.Warn("failed to delete recording", "path", r.path, "err", err)
+		}
+		if err := db.DeleteRecording(c.db, r.path); err != nil {
+			c.log.Warn("failed to delete recording from db", "path", r.path, "err", err)
+		}
+	}
+}
+
+func (c *Cleaner) cleanFromFS() {
 	if c.withMotionMinutes == 0 && c.withoutMotionMinutes == 0 {
 		return
 	}
@@ -196,6 +337,15 @@ func (c *Cleaner) Clean() {
 				}
 			}
 		}
+	}
+}
+
+func (c *Cleaner) Clean() {
+	if c.db != nil {
+		c.syncRecordings()
+		c.cleanFromDB()
+	} else {
+		c.cleanFromFS()
 	}
 }
 

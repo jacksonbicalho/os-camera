@@ -9,10 +9,11 @@ import (
 
 type store struct {
 	basePath string
+	onEvent  func(cameraID string, t time.Time, score float64, frame string, bbox BBox)
 }
 
-func newStore(basePath string) *store {
-	return &store{basePath: basePath}
+func newStore(basePath string, onEvent func(cameraID string, t time.Time, score float64, frame string, bbox BBox)) *store {
+	return &store{basePath: basePath, onEvent: onEvent}
 }
 
 func (s *store) record(cameraID string, ts time.Time, score float64, frame string, bbox BBox) error {
@@ -35,7 +36,13 @@ func (s *store) record(cameraID string, ts time.Time, score float64, frame strin
 	if frame != "" {
 		entry["frame"] = frame
 	}
-	return json.NewEncoder(f).Encode(entry)
+	if err := json.NewEncoder(f).Encode(entry); err != nil {
+		return err
+	}
+	if s.onEvent != nil {
+		s.onEvent(cameraID, ts, score, frame, bbox)
+	}
+	return nil
 }
 
 func (s *store) saveJPEG(cameraID string, ts time.Time, data []byte) (string, error) {

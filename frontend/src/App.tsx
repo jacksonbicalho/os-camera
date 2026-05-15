@@ -1,8 +1,9 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { getToken } from './auth'
+import { getToken, mustChangePassword } from './auth'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
+import ChangePasswordPage from './pages/ChangePasswordPage'
 
 const CameraPage = lazy(() => import('./pages/CameraPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
@@ -19,9 +20,9 @@ const UsersSettingsPage = lazy(() => import('./pages/settings/UsersSettingsPage'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation()
-  return getToken()
-    ? <>{children}</>
-    : <Navigate to="/login" state={{ from: location.pathname + location.search }} replace />
+  if (!getToken()) return <Navigate to="/login" state={{ from: location.pathname + location.search }} replace />
+  if (mustChangePassword()) return <Navigate to="/change-password" replace />
+  return <>{children}</>
 }
 
 function Lazy({ children }: { children: React.ReactNode }) {
@@ -36,6 +37,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/change-password" element={<ChangePasswordPage />} />
       <Route path="/" element={<RequireAuth><DashboardPage /></RequireAuth>} />
       <Route path="/cameras/:id" element={<Lazy><CameraPage /></Lazy>} />
       <Route path="/stats" element={<Lazy><StatsPage /></Lazy>} />

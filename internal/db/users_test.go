@@ -21,7 +21,7 @@ func openTestDB(t *testing.T) *db.DB {
 func TestCreateAndGetUser(t *testing.T) {
 	database := openTestDB(t)
 
-	id, err := db.CreateUser(database, "alice", "senha123", "admin")
+	id, err := db.CreateUser(database, "alice", "senha123", "admin", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
@@ -50,10 +50,10 @@ func TestCreateAndGetUser(t *testing.T) {
 func TestCreateUser_DuplicateUsername(t *testing.T) {
 	database := openTestDB(t)
 
-	if _, err := db.CreateUser(database, "bob", "x", "viewer"); err != nil {
+	if _, err := db.CreateUser(database, "bob", "x", "viewer", false); err != nil {
 		t.Fatalf("primeiro CreateUser: %v", err)
 	}
-	_, err := db.CreateUser(database, "bob", "y", "viewer")
+	_, err := db.CreateUser(database, "bob", "y", "viewer", false)
 	if err == nil {
 		t.Error("esperava erro por username duplicado")
 	}
@@ -67,7 +67,7 @@ func TestListUsers(t *testing.T) {
 		{"bob", "viewer"},
 		{"carol", "viewer"},
 	} {
-		if _, err := db.CreateUser(database, u.name, "x", u.role); err != nil {
+		if _, err := db.CreateUser(database, u.name, "x", u.role, false); err != nil {
 			t.Fatalf("CreateUser %s: %v", u.name, err)
 		}
 	}
@@ -84,7 +84,7 @@ func TestListUsers(t *testing.T) {
 func TestUpdateUser(t *testing.T) {
 	database := openTestDB(t)
 
-	id, err := db.CreateUser(database, "dave", "senha", "viewer")
+	id, err := db.CreateUser(database, "dave", "senha", "viewer", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestUpdateUser(t *testing.T) {
 func TestDeleteUser(t *testing.T) {
 	database := openTestDB(t)
 
-	id, err := db.CreateUser(database, "eve", "x", "viewer")
+	id, err := db.CreateUser(database, "eve", "x", "viewer", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestDeleteUser(t *testing.T) {
 func TestSetAndGetUserCameras(t *testing.T) {
 	database := openTestDB(t)
 
-	id, err := db.CreateUser(database, "frank", "x", "viewer")
+	id, err := db.CreateUser(database, "frank", "x", "viewer", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestSetAndGetUserCameras(t *testing.T) {
 func TestCheckPassword(t *testing.T) {
 	database := openTestDB(t)
 
-	if _, err := db.CreateUser(database, "grace", "minha-senha", "viewer"); err != nil {
+	if _, err := db.CreateUser(database, "grace", "minha-senha", "viewer", false); err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
 
