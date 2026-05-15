@@ -2,13 +2,34 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"camera/internal/config"
 	"camera/internal/db"
+	"camera/internal/ffprobe"
 )
+
+func formatDuration(d time.Duration) string {
+	if d == 0 {
+		return "0s"
+	}
+	total := int64(d)
+	if total%int64(time.Hour) == 0 {
+		return fmt.Sprintf("%dh", total/int64(time.Hour))
+	}
+	if total%int64(time.Minute) == 0 {
+		return fmt.Sprintf("%dm", total/int64(time.Minute))
+	}
+	if total%int64(time.Second) == 0 {
+		return fmt.Sprintf("%ds", total/int64(time.Second))
+	}
+	return d.String()
+}
 
 type motionConfigDTO struct {
 	Enabled         bool    `json:"enabled"`
@@ -34,8 +55,8 @@ func cameraToDTO(cam config.CameraConfig) cameraConfigDTO {
 	dto := cameraConfigDTO{
 		ID:                cam.ID,
 		RTSPURL:           cam.RTSPURL,
-		ChunkDuration:     cam.EffectiveChunkDuration().String(),
-		ReconnectInterval: cam.EffectiveReconnectInterval().String(),
+		ChunkDuration:     formatDuration(cam.EffectiveChunkDuration()),
+		ReconnectInterval: formatDuration(cam.EffectiveReconnectInterval()),
 		VideoCodec:        cam.VideoCodec,
 		HasAudio:          cam.HasAudio,
 		Width:             cam.Width,
@@ -121,6 +142,16 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		if d, err := time.ParseDuration(req.ReconnectInterval); err == nil {
 			cam.ReconnectInterval = config.Duration(d)
 		}
+	}
+
+	// When all stream fields are "auto", probe the stream before inserting so
+	// the DB stores real values from the start instead of showing "auto" in the UI.
+	if s.prober != nil && req.VideoCodec == "" && req.HasAudio == nil && req.Width == 0 && req.Height == 0 {
+		info := ffprobe.Resolve(r.Context(), ffprobe.Resolver{RTSPURL: req.RTSPURL}, s.prober, s.log)
+		cam.VideoCodec = info.VideoCodec
+		cam.HasAudio = &info.HasAudio
+		cam.Width = info.Width
+		cam.Height = info.Height
 	}
 
 	var motion *config.MotionConfig
@@ -254,6 +285,7 @@ func (s *Server) handleDeleteCamera(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
+	deleteData := r.URL.Query().Get("delete_data") == "true"
 
 	if _, err := db.GetCamera(s.db, id); err != nil {
 		http.NotFound(w, r)
@@ -269,6 +301,69 @@ func (s *Server) handleDeleteCamera(w http.ResponseWriter, r *http.Request) {
 		s.onCameraStop(id)
 	}
 
+	if deleteData {
+		if s.storageCfg.Path != "" {
+			_ = os.RemoveAll(filepath.Join(s.storageCfg.Path, id))
+		}
+		if s.cfg.SegmentsPath != "" {
+			_ = os.RemoveAll(filepath.Join(s.cfg.SegmentsPath, id))
+		}
+	}
+
 	s.reloadCamerasFromDB()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleCameraStats(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	basePath := s.storageCfg.Path
+	if basePath == "" {
+		basePath = s.cfg.RecordingsPath
+	}
+
+	var totalBytes int64
+	var totalChunks int
+	var totalSeconds float64
+
+	camDir := filepath.Join(basePath, id)
+	_ = filepath.WalkDir(camDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".mp4") {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		totalBytes += info.Size()
+		totalChunks++
+
+		// chunk duration from filename timestamps is unreliable; use chunk size as proxy.
+		// Instead, we count file count and let the UI compute estimated hours from chunk_duration.
+		_ = info
+		return nil
+	})
+
+	// Estimate recording hours: each chunk is nominally chunk_duration seconds.
+	// Look up chunk_duration from the camera config.
+	chunkSec := 300.0 // default 5m
+	if s.db != nil {
+		if cam, err := db.GetCamera(s.db, id); err == nil {
+			chunkSec = cam.EffectiveChunkDuration().Seconds()
+		}
+	}
+	totalSeconds = float64(totalChunks) * chunkSec
+
+	// Motion event count from DB.
+	var motionCount int64
+	if s.db != nil {
+		motionCount, _ = db.CountMotionEvents(s.db, id)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"total_bytes":          totalBytes,
+		"total_chunks":         totalChunks,
+		"total_seconds":        totalSeconds,
+		"total_motion_events":  motionCount,
+	})
 }

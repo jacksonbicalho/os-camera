@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import { useSettings } from '../../hooks/useSettings'
+import { authHeaders } from '../../auth'
 
 function fmtHasAudio(v: boolean | null): string {
   if (v === null) return 'auto'
@@ -13,14 +15,55 @@ function fmtResolution(w: number, h: number): string {
   return `${w} × ${h}`
 }
 
+function fmtBytes(b: number): string {
+  if (b === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(b) / Math.log(1024))
+  return `${(b / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
+}
+
+function fmtDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}min`
+  const h = Math.floor(seconds / 3600)
+  const m = Math.round((seconds % 3600) / 60)
+  return m > 0 ? `${h}h ${m}min` : `${h}h`
+}
+
+interface CameraStatsData {
+  total_bytes: number
+  total_chunks: number
+  total_seconds: number
+  total_motion_events: number
+}
+
 export default function CameraDetailSettingsPage() {
   const { id } = useParams<{ id: string }>()
   const settings = useSettings(`/settings/cameras/${id}`)
   const cam = settings?.cameras.find(c => c.id === id)
+  const [stats, setStats] = useState<CameraStatsData | null>(null)
+
+  useEffect(() => {
+    if (!id) return
+    fetch(`/api/cameras/${id}/stats`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setStats(data) })
+      .catch(() => {})
+  }, [id])
 
   return (
     <SettingsLayout>
-      <h2 className="text-lg font-semibold text-gray-200 mb-6">{id}</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-lg font-semibold text-gray-200">{id}</h2>
+        <Link
+          to="/settings/cameras"
+          state={{ editId: id }}
+          className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded transition-colors"
+        >
+          Editar
+        </Link>
+      </div>
+
       {!settings ? (
         <p className="text-gray-500 text-sm">Carregando...</p>
       ) : !cam ? (
@@ -49,6 +92,21 @@ export default function CameraDetailSettingsPage() {
               { label: 'Intervalo de reconexão', value: cam.reconnect_interval },
             ]}
           />
+
+          <SettingsSection
+            title="Estatísticas"
+            fields={
+              stats == null
+                ? [{ label: 'Carregando...', value: '' }]
+                : [
+                    { label: 'Total gravado', value: fmtDuration(stats.total_seconds) },
+                    { label: 'Segmentos MP4', value: String(stats.total_chunks) },
+                    { label: 'Espaço em disco', value: fmtBytes(stats.total_bytes) },
+                    { label: 'Eventos de movimento', value: String(stats.total_motion_events) },
+                  ]
+            }
+          />
+
           <Link
             to={`/settings/cameras/${id}/motion`}
             className="bg-gray-900 border border-gray-800 rounded-lg px-5 py-4 flex items-center justify-between hover:border-gray-700 hover:bg-gray-800/50 transition-colors group"
