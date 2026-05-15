@@ -46,6 +46,10 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
         liveMaxLatencyDurationCount: 6,
         maxBufferLength: 10,
         lowLatencyMode: false,
+        // Retry manifest when stream isn't ready yet (e.g. right after camera creation)
+        manifestLoadingMaxRetry: 30,
+        manifestLoadingRetryDelay: 3000,
+        manifestLoadingMaxRetryTimeout: 6000,
         xhrSetup(xhr) {
           xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`)
         },

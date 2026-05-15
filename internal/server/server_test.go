@@ -1071,7 +1071,7 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 	srv := server.NewServer(serverCfg, "America/Sao_Paulo", cameras, discardLogger(), nil).
 		WithStorageConfig(storageCfg).
 		WithMotionConfig(motionCfg)
-	srv = withTestUsers(t, srv)
+	srv = withTestUsersAndCameras(t, srv, cameras)
 
 	token := loginAndGetToken(t, srv, "admin", "pw")
 	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
@@ -1206,7 +1206,7 @@ func TestGetSettingsMasksRTSPCredentials(t *testing.T) {
 	}
 	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
-	srv = withTestUsers(t, srv)
+	srv = withTestUsersAndCameras(t, srv, cameras)
 
 	token := loginAndGetToken(t, srv, "u", "p")
 	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
