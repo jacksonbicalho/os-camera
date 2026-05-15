@@ -195,6 +195,26 @@ func UpdateCamera(db *DB, cam config.CameraConfig, motion *config.MotionConfig) 
 	return tx.Commit()
 }
 
+// UpdateCameraStreamInfo persists auto-detected stream values (codec, audio,
+// resolution) back to the DB. Fields are only updated when the new value is
+// non-zero/non-nil, so a failed probe doesn't overwrite explicit user config.
+func UpdateCameraStreamInfo(database *DB, id, codec string, hasAudio *bool, width, height int) error {
+	_, err := database.Exec(
+		`UPDATE cameras
+		 SET video_codec  = CASE WHEN ? != '' THEN ?  ELSE video_codec  END,
+		     has_audio    = CASE WHEN ? IS NOT NULL THEN ? ELSE has_audio END,
+		     width        = CASE WHEN ? != 0  THEN ?  ELSE width        END,
+		     height       = CASE WHEN ? != 0  THEN ?  ELSE height       END
+		 WHERE id = ?`,
+		codec, codec,
+		boolPtr(hasAudio), boolPtr(hasAudio),
+		nullInt(width), nullInt(width),
+		nullInt(height), nullInt(height),
+		id,
+	)
+	return err
+}
+
 // DeleteCamera removes the camera (cascades to camera_motion).
 func DeleteCamera(db *DB, id string) error {
 	_, err := db.Exec(`DELETE FROM cameras WHERE id=?`, id)

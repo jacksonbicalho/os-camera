@@ -145,6 +145,14 @@ func main() {
 	startCameraProcs := func(cam config.CameraConfig) {
 		stream := resolveStream(cam, prober, slog)
 
+		// Persist auto-detected stream info back to the DB so the UI reflects
+		// actual codec/resolution instead of showing "auto" indefinitely.
+		if database != nil && cam.VideoCodec == "" && cam.HasAudio == nil && cam.Width == 0 && cam.Height == 0 {
+			if err := db.UpdateCameraStreamInfo(database, cam.ID, stream.VideoCodec, &stream.HasAudio, stream.Width, stream.Height); err != nil {
+				slog.Warn("failed to persist stream info", "camera", cam.ID, "error", err)
+			}
+		}
+
 		rec := recorder.NewRecorder(cam, cfg.Storage, stream, commander, slog)
 		if err := rec.Start(time.Now().UTC()); err != nil {
 			slog.Error("failed to start recorder", "camera", cam.ID, "error", err)
