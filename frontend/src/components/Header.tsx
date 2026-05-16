@@ -69,7 +69,8 @@ function NotificationItem({
           {n.cameraId}
         </div>
         <div className="text-xs text-gray-400">
-          score {n.score.toFixed(3)} · {relTime}
+          {n.label && <span style={{ color: n.color ?? '#f97316' }}>{n.label} · </span>}
+          {(n.score * 100).toFixed(1)}% · {relTime}
         </div>
       </div>
       <button

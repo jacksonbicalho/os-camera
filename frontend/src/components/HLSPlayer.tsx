@@ -25,6 +25,9 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
   const [muted, setMuted] = useState(true)
   const [motionAlert, setMotionAlert] = useState<MotionAlert | null>(null)
   const alertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [playBlocked, setPlayBlocked] = useState(false)
+  const [fatalError, setFatalError] = useState(false)
+  const retryRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     const video = videoRef.current
@@ -33,31 +36,51 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
     let hls: HlsType | undefined
     let cancelled = false
 
-    import('hls.js').then(({ default: Hls }) => {
-      if (cancelled) return
+    function setup(v: HTMLVideoElement) {
+      setFatalError(false)
+      setPlayBlocked(false)
 
-      if (!Hls.isSupported()) {
-        video.src = src
-        return
-      }
+      import('hls.js').then(({ default: Hls }) => {
+        if (cancelled) return
 
-      hls = new Hls({
-        liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 6,
-        maxBufferLength: 10,
-        lowLatencyMode: false,
-        // Retry manifest when stream isn't ready yet (e.g. right after camera creation)
-        manifestLoadingMaxRetry: 30,
-        manifestLoadingRetryDelay: 3000,
-        manifestLoadingMaxRetryTimeout: 6000,
-        xhrSetup(xhr) {
-          xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`)
-        },
+        if (!Hls.isSupported()) {
+          v.src = src
+          return
+        }
+
+        hls = new Hls({
+          liveSyncDurationCount: 3,
+          liveMaxLatencyDurationCount: 6,
+          maxBufferLength: 10,
+          lowLatencyMode: false,
+          // Retry manifest when stream isn't ready yet (e.g. right after camera creation)
+          manifestLoadingMaxRetry: 30,
+          manifestLoadingRetryDelay: 3000,
+          manifestLoadingMaxRetryTimeout: 6000,
+          xhrSetup(xhr) {
+            xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`)
+          },
+        })
+        hls.loadSource(src)
+        hls.attachMedia(v)
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          v.play().catch(() => setPlayBlocked(true))
+        })
+        hls.on(Hls.Events.ERROR, (_e, data) => {
+          if (data.fatal) {
+            hls?.destroy()
+            setFatalError(true)
+          }
+        })
       })
-      hls.loadSource(src)
-      hls.attachMedia(video)
-      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}))
-    })
+    }
+
+    retryRef.current = () => {
+      hls?.destroy()
+      setup(video)
+    }
+
+    setup(video)
 
     return () => {
       cancelled = true
@@ -113,6 +136,28 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
         muted
         playsInline
       />
+      {fatalError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 gap-3">
+          <span className="text-sm text-gray-300">Stream indisponível</span>
+          <button
+            onClick={(e) => { e.stopPropagation(); retryRef.current?.() }}
+            className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+      {!fatalError && playBlocked && (
+        <button
+          onClick={(e) => { e.stopPropagation(); videoRef.current?.play().catch(() => {}); setPlayBlocked(false) }}
+          className="absolute inset-0 flex items-center justify-center bg-black/50 hover:bg-black/40 transition-colors"
+          aria-label="Reproduzir"
+        >
+          <svg className="w-12 h-12 text-white/80" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        </button>
+      )}
       {motionAlert && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-yellow-400/30 animate-pulse">
           <div className="flex flex-col items-center gap-3 bg-yellow-500/60 backdrop-blur-sm px-6 py-5 rounded-xl">

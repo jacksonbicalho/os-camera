@@ -649,6 +649,7 @@ export default function CameraPage() {
 
               {activeTab === 'recordings' ? (
                 <ListPanel
+                  key="recordings"
                   sortOrder={sortOrder}
                   onSortOrderChange={() => { setSortOrder(o => o === 'desc' ? 'asc' : 'desc'); setRecordingsDisplayPage(1) }}
                   hasMore={hasMoreDisplayedRecordings}
@@ -716,6 +717,7 @@ export default function CameraPage() {
                 </ListPanel>
               ) : (
                 <ListPanel
+                  key="events"
                   sortOrder={eventsSortOrder}
                   onSortOrderChange={() => setEventsSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
                   hasMore={hasMoreEvents}
@@ -747,7 +749,10 @@ export default function CameraPage() {
                               onClick={e => { e.stopPropagation(); setSnapshotEvent(ev) }}
                             />
                           )}
-                          <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
+                          {ev.label && (
+                            <span className="text-xs font-medium" style={{ color: ev.color ?? '#f97316' }}>{ev.label}</span>
+                          )}
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ev.color ?? '#fb923c' }} />
                           <span className="text-xs text-gray-500">{(ev.score * 100).toFixed(1)}%</span>
                         </div>
                       </button>

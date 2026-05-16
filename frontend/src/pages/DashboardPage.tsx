@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { authHeaders, clearToken } from '../auth'
+import { authHeaders, clearToken, getRole } from '../auth'
 import AppLayout from '../components/AppLayout'
 import HLSPlayer from '../components/HLSPlayer'
 
@@ -18,7 +18,14 @@ export default function DashboardPage() {
         if (res.status === 401) { clearToken(); navigate('/login'); return [] }
         return res.json()
       })
-      .then(data => Array.isArray(data) && setCameras(data))
+      .then(data => {
+        if (!Array.isArray(data)) return
+        if (data.length === 0 && getRole() === 'admin') {
+          navigate('/settings/cameras/new', { replace: true })
+          return
+        }
+        setCameras(data)
+      })
   }, [navigate])
 
   return (

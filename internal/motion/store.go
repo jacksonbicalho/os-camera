@@ -9,14 +9,14 @@ import (
 
 type store struct {
 	basePath string
-	onEvent  func(cameraID string, t time.Time, score float64, frame string, bbox BBox)
+	onEvent  func(cameraID string, t time.Time, score float64, frame, label, color string, bbox BBox)
 }
 
-func newStore(basePath string, onEvent func(cameraID string, t time.Time, score float64, frame string, bbox BBox)) *store {
+func newStore(basePath string, onEvent func(cameraID string, t time.Time, score float64, frame, label, color string, bbox BBox)) *store {
 	return &store{basePath: basePath, onEvent: onEvent}
 }
 
-func (s *store) record(cameraID string, ts time.Time, score float64, frame string, bbox BBox) error {
+func (s *store) record(cameraID string, ts time.Time, score float64, frame, label, color string, bbox BBox) error {
 	dir := filepath.Join(s.basePath, cameraID, ts.UTC().Format("2006/01/02"))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -36,11 +36,17 @@ func (s *store) record(cameraID string, ts time.Time, score float64, frame strin
 	if frame != "" {
 		entry["frame"] = frame
 	}
+	if label != "" {
+		entry["label"] = label
+	}
+	if color != "" {
+		entry["color"] = color
+	}
 	if err := json.NewEncoder(f).Encode(entry); err != nil {
 		return err
 	}
 	if s.onEvent != nil {
-		s.onEvent(cameraID, ts, score, frame, bbox)
+		s.onEvent(cameraID, ts, score, frame, label, color, bbox)
 	}
 	return nil
 }

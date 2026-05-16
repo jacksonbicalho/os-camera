@@ -3,6 +3,7 @@ package motion
 import (
 	"bytes"
 	"image"
+	"image/color"
 	"image/jpeg"
 	"math"
 	"testing"
@@ -13,7 +14,7 @@ func TestAnnotateFrameReturnsValidJPEG(t *testing.T) {
 	w, h := 8, 6
 	frame := make([]byte, w*h)
 	bbox := BBox{X: 0.25, Y: 0.25, W: 0.5, H: 0.5}
-	data := annotateFrame(frame, w, h, bbox, 0.042)
+	data := annotateFrame(frame, w, h, bbox, 0.042, ColorGlobal)
 
 	img, err := jpeg.Decode(bytes.NewReader(data))
 	if err != nil {
@@ -30,7 +31,7 @@ func TestAnnotateFrameRectangleBorderIsWhite(t *testing.T) {
 	w, h := 16, 12
 	frame := make([]byte, w*h) // frame totalmente preto
 	bbox := BBox{X: 0.25, Y: 0.25, W: 0.5, H: 0.5}
-	data := annotateFrame(frame, w, h, bbox, 0.1)
+	data := annotateFrame(frame, w, h, bbox, 0.1, ColorGlobal)
 
 	img, err := jpeg.Decode(bytes.NewReader(data))
 	if err != nil {
@@ -58,12 +59,31 @@ func TestAnnotateFrameRectangleBorderIsWhite(t *testing.T) {
 	}
 }
 
+func TestHexToNRGBA(t *testing.T) {
+	tests := []struct {
+		hex  string
+		want color.NRGBA
+	}{
+		{"#ef4444", color.NRGBA{R: 239, G: 68, B: 68, A: 255}},
+		{"#f97316", color.NRGBA{R: 249, G: 115, B: 22, A: 255}},
+		{"ef4444", color.NRGBA{R: 239, G: 68, B: 68, A: 255}},
+		{"#invalid", ColorGlobal},
+		{"", ColorGlobal},
+	}
+	for _, tt := range tests {
+		got := hexToNRGBA(tt.hex)
+		if got != tt.want {
+			t.Errorf("hexToNRGBA(%q) = %+v, want %+v", tt.hex, got, tt.want)
+		}
+	}
+}
+
 // Frame vazio com bbox inteiro não deve entrar em pânico.
 func TestAnnotateFrameFullBBox(t *testing.T) {
 	w, h := 4, 4
 	frame := make([]byte, w*h)
 	bbox := BBox{X: 0, Y: 0, W: 1, H: 1}
-	data := annotateFrame(frame, w, h, bbox, 1.0)
+	data := annotateFrame(frame, w, h, bbox, 1.0, ColorGlobal)
 	if len(data) == 0 {
 		t.Fatal("expected non-empty JPEG output")
 	}

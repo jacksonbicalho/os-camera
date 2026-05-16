@@ -84,6 +84,8 @@ type MotionConfig struct {
 	Threshold       float64 `yaml:"threshold"`
 	FPS             int     `yaml:"fps"`
 	CooldownSeconds int     `yaml:"cooldown_seconds"`
+	CaptureWidth    int     `yaml:"capture_width"`  // 0 = derivado da resolução do stream ÷ 4
+	CaptureHeight   int     `yaml:"capture_height"` // 0 = derivado da resolução do stream ÷ 4
 }
 
 // CameraConfig holds per-camera settings loaded from the database.

@@ -161,6 +161,35 @@ func TestUpdateCameraStreamInfo_SkipsZeroValues(t *testing.T) {
 	}
 }
 
+func TestListCameras_IncludesCaptureResolution(t *testing.T) {
+	database := openTestDB(t)
+
+	motion := &config.MotionConfig{
+		Enabled:       true,
+		Threshold:     0.02,
+		FPS:           2,
+		CaptureWidth:  960,
+		CaptureHeight: 540,
+	}
+	if err := db.CreateCamera(database, makeCamera("cam"), motion); err != nil {
+		t.Fatalf("CreateCamera: %v", err)
+	}
+
+	cams, err := db.ListCameras(database)
+	if err != nil {
+		t.Fatalf("ListCameras: %v", err)
+	}
+	if len(cams) != 1 || cams[0].Motion == nil {
+		t.Fatalf("esperava 1 câmera com motion, got %v", cams)
+	}
+	if cams[0].Motion.CaptureWidth != 960 {
+		t.Errorf("CaptureWidth: got %d, want 960", cams[0].Motion.CaptureWidth)
+	}
+	if cams[0].Motion.CaptureHeight != 540 {
+		t.Errorf("CaptureHeight: got %d, want 540", cams[0].Motion.CaptureHeight)
+	}
+}
+
 func TestCreateCamera_WithMotion(t *testing.T) {
 	database := openTestDB(t)
 

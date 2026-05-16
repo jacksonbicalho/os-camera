@@ -7,7 +7,8 @@ export function useEventSource(path: string | null, onMessage: (data: string) =>
     const token = getToken()
     if (!token) return
 
-    const es = new EventSource(`${path}?token=${encodeURIComponent(token)}`)
+    const sep = path.includes('?') ? '&' : '?'
+    const es = new EventSource(`${path}${sep}token=${encodeURIComponent(token)}`)
     es.onmessage = (e) => onMessage(e.data)
     return () => es.close()
   }, [path, onMessage])

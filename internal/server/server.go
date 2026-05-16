@@ -111,13 +111,13 @@ type Server struct {
 	peakMu             sync.RWMutex
 	dailyPeakRaw       map[string]float64
 	dailyPeakDate      map[string]string
-	zoneStore          *zones.Store
 	snapFn             func(ctx context.Context, rtspURL string) ([]byte, error)
 	probedStreams       map[string]ffprobe.StreamInfo
 	db                 *db.DB
 	prober             *ffprobe.Prober
 	onCameraStart      func(config.CameraConfig)
 	onCameraStop       func(string)
+	monitors           map[string]*motion.Monitor
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
@@ -206,13 +206,18 @@ func (s *Server) WithMotionConfig(cfg config.MotionConfig) *Server {
 	return s
 }
 
-func (s *Server) WithZoneStore(store *zones.Store) *Server {
-	s.zoneStore = store
+func (s *Server) WithSnapshotter(fn func(ctx context.Context, rtspURL string) ([]byte, error)) *Server {
+	s.snapFn = fn
 	return s
 }
 
-func (s *Server) WithSnapshotter(fn func(ctx context.Context, rtspURL string) ([]byte, error)) *Server {
-	s.snapFn = fn
+func (s *Server) WithMonitor(cameraID string, m *motion.Monitor) *Server {
+	s.mu.Lock()
+	if s.monitors == nil {
+		s.monitors = make(map[string]*motion.Monitor)
+	}
+	s.monitors[cameraID] = m
+	s.mu.Unlock()
 	return s
 }
 
@@ -287,6 +292,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/motion/live", s.requireFullAuth(s.handleAllMotionLive))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/live", s.requireCameraAccess(s.handleMotionLive))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/scores", s.requireCameraAccess(s.handleMotionScores))
+	s.mux.HandleFunc("GET /api/cameras/{id}/motion/region-score", s.requireCameraAccess(s.handleMotionRegionScore))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/daily-peak", s.requireCameraAccess(s.handleMotionDailyPeak))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/zones", s.requireCameraAccess(s.handleMotionZonesGet))
 	s.mux.HandleFunc("PUT /api/cameras/{id}/motion/zones", s.requireCameraAccess(s.handleMotionZonesPut))
@@ -491,6 +497,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		Threshold       float64 `json:"threshold"`
 		FPS             int     `json:"fps"`
 		CooldownSeconds int     `json:"cooldown_seconds"`
+		CaptureWidth    int     `json:"capture_width,omitempty"`
+		CaptureHeight   int     `json:"capture_height,omitempty"`
 	}
 	type cameraDTO struct {
 		ID                string     `json:"id"`
@@ -518,6 +526,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 				Threshold:       c.Motion.Threshold,
 				FPS:             c.Motion.FPS,
 				CooldownSeconds: c.Motion.CooldownSeconds,
+				CaptureWidth:    c.Motion.CaptureWidth,
+				CaptureHeight:   c.Motion.CaptureHeight,
 			}
 		}
 		videoCodec := c.VideoCodec
@@ -1006,10 +1016,17 @@ func (s *Server) handleMotionLive(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			data, _ := json.Marshal(map[string]any{
+			payload := map[string]any{
 				"time":  ev.Time.Format(time.RFC3339),
 				"score": ev.Score,
-			})
+			}
+			if ev.Label != "" {
+				payload["label"] = ev.Label
+			}
+			if ev.Color != "" {
+				payload["color"] = ev.Color
+			}
+			data, _ := json.Marshal(payload)
 			fmt.Fprintf(w, "data: %s\n\n", data)
 			flusher.Flush()
 		case <-r.Context().Done():
@@ -1091,11 +1108,18 @@ func (s *Server) handleAllMotionLive(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			data, _ := json.Marshal(map[string]any{
+			payload := map[string]any{
 				"camera_id": te.cameraID,
 				"time":      te.ev.Time.Format(time.RFC3339),
 				"score":     te.ev.Score,
-			})
+			}
+			if te.ev.Label != "" {
+				payload["label"] = te.ev.Label
+			}
+			if te.ev.Color != "" {
+				payload["color"] = te.ev.Color
+			}
+			data, _ := json.Marshal(payload)
 			fmt.Fprintf(w, "data: %s\n\n", data)
 			flusher.Flush()
 		case <-r.Context().Done():
@@ -1138,6 +1162,63 @@ func (s *Server) handleMotionScores(w http.ResponseWriter, r *http.Request) {
 				"time":  ev.Time.Format(time.RFC3339),
 				"score": ev.Score,
 			})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+func (s *Server) handleMotionRegionScore(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	parseF := func(key string) (float64, bool) {
+		v := r.URL.Query().Get(key)
+		if v == "" {
+			return 0, false
+		}
+		f, err := strconv.ParseFloat(v, 64)
+		return f, err == nil
+	}
+	x, okX := parseF("x")
+	y, okY := parseF("y")
+	wf, okW := parseF("w")
+	hf, okH := parseF("h")
+	if !okX || !okY || !okW || !okH {
+		http.Error(w, "x, y, w, h query params required", http.StatusBadRequest)
+		return
+	}
+
+	s.mu.Lock()
+	mon := s.monitors[id]
+	s.mu.Unlock()
+	if mon == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	bbox := motion.BBox{X: x, Y: y, W: wf, H: hf}
+	inspID, ch := mon.RegisterInspector(bbox)
+	defer mon.UnregisterInspector(inspID)
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	for {
+		select {
+		case score, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, _ := json.Marshal(map[string]any{"score": score})
 			fmt.Fprintf(w, "data: %s\n\n", data)
 			flusher.Flush()
 		case <-r.Context().Done():
@@ -1201,8 +1282,13 @@ func (s *Server) handleMotionZonesGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var zs []zones.Zone
-	if s.zoneStore != nil {
-		zs = s.zoneStore.Get(id)
+	if s.db != nil {
+		var err error
+		zs, err = db.GetZones(s.db, id)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	} else {
 		zs = []zones.Zone{}
 	}
@@ -1228,11 +1314,11 @@ func (s *Server) handleMotionZonesPut(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if s.zoneStore == nil {
+	if s.db == nil {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	if err := s.zoneStore.Set(id, zs); err != nil {
+	if err := db.SetZones(s.db, id, zs); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

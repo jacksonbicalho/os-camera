@@ -589,7 +589,7 @@ func TestGetStatsIncludesMaxSizeWhenConfigured(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 	var resp struct {
-		MaxSizeBytes int64 `json:"max_size_bytes"`
+		MaxSizeBytes int64   `json:"max_size_bytes"`
 		WarnPercent  float64 `json:"warn_percent"`
 	}
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
@@ -934,6 +934,37 @@ func TestMotionLiveStreamsSSEEvents(t *testing.T) {
 	}
 }
 
+func TestMotionLiveStreamsLabelInSSE(t *testing.T) {
+	cfg := config.ServerConfig{}
+	cameraID := "cam1"
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
+
+	srcCh := make(chan motion.Event, 1)
+	srv.WithMotionFeed(cameraID, srcCh)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion/live", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		srv.ServeHTTP(w, req)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	srcCh <- motion.Event{Time: time.Date(2026, 5, 6, 10, 0, 0, 0, time.UTC), Score: 0.42, Label: "jardim"}
+	close(srcCh)
+	<-done
+
+	body := w.Body.String()
+	if !strings.Contains(body, "jardim") {
+		t.Errorf("expected label 'jardim' in SSE body, got %q", body)
+	}
+}
+
 func TestMotionLiveAcceptsTokenViaQueryParam(t *testing.T) {
 	cfg := config.ServerConfig{}
 	cameraID := "cam1"
@@ -1236,6 +1267,48 @@ func TestGetSettingsMasksRTSPCredentials(t *testing.T) {
 	}
 }
 
+func TestGetSettingsIncludesCameraMotionCaptureResolution(t *testing.T) {
+	motion := &config.MotionConfig{
+		Enabled:       true,
+		Threshold:     0.02,
+		FPS:           2,
+		CaptureWidth:  480,
+		CaptureHeight: 270,
+	}
+	cameras := []config.CameraConfig{
+		{ID: "cam1", RTSPURL: "rtsp://localhost/cam1", Motion: motion},
+	}
+	srv := server.NewServer(config.ServerConfig{}, "UTC", cameras, discardLogger(), nil)
+	srv = withTestUsersAndCameras(t, srv, cameras)
+
+	token := loginAndGetToken(t, srv, "admin", "pw")
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	var resp struct {
+		Cameras []struct {
+			Motion *struct {
+				CaptureWidth  int `json:"capture_width"`
+				CaptureHeight int `json:"capture_height"`
+			} `json:"motion"`
+		} `json:"cameras"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Cameras) != 1 || resp.Cameras[0].Motion == nil {
+		t.Fatalf("expected 1 camera with motion, got %v", resp.Cameras)
+	}
+	if resp.Cameras[0].Motion.CaptureWidth != 480 {
+		t.Errorf("capture_width: got %d, want 480", resp.Cameras[0].Motion.CaptureWidth)
+	}
+	if resp.Cameras[0].Motion.CaptureHeight != 270 {
+		t.Errorf("capture_height: got %d, want 270", resp.Cameras[0].Motion.CaptureHeight)
+	}
+}
+
 func TestGetAboutReturnsVersionAndUptime(t *testing.T) {
 	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", nil, discardLogger(), nil).
@@ -1450,20 +1523,18 @@ func TestMotionDailyPeakResetsOnNewDay(t *testing.T) {
 
 // --- Zonas de exclusão ---
 
-func newZoneServer(t *testing.T, cameraID string) (http.Handler, *zones.Store, string) {
+func newZoneServer(t *testing.T, cameraID string) (http.Handler, string) {
 	t.Helper()
-	zStore, _ := zones.NewStore(filepath.Join(t.TempDir(), "motion_zones.json"))
 	cfg := config.ServerConfig{}
 	cameras := []config.CameraConfig{{ID: cameraID, RTSPURL: "rtsp://fake"}}
-	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).
-		WithZoneStore(zStore)
-	srv = withTestUsers(t, srv)
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
+	srv = withTestUsersAndCameras(t, srv, cameras)
 	token := loginAndGetToken(t, srv, "u", "p")
-	return srv, zStore, token
+	return srv, token
 }
 
 func TestGetMotionZonesEmptyByDefault(t *testing.T) {
-	srv, _, token := newZoneServer(t, "cam1")
+	srv, token := newZoneServer(t, "cam1")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/motion/zones", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -1481,7 +1552,7 @@ func TestGetMotionZonesEmptyByDefault(t *testing.T) {
 }
 
 func TestPutMotionZonesThenGet(t *testing.T) {
-	srv, _, token := newZoneServer(t, "cam1")
+	srv, token := newZoneServer(t, "cam1")
 
 	body := `[{"x":0.1,"y":0.2,"w":0.3,"h":0.4}]`
 	req := httptest.NewRequest(http.MethodPut, "/api/cameras/cam1/motion/zones", strings.NewReader(body))
@@ -1522,7 +1593,7 @@ func TestPutMotionZonesValidation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			srv, _, token := newZoneServer(t, "cam1")
+			srv, token := newZoneServer(t, "cam1")
 			req := httptest.NewRequest(http.MethodPut, "/api/cameras/cam1/motion/zones", strings.NewReader(tc.body))
 			req.Header.Set("Authorization", "Bearer "+token)
 			req.Header.Set("Content-Type", "application/json")
@@ -1548,7 +1619,7 @@ func TestMotionZonesRequiresAuth(t *testing.T) {
 }
 
 func TestMotionZonesUnknownCameraReturns404(t *testing.T) {
-	srv, _, token := newZoneServer(t, "cam1")
+	srv, token := newZoneServer(t, "cam1")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/nonexistent/motion/zones", nil)
 	req.Header.Set("Authorization", "Bearer "+token)

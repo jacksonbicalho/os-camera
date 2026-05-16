@@ -1,15 +1,49 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type HlsType from 'hls.js'
 import { Link, useParams } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import ConfirmDialog from '../../components/ConfirmDialog'
-import { authHeaders } from '../../auth'
+import { authHeaders, getToken } from '../../auth'
 import { useSettings } from '../../hooks/useSettings'
+import { useEventSource } from '../../hooks/useEventSource'
 
 interface Zone {
   x: number
   y: number
   w: number
   h: number
+  type?: 'exclude' | 'detect'
+  label?: string
+  threshold?: number
+  cooldown_seconds?: number
+  fps?: number
+  scale?: number
+  color?: string
+}
+
+const ZONE_COLORS = [
+  '#ef4444', // vermelho
+  '#f97316', // laranja
+  '#eab308', // amarelo
+  '#22c55e', // verde
+  '#06b6d4', // ciano
+  '#3b82f6', // azul
+  '#8b5cf6', // violeta
+  '#ec4899', // rosa
+]
+
+function pickZoneColor(existing: Zone[]): string {
+  const used = new Set(existing.map(z => z.color).filter(Boolean))
+  return ZONE_COLORS.find(c => !used.has(c)) ?? ZONE_COLORS[existing.length % ZONE_COLORS.length]
+}
+
+function parseHex(hex: string): { r: number; g: number; b: number } {
+  const h = hex.replace('#', '')
+  return {
+    r: parseInt(h.slice(0, 2), 16) || 0,
+    g: parseInt(h.slice(2, 4), 16) || 0,
+    b: parseInt(h.slice(4, 6), 16) || 0,
+  }
 }
 
 type ResizeHandle = 'nw' | 'ne' | 'se' | 'sw'
@@ -20,9 +54,9 @@ type Interaction =
   | { mode: 'resizing'; idx: number; orig: Zone; handle: ResizeHandle; startX: number; startY: number; curX: number; curY: number }
   | null
 
-const HANDLE_PX = 10   // hit radius for corner handles
-const DELETE_PX = 12   // half-size of the × button hit area
-const SNAP = 0.025     // snap to frame edge if within 2.5%
+const HANDLE_PX = 10
+const DELETE_PX = 12
+const SNAP = 0.025
 
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)) }
 function snapEdge(v: number) {
@@ -46,7 +80,7 @@ function dragToZone(x0: number, y0: number, x1: number, y1: number, cw: number, 
   const ly = Math.min(y0, y1); const ry = Math.max(y0, y1)
   const nx = snapEdge(toNorm(lx, cw)); const nx1 = snapEdge(toNorm(rx, cw))
   const ny = snapEdge(toNorm(ly, ch)); const ny1 = snapEdge(toNorm(ry, ch))
-  return { x: nx, y: ny, w: nx1 - nx, h: ny1 - ny }
+  return { x: nx, y: ny, w: nx1 - nx, h: ny1 - ny, type: 'exclude' }
 }
 
 function applyResize(orig: Zone, handle: ResizeHandle, dx: number, dy: number, cw: number, ch: number): Zone {
@@ -73,7 +107,7 @@ function applyResize(orig: Zone, handle: ResizeHandle, dx: number, dy: number, c
       h = clamp(orig.h + ndy, 0.02, 1 - orig.y)
       break
   }
-  return { x, y, w, h }
+  return { ...orig, x, y, w, h }
 }
 
 function applyMove(orig: Zone, dx: number, dy: number, cw: number, ch: number): Zone {
@@ -82,7 +116,6 @@ function applyMove(orig: Zone, dx: number, dy: number, cw: number, ch: number): 
   return { ...orig, x: nx, y: ny }
 }
 
-// Returns corner handle hit, or null
 function detectHandle(zones: Zone[], px: number, py: number, cw: number, ch: number): { idx: number; handle: ResizeHandle } | null {
   for (let i = zones.length - 1; i >= 0; i--) {
     const z = zones[i]
@@ -100,12 +133,11 @@ function detectHandle(zones: Zone[], px: number, py: number, cw: number, ch: num
   return null
 }
 
-// Returns zone index whose × button was clicked, or -1
 function detectDeleteButton(zones: Zone[], px: number, py: number, cw: number, ch: number): number {
   for (let i = zones.length - 1; i >= 0; i--) {
     const z = zones[i]
-    const bx = (z.x + z.w) * cw - DELETE_PX  // center-x of × button
-    const by = z.y * ch + DELETE_PX           // center-y of × button
+    const bx = (z.x + z.w) * cw - DELETE_PX
+    const by = z.y * ch + DELETE_PX
     if (Math.abs(px - bx) <= DELETE_PX && Math.abs(py - by) <= DELETE_PX) {
       return i
     }
@@ -113,7 +145,6 @@ function detectDeleteButton(zones: Zone[], px: number, py: number, cw: number, c
   return -1
 }
 
-// Returns zone index under cursor (for move), or -1
 function hitTest(zones: Zone[], px: number, py: number, cw: number, ch: number): number {
   for (let i = zones.length - 1; i >= 0; i--) {
     const z = zones[i]
@@ -129,43 +160,55 @@ const HANDLE_CURSORS: Record<ResizeHandle, string> = {
   nw: 'nw-resize', ne: 'ne-resize', se: 'se-resize', sw: 'sw-resize',
 }
 
-function drawDeleteButton(ctx: CanvasRenderingContext2D, cx: number, cy: number) {
+function zoneColor(z: Zone, selected: boolean): { fill: string; stroke: string; handle: string } {
+  const hex = z.color ?? (z.type === 'detect' ? '#f97316' : '#ef4444')
+  const { r, g, b } = parseHex(hex)
+  const fillOpacity = selected ? 0.30 : 0.18
+  const strokeOpacity = selected ? 1.0 : 0.85
+  return {
+    fill: `rgba(${r},${g},${b},${fillOpacity})`,
+    stroke: `rgba(${r},${g},${b},${strokeOpacity})`,
+    handle: `rgba(${r},${g},${b},0.95)`,
+  }
+}
+
+function drawDeleteButton(ctx: CanvasRenderingContext2D, cx: number, cy: number, strokeColor: string) {
   const r = 9
   ctx.beginPath()
   ctx.arc(cx, cy, r, 0, Math.PI * 2)
   ctx.fillStyle = 'rgba(30,30,30,0.85)'
   ctx.fill()
-  ctx.strokeStyle = 'rgba(239,68,68,0.9)'
+  ctx.strokeStyle = strokeColor
   ctx.lineWidth = 1.2
   ctx.stroke()
-  // draw ×
   const d = 4
   ctx.beginPath()
   ctx.moveTo(cx - d, cy - d); ctx.lineTo(cx + d, cy + d)
   ctx.moveTo(cx + d, cy - d); ctx.lineTo(cx - d, cy + d)
-  ctx.strokeStyle = 'rgba(239,68,68,0.95)'
+  ctx.strokeStyle = strokeColor
   ctx.lineWidth = 1.8
   ctx.stroke()
 }
 
 function paintCanvas(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement | null,
+  video: HTMLVideoElement | null,
   zones: Zone[],
   cw: number,
   ch: number,
   ia: Interaction,
+  selectedIdx: number | null,
 ) {
   ctx.clearRect(0, 0, cw, ch)
-  if (img?.complete && img.naturalWidth > 0) {
-    ctx.drawImage(img, 0, 0, cw, ch)
+  if (video && video.readyState >= 2) {
+    ctx.drawImage(video, 0, 0, cw, ch)
   } else {
     ctx.fillStyle = '#1f2937'
     ctx.fillRect(0, 0, cw, ch)
     ctx.fillStyle = '#6b7280'
     ctx.font = '14px sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText('Câmera indisponível', cw / 2, ch / 2)
+    ctx.fillText('Aguardando transmissão...', cw / 2, ch / 2)
   }
 
   const preview: Zone[] = zones.map((z, i) => {
@@ -181,25 +224,35 @@ function paintCanvas(
 
   for (let i = 0; i < preview.length; i++) {
     const z = preview[i]
-    const x = z.x * cw; const y = z.y * ch; const w = z.w * cw; const h = z.h * ch
-
-    // fill + border
-    ctx.fillStyle = 'rgba(239,68,68,0.18)'
-    ctx.fillRect(x, y, w, h)
-    ctx.strokeStyle = 'rgba(239,68,68,0.85)'
-    ctx.lineWidth = 1.5
-    ctx.strokeRect(x, y, w, h)
-
-    // corner handles (only for committed zones, not the one being drawn)
+    const px = z.x * cw; const py = z.y * ch; const pw = z.w * cw; const ph = z.h * ch
     const isDrawing = ia?.mode === 'drawing' && i === preview.length - 1
+    const isSelected = !isDrawing && selectedIdx === i
+    const colors = zoneColor(z, isSelected)
+
+    ctx.fillStyle = colors.fill
+    ctx.fillRect(px, py, pw, ph)
+    ctx.strokeStyle = colors.stroke
+    ctx.lineWidth = isSelected ? 2 : 1.5
+    ctx.strokeRect(px, py, pw, ph)
+
     if (!isDrawing) {
-      const corners: [number, number][] = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
-      for (const [cx, cy] of corners) {
-        ctx.fillStyle = 'rgba(239,68,68,0.9)'
-        ctx.fillRect(cx - 5, cy - 5, 10, 10)
+      const corners: [number, number][] = [[px, py], [px + pw, py], [px + pw, py + ph], [px, py + ph]]
+      for (const [hx, hy] of corners) {
+        ctx.fillStyle = colors.handle
+        ctx.fillRect(hx - 5, hy - 5, 10, 10)
       }
-      // × button at top-right
-      drawDeleteButton(ctx, x + w - DELETE_PX, y + DELETE_PX)
+      drawDeleteButton(ctx, px + pw - DELETE_PX, py + DELETE_PX, colors.stroke)
+
+      // label / type badge
+      const displayLabel = z.label || (z.type === 'detect' ? 'detect' : null)
+      if (displayLabel) {
+        ctx.font = '11px sans-serif'
+        ctx.textAlign = 'left'
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'
+        ctx.fillRect(px + 4, py + 4, ctx.measureText(displayLabel).width + 8, 16)
+        ctx.fillStyle = colors.stroke
+        ctx.fillText(displayLabel, px + 8, py + 15)
+      }
     }
   }
 }
@@ -209,6 +262,13 @@ export default function CameraZonesSettingsPage() {
   const settings = useSettings(`/settings/cameras/${id}/zones`)
   const cam = settings?.cameras.find(c => c.id === id)
 
+  const capW = cam
+    ? ((cam.motion?.capture_width ?? 0) > 0 ? cam.motion!.capture_width! : Math.max(1, Math.round((cam.width ?? 0) / 4)))
+    : 0
+  const capH = cam
+    ? ((cam.motion?.capture_height ?? 0) > 0 ? cam.motion!.capture_height! : Math.max(1, Math.round((cam.height ?? 0) / 4)))
+    : 0
+
   const [zones, setZones] = useState<Zone[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -216,16 +276,43 @@ export default function CameraZonesSettingsPage() {
   const [confirmClear, setConfirmClear] = useState(false)
   const [interaction, setInteraction] = useState<Interaction>(null)
   const [cursorStyle, setCursorStyle] = useState('crosshair')
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
+  const [regionScore, setRegionScore] = useState<number | null>(null)
+  const [peakScore, setPeakScore] = useState<number | null>(null)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const imgRef = useRef<HTMLImageElement | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const hlsRef = useRef<HlsType | null>(null)
+  const rafRef = useRef<number>(0)
+  const zonesRef = useRef(zones)
+  const interactionRef = useRef(interaction)
+  const selectedIdxRef = useRef(selectedIdx)
+  useEffect(() => {
+    zonesRef.current = zones
+    interactionRef.current = interaction
+    selectedIdxRef.current = selectedIdx
+  })
 
-  const snapshotURL = useMemo(() => {
-    if (!id) return null
-    const hdrs = authHeaders() as Record<string, string>
-    const token = hdrs['Authorization']?.replace('Bearer ', '') ?? ''
-    return `/api/cameras/${id}/snapshot?token=${encodeURIComponent(token)}`
-  }, [id])
+  // SSE URL for live region score — only when a zone is selected
+  const sseURL = (() => {
+    if (selectedIdx === null || !zones[selectedIdx] || !id) return null
+    const z = zones[selectedIdx]
+    return `/api/cameras/${id}/motion/region-score?x=${z.x}&y=${z.y}&w=${z.w}&h=${z.h}`
+  })()
+
+  const handleScoreMessage = useCallback((data: string) => {
+    try {
+      const p = JSON.parse(data)
+      if (typeof p.score === 'number') {
+        setRegionScore(p.score)
+        setPeakScore(prev => prev === null ? p.score : Math.max(prev, p.score))
+      }
+    } catch {
+      // ignore JSON parse errors
+    }
+  }, [])
+
+  useEventSource(sseURL, handleScoreMessage)
 
   useEffect(() => {
     if (!id) return
@@ -237,15 +324,56 @@ export default function CameraZonesSettingsPage() {
     return () => { active = false }
   }, [id])
 
-  const redraw = useCallback((currentZones: Zone[], ia: Interaction) => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    paintCanvas(ctx, imgRef.current, currentZones, canvas.width, canvas.height, ia)
+  // HLS live stream setup
+  useEffect(() => {
+    if (!id) return
+    const video = document.createElement('video')
+    video.muted = true
+    video.playsInline = true
+    videoRef.current = video
+
+    import('hls.js').then(({ default: Hls }) => {
+      const src = `/stream/${id}/index.m3u8`
+      if (!Hls.isSupported()) {
+        video.src = `${src}?token=${encodeURIComponent(getToken() ?? '')}`
+        video.play().catch(() => {})
+        return
+      }
+      const hls = new Hls({
+        manifestLoadingMaxRetry: 20,
+        manifestLoadingRetryDelay: 2000,
+        xhrSetup(xhr) {
+          xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`)
+        },
+      })
+      hls.loadSource(src)
+      hls.attachMedia(video)
+      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}))
+      hlsRef.current = hls
+    })
+
+    return () => {
+      hlsRef.current?.destroy()
+      hlsRef.current = null
+      video.src = ''
+      videoRef.current = null
+    }
+  }, [id])
+
+  // RAF loop — repinta o canvas a cada frame com o vídeo ao vivo e as zonas
+  useEffect(() => {
+    function loop() {
+      const canvas = canvasRef.current
+      const ctx = canvas?.getContext('2d')
+      if (canvas && ctx) {
+        paintCanvas(ctx, videoRef.current, zonesRef.current, canvas.width, canvas.height, interactionRef.current, selectedIdxRef.current)
+      }
+      rafRef.current = requestAnimationFrame(loop)
+    }
+    rafRef.current = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(rafRef.current)
   }, [])
 
-  useEffect(() => { redraw(zones, interaction) }, [zones, interaction, redraw])
 
   function updateCursor(px: number, py: number, currentZones: Zone[]) {
     const canvas = canvasRef.current
@@ -259,33 +387,46 @@ export default function CameraZonesSettingsPage() {
     setCursorStyle(hit >= 0 ? 'grab' : 'crosshair')
   }
 
+  function updateSelectedZone(patch: Partial<Zone>) {
+    if (selectedIdx === null) return
+    setZones(prev => prev.map((z, i) => i === selectedIdx ? { ...z, ...patch } : z))
+  }
+
   function handleMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
     const { x, y } = relPos(e)
     const canvas = canvasRef.current
     if (!canvas) return
     const cw = canvas.width; const ch = canvas.height
 
-    // × button takes priority
     const delIdx = detectDeleteButton(zones, x, y, cw, ch)
     if (delIdx >= 0) {
+      setSelectedIdx(prev => {
+        if (prev === delIdx) { setRegionScore(null); setPeakScore(null); return null }
+        if (prev !== null && delIdx < prev) return prev - 1
+        return prev
+      })
       setZones(prev => prev.filter((_, i) => i !== delIdx))
       return
     }
-    // corner handle → resize
     const h = detectHandle(zones, x, y, cw, ch)
     if (h) {
+      if (h.idx !== selectedIdx) { setRegionScore(null); setPeakScore(null) }
+      setSelectedIdx(h.idx)
       setInteraction({ mode: 'resizing', idx: h.idx, orig: zones[h.idx], handle: h.handle, startX: x, startY: y, curX: x, curY: y })
       setCursorStyle(HANDLE_CURSORS[h.handle])
       return
     }
-    // inside zone → move
     const idx = hitTest(zones, x, y, cw, ch)
     if (idx >= 0) {
+      if (idx !== selectedIdx) { setRegionScore(null); setPeakScore(null) }
+      setSelectedIdx(idx)
       setInteraction({ mode: 'moving', idx, orig: zones[idx], startX: x, startY: y, curX: x, curY: y })
       setCursorStyle('grabbing')
       return
     }
-    // empty area → draw
+    setSelectedIdx(null)
+    setRegionScore(null)
+    setPeakScore(null)
     setInteraction({ mode: 'drawing', startX: x, startY: y, curX: x, curY: y })
   }
 
@@ -303,7 +444,16 @@ export default function CameraZonesSettingsPage() {
 
     if (interaction.mode === 'drawing') {
       const z = dragToZone(interaction.startX, interaction.startY, interaction.curX, interaction.curY, cw, ch)
-      if (z.w > 0.01 && z.h > 0.01) setZones(prev => [...prev, z])
+      if (z.w > 0.01 && z.h > 0.01) {
+        const newIdx = zones.length
+        setRegionScore(null)
+        setPeakScore(null)
+        setZones(prev => {
+          const color = pickZoneColor(prev)
+          return [...prev, { ...z, color }]
+        })
+        setSelectedIdx(newIdx)
+      }
     } else if (interaction.mode === 'moving') {
       const moved = applyMove(interaction.orig, interaction.curX - interaction.startX, interaction.curY - interaction.startY, cw, ch)
       setZones(prev => prev.map((z, i) => i === interaction.idx ? moved : z))
@@ -333,6 +483,8 @@ export default function CameraZonesSettingsPage() {
     }
   }
 
+  const selectedZone = selectedIdx !== null ? zones[selectedIdx] : null
+
   return (
     <SettingsLayout>
       <nav className="flex items-center gap-1.5 text-xs text-gray-500 mb-5">
@@ -342,12 +494,12 @@ export default function CameraZonesSettingsPage() {
         <span>/</span>
         <Link to={`/settings/cameras/${id}/motion`} className="hover:text-gray-300 transition-colors">Detecção de movimento</Link>
         <span>/</span>
-        <span className="text-gray-300">Zonas de exclusão</span>
+        <span className="text-gray-300">Zonas</span>
       </nav>
 
-      <h2 className="text-lg font-semibold text-gray-200 mb-2">{id} — zonas de exclusão</h2>
+      <h2 className="text-lg font-semibold text-gray-200 mb-2">{id} — zonas</h2>
       <p className="text-xs text-gray-500 mb-5">
-        Arraste em área vazia para criar uma zona. Arraste uma zona para movê-la. Arraste os cantos para redimensionar. Clique no × para excluir.
+        Arraste em área vazia para criar uma zona. Clique numa zona para selecioná-la e configurá-la. Arraste os cantos para redimensionar. Clique no × para excluir.
       </p>
 
       {!settings ? (
@@ -358,19 +510,11 @@ export default function CameraZonesSettingsPage() {
         <p className="text-gray-500 text-sm">Carregando zonas...</p>
       ) : (
         <div className="flex flex-col gap-4">
+          {/* Canvas — fundo: transmissão ao vivo via HLS */}
           <div
             className="relative bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
             style={{ aspectRatio: '16/9' }}
           >
-            {snapshotURL && (
-              <img
-                src={snapshotURL}
-                alt=""
-                className="hidden"
-                onLoad={ev => { imgRef.current = ev.currentTarget; redraw(zones, interaction) }}
-                onError={() => { imgRef.current = null; redraw(zones, interaction) }}
-              />
-            )}
             <canvas
               ref={canvasRef}
               width={960}
@@ -386,6 +530,141 @@ export default function CameraZonesSettingsPage() {
               }}
             />
           </div>
+
+          {/* Zone settings panel */}
+          {selectedZone && (
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-gray-200 flex items-center gap-2">
+                  <span
+                    className="inline-block w-3 h-3 rounded-sm flex-shrink-0"
+                    style={{ backgroundColor: selectedZone.color ?? (selectedZone.type === 'detect' ? '#f97316' : '#ef4444') }}
+                  />
+                  Zona {selectedIdx! + 1}
+                  {selectedZone.type === 'detect' && (
+                    <span className="text-xs text-gray-400 font-normal">detecção independente</span>
+                  )}
+                </h3>
+                {sseURL && (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-500">Ao vivo:</span>
+                      <span className="text-sm font-mono text-yellow-400 min-w-[6ch]">
+                        {regionScore !== null ? regionScore.toFixed(4) : '—'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-500">Pico:</span>
+                      <span className="text-sm font-mono text-orange-400 min-w-[6ch]">
+                        {peakScore !== null ? peakScore.toFixed(4) : '—'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-6 flex-wrap">
+                {/* Label */}
+                <div className="flex flex-col gap-1 min-w-40">
+                  <label className="text-xs text-gray-400">Nome (opcional)</label>
+                  <input
+                    type="text"
+                    value={selectedZone.label ?? ''}
+                    onChange={e => updateSelectedZone({ label: e.target.value || undefined })}
+                    placeholder="ex: entrada"
+                    className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-600 w-full"
+                  />
+                </div>
+
+                {/* Type */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs text-gray-400">Tipo</span>
+                  <div className="flex gap-4">
+                    {(['exclude', 'detect'] as const).map(t => (
+                      <label key={t} className="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer">
+                        <input
+                          type="radio"
+                          value={t}
+                          checked={(selectedZone.type ?? 'exclude') === t}
+                          onChange={() => updateSelectedZone({ type: t })}
+                          className="accent-blue-500"
+                        />
+                        {t === 'exclude' ? 'Exclusão' : 'Detecção'}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-600 max-w-xs">
+                    {(selectedZone.type ?? 'exclude') === 'exclude'
+                      ? 'Ignora movimento nesta região no diff global.'
+                      : 'Detecta movimento nesta região de forma independente, com limiar e cooldown próprios.'}
+                  </p>
+                </div>
+
+                {/* Detect-only fields */}
+                {(selectedZone.type ?? 'exclude') === 'detect' && (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-gray-400">Limiar (0 = câmera)</label>
+                      <input
+                        type="number"
+                        min={0} max={1} step={0.001}
+                        value={selectedZone.threshold ?? 0}
+                        onChange={e => updateSelectedZone({ threshold: parseFloat(e.target.value) || 0 })}
+                        className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-600 w-28"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-gray-400">Cooldown (s, 0 = câmera)</label>
+                      <input
+                        type="number"
+                        min={0} step={1}
+                        value={selectedZone.cooldown_seconds ?? 0}
+                        onChange={e => updateSelectedZone({ cooldown_seconds: parseInt(e.target.value) || 0 })}
+                        className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-600 w-28"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-gray-400">FPS de amostragem (0 = câmera)</label>
+                      <input
+                        type="number"
+                        min={0} step={1}
+                        value={selectedZone.fps ?? 0}
+                        onChange={e => updateSelectedZone({ fps: parseInt(e.target.value) || 0 })}
+                        className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-600 w-28"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs text-gray-400">Escala de análise</label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="range"
+                          min={10} max={100} step={5}
+                          value={Math.round((selectedZone.scale || 1) * 100)}
+                          onChange={e => updateSelectedZone({ scale: parseInt(e.target.value) / 100 })}
+                          className="w-32 accent-blue-500"
+                        />
+                        <span className="text-xs text-gray-300 font-mono w-10 text-right">
+                          {Math.round((selectedZone.scale || 1) * 100)}%
+                        </span>
+                      </div>
+                      {capW > 0 && capH > 0 && (() => {
+                        const zW = Math.max(1, Math.round(selectedZone.w * capW))
+                        const zH = Math.max(1, Math.round(selectedZone.h * capH))
+                        const sc = selectedZone.scale || 1
+                        const sW = Math.max(1, Math.round(zW * sc))
+                        const sH = Math.max(1, Math.round(zH * sc))
+                        return (
+                          <p className="text-xs text-gray-600">
+                            {sc < 1 ? `${zW} × ${zH} px → ${sW} × ${sH} px` : `${zW} × ${zH} px`}
+                          </p>
+                        )
+                      })()}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {toast && (
             <p className={`text-sm ${toast.ok ? 'text-green-400' : 'text-red-400'}`}>{toast.msg}</p>
@@ -408,7 +687,7 @@ export default function CameraZonesSettingsPage() {
               </button>
             )}
             {zones.length > 0 && (
-              <span className="text-xs text-gray-600">{zones.length} zona{zones.length !== 1 ? 's' : ''} definida{zones.length !== 1 ? 's' : ''}</span>
+              <span className="text-xs text-gray-600">{zones.length} zona{zones.length !== 1 ? 's' : ''}</span>
             )}
           </div>
         </div>
@@ -417,10 +696,10 @@ export default function CameraZonesSettingsPage() {
       <ConfirmDialog
         open={confirmClear}
         title="Limpar todas as zonas"
-        message="Todas as zonas de exclusão serão removidas. Esta ação não pode ser desfeita."
+        message="Todas as zonas serão removidas. Esta ação não pode ser desfeita."
         confirmLabel="Limpar"
         danger
-        onConfirm={() => { setZones([]); setConfirmClear(false) }}
+        onConfirm={() => { setZones([]); setSelectedIdx(null); setConfirmClear(false) }}
         onCancel={() => setConfirmClear(false)}
       />
     </SettingsLayout>

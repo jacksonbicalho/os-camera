@@ -1,0 +1,2 @@
+ALTER TABLE camera_motion ADD COLUMN capture_width  INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE camera_motion ADD COLUMN capture_height INTEGER NOT NULL DEFAULT 0;

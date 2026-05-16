@@ -13,6 +13,7 @@ type MotionEvent struct {
 	OccurredAt time.Time
 	Score      float64
 	FramePath  string
+	Label      string
 	BboxX      float64
 	BboxY      float64
 	BboxW      float64
@@ -22,12 +23,13 @@ type MotionEvent struct {
 // InsertMotionEvent adds a motion event row.
 func InsertMotionEvent(db *DB, ev MotionEvent) error {
 	_, err := db.Exec(`
-		INSERT INTO motion_events(camera_id, occurred_at, score, frame_path, bbox_x, bbox_y, bbox_w, bbox_h)
-		VALUES(?,?,?,?,?,?,?,?)`,
+		INSERT INTO motion_events(camera_id, occurred_at, score, frame_path, label, bbox_x, bbox_y, bbox_w, bbox_h)
+		VALUES(?,?,?,?,?,?,?,?,?)`,
 		ev.CameraID,
 		ev.OccurredAt.UTC().Format(time.RFC3339),
 		ev.Score,
 		nullStr(ev.FramePath),
+		nullStr(ev.Label),
 		nullFloat(ev.BboxX),
 		nullFloat(ev.BboxY),
 		nullFloat(ev.BboxW),

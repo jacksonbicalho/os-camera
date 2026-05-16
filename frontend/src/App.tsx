@@ -43,6 +43,7 @@ export default function App() {
       <Route path="/stats" element={<Lazy><StatsPage /></Lazy>} />
       <Route path="/settings/stats" element={<Lazy><StatsSettingsPage /></Lazy>} />
       <Route path="/settings/cameras" element={<Lazy><CamerasSettingsPage /></Lazy>} />
+      <Route path="/settings/cameras/new" element={<Lazy><CamerasSettingsPage /></Lazy>} />
       <Route path="/settings/cameras/:id" element={<Lazy><CameraDetailSettingsPage /></Lazy>} />
       <Route path="/settings/cameras/:id/motion" element={<Lazy><CameraMotionSettingsPage /></Lazy>} />
       <Route path="/settings/cameras/:id/motion/zones" element={<Lazy><CameraZonesSettingsPage /></Lazy>} />

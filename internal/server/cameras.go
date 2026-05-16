@@ -36,6 +36,8 @@ type motionConfigDTO struct {
 	Threshold       float64 `json:"threshold"`
 	FPS             int     `json:"fps"`
 	CooldownSeconds int     `json:"cooldown_seconds"`
+	CaptureWidth    int     `json:"capture_width,omitempty"`
+	CaptureHeight   int     `json:"capture_height,omitempty"`
 }
 
 type cameraConfigDTO struct {
@@ -69,6 +71,8 @@ func cameraToDTO(cam config.CameraConfig) cameraConfigDTO {
 			Threshold:       cam.Motion.Threshold,
 			FPS:             cam.Motion.FPS,
 			CooldownSeconds: cam.Motion.CooldownSeconds,
+			CaptureWidth:    cam.Motion.CaptureWidth,
+			CaptureHeight:   cam.Motion.CaptureHeight,
 		}
 	}
 	return dto
@@ -161,6 +165,8 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 			Threshold:       req.Motion.Threshold,
 			FPS:             req.Motion.FPS,
 			CooldownSeconds: req.Motion.CooldownSeconds,
+			CaptureWidth:    req.Motion.CaptureWidth,
+			CaptureHeight:   req.Motion.CaptureHeight,
 		}
 	}
 
@@ -248,6 +254,8 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 			Threshold:       req.Motion.Threshold,
 			FPS:             req.Motion.FPS,
 			CooldownSeconds: req.Motion.CooldownSeconds,
+			CaptureWidth:    req.Motion.CaptureWidth,
+			CaptureHeight:   req.Motion.CaptureHeight,
 		}
 	}
 

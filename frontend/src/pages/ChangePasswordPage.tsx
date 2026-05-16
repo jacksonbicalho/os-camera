@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getUsername, changePassword, login, clearToken } from '../auth'
+import { getUsername, changePassword, login, clearToken, getRole, authHeaders } from '../auth'
 
 export default function ChangePasswordPage() {
   const [password, setPassword] = useState('')
@@ -26,6 +26,14 @@ export default function ChangePasswordPage() {
       await changePassword(password)
       clearToken()
       await login(username, password)
+      try {
+        const res = await fetch('/api/cameras', { headers: authHeaders() })
+        const data = res.ok ? await res.json() : []
+        if (Array.isArray(data) && data.length === 0 && getRole() === 'admin') {
+          navigate('/settings/cameras/new', { replace: true })
+          return
+        }
+      } catch { /* ignore, segue para o dashboard */ }
       navigate('/', { replace: true })
     } catch {
       setError('Falha ao alterar senha. Tente novamente.')

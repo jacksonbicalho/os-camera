@@ -15,7 +15,7 @@ func TestStoreWritesNDJSONEvent(t *testing.T) {
 	ts := time.Date(2026, 5, 3, 14, 30, 0, 0, time.UTC)
 
 	st := newStore(dir, nil)
-	if err := st.record(cameraID, ts, 0.42, "20260503143000_motion.jpg", BBox{X: 0.1, Y: 0.2, W: 0.3, H: 0.4}); err != nil {
+	if err := st.record(cameraID, ts, 0.42, "20260503143000_motion.jpg", "", "", BBox{X: 0.1, Y: 0.2, W: 0.3, H: 0.4}); err != nil {
 		t.Fatalf("record error: %v", err)
 	}
 
@@ -61,8 +61,8 @@ func TestStoreAppendsMultipleEvents(t *testing.T) {
 	ts2 := time.Date(2026, 5, 3, 10, 0, 5, 0, time.UTC)
 
 	st := newStore(dir, nil)
-	st.record(cameraID, ts1, 0.1, "20260503100000_motion.jpg", BBox{})
-	st.record(cameraID, ts2, 0.2, "20260503100005_motion.jpg", BBox{})
+	st.record(cameraID, ts1, 0.1, "20260503100000_motion.jpg", "", "", BBox{})
+	st.record(cameraID, ts2, 0.2, "20260503100005_motion.jpg", "", "", BBox{})
 
 	path := filepath.Join(dir, cameraID, "2026", "05", "03", "motion.ndjson")
 	f, _ := os.Open(path)
@@ -78,12 +78,33 @@ func TestStoreAppendsMultipleEvents(t *testing.T) {
 	}
 }
 
+func TestStoreWritesColorToNDJSON(t *testing.T) {
+	dir := t.TempDir()
+	ts := time.Date(2026, 5, 3, 14, 30, 0, 0, time.UTC)
+	st := newStore(dir, nil)
+	if err := st.record("cam1", ts, 0.1, "frame.jpg", "jardim", "#3b82f6", BBox{}); err != nil {
+		t.Fatalf("record error: %v", err)
+	}
+
+	path := filepath.Join(dir, "cam1", "2026", "05", "03", "motion.ndjson")
+	f, _ := os.Open(path)
+	defer f.Close()
+	var event map[string]any
+	json.NewDecoder(f).Decode(&event)
+	if event["label"] != "jardim" {
+		t.Errorf("label: got %v, want jardim", event["label"])
+	}
+	if event["color"] != "#3b82f6" {
+		t.Errorf("color: got %v, want #3b82f6", event["color"])
+	}
+}
+
 // Evento sem frame (legado) deve ser lido corretamente com frame vazio
 func TestStoreEmptyFrameName(t *testing.T) {
 	dir := t.TempDir()
 	ts := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
 	st := newStore(dir, nil)
-	if err := st.record("cam1", ts, 0.05, "", BBox{}); err != nil {
+	if err := st.record("cam1", ts, 0.05, "", "", "", BBox{}); err != nil {
 		t.Fatalf("record error: %v", err)
 	}
 
