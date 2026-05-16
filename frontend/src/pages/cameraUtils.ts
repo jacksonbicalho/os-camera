@@ -13,6 +13,7 @@ export interface MotionBBox {
 }
 
 export interface MotionEvent {
+  id?: number
   time: string
   score: number
   frame?: string

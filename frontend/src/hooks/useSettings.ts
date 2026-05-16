@@ -9,6 +9,7 @@ export interface MotionSettings {
   cooldown_seconds: number
   capture_width?: number
   capture_height?: number
+  playback_lead_seconds: number
 }
 
 export interface CameraSettings {

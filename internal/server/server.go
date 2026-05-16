@@ -112,7 +112,7 @@ type Server struct {
 	dailyPeakRaw       map[string]float64
 	dailyPeakDate      map[string]string
 	snapFn             func(ctx context.Context, rtspURL string) ([]byte, error)
-	probedStreams       map[string]ffprobe.StreamInfo
+	probedStreams      map[string]ffprobe.StreamInfo
 	db                 *db.DB
 	prober             *ffprobe.Prober
 	onCameraStart      func(config.CameraConfig)
@@ -130,16 +130,16 @@ func NewServer(cfg config.ServerConfig, timezone string, cameras []config.Camera
 	}
 
 	s := &Server{
-		cfg:        cfg,
-		timezone:   timezone,
-		cameras:    cameras,
-		log:        log,
-		secret:     secret,
-		frontend:   frontend,
-		mux:        http.NewServeMux(),
-		streamSeen:   make(map[string]time.Time),
+		cfg:           cfg,
+		timezone:      timezone,
+		cameras:       cameras,
+		log:           log,
+		secret:        secret,
+		frontend:      frontend,
+		mux:           http.NewServeMux(),
+		streamSeen:    make(map[string]time.Time),
 		probedStreams: make(map[string]ffprobe.StreamInfo),
-		startTime:    time.Now(),
+		startTime:     time.Now(),
 	}
 	s.routes()
 	return s
@@ -170,7 +170,6 @@ func (s *Server) WithProber(p *ffprobe.Prober) *Server {
 	s.prober = p
 	return s
 }
-
 
 func (s *Server) WithVersion(v string) *Server {
 	s.version = v
@@ -493,12 +492,13 @@ func maskRTSP(raw string) string {
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	type motionDTO struct {
-		Enabled         bool    `json:"enabled"`
-		Threshold       float64 `json:"threshold"`
-		FPS             int     `json:"fps"`
-		CooldownSeconds int     `json:"cooldown_seconds"`
-		CaptureWidth    int     `json:"capture_width,omitempty"`
-		CaptureHeight   int     `json:"capture_height,omitempty"`
+		Enabled             bool    `json:"enabled"`
+		Threshold           float64 `json:"threshold"`
+		FPS                 int     `json:"fps"`
+		CooldownSeconds     int     `json:"cooldown_seconds"`
+		CaptureWidth        int     `json:"capture_width,omitempty"`
+		CaptureHeight       int     `json:"capture_height,omitempty"`
+		PlaybackLeadSeconds int     `json:"playback_lead_seconds"`
 	}
 	type cameraDTO struct {
 		ID                string     `json:"id"`
@@ -523,12 +523,13 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		var motion *motionDTO
 		if c.Motion != nil {
 			motion = &motionDTO{
-				Enabled:         c.Motion.Enabled,
-				Threshold:       c.Motion.Threshold,
-				FPS:             c.Motion.FPS,
-				CooldownSeconds: c.Motion.CooldownSeconds,
-				CaptureWidth:    c.Motion.CaptureWidth,
-				CaptureHeight:   c.Motion.CaptureHeight,
+				Enabled:             c.Motion.Enabled,
+				Threshold:           c.Motion.Threshold,
+				FPS:                 c.Motion.FPS,
+				CooldownSeconds:     c.Motion.CooldownSeconds,
+				CaptureWidth:        c.Motion.CaptureWidth,
+				CaptureHeight:       c.Motion.CaptureHeight,
+				PlaybackLeadSeconds: c.Motion.PlaybackLeadSeconds,
 			}
 		}
 		videoCodec := c.VideoCodec
@@ -618,8 +619,9 @@ func (s *Server) handleClientConfig(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
 	type cameraInfo struct {
-		ID              string  `json:"id"`
-		MotionThreshold float64 `json:"motion_threshold"`
+		ID                  string  `json:"id"`
+		MotionThreshold     float64 `json:"motion_threshold"`
+		PlaybackLeadSeconds int     `json:"playback_lead_seconds"`
 	}
 
 	cameras := s.cameras
@@ -653,9 +655,14 @@ func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
 		if mc := c.EffectiveMotionConfig(); mc.Threshold != 0 {
 			threshold = mc.Threshold
 		}
+		lead := 10
+		if mc := c.EffectiveMotionConfig(); mc.PlaybackLeadSeconds > 0 {
+			lead = mc.PlaybackLeadSeconds
+		}
 		list[i] = cameraInfo{
-			ID:              c.ID,
-			MotionThreshold: threshold,
+			ID:                  c.ID,
+			MotionThreshold:     threshold,
+			PlaybackLeadSeconds: lead,
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1385,6 +1392,7 @@ func (s *Server) handleMotionEvents(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			for _, ev := range rows {
 				entry := map[string]any{
+					"id":    ev.ID,
 					"time":  ev.OccurredAt.UTC().Format(time.RFC3339),
 					"score": ev.Score,
 					"bbox":  map[string]float64{"x": ev.BboxX, "y": ev.BboxY, "w": ev.BboxW, "h": ev.BboxH},

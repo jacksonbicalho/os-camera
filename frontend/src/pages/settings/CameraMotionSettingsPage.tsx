@@ -158,6 +158,7 @@ export default function CameraMotionSettingsPage() {
               { label: 'Limiar', value: effectiveThreshold },
               { label: 'FPS de amostragem', value: effectiveMotion?.fps ?? '—' },
               { label: 'Cooldown (segundos)', value: effectiveMotion?.cooldown_seconds === 0 ? 'desativado' : effectiveMotion?.cooldown_seconds ?? '—' },
+              { label: 'Segundos antes do evento', value: effectiveMotion?.playback_lead_seconds ?? 10 },
               {
                 label: 'Resolução de captura',
                 value: (effectiveMotion?.capture_width && effectiveMotion?.capture_height)

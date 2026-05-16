@@ -102,7 +102,7 @@ func ListCameras(db *DB) ([]config.CameraConfig, error) {
 		SELECT c.id, c.rtsp_url, c.chunk_duration, c.reconnect_interval,
 		       c.video_codec, c.has_audio, c.width, c.height, c.display_order, c.hls_video_mode,
 		       cm.enabled, cm.threshold, cm.fps, cm.cooldown_seconds,
-		       cm.capture_width, cm.capture_height
+		       cm.capture_width, cm.capture_height, cm.playback_lead_seconds
 		FROM cameras c
 		LEFT JOIN camera_motion cm ON cm.camera_id = c.id
 		ORDER BY c.display_order, c.id
@@ -120,12 +120,12 @@ func ListCameras(db *DB) ([]config.CameraConfig, error) {
 		var hasAudio, width, height sql.NullInt64
 		var mEnabled sql.NullInt64
 		var mThreshold sql.NullFloat64
-		var mFPS, mCooldown, mCaptureW, mCaptureH sql.NullInt64
+		var mFPS, mCooldown, mCaptureW, mCaptureH, mPlaybackLead sql.NullInt64
 
 		if err := rows.Scan(
 			&cam.ID, &cam.RTSPURL, &chunk, &reconnect,
 			&codec, &hasAudio, &width, &height, &cam.DisplayOrder, &cam.HLSVideoMode,
-			&mEnabled, &mThreshold, &mFPS, &mCooldown, &mCaptureW, &mCaptureH,
+			&mEnabled, &mThreshold, &mFPS, &mCooldown, &mCaptureW, &mCaptureH, &mPlaybackLead,
 		); err != nil {
 			return nil, fmt.Errorf("scan camera: %w", err)
 		}
@@ -147,12 +147,13 @@ func ListCameras(db *DB) ([]config.CameraConfig, error) {
 		}
 		if mEnabled.Valid {
 			cam.Motion = &config.MotionConfig{
-				Enabled:         mEnabled.Int64 != 0,
-				Threshold:       mThreshold.Float64,
-				FPS:             int(mFPS.Int64),
-				CooldownSeconds: int(mCooldown.Int64),
-				CaptureWidth:    int(mCaptureW.Int64),
-				CaptureHeight:   int(mCaptureH.Int64),
+				Enabled:             mEnabled.Int64 != 0,
+				Threshold:           mThreshold.Float64,
+				FPS:                 int(mFPS.Int64),
+				CooldownSeconds:     int(mCooldown.Int64),
+				CaptureWidth:        int(mCaptureW.Int64),
+				CaptureHeight:       int(mCaptureH.Int64),
+				PlaybackLeadSeconds: int(mPlaybackLead.Int64),
 			}
 		}
 
@@ -233,10 +234,16 @@ type execer interface {
 	Exec(query string, args ...any) (sql.Result, error)
 }
 
+const defaultPlaybackLeadSeconds = 10
+
 func insertMotion(ex execer, cameraID string, m *config.MotionConfig) error {
+	lead := m.PlaybackLeadSeconds
+	if lead == 0 {
+		lead = defaultPlaybackLeadSeconds
+	}
 	_, err := ex.Exec(
-		`INSERT INTO camera_motion(camera_id, enabled, threshold, fps, cooldown_seconds, capture_width, capture_height)
-		 VALUES(?,?,?,?,?,?,?)`,
+		`INSERT INTO camera_motion(camera_id, enabled, threshold, fps, cooldown_seconds, capture_width, capture_height, playback_lead_seconds)
+		 VALUES(?,?,?,?,?,?,?,?)`,
 		cameraID,
 		boolToInt(m.Enabled),
 		m.Threshold,
@@ -244,6 +251,7 @@ func insertMotion(ex execer, cameraID string, m *config.MotionConfig) error {
 		m.CooldownSeconds,
 		m.CaptureWidth,
 		m.CaptureHeight,
+		lead,
 	)
 	return err
 }
@@ -252,9 +260,9 @@ func getMotion(db *sql.DB, cameraID string) (*config.MotionConfig, error) {
 	var m config.MotionConfig
 	var enabled int
 	err := db.QueryRow(
-		`SELECT enabled, threshold, fps, cooldown_seconds, capture_width, capture_height FROM camera_motion WHERE camera_id=?`,
+		`SELECT enabled, threshold, fps, cooldown_seconds, capture_width, capture_height, playback_lead_seconds FROM camera_motion WHERE camera_id=?`,
 		cameraID,
-	).Scan(&enabled, &m.Threshold, &m.FPS, &m.CooldownSeconds, &m.CaptureWidth, &m.CaptureHeight)
+	).Scan(&enabled, &m.Threshold, &m.FPS, &m.CooldownSeconds, &m.CaptureWidth, &m.CaptureHeight, &m.PlaybackLeadSeconds)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil

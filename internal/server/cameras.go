@@ -32,12 +32,13 @@ func formatDuration(d time.Duration) string {
 }
 
 type motionConfigDTO struct {
-	Enabled         bool    `json:"enabled"`
-	Threshold       float64 `json:"threshold"`
-	FPS             int     `json:"fps"`
-	CooldownSeconds int     `json:"cooldown_seconds"`
-	CaptureWidth    int     `json:"capture_width,omitempty"`
-	CaptureHeight   int     `json:"capture_height,omitempty"`
+	Enabled             bool    `json:"enabled"`
+	Threshold           float64 `json:"threshold"`
+	FPS                 int     `json:"fps"`
+	CooldownSeconds     int     `json:"cooldown_seconds"`
+	CaptureWidth        int     `json:"capture_width,omitempty"`
+	CaptureHeight       int     `json:"capture_height,omitempty"`
+	PlaybackLeadSeconds int     `json:"playback_lead_seconds"`
 }
 
 type cameraConfigDTO struct {
@@ -69,12 +70,13 @@ func cameraToDTO(cam config.CameraConfig) cameraConfigDTO {
 	}
 	if cam.Motion != nil {
 		dto.Motion = &motionConfigDTO{
-			Enabled:         cam.Motion.Enabled,
-			Threshold:       cam.Motion.Threshold,
-			FPS:             cam.Motion.FPS,
-			CooldownSeconds: cam.Motion.CooldownSeconds,
-			CaptureWidth:    cam.Motion.CaptureWidth,
-			CaptureHeight:   cam.Motion.CaptureHeight,
+			Enabled:             cam.Motion.Enabled,
+			Threshold:           cam.Motion.Threshold,
+			FPS:                 cam.Motion.FPS,
+			CooldownSeconds:     cam.Motion.CooldownSeconds,
+			CaptureWidth:        cam.Motion.CaptureWidth,
+			CaptureHeight:       cam.Motion.CaptureHeight,
+			PlaybackLeadSeconds: cam.Motion.PlaybackLeadSeconds,
 		}
 	}
 	return dto
@@ -165,12 +167,13 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 	var motion *config.MotionConfig
 	if req.Motion != nil {
 		motion = &config.MotionConfig{
-			Enabled:         req.Motion.Enabled,
-			Threshold:       req.Motion.Threshold,
-			FPS:             req.Motion.FPS,
-			CooldownSeconds: req.Motion.CooldownSeconds,
-			CaptureWidth:    req.Motion.CaptureWidth,
-			CaptureHeight:   req.Motion.CaptureHeight,
+			Enabled:             req.Motion.Enabled,
+			Threshold:           req.Motion.Threshold,
+			FPS:                 req.Motion.FPS,
+			CooldownSeconds:     req.Motion.CooldownSeconds,
+			CaptureWidth:        req.Motion.CaptureWidth,
+			CaptureHeight:       req.Motion.CaptureHeight,
+			PlaybackLeadSeconds: req.Motion.PlaybackLeadSeconds,
 		}
 	}
 
@@ -256,12 +259,13 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 	var motion *config.MotionConfig
 	if req.Motion != nil {
 		motion = &config.MotionConfig{
-			Enabled:         req.Motion.Enabled,
-			Threshold:       req.Motion.Threshold,
-			FPS:             req.Motion.FPS,
-			CooldownSeconds: req.Motion.CooldownSeconds,
-			CaptureWidth:    req.Motion.CaptureWidth,
-			CaptureHeight:   req.Motion.CaptureHeight,
+			Enabled:             req.Motion.Enabled,
+			Threshold:           req.Motion.Threshold,
+			FPS:                 req.Motion.FPS,
+			CooldownSeconds:     req.Motion.CooldownSeconds,
+			CaptureWidth:        req.Motion.CaptureWidth,
+			CaptureHeight:       req.Motion.CaptureHeight,
+			PlaybackLeadSeconds: req.Motion.PlaybackLeadSeconds,
 		}
 	}
 
