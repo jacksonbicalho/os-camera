@@ -24,9 +24,13 @@ services:
       - .:/app
       - frontend_dist:/app/frontend/dist
       - frontend_node_modules:/app/frontend/node_modules
-      - ./storage:/data
+      - ./storage:/app/storage
     ports:
       - 8080:8080
+    networks:
+      camera_net:
+        ipv4_address: 10.10.0.45
+
     environment:
       - VERSION=${VERSION:-dev}
     command: sh -c "cd frontend && yarn install && yarn build && cd .. && go run -ldflags=\"-X main.version=$$VERSION\" ./cmd/camera --config /app/camera.yaml"
@@ -35,3 +39,8 @@ services:
 volumes:
   frontend_dist:
   frontend_node_modules:
+
+networks:
+  camera_net:
+    name: goiabeira
+    external: true

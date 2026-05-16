@@ -81,6 +81,7 @@ export default function CameraDetailSettingsPage() {
             title="Stream"
             fields={[
               { label: 'Codec de vídeo', value: cam.video_codec || 'auto' },
+              { label: 'Modo HLS', value: cam.hls_video_mode || 'auto' },
               { label: 'Áudio', value: fmtHasAudio(cam.has_audio) },
               { label: 'Resolução', value: fmtResolution(cam.width, cam.height) },
             ]}

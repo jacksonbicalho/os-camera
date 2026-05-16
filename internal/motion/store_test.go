@@ -1,122 +1,55 @@
 package motion
 
 import (
-	"bufio"
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
 
-func TestStoreWritesNDJSONEvent(t *testing.T) {
-	dir := t.TempDir()
-	cameraID := "entrada"
-	ts := time.Date(2026, 5, 3, 14, 30, 0, 0, time.UTC)
+func TestStoreCallsOnEvent(t *testing.T) {
+	var called bool
+	var gotScore float64
+	var gotFrame, gotLabel, gotColor string
+	var gotBBox BBox
 
-	st := newStore(dir, nil)
-	if err := st.record(cameraID, ts, 0.42, "20260503143000_motion.jpg", "", "", BBox{X: 0.1, Y: 0.2, W: 0.3, H: 0.4}); err != nil {
-		t.Fatalf("record error: %v", err)
+	onEvent := func(cameraID string, ts time.Time, score float64, frame, label, color string, bbox BBox) {
+		called = true
+		gotScore = score
+		gotFrame = frame
+		gotLabel = label
+		gotColor = color
+		gotBBox = bbox
 	}
 
-	path := filepath.Join(dir, cameraID, "2026", "05", "03", "motion.ndjson")
-	f, err := os.Open(path)
+	st := newStore("/tmp", onEvent)
+	ts := time.Date(2026, 5, 3, 14, 30, 0, 0, time.UTC)
+	err := st.record("cam1", ts, 0.42, "20260503143000_motion.jpg", "jardim", "#3b82f6", BBox{X: 0.1, Y: 0.2, W: 0.3, H: 0.4})
 	if err != nil {
-		t.Fatalf("file not created: %v", err)
+		t.Fatalf("record: %v", err)
 	}
-	defer f.Close()
-
-	var event struct {
-		Time  string  `json:"time"`
-		Score float64 `json:"score"`
-		Frame string  `json:"frame"`
-		BBox  struct {
-			X float64 `json:"x"`
-			Y float64 `json:"y"`
-			W float64 `json:"w"`
-			H float64 `json:"h"`
-		} `json:"bbox"`
+	if !called {
+		t.Fatal("onEvent not called")
 	}
-	if err := json.NewDecoder(bufio.NewReader(f)).Decode(&event); err != nil {
-		t.Fatalf("decode error: %v", err)
+	if gotScore != 0.42 {
+		t.Errorf("score: got %f, want 0.42", gotScore)
 	}
-	if event.Time != "2026-05-03T14:30:00Z" {
-		t.Errorf("unexpected time: %s", event.Time)
+	if gotFrame != "20260503143000_motion.jpg" {
+		t.Errorf("frame: got %q, want 20260503143000_motion.jpg", gotFrame)
 	}
-	if event.Score < 0.41 || event.Score > 0.43 {
-		t.Errorf("unexpected score: %f", event.Score)
+	if gotLabel != "jardim" {
+		t.Errorf("label: got %q, want jardim", gotLabel)
 	}
-	if event.Frame != "20260503143000_motion.jpg" {
-		t.Errorf("unexpected frame: %s", event.Frame)
+	if gotColor != "#3b82f6" {
+		t.Errorf("color: got %q, want #3b82f6", gotColor)
 	}
-	if event.BBox.X != 0.1 || event.BBox.Y != 0.2 || event.BBox.W != 0.3 || event.BBox.H != 0.4 {
-		t.Errorf("unexpected bbox: %+v", event.BBox)
+	if gotBBox.X != 0.1 || gotBBox.Y != 0.2 || gotBBox.W != 0.3 || gotBBox.H != 0.4 {
+		t.Errorf("bbox: got %+v", gotBBox)
 	}
 }
 
-func TestStoreAppendsMultipleEvents(t *testing.T) {
-	dir := t.TempDir()
-	cameraID := "quintal"
-	ts1 := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
-	ts2 := time.Date(2026, 5, 3, 10, 0, 5, 0, time.UTC)
-
-	st := newStore(dir, nil)
-	st.record(cameraID, ts1, 0.1, "20260503100000_motion.jpg", "", "", BBox{})
-	st.record(cameraID, ts2, 0.2, "20260503100005_motion.jpg", "", "", BBox{})
-
-	path := filepath.Join(dir, cameraID, "2026", "05", "03", "motion.ndjson")
-	f, _ := os.Open(path)
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	lines := 0
-	for scanner.Scan() {
-		lines++
-	}
-	if lines != 2 {
-		t.Errorf("expected 2 lines, got %d", lines)
-	}
-}
-
-func TestStoreWritesColorToNDJSON(t *testing.T) {
-	dir := t.TempDir()
+func TestStoreNoOnEvent(t *testing.T) {
+	st := newStore("/tmp", nil)
 	ts := time.Date(2026, 5, 3, 14, 30, 0, 0, time.UTC)
-	st := newStore(dir, nil)
-	if err := st.record("cam1", ts, 0.1, "frame.jpg", "jardim", "#3b82f6", BBox{}); err != nil {
-		t.Fatalf("record error: %v", err)
-	}
-
-	path := filepath.Join(dir, "cam1", "2026", "05", "03", "motion.ndjson")
-	f, _ := os.Open(path)
-	defer f.Close()
-	var event map[string]any
-	json.NewDecoder(f).Decode(&event)
-	if event["label"] != "jardim" {
-		t.Errorf("label: got %v, want jardim", event["label"])
-	}
-	if event["color"] != "#3b82f6" {
-		t.Errorf("color: got %v, want #3b82f6", event["color"])
-	}
-}
-
-// Evento sem frame (legado) deve ser lido corretamente com frame vazio
-func TestStoreEmptyFrameName(t *testing.T) {
-	dir := t.TempDir()
-	ts := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
-	st := newStore(dir, nil)
-	if err := st.record("cam1", ts, 0.05, "", "", "", BBox{}); err != nil {
-		t.Fatalf("record error: %v", err)
-	}
-
-	path := filepath.Join(dir, "cam1", "2026", "05", "03", "motion.ndjson")
-	f, _ := os.Open(path)
-	defer f.Close()
-	var event map[string]any
-	json.NewDecoder(f).Decode(&event)
-	if _, ok := event["frame"]; ok {
-		val, _ := event["frame"].(string)
-		if val != "" {
-			t.Errorf("expected no frame field or empty, got %q", val)
-		}
+	if err := st.record("cam1", ts, 0.5, "", "", "", BBox{}); err != nil {
+		t.Fatalf("record with nil onEvent: %v", err)
 	}
 }
