@@ -116,7 +116,7 @@ describe('useBrowserNotifications — notify', () => {
     expect(mock).toHaveBeenCalledOnce()
     expect(mock).toHaveBeenCalledWith(
       expect.stringContaining('entrada'),
-      expect.objectContaining({ body: expect.stringContaining('0.042') }),
+      expect.objectContaining({ body: expect.stringContaining('4.2') }),
     )
   })
 
@@ -155,7 +155,7 @@ describe('useBrowserNotifications — notify', () => {
     await act(async () => { await result.current.requestAndEnable() })
 
     const onClick = vi.fn()
-    act(() => { result.current.notify('entrada', 0.042, onClick) })
+    act(() => { result.current.notify('entrada', 0.042, undefined, onClick) })
 
     instances[0]?.onclick?.()
     expect(onClick).toHaveBeenCalledOnce()

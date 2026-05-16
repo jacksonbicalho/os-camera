@@ -17,6 +17,8 @@ export interface MotionEvent {
   score: number
   frame?: string
   bbox?: MotionBBox
+  label?: string
+  color?: string
 }
 
 export function mergeRecordings(

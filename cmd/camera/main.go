@@ -99,12 +99,6 @@ func main() {
 	}
 	slog.Info("cameras loaded from database", "count", len(cameras))
 
-	zonesPath := filepath.Join(cfg.Storage.Path, "motion_zones.json")
-	zoneStore, err := zones.NewStore(zonesPath)
-	if err != nil {
-		log.Fatalf("failed to load zones: %v", err)
-	}
-
 	commander := exec.NewFFmpegCommander()
 	prober := ffprobe.NewProber(&ffprobe.OSExecutor{})
 
@@ -122,12 +116,13 @@ func main() {
 	// srv is assigned after NewServer; callbacks close over this variable.
 	var srv *server.Server
 
-	onMotionEvent := func(cameraID string, t time.Time, score float64, frame string, bbox motion.BBox) {
+	onMotionEvent := func(cameraID string, t time.Time, score float64, frame, label, color string, bbox motion.BBox) {
 		ev := db.MotionEvent{
 			CameraID:   cameraID,
 			OccurredAt: t,
 			Score:      score,
 			FramePath:  frame,
+			Label:      label,
 			BboxX:      bbox.X,
 			BboxY:      bbox.Y,
 			BboxW:      bbox.W,
@@ -193,7 +188,10 @@ func main() {
 			camID := cam.ID
 			motionCtx, motionCancel := context.WithCancel(ctx)
 			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, cam.EffectiveReconnectInterval(), slog,
-				func() []zones.Zone { return zoneStore.Get(camID) },
+				func() []zones.Zone {
+					zs, _ := db.GetZones(database, camID)
+					return zs
+				},
 				onMotionEvent)
 			go mon.Run(motionCtx)
 
@@ -205,6 +203,7 @@ func main() {
 			if srv != nil {
 				srv.WithMotionFeed(cam.ID, mon.Events())
 				srv.WithRawFeed(cam.ID, mon.RawScores())
+				srv.WithMonitor(cam.ID, mon)
 			}
 		}
 	}
@@ -249,7 +248,6 @@ func main() {
 			WithVersion(version).
 			WithBuildInfo(commit, builtAt).
 			WithSystemConfig(cfg.Debug, cfg.Log).
-			WithZoneStore(zoneStore).
 			WithSnapshotter(takeSnapshot).
 			WithCameraCallbacks(startCameraProcs, stopCameraProcs).
 			WithDB(database).
@@ -262,6 +260,7 @@ func main() {
 		for id, mon := range motionMonsByID {
 			srv.WithMotionFeed(id, mon.Events())
 			srv.WithRawFeed(id, mon.RawScores())
+			srv.WithMonitor(id, mon)
 		}
 		camMu.Unlock()
 

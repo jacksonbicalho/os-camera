@@ -8,6 +8,8 @@ import (
 	"image/draw"
 	"image/jpeg"
 	"math"
+	"strconv"
+	"strings"
 
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
@@ -17,10 +19,14 @@ import (
 // charWidth é a largura de avanço de cada glyph em basicfont.Face7x13.
 const charWidth = 7
 
-// annotationColor é a cor usada para o retângulo e o texto do score.
-var annotationColor = color.NRGBA{R: 255, G: 165, A: 255} // laranja
+var (
+	// ColorGlobal é a cor para detecção global de movimento.
+	ColorGlobal = color.NRGBA{R: 255, G: 165, A: 255}
+	// ColorDetect é a cor para zonas de detecção (Tailwind orange-500).
+	ColorDetect = color.NRGBA{R: 249, G: 115, B: 22, A: 255}
+)
 
-func annotateFrame(frame []byte, w, h int, bbox BBox, score float64) []byte {
+func annotateFrame(frame []byte, w, h int, bbox BBox, score float64, c color.NRGBA) []byte {
 	img := image.NewGray(image.Rect(0, 0, w, h))
 	copy(img.Pix, frame)
 
@@ -32,7 +38,6 @@ func annotateFrame(frame []byte, w, h int, bbox BBox, score float64) []byte {
 	rgba := image.NewNRGBA(img.Bounds())
 	draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
 
-	c := annotationColor
 	for t := 0; t < 2; t++ {
 		if y0+t < h {
 			drawHLine(rgba, x0, x1, y0+t, c)
@@ -91,4 +96,20 @@ func drawText(img draw.Image, text string, x, y int, c color.Color) {
 		Dot:  fixed.Point26_6{X: fixed.I(x), Y: fixed.I(y)},
 	}
 	d.DrawString(text)
+}
+
+// hexToNRGBA converte uma cor hexadecimal (com ou sem "#") em color.NRGBA.
+// Retorna ColorGlobal como fallback para entradas inválidas.
+func hexToNRGBA(hex string) color.NRGBA {
+	h := strings.TrimPrefix(hex, "#")
+	if len(h) != 6 {
+		return ColorGlobal
+	}
+	r, err1 := strconv.ParseUint(h[0:2], 16, 8)
+	g, err2 := strconv.ParseUint(h[2:4], 16, 8)
+	b, err3 := strconv.ParseUint(h[4:6], 16, 8)
+	if err1 != nil || err2 != nil || err3 != nil {
+		return ColorGlobal
+	}
+	return color.NRGBA{R: uint8(r), G: uint8(g), B: uint8(b), A: 255}
 }

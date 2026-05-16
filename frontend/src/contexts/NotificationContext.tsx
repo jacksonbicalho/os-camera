@@ -13,6 +13,8 @@ export interface Notification {
   cameraId: string
   time: string
   score: number
+  label?: string
+  color?: string
   read: boolean
 }
 
@@ -85,12 +87,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         const id: string = payload.camera_id ?? 'unknown'
         const time: string = payload.time ?? new Date().toISOString()
         const score: number = payload.score ?? 0
+        const label: string | undefined = payload.label || undefined
+        const color: string | undefined = payload.color || undefined
         const notification: Notification = {
           id: `${id}-${time}`,
           type: 'motion',
           cameraId: id,
           time,
           score,
+          label,
+          color,
           read: false,
         }
         setNotifications((current) => {
@@ -98,7 +104,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           save(next)
           return next
         })
-        browserNotifyRef.current(id, score, () => {
+        browserNotifyRef.current(id, score, label, () => {
           navigate(`/cameras/${id}`, { state: { eventTime: time } })
         })
       } catch {

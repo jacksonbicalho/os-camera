@@ -16,7 +16,7 @@ export interface BrowserNotificationsHook {
   enabled: boolean
   requestAndEnable(): Promise<void>
   disable(): void
-  notify(cameraId: string, score: number, onClick?: () => void): void
+  notify(cameraId: string, score: number, label?: string, onClick?: () => void): void
 }
 
 export function useBrowserNotifications(): BrowserNotificationsHook {
@@ -42,10 +42,13 @@ export function useBrowserNotifications(): BrowserNotificationsHook {
   }, [])
 
   const notify = useCallback(
-    (cameraId: string, score: number, onClick?: () => void) => {
+    (cameraId: string, score: number, label?: string, onClick?: () => void) => {
       if (!supported || !enabled || permission !== 'granted') return
-      const n = new Notification(`Movimento detectado — ${cameraId}`, {
-        body: `Score: ${score.toFixed(3)}`,
+      const body = label
+        ? `Zona: ${label} · ${(score * 100).toFixed(1)}%`
+        : `${(score * 100).toFixed(1)}%`
+      const n = new Notification(`Movimento — ${cameraId}`, {
+        body,
         tag: `motion-${cameraId}`,
       })
       if (onClick) {

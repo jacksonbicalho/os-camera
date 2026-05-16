@@ -1,62 +1,22 @@
 package zones
 
-import (
-	"encoding/json"
-	"errors"
-	"log/slog"
-	"os"
-	"sync"
-)
-
 type Zone struct {
-	X float64 `json:"x"`
-	Y float64 `json:"y"`
-	W float64 `json:"w"`
-	H float64 `json:"h"`
+	X               float64 `json:"x"`
+	Y               float64 `json:"y"`
+	W               float64 `json:"w"`
+	H               float64 `json:"h"`
+	Type            string  `json:"type,omitempty"`             // "exclude" | "detect"; "" → "exclude"
+	Label           string  `json:"label,omitempty"`
+	Threshold       float64 `json:"threshold,omitempty"`        // 0 = herdado da câmera
+	CooldownSeconds int     `json:"cooldown_seconds,omitempty"` // 0 = herdado
+	FPS             int     `json:"fps,omitempty"`              // 0 = herdado da câmera
+	Scale           float64 `json:"scale,omitempty"`            // 0 ou 1 = sem downscale; 0.5 = metade da resolução da zona
+	Color           string  `json:"color,omitempty"`            // hex como "#ef4444"; vazio = cor padrão por tipo
 }
 
-type Store struct {
-	mu   sync.RWMutex
-	path string
-	data map[string][]Zone
+// IsExclude retorna true para zonas de exclusão (type "" ou "exclude").
+// Zonas "detect" retornam false: são excluídas do diff global mas avaliadas independentemente.
+func (z Zone) IsExclude() bool {
+	return z.Type == "" || z.Type == "exclude"
 }
 
-func NewStore(path string) (*Store, error) {
-	s := &Store{path: path, data: make(map[string][]Zone)}
-	b, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return s, nil
-	}
-	if err != nil {
-		return s, nil
-	}
-	if err := json.Unmarshal(b, &s.data); err != nil {
-		slog.Warn("motion_zones.json corrompido, ignorando", "path", path, "error", err)
-		s.data = make(map[string][]Zone)
-	}
-	return s, nil
-}
-
-func (s *Store) Get(cameraID string) []Zone {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	z := s.data[cameraID]
-	if z == nil {
-		return []Zone{}
-	}
-	return z
-}
-
-func (s *Store) Set(cameraID string, z []Zone) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if z == nil {
-		z = []Zone{}
-	}
-	s.data[cameraID] = z
-	b, err := json.Marshal(s.data)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(s.path, b, 0o644)
-}

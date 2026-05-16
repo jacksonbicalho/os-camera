@@ -7,6 +7,8 @@ export interface MotionSettings {
   threshold: number
   fps: number
   cooldown_seconds: number
+  capture_width?: number
+  capture_height?: number
 }
 
 export interface CameraSettings {

@@ -171,6 +171,129 @@ func TestComputeBBoxRightEdge(t *testing.T) {
 	}
 }
 
+// --- diffFramesForZone ---
+
+// Frame 2×2, zona cobre tudo → igual ao diff sem máscara
+func TestDiffFramesForZoneFullFrame(t *testing.T) {
+	a := []byte{0, 0, 0, 0}
+	b := []byte{255, 255, 255, 255}
+	z := zones.Zone{X: 0, Y: 0, W: 1, H: 1}
+	got := diffFramesForZone(a, b, 2, 2, z)
+	if got < 0.99 || got > 1.01 {
+		t.Errorf("expected ~1.0, got %f", got)
+	}
+}
+
+// Frame 4×1, zona cobre apenas os dois primeiros pixels (x=0..0.5)
+// a=[0,0,0,0], b=[255,255,0,0] → zona contém pixels 0 e 1 (diff=255) → score=1.0
+func TestDiffFramesForZoneLeftHalf(t *testing.T) {
+	a := []byte{0, 0, 0, 0}
+	b := []byte{255, 255, 0, 0}
+	z := zones.Zone{X: 0, Y: 0, W: 0.5, H: 1}
+	got := diffFramesForZone(a, b, 4, 1, z)
+	if got < 0.99 || got > 1.01 {
+		t.Errorf("expected ~1.0, got %f", got)
+	}
+}
+
+// Frame 4×1, zona cobre apenas os dois últimos pixels (x=0.5..1.0) sem diff → score=0
+func TestDiffFramesForZoneRightHalfNoDiff(t *testing.T) {
+	a := []byte{0, 0, 0, 0}
+	b := []byte{255, 255, 0, 0}
+	z := zones.Zone{X: 0.5, Y: 0, W: 0.5, H: 1}
+	got := diffFramesForZone(a, b, 4, 1, z)
+	if got != 0.0 {
+		t.Errorf("expected 0.0, got %f", got)
+	}
+}
+
+// Frame vazio → score=0 (sem pânico)
+func TestDiffFramesForZoneEmptyFrame(t *testing.T) {
+	z := zones.Zone{X: 0, Y: 0, W: 1, H: 1}
+	got := diffFramesForZone([]byte{}, []byte{}, 0, 0, z)
+	if got != 0.0 {
+		t.Errorf("expected 0.0, got %f", got)
+	}
+}
+
+// Comprimentos diferentes → pânico
+func TestDiffFramesForZoneMismatchPanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic for mismatched lengths")
+		}
+	}()
+	z := zones.Zone{X: 0, Y: 0, W: 1, H: 1}
+	diffFramesForZone([]byte{1, 2}, []byte{1}, 2, 1, z)
+}
+
+// --- downsampleAvg ---
+
+// Frame 4×2, scale=0.5 → 2×1, cada pixel é média de bloco 2×2
+func TestDownsampleAvgHalf(t *testing.T) {
+	// 4×2 com todos os pixels = 100
+	buf := make([]byte, 8)
+	for i := range buf {
+		buf[i] = 100
+	}
+	out, w, h := downsampleAvg(buf, 4, 2, 0.5)
+	if w != 2 || h != 1 {
+		t.Fatalf("expected 2×1, got %d×%d", w, h)
+	}
+	for _, v := range out {
+		if v != 100 {
+			t.Errorf("expected 100, got %d", v)
+		}
+	}
+}
+
+// Scale=1 → sem mudança
+func TestDownsampleAvgScale1(t *testing.T) {
+	buf := []byte{10, 20, 30, 40}
+	out, w, h := downsampleAvg(buf, 2, 2, 1.0)
+	if w != 2 || h != 2 || len(out) != 4 {
+		t.Fatalf("expected 2×2, got %d×%d len=%d", w, h, len(out))
+	}
+}
+
+// Scale=0 → sem mudança (tratado como sem downscale)
+func TestDownsampleAvgScale0(t *testing.T) {
+	buf := []byte{10, 20, 30, 40}
+	out, w, h := downsampleAvg(buf, 2, 2, 0)
+	if w != 2 || h != 2 || len(out) != 4 {
+		t.Fatalf("expected 2×2, got %d×%d len=%d", w, h, len(out))
+	}
+}
+
+// diffFramesForZoneScaled com scale=1 deve coincidir com diffFramesForZone
+func TestDiffFramesForZoneScaledScale1EqualsFull(t *testing.T) {
+	a := []byte{0, 0, 0, 0}
+	b := []byte{255, 255, 0, 0}
+	z := zones.Zone{X: 0, Y: 0, W: 0.5, H: 1, Scale: 1.0}
+	want := diffFramesForZone(a, b, 4, 1, z)
+	got := diffFramesForZoneScaled(a, b, 4, 1, z)
+	if got != want {
+		t.Errorf("expected %f, got %f", want, got)
+	}
+}
+
+// Com scale=0.5 o resultado ainda detecta diff (apenas menos pixels)
+func TestDiffFramesForZoneScaledDetectsMotion(t *testing.T) {
+	// Frame 4×4, zona cobre tudo, a=0 b=255 → diff=1.0 independente de scale
+	a := make([]byte, 16)
+	b := make([]byte, 16)
+	for i := range b {
+		b[i] = 255
+	}
+	z := zones.Zone{X: 0, Y: 0, W: 1, H: 1, Scale: 0.5}
+	got := diffFramesForZoneScaled(a, b, 4, 4, z)
+	if got < 0.99 || got > 1.01 {
+		t.Errorf("expected ~1.0, got %f", got)
+	}
+}
+
+// --- computeBBox ---
+
 // Pixels mascarados não devem contar para o bbox
 // Frame 4×1: pixel 0 mascarado (diff alto) + pixel 3 não mascarado (diff alto)
 // → bbox deve ser apenas o pixel 3

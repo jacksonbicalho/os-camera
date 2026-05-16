@@ -9,6 +9,8 @@ interface MotionConfig {
   threshold: number
   fps: number
   cooldown_seconds: number
+  capture_width?: number
+  capture_height?: number
 }
 
 interface Camera {
@@ -38,6 +40,13 @@ interface CameraFormData {
   motion_threshold: string
   motion_fps: string
   motion_cooldown: string
+  motion_capture_auto: boolean
+  motion_capture_pct: number
+}
+
+function capturePct(capW: number, streamW: number): number {
+  if (capW > 0 && streamW > 0) return Math.round(capW / streamW * 100)
+  return 25
 }
 
 function emptyForm(cam?: Camera): CameraFormData {
@@ -46,8 +55,11 @@ function emptyForm(cam?: Camera): CameraFormData {
       id: '', rtsp_url: '', chunk_duration: '5m', reconnect_interval: '30s',
       video_codec: '', has_audio: '', width: '0', height: '0', display_order: '0',
       motion_enabled: false, motion_threshold: '0.02', motion_fps: '2', motion_cooldown: '30',
+      motion_capture_auto: true, motion_capture_pct: 25,
     }
   }
+  const capW = cam.motion?.capture_width ?? 0
+  const auto = capW === 0
   return {
     id: cam.id,
     rtsp_url: cam.rtsp_url,
@@ -62,6 +74,8 @@ function emptyForm(cam?: Camera): CameraFormData {
     motion_threshold: String(cam.motion?.threshold ?? 0.02),
     motion_fps: String(cam.motion?.fps ?? 2),
     motion_cooldown: String(cam.motion?.cooldown_seconds ?? 30),
+    motion_capture_auto: auto,
+    motion_capture_pct: capturePct(capW, cam.width ?? 0),
   }
 }
 
@@ -80,6 +94,8 @@ function formToPayload(f: CameraFormData, includeID = true) {
       threshold: parseFloat(f.motion_threshold) || 0.02,
       fps: parseInt(f.motion_fps) || 2,
       cooldown_seconds: parseInt(f.motion_cooldown) || 30,
+      capture_width: f.motion_capture_auto ? 0 : Math.round((parseInt(f.width) || 0) * f.motion_capture_pct / 100),
+      capture_height: f.motion_capture_auto ? 0 : Math.round((parseInt(f.height) || 0) * f.motion_capture_pct / 100),
     },
   }
   if (includeID) payload.id = f.id
@@ -97,8 +113,17 @@ function CameraForm({ initial, onSave, onCancel, saving }: CameraFormProps) {
   const [form, setForm] = useState<CameraFormData>(() => emptyForm(initial))
   const isEdit = !!initial
 
-  const set = (field: keyof CameraFormData, value: string | boolean) =>
+  const set = (field: keyof CameraFormData, value: string | boolean | number) =>
     setForm(prev => ({ ...prev, [field]: value }))
+
+  const streamW = parseInt(form.width) || 0
+  const streamH = parseInt(form.height) || 0
+  const previewW = form.motion_capture_auto
+    ? (streamW > 0 ? Math.round(streamW / 4) : null)
+    : (streamW > 0 ? Math.round(streamW * form.motion_capture_pct / 100) : null)
+  const previewH = form.motion_capture_auto
+    ? (streamH > 0 ? Math.round(streamH / 4) : null)
+    : (streamH > 0 ? Math.round(streamH * form.motion_capture_pct / 100) : null)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -192,6 +217,39 @@ function CameraForm({ initial, onSave, onCancel, saving }: CameraFormProps) {
                 <label className={labelClass}>Cooldown (segundos)</label>
                 <input type="number" min="0" value={form.motion_cooldown} onChange={e => set('motion_cooldown', e.target.value)} className={inputClass} />
               </div>
+              <div className="sm:col-span-2">
+                <label className={labelClass}>Resolução de análise</label>
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="checkbox"
+                    id="motion_capture_auto"
+                    checked={form.motion_capture_auto}
+                    onChange={e => set('motion_capture_auto', e.target.checked)}
+                    className="accent-blue-500"
+                  />
+                  <label htmlFor="motion_capture_auto" className="text-xs text-gray-400 cursor-pointer">
+                    Automático (stream ÷ 4{previewW !== null ? ` → ${previewW} × ${previewH} px` : ''})
+                  </label>
+                </div>
+                {!form.motion_capture_auto && (
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="range"
+                        min={5} max={100} step={5}
+                        value={form.motion_capture_pct}
+                        onChange={e => set('motion_capture_pct', parseInt(e.target.value))}
+                        className="flex-1 accent-blue-500"
+                      />
+                      <span className="text-xs text-gray-300 font-mono w-10 text-right">{form.motion_capture_pct}%</span>
+                    </div>
+                    {previewW !== null
+                      ? <p className="text-xs text-gray-500">→ {previewW} × {previewH} px</p>
+                      : <p className="text-xs text-gray-600">Configure largura e altura do stream para ver a resolução em pixels</p>
+                    }
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -221,9 +279,10 @@ export default function CamerasSettingsPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const isAdmin = getRole() === 'admin'
+  const isNewRoute = location.pathname === '/settings/cameras/new'
   const [cameras, setCameras] = useState<Camera[]>([])
   const [loading, setLoading] = useState(isAdmin)
-  const [creating, setCreating] = useState(false)
+  const [creating, setCreating] = useState(isNewRoute)
   const [editingId, setEditingId] = useState<string | null>(
     (location.state as { editId?: string } | null)?.editId ?? null
   )
@@ -261,6 +320,10 @@ export default function CamerasSettingsPage() {
         body: JSON.stringify(formToPayload(data, true)),
       })
       if (!res.ok) { setError((await res.text()).trim() || 'Erro ao criar câmera'); return }
+      if (isNewRoute) {
+        navigate('/settings/cameras', { replace: true })
+        return
+      }
       await reloadCameras()
       setCreating(false)
     } finally { setSaving(false) }
@@ -351,7 +414,10 @@ export default function CamerasSettingsPage() {
           <p className="text-xs font-medium text-gray-400 mb-3">Nova câmera</p>
           <CameraForm
             onSave={handleCreate}
-            onCancel={() => { setCreating(false); setError(null) }}
+            onCancel={() => {
+              if (isNewRoute) { navigate('/settings/cameras', { replace: true }); return }
+              setCreating(false); setError(null)
+            }}
             saving={saving}
           />
         </div>
