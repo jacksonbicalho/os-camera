@@ -23,6 +23,7 @@ interface Camera {
   width: number
   height: number
   display_order: number
+  hls_video_mode: string
   motion: MotionConfig | null
 }
 
@@ -33,15 +34,37 @@ interface CameraFormData {
   reconnect_interval: string
   video_codec: string
   has_audio: '' | 'true' | 'false'
-  width: string
-  height: string
+  resolution: string
   display_order: string
+  hls_video_mode: string
   motion_enabled: boolean
   motion_threshold: string
   motion_fps: string
   motion_cooldown: string
   motion_capture_auto: boolean
   motion_capture_pct: number
+}
+
+const RESOLUTIONS = [
+  { label: 'Auto', value: '0x0' },
+  { label: '352 × 288 (CIF)', value: '352x288' },
+  { label: '640 × 480 (VGA)', value: '640x480' },
+  { label: '720 × 576 (D1)', value: '720x576' },
+  { label: '1280 × 720 (HD)', value: '1280x720' },
+  { label: '1920 × 1080 (Full HD)', value: '1920x1080' },
+  { label: '2560 × 1440 (2K)', value: '2560x1440' },
+  { label: '3840 × 2160 (4K)', value: '3840x2160' },
+]
+
+function encodeResolution(w: number, h: number): string {
+  if (w === 0 || h === 0) return '0x0'
+  const match = RESOLUTIONS.find(r => r.value === `${w}x${h}`)
+  return match ? match.value : `${w}x${h}`
+}
+
+function decodeResolution(value: string): { width: number; height: number } {
+  const [w, h] = value.split('x').map(Number)
+  return { width: w || 0, height: h || 0 }
 }
 
 function capturePct(capW: number, streamW: number): number {
@@ -53,7 +76,8 @@ function emptyForm(cam?: Camera): CameraFormData {
   if (!cam) {
     return {
       id: '', rtsp_url: '', chunk_duration: '5m', reconnect_interval: '30s',
-      video_codec: '', has_audio: '', width: '0', height: '0', display_order: '0',
+      video_codec: '', has_audio: '', resolution: '0x0', display_order: '0',
+      hls_video_mode: 'auto',
       motion_enabled: false, motion_threshold: '0.02', motion_fps: '2', motion_cooldown: '30',
       motion_capture_auto: true, motion_capture_pct: 25,
     }
@@ -67,9 +91,9 @@ function emptyForm(cam?: Camera): CameraFormData {
     reconnect_interval: cam.reconnect_interval,
     video_codec: cam.video_codec ?? '',
     has_audio: cam.has_audio == null ? '' : cam.has_audio ? 'true' : 'false',
-    width: String(cam.width ?? 0),
-    height: String(cam.height ?? 0),
+    resolution: encodeResolution(cam.width ?? 0, cam.height ?? 0),
     display_order: String(cam.display_order ?? 0),
+    hls_video_mode: cam.hls_video_mode || 'auto',
     motion_enabled: cam.motion?.enabled ?? false,
     motion_threshold: String(cam.motion?.threshold ?? 0.02),
     motion_fps: String(cam.motion?.fps ?? 2),
@@ -80,22 +104,24 @@ function emptyForm(cam?: Camera): CameraFormData {
 }
 
 function formToPayload(f: CameraFormData, includeID = true) {
+  const { width, height } = decodeResolution(f.resolution)
   const payload: Record<string, unknown> = {
     rtsp_url: f.rtsp_url,
     chunk_duration: f.chunk_duration || '5m',
     reconnect_interval: f.reconnect_interval || '30s',
     video_codec: f.video_codec,
     has_audio: f.has_audio === '' ? null : f.has_audio === 'true',
-    width: parseInt(f.width) || 0,
-    height: parseInt(f.height) || 0,
+    width,
+    height,
     display_order: parseInt(f.display_order) || 0,
+    hls_video_mode: f.hls_video_mode || 'auto',
     motion: {
       enabled: f.motion_enabled,
       threshold: parseFloat(f.motion_threshold) || 0.02,
       fps: parseInt(f.motion_fps) || 2,
       cooldown_seconds: parseInt(f.motion_cooldown) || 30,
-      capture_width: f.motion_capture_auto ? 0 : Math.round((parseInt(f.width) || 0) * f.motion_capture_pct / 100),
-      capture_height: f.motion_capture_auto ? 0 : Math.round((parseInt(f.height) || 0) * f.motion_capture_pct / 100),
+      capture_width: f.motion_capture_auto ? 0 : Math.round(width * f.motion_capture_pct / 100),
+      capture_height: f.motion_capture_auto ? 0 : Math.round(height * f.motion_capture_pct / 100),
     },
   }
   if (includeID) payload.id = f.id
@@ -116,8 +142,7 @@ function CameraForm({ initial, onSave, onCancel, saving }: CameraFormProps) {
   const set = (field: keyof CameraFormData, value: string | boolean | number) =>
     setForm(prev => ({ ...prev, [field]: value }))
 
-  const streamW = parseInt(form.width) || 0
-  const streamH = parseInt(form.height) || 0
+  const { width: streamW, height: streamH } = decodeResolution(form.resolution)
   const previewW = form.motion_capture_auto
     ? (streamW > 0 ? Math.round(streamW / 4) : null)
     : (streamW > 0 ? Math.round(streamW * form.motion_capture_pct / 100) : null)
@@ -166,7 +191,13 @@ function CameraForm({ initial, onSave, onCancel, saving }: CameraFormProps) {
         </div>
         <div>
           <label className={labelClass}>Codec de vídeo</label>
-          <input value={form.video_codec} onChange={e => set('video_codec', e.target.value)} className={inputClass} placeholder="auto" />
+          <select value={form.video_codec} onChange={e => set('video_codec', e.target.value)} className={inputClass}>
+            <option value="">Auto (ffprobe detecta)</option>
+            <option value="h264">H.264 / AVC</option>
+            <option value="hevc">HEVC / H.265</option>
+            <option value="mjpeg">MJPEG</option>
+            <option value="mpeg4">MPEG-4</option>
+          </select>
         </div>
         <div>
           <label className={labelClass}>Áudio</label>
@@ -177,16 +208,27 @@ function CameraForm({ initial, onSave, onCancel, saving }: CameraFormProps) {
           </select>
         </div>
         <div>
-          <label className={labelClass}>Largura (0 = auto)</label>
-          <input type="number" min="0" value={form.width} onChange={e => set('width', e.target.value)} className={inputClass} />
-        </div>
-        <div>
-          <label className={labelClass}>Altura (0 = auto)</label>
-          <input type="number" min="0" value={form.height} onChange={e => set('height', e.target.value)} className={inputClass} />
+          <label className={labelClass}>Resolução</label>
+          <select value={form.resolution} onChange={e => set('resolution', e.target.value)} className={inputClass}>
+            {RESOLUTIONS.map(r => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+            {!RESOLUTIONS.find(r => r.value === form.resolution) && (
+              <option value={form.resolution}>{form.resolution.replace('x', ' × ')}</option>
+            )}
+          </select>
         </div>
         <div>
           <label className={labelClass}>Ordem de exibição</label>
           <input type="number" value={form.display_order} onChange={e => set('display_order', e.target.value)} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Modo de vídeo HLS</label>
+          <select value={form.hls_video_mode} onChange={e => set('hls_video_mode', e.target.value)} className={inputClass}>
+            <option value="auto">Auto (detecta via ffprobe)</option>
+            <option value="h264">H.264 (sempre transcodifica)</option>
+            <option value="copy">Cópia (sem transcodificação)</option>
+          </select>
         </div>
       </div>
 

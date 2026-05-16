@@ -50,6 +50,7 @@ type cameraConfigDTO struct {
 	Width             int              `json:"width,omitempty"`
 	Height            int              `json:"height,omitempty"`
 	DisplayOrder      int              `json:"display_order"`
+	HLSVideoMode      string           `json:"hls_video_mode"`
 	Motion            *motionConfigDTO `json:"motion"`
 }
 
@@ -64,6 +65,7 @@ func cameraToDTO(cam config.CameraConfig) cameraConfigDTO {
 		Width:             cam.Width,
 		Height:            cam.Height,
 		DisplayOrder:      cam.DisplayOrder,
+		HLSVideoMode:      cam.HLSVideoMode,
 	}
 	if cam.Motion != nil {
 		dto.Motion = &motionConfigDTO{
@@ -117,6 +119,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		Width             int              `json:"width"`
 		Height            int              `json:"height"`
 		DisplayOrder      int              `json:"display_order"`
+		HLSVideoMode      string           `json:"hls_video_mode"`
 		Motion            *motionConfigDTO `json:"motion"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -136,6 +139,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		Width:        req.Width,
 		Height:       req.Height,
 		DisplayOrder: req.DisplayOrder,
+		HLSVideoMode: req.HLSVideoMode,
 	}
 	if req.ChunkDuration != "" {
 		if d, err := time.ParseDuration(req.ChunkDuration); err == nil {
@@ -216,6 +220,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		Width             int              `json:"width"`
 		Height            int              `json:"height"`
 		DisplayOrder      int              `json:"display_order"`
+		HLSVideoMode      string           `json:"hls_video_mode"`
 		Motion            *motionConfigDTO `json:"motion"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -235,6 +240,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		Width:        req.Width,
 		Height:       req.Height,
 		DisplayOrder: req.DisplayOrder,
+		HLSVideoMode: req.HLSVideoMode,
 	}
 	if req.ChunkDuration != "" {
 		if d, err := time.ParseDuration(req.ChunkDuration); err == nil {

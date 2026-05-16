@@ -272,6 +272,30 @@ func TestHLSStreamerDVREnabledUsesCalculatedListSizeAndNoDeleteSegments(t *testi
 	t.Error("expected -hls_flags in args")
 }
 
+func TestHLSStreamerTranscodesNonH264VideoToH264(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream"}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
+	stream := ffprobe.StreamInfo{VideoCodec: "hevc", HasAudio: true}
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, stream, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := cmd.calls[0]
+	if !containsArg(args, "libx264") {
+		t.Error("expected libx264 in args when video codec is hevc")
+	}
+	if containsSequence(args, "-c", "copy") {
+		t.Error("expected no -c copy when transcoding is needed")
+	}
+	if containsArg(args, "-an") {
+		t.Error("expected no -an when camera has audio")
+	}
+}
+
 func TestHLSStreamerAddsAnFlagWhenNoAudio(t *testing.T) {
 	tmpDir := t.TempDir()
 	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://192.168.1.10:554/stream"}
@@ -303,5 +327,84 @@ func TestHLSStreamerDoesNotAddAnFlagWhenHasAudio(t *testing.T) {
 
 	if containsArg(cmd.calls[0], "-an") {
 		t.Error("expected no -an in ffmpeg args when HasAudio = true")
+	}
+}
+
+func TestHLSStreamerModeH264AlwaysTranscodes(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream", HLSVideoMode: "h264"}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
+	stream := ffprobe.StreamInfo{VideoCodec: "h264", HasAudio: false}
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, stream, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := cmd.calls[0]
+	if !containsArg(args, "libx264") {
+		t.Error("expected libx264 when mode=h264, even if stream is already h264")
+	}
+	if containsSequence(args, "-c", "copy") {
+		t.Error("expected no -c copy when mode=h264")
+	}
+}
+
+func TestHLSStreamerModeCopyNeverTranscodes(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream", HLSVideoMode: "copy"}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
+	stream := ffprobe.StreamInfo{VideoCodec: "hevc", HasAudio: false}
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, stream, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := cmd.calls[0]
+	if containsArg(args, "libx264") {
+		t.Error("expected no libx264 when mode=copy, even if stream is hevc")
+	}
+	if !containsSequence(args, "-c", "copy") {
+		t.Error("expected -c copy when mode=copy")
+	}
+}
+
+func TestHLSStreamerModeAutoTranscodesNonH264(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream", HLSVideoMode: "auto"}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
+	stream := ffprobe.StreamInfo{VideoCodec: "hevc", HasAudio: false}
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, stream, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !containsArg(cmd.calls[0], "libx264") {
+		t.Error("expected libx264 when mode=auto and codec is hevc")
+	}
+}
+
+func TestHLSStreamerModeAutoUsesStreamCopyForH264(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream", HLSVideoMode: "auto"}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
+	stream := ffprobe.StreamInfo{VideoCodec: "h264", HasAudio: false}
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, stream, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if containsArg(cmd.calls[0], "libx264") {
+		t.Error("expected no libx264 when mode=auto and codec is already h264")
+	}
+	if !containsSequence(cmd.calls[0], "-c", "copy") {
+		t.Error("expected -c copy when mode=auto and codec is h264")
 	}
 }

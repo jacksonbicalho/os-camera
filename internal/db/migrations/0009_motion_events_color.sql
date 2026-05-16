@@ -1,0 +1,1 @@
+ALTER TABLE motion_events ADD COLUMN color TEXT NOT NULL DEFAULT '';

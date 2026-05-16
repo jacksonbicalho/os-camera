@@ -41,9 +41,20 @@ func (s *HLSStreamer) Start() error {
 	playlist := filepath.Join(dir, "index.m3u8")
 	segmentPattern := filepath.Join(dir, "%06d.ts")
 	s.log.Debug("starting hls ffmpeg", "camera", s.camera.ID, "playlist", playlist)
-	args := []string{"-i", s.camera.RTSPURL, "-c", "copy"}
-	if !s.stream.HasAudio {
-		args = append(args, "-an")
+	args := []string{"-i", s.camera.RTSPURL}
+	if s.needsTranscode() {
+		s.log.Warn("transcoding video to h264", "camera", s.camera.ID, "source_codec", s.stream.VideoCodec, "mode", s.camera.HLSVideoMode)
+		args = append(args, "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency")
+		if s.stream.HasAudio {
+			args = append(args, "-c:a", "copy")
+		} else {
+			args = append(args, "-an")
+		}
+	} else {
+		args = append(args, "-c", "copy")
+		if !s.stream.HasAudio {
+			args = append(args, "-an")
+		}
 	}
 
 	const segmentSeconds = 2
@@ -72,6 +83,17 @@ func (s *HLSStreamer) Stop() {
 	s.log.Info("stopping hls streamer", "camera", s.camera.ID)
 	s.process.Terminate()
 	s.process.Wait()
+}
+
+func (s *HLSStreamer) needsTranscode() bool {
+	switch s.camera.HLSVideoMode {
+	case "h264":
+		return true
+	case "copy":
+		return false
+	default: // "auto" or empty
+		return s.stream.VideoCodec != "" && s.stream.VideoCodec != "h264"
+	}
 }
 
 func hlsListSizeAndFlags(dvrSeconds, segmentSeconds int) (listSize int, flags string) {

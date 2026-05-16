@@ -123,6 +123,7 @@ func main() {
 			Score:      score,
 			FramePath:  frame,
 			Label:      label,
+			Color:      color,
 			BboxX:      bbox.X,
 			BboxY:      bbox.Y,
 			BboxW:      bbox.W,

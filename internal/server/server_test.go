@@ -663,21 +663,8 @@ func TestGetStatsIncludesConnectedClients(t *testing.T) {
 }
 
 func TestGetStatsIncludesTopMotionScorePerCamera(t *testing.T) {
-	tmpDir := t.TempDir()
-	today := time.Now().UTC()
-	dateDir := filepath.Join(tmpDir, "entrada", today.Format("2006/01/02"))
-	if err := os.MkdirAll(dateDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	ndjson := `{"time":"2026-05-04T10:00:00Z","score":0.5}` + "\n" +
-		`{"time":"2026-05-04T10:05:00Z","score":0.9}` + "\n" +
-		`{"time":"2026-05-04T10:10:00Z","score":0.3}` + "\n"
-	if err := os.WriteFile(filepath.Join(dateDir, "motion.ndjson"), []byte(ndjson), 0644); err != nil {
-		t.Fatal(err)
-	}
-
 	cameras := []config.CameraConfig{{ID: "entrada"}, {ID: "quintal"}}
-	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{}
 
 	database := openServerTestDB(t)
 	if _, err := db.CreateUser(database, "u", "p", "admin", false); err != nil {
@@ -688,6 +675,18 @@ func TestGetStatsIncludesTopMotionScorePerCamera(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	for _, ev := range []db.MotionEvent{
+		{CameraID: "entrada", OccurredAt: today.Add(1 * time.Hour), Score: 0.5},
+		{CameraID: "entrada", OccurredAt: today.Add(2 * time.Hour), Score: 0.9},
+		{CameraID: "entrada", OccurredAt: today.Add(3 * time.Hour), Score: 0.3},
+	} {
+		if err := db.InsertMotionEvent(database, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).WithDB(database)
 
 	token := loginAndGetToken(t, srv, "u", "p")
@@ -733,22 +732,28 @@ func TestGetStatsIncludesTopMotionScorePerCamera(t *testing.T) {
 }
 
 func TestMotionEventsReturnsEventsForDate(t *testing.T) {
-	tmpDir := t.TempDir()
 	cameraID := "entrada"
-	dateDir := filepath.Join(tmpDir, cameraID, "2026", "05", "03")
-	if err := os.MkdirAll(dateDir, 0755); err != nil {
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
 		t.Fatal(err)
 	}
-	ndjson := `{"time":"2026-05-03T10:00:00Z","score":0.12}` + "\n" +
-		`{"time":"2026-05-03T10:00:05Z","score":0.08}` + "\n"
-	if err := os.WriteFile(filepath.Join(dateDir, "motion.ndjson"), []byte(ndjson), 0644); err != nil {
+	if err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
 		t.Fatal(err)
+	}
+	t1 := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 5, 3, 10, 0, 5, 0, time.UTC)
+	for _, ev := range []db.MotionEvent{
+		{CameraID: cameraID, OccurredAt: t1, Score: 0.12, Color: "#ff0000"},
+		{CameraID: cameraID, OccurredAt: t2, Score: 0.08},
+	} {
+		if err := db.InsertMotionEvent(database, ev); err != nil {
+			t.Fatal(err)
+		}
 	}
 
-	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+	cfg := config.ServerConfig{}
 	cameras := []config.CameraConfig{{ID: cameraID}}
-	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
-	srv = withTestUsers(t, srv)
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).WithDB(database)
 
 	token := loginAndGetToken(t, srv, "master", "secret")
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion?date=2026-05-03", nil)
@@ -772,6 +777,9 @@ func TestMotionEventsReturnsEventsForDate(t *testing.T) {
 	if resp.Events[0]["time"] != "2026-05-03T10:00:00Z" {
 		t.Errorf("unexpected first event time: %v", resp.Events[0]["time"])
 	}
+	if resp.Events[0]["color"] != "#ff0000" {
+		t.Errorf("expected color #ff0000, got %v", resp.Events[0]["color"])
+	}
 }
 
 func TestMotionEventsRequiresAuth(t *testing.T) {
@@ -788,12 +796,17 @@ func TestMotionEventsRequiresAuth(t *testing.T) {
 	}
 }
 
-func TestMotionEventsReturnsEmptyWhenNoFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+func TestMotionEventsReturnsEmptyWhenNoEvents(t *testing.T) {
+	database := openServerTestDB(t)
 	cameras := []config.CameraConfig{{ID: "entrada"}}
-	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
-	srv = withTestUsers(t, srv)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateCamera(database, cameras[0], nil); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.ServerConfig{}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).WithDB(database)
 
 	token := loginAndGetToken(t, srv, "master", "secret")
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/entrada/motion?date=2026-05-03", nil)
@@ -815,30 +828,32 @@ func TestMotionEventsReturnsEmptyWhenNoFile(t *testing.T) {
 }
 
 func TestMotionEventsSpansMidnightUTCWhenTimezoneOffset(t *testing.T) {
-	tmpDir := t.TempDir()
 	cameraID := "entrada"
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "u", "p", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+		t.Fatal(err)
+	}
 
 	// 2026-05-02 no fuso America/Sao_Paulo (-3h) começa às 03:00 UTC do dia 02
 	// e termina às 02:59:59 UTC do dia 03.
-	day02Dir := filepath.Join(tmpDir, cameraID, "2026", "05", "02")
-	day03Dir := filepath.Join(tmpDir, cameraID, "2026", "05", "03")
-	for _, dir := range []string{day02Dir, day03Dir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+	// 10:00 UTC dia 02 → 07:00 Sao Paulo → pertence ao dia local 02 ✓
+	// 01:00 UTC dia 03 → 22:00 Sao Paulo dia 02 → pertence ao dia local 02 ✓
+	// 04:00 UTC dia 03 → 01:00 Sao Paulo dia 03 → NÃO pertence ao dia local 02 ✗
+	for _, ev := range []db.MotionEvent{
+		{CameraID: cameraID, OccurredAt: time.Date(2026, 5, 2, 10, 0, 0, 0, time.UTC), Score: 0.5},
+		{CameraID: cameraID, OccurredAt: time.Date(2026, 5, 3, 1, 0, 0, 0, time.UTC), Score: 0.7},
+		{CameraID: cameraID, OccurredAt: time.Date(2026, 5, 3, 4, 0, 0, 0, time.UTC), Score: 0.9},
+	} {
+		if err := db.InsertMotionEvent(database, ev); err != nil {
 			t.Fatal(err)
 		}
 	}
-	// 10:00 UTC dia 02 → 07:00 Sao Paulo → pertence ao dia local 02 ✓
-	ndjson02 := `{"time":"2026-05-02T10:00:00Z","score":0.5}` + "\n"
-	os.WriteFile(filepath.Join(day02Dir, "motion.ndjson"), []byte(ndjson02), 0644)
-	// 01:00 UTC dia 03 → 22:00 Sao Paulo dia 02 → pertence ao dia local 02 ✓
-	// 04:00 UTC dia 03 → 01:00 Sao Paulo dia 03 → NÃO pertence ao dia local 02 ✗
-	ndjson03 := `{"time":"2026-05-03T01:00:00Z","score":0.7}` + "\n" +
-		`{"time":"2026-05-03T04:00:00Z","score":0.9}` + "\n"
-	os.WriteFile(filepath.Join(day03Dir, "motion.ndjson"), []byte(ndjson03), 0644)
 
-	cfg := config.ServerConfig{RecordingsPath: tmpDir}
-	srv := server.NewServer(cfg, "America/Sao_Paulo", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
-	srv = withTestUsers(t, srv)
+	cfg := config.ServerConfig{}
+	srv := server.NewServer(cfg, "America/Sao_Paulo", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil).WithDB(database)
 
 	token := loginAndGetToken(t, srv, "u", "p")
 	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion?date=2026-05-02", nil)
@@ -1776,16 +1791,25 @@ func TestDeleteRecordingCleansMotionEvents(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dateDir, filename), []byte("fake"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	// motion event inside chunk window [10:00, 10:05)
+
+	database := openServerTestDB(t)
+	if err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+		t.Fatal(err)
+	}
 	chunkStart := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
-	ndjson := filepath.Join(dateDir, "motion.ndjson")
-	if err := os.WriteFile(ndjson, []byte(`{"time":"`+chunkStart.Add(time.Minute).UTC().Format(time.RFC3339)+`","score":0.05}`+"\n"), 0644); err != nil {
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID:   cameraID,
+		OccurredAt: chunkStart.Add(time.Minute),
+		Score:      0.05,
+	}); err != nil {
 		t.Fatal(err)
 	}
 
+	if _, err := db.CreateUser(database, "u", "p", "admin", false); err != nil {
+		t.Fatal(err)
+	}
 	cfg := config.ServerConfig{RecordingsPath: tmpDir}
-	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
-	srv = withTestUsers(t, srv)
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil).WithDB(database)
 	token := loginAndGetToken(t, srv, "u", "p")
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/"+cameraID+"/recordings/"+filename, nil)
@@ -1796,8 +1820,12 @@ func TestDeleteRecordingCleansMotionEvents(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d", w.Code)
 	}
-	if _, err := os.Stat(ndjson); !os.IsNotExist(err) {
-		t.Error("expected motion.ndjson to be cleaned up after recording deletion")
+	count, err := db.CountMotionEvents(database, cameraID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 motion events after recording deletion, got %d", count)
 	}
 }
 

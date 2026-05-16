@@ -99,6 +99,7 @@ type CameraConfig struct {
 	Width             int           `yaml:"width"`
 	Height            int           `yaml:"height"`
 	DisplayOrder      int           `yaml:"display_order"`
+	HLSVideoMode      string        `yaml:"hls_video_mode"`
 	Motion            *MotionConfig `yaml:"motion"`
 }
 

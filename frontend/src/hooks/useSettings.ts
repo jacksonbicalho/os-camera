@@ -20,6 +20,7 @@ export interface CameraSettings {
   has_audio: boolean | null
   width: number
   height: number
+  hls_video_mode: string
   motion: MotionSettings | null
 }
 

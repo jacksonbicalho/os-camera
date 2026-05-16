@@ -1,14 +1,9 @@
 package motion
 
 import (
-	"bufio"
 	"bytes"
-	"encoding/json"
 	"io"
-	"io/fs"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -40,55 +35,62 @@ func discardLogger() *slog.Logger {
 }
 
 func TestDetectorRecordsEventWhenDiffExceedsThreshold(t *testing.T) {
-	tmpDir := t.TempDir()
 	frameSize := 4 // 2×2 px grayscale
 	// frame1 = black, frame2 = white → diff=1.0 > threshold=0.05
 	frameData := append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...)
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
-	st := newStore(tmpDir, nil)
+
+	var captured []Event
+	st := newStore(t.TempDir(), func(cameraID string, ts time.Time, score float64, frame, label, color string, bbox BBox) {
+		captured = append(captured, Event{Score: score})
+	})
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
 	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
 
 	det.processFrames()
 
-	events := readAllEvents(t, tmpDir, "entrada")
-	if len(events) != 1 {
-		t.Fatalf("expected 1 motion event, got %d", len(events))
+	if len(captured) != 1 {
+		t.Fatalf("expected 1 motion event, got %d", len(captured))
 	}
 }
 
 func TestDetectorIgnoresSmallDiff(t *testing.T) {
-	tmpDir := t.TempDir()
 	frameSize := 4
 	// Both frames identical → diff=0 < threshold=0.05
 	frameData := bytes.Repeat([]byte{128}, frameSize*2)
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
-	st := newStore(tmpDir, nil)
+
+	var captured []Event
+	st := newStore(t.TempDir(), func(_ string, _ time.Time, score float64, _, _, _ string, _ BBox) {
+		captured = append(captured, Event{Score: score})
+	})
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
 	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
 
 	det.processFrames()
 
-	events := readAllEvents(t, tmpDir, "entrada")
-	if len(events) != 0 {
-		t.Fatalf("expected 0 motion events, got %d", len(events))
+	if len(captured) != 0 {
+		t.Fatalf("expected 0 motion events, got %d", len(captured))
 	}
 }
 
 func TestDetectorTimestampIsApproxNow(t *testing.T) {
-	tmpDir := t.TempDir()
 	frameSize := 4
 	frameData := append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...)
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
-	st := newStore(tmpDir, nil)
+
+	var capturedAt time.Time
+	st := newStore(t.TempDir(), func(_ string, ts time.Time, _ float64, _, _, _ string, _ BBox) {
+		capturedAt = ts
+	})
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
 	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
@@ -97,16 +99,11 @@ func TestDetectorTimestampIsApproxNow(t *testing.T) {
 	det.processFrames()
 	after := time.Now().UTC().Add(time.Second)
 
-	events := readAllEvents(t, tmpDir, "entrada")
-	if len(events) != 1 {
-		t.Fatalf("expected 1 event")
+	if capturedAt.IsZero() {
+		t.Fatal("expected 1 event")
 	}
-	evTime, err := time.Parse(time.RFC3339, events[0]["time"].(string))
-	if err != nil {
-		t.Fatalf("parse time: %v", err)
-	}
-	if evTime.Before(before) || evTime.After(after) {
-		t.Errorf("event time %v outside range [%v, %v]", evTime, before, after)
+	if capturedAt.Before(before) || capturedAt.After(after) {
+		t.Errorf("event time %v outside range [%v, %v]", capturedAt, before, after)
 	}
 }
 
@@ -252,14 +249,17 @@ func TestDetectorCooldownZeroDisablesSuppression(t *testing.T) {
 }
 
 func TestDetectorExclusionZoneSuppressesEvent(t *testing.T) {
-	tmpDir := t.TempDir()
 	frameSize := 4 // 2×2 frame
 	// frame1=black, frame2=white → full diff; but whole frame is excluded → score=0, no event
 	frameData := append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...)
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
-	st := newStore(tmpDir, nil)
+
+	var captured []Event
+	st := newStore(t.TempDir(), func(_ string, _ time.Time, score float64, _, _, _ string, _ BBox) {
+		captured = append(captured, Event{Score: score})
+	})
 
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
 	fullZone := zones.Zone{X: 0, Y: 0, W: 1, H: 1}
@@ -268,32 +268,7 @@ func TestDetectorExclusionZoneSuppressesEvent(t *testing.T) {
 
 	det.processFrames()
 
-	events := readAllEvents(t, tmpDir, "cam")
-	if len(events) != 0 {
-		t.Fatalf("expected 0 events with full exclusion zone, got %d", len(events))
+	if len(captured) != 0 {
+		t.Fatalf("expected 0 events with full exclusion zone, got %d", len(captured))
 	}
-}
-
-func readAllEvents(t *testing.T, basePath, cameraID string) []map[string]any {
-	t.Helper()
-	var events []map[string]any
-	root := filepath.Join(basePath, cameraID)
-	filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || d.Name() != "motion.ndjson" {
-			return nil
-		}
-		f, err := os.Open(path)
-		if err != nil {
-			return nil
-		}
-		defer f.Close()
-		sc := bufio.NewScanner(f)
-		for sc.Scan() {
-			var ev map[string]any
-			json.Unmarshal(sc.Bytes(), &ev)
-			events = append(events, ev)
-		}
-		return nil
-	})
-	return events
 }

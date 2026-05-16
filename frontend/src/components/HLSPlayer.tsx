@@ -69,16 +69,14 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
         hls.on(Hls.Events.ERROR, (_e, data) => {
           if (data.fatal) {
             hls?.destroy()
+            hls = undefined
             setFatalError(true)
           }
         })
       })
     }
 
-    retryRef.current = () => {
-      hls?.destroy()
-      setup(video)
-    }
+    retryRef.current = () => setup(video)
 
     setup(video)
 
@@ -105,6 +103,12 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
   }, [])
 
   useImperativeHandle(ref, () => ({ seekTo: handleSeekToEvent }), [handleSeekToEvent])
+
+  useEffect(() => {
+    if (!fatalError) return
+    const timer = setTimeout(() => retryRef.current?.(), 2000)
+    return () => clearTimeout(timer)
+  }, [fatalError])
 
   useEventSource(
     cameraId ? `/api/cameras/${cameraId}/motion/live` : null,
@@ -137,14 +141,11 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
         playsInline
       />
       {fatalError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 gap-3">
-          <span className="text-sm text-gray-300">Stream indisponível</span>
-          <button
-            onClick={(e) => { e.stopPropagation(); retryRef.current?.() }}
-            className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-          >
-            Tentar novamente
-          </button>
+        <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+          <svg className="w-8 h-8 text-gray-400 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
         </div>
       )}
       {!fatalError && playBlocked && (

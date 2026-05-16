@@ -509,6 +509,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		HasAudio          *bool      `json:"has_audio"`
 		Width             int        `json:"width"`
 		Height            int        `json:"height"`
+		HLSVideoMode      string     `json:"hls_video_mode"`
 		Motion            *motionDTO `json:"motion"`
 	}
 	camList := s.cameras
@@ -555,6 +556,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			HasAudio:          hasAudio,
 			Width:             width,
 			Height:            height,
+			HLSVideoMode:      c.HLSVideoMode,
 			Motion:            motion,
 		}
 	}
@@ -816,9 +818,15 @@ func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ndjsonPath := filepath.Join(s.cfg.RecordingsPath, id, dateDir, "motion.ndjson")
-	if err := storage.RemoveEventsInRange(ndjsonPath, chunkStart, chunkEnd); err != nil {
-		s.log.Warn("failed to clean motion events after recording deletion", "path", ndjsonPath, "err", err)
+	if s.db != nil {
+		if err := db.DeleteMotionEventsInRange(s.db, id, chunkStart, chunkEnd); err != nil {
+			s.log.Warn("failed to clean motion events after recording deletion", "camera", id, "err", err)
+		}
+	} else {
+		ndjsonPath := filepath.Join(s.cfg.RecordingsPath, id, dateDir, "motion.ndjson")
+		if err := storage.RemoveEventsInRange(ndjsonPath, chunkStart, chunkEnd); err != nil {
+			s.log.Warn("failed to clean motion events after recording deletion", "path", ndjsonPath, "err", err)
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -880,10 +888,11 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		TopMotionScore float64 `json:"top_motion_score"`
 		MinMotionScore float64 `json:"min_motion_score"`
 	}
-	today := time.Now().UTC().Format("2006/01/02")
+	todayStart := time.Now().UTC().Truncate(24 * time.Hour)
+	todayEnd := todayStart.Add(24 * time.Hour)
 	cameras := make([]cameraStats, len(allCameras))
 	for i, cam := range allCameras {
-		mn, mx := motionScoreRange(s.cfg.RecordingsPath, cam.ID, today)
+		mn, mx := motionScoreRange(s.db, s.cfg.RecordingsPath, cam.ID, todayStart, todayEnd)
 		cameras[i] = cameraStats{ID: cam.ID, TopMotionScore: mx, MinMotionScore: mn}
 	}
 
@@ -903,7 +912,14 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func motionScoreRange(basePath, cameraID, utcDay string) (min, max float64) {
+func motionScoreRange(database *db.DB, basePath, cameraID string, start, end time.Time) (min, max float64) {
+	if database != nil {
+		mn, mx, err := db.MinMaxScoreForDay(database, cameraID, start, end)
+		if err == nil {
+			return mn, mx
+		}
+	}
+	utcDay := start.UTC().Format("2006/01/02")
 	path := filepath.Join(basePath, cameraID, utcDay, "motion.ndjson")
 	f, err := os.Open(path)
 	if err != nil {
@@ -1362,30 +1378,53 @@ func (s *Server) handleMotionEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	dayStart := localDay.UTC()
 	dayEnd := localDay.Add(24 * time.Hour).UTC()
-	utcDays := utcDaysInRange(dayStart, dayEnd)
 
 	var events []map[string]any
-	for _, utcDay := range utcDays {
-		ndjsonPath := filepath.Join(s.cfg.RecordingsPath, id, utcDay.Format("2006/01/02"), "motion.ndjson")
-		f, err := os.Open(ndjsonPath)
-		if err != nil {
-			continue
+	if s.db != nil {
+		rows, err := db.ListMotionEvents(s.db, id, dayStart, dayEnd)
+		if err == nil {
+			for _, ev := range rows {
+				entry := map[string]any{
+					"time":  ev.OccurredAt.UTC().Format(time.RFC3339),
+					"score": ev.Score,
+					"bbox":  map[string]float64{"x": ev.BboxX, "y": ev.BboxY, "w": ev.BboxW, "h": ev.BboxH},
+				}
+				if ev.FramePath != "" {
+					entry["frame"] = ev.FramePath
+				}
+				if ev.Label != "" {
+					entry["label"] = ev.Label
+				}
+				if ev.Color != "" {
+					entry["color"] = ev.Color
+				}
+				events = append(events, entry)
+			}
 		}
-		sc := bufio.NewScanner(f)
-		for sc.Scan() {
-			var ev map[string]any
-			if json.Unmarshal(sc.Bytes(), &ev) != nil {
+	} else {
+		utcDays := utcDaysInRange(dayStart, dayEnd)
+		for _, utcDay := range utcDays {
+			ndjsonPath := filepath.Join(s.cfg.RecordingsPath, id, utcDay.Format("2006/01/02"), "motion.ndjson")
+			f, err := os.Open(ndjsonPath)
+			if err != nil {
 				continue
 			}
-			if timeStr, ok := ev["time"].(string); ok {
-				t, err := time.Parse(time.RFC3339, timeStr)
-				if err != nil || t.Before(dayStart) || !t.Before(dayEnd) {
+			sc := bufio.NewScanner(f)
+			for sc.Scan() {
+				var ev map[string]any
+				if json.Unmarshal(sc.Bytes(), &ev) != nil {
 					continue
 				}
+				if timeStr, ok := ev["time"].(string); ok {
+					t, err := time.Parse(time.RFC3339, timeStr)
+					if err != nil || t.Before(dayStart) || !t.Before(dayEnd) {
+						continue
+					}
+				}
+				events = append(events, ev)
 			}
-			events = append(events, ev)
+			f.Close()
 		}
-		f.Close()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
