@@ -16,6 +16,7 @@ import { useSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { mergeRecordings } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
+import { useNotifications } from '../contexts/NotificationContext'
 
 interface RecordingsResponse {
   recordings: Recording[]
@@ -350,6 +351,7 @@ export default function CameraPage() {
 
   const settings = useSettings(`/cameras/${id}`)
   const motionPeak = useMotionPeak(id, `/cameras/${id}`)
+  const { markRead } = useNotifications()
   const cam = settings?.cameras.find(c => c.id === id)
   const effectiveThreshold = (cam?.motion ?? settings?.motion)?.threshold ?? 0
 
@@ -777,7 +779,7 @@ export default function CameraPage() {
                       <button
                         key={ev.id ?? `${ev.time}-${i}`}
                         ref={isActive ? (el) => { activeEventItemRef.current = el } : null}
-                        onClick={() => { playEventAt(ev); setScrollNonce(n => n + 1) }}
+                        onClick={() => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) }}
                         className={`w-full flex items-center justify-between px-3 py-2 transition-colors text-left ${
                           isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-gray-800'
                         }`}
