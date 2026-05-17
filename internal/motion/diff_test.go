@@ -324,6 +324,23 @@ func TestComputeBBoxRealMotion(t *testing.T) {
 
 // --- computeBBoxInZone ---
 
+// Movimento sutil dentro de zona (diff=15, típico de gato à noite em câmera IR)
+// deve produzir bbox preciso — não o fallback da zona inteira.
+// diff=15 < bboxPixelThreshold=25 (global), mas ≥ zoneBboxPixelThreshold=12.
+func TestComputeBBoxInZoneSubtleMotion(t *testing.T) {
+	// Frame 8×8, zona cobre toda a área
+	// Movimento apenas no pixel (px=4, py=4), diff=15
+	a := make([]byte, 64)
+	b := make([]byte, 64)
+	b[4*8+4] = 15 // pixel (px=4, py=4)
+	z := zones.Zone{X: 0, Y: 0, W: 1, H: 1}
+	got := computeBBoxInZone(a, b, 8, 8, z)
+	want := BBox{X: 0.5, Y: 0.5, W: 0.125, H: 0.125}
+	if got != want {
+		t.Errorf("movimento sutil na zona retornou fallback em vez de bbox preciso: got %+v, want %+v", got, want)
+	}
+}
+
 // Retorna o bbox do objeto em movimento dentro da zona (não o bbox da zona inteira)
 func TestComputeBBoxInZoneLocalizesMotion(t *testing.T) {
 	// Frame 8×8, zona cobre a metade inferior (y=0.5..1.0)
