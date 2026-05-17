@@ -26,31 +26,22 @@ var (
 	ColorDetect = color.NRGBA{R: 249, G: 115, B: 22, A: 255}
 )
 
-func annotateFrame(frame []byte, w, h int, bbox BBox, score float64, c color.NRGBA) []byte {
+func annotateFrame(frame []byte, w, h int, bbox BBox, score float64, c color.NRGBA, drawRect bool) []byte {
 	img := image.NewGray(image.Rect(0, 0, w, h))
 	copy(img.Pix, frame)
-
-	x0 := clamp(int(math.Round(bbox.X*float64(w))), 0, w-1)
-	y0 := clamp(int(math.Round(bbox.Y*float64(h))), 0, h-1)
-	x1 := clamp(int(math.Round((bbox.X+bbox.W)*float64(w)))-1, x0, w-1)
-	y1 := clamp(int(math.Round((bbox.Y+bbox.H)*float64(h)))-1, y0, h-1)
 
 	rgba := image.NewNRGBA(img.Bounds())
 	draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
 
-	for t := 0; t < 2; t++ {
-		if y0+t < h {
-			drawHLine(rgba, x0, x1, y0+t, c)
-		}
-		if y1-t >= 0 {
-			drawHLine(rgba, x0, x1, y1-t, c)
-		}
-		if x0+t < w {
-			drawVLine(rgba, y0, y1, x0+t, c)
-		}
-		if x1-t >= 0 {
-			drawVLine(rgba, y0, y1, x1-t, c)
-		}
+	if drawRect {
+		x0 := clamp(int(math.Round(bbox.X*float64(w))), 0, w-1)
+		y0 := clamp(int(math.Round(bbox.Y*float64(h))), 0, h-1)
+		x1 := clamp(int(math.Round((bbox.X+bbox.W)*float64(w)))-1, x0, w-1)
+		y1 := clamp(int(math.Round((bbox.Y+bbox.H)*float64(h)))-1, y0, h-1)
+		drawHLine(rgba, x0, x1, y0, c)
+		drawHLine(rgba, x0, x1, y1, c)
+		drawVLine(rgba, y0, y1, x0, c)
+		drawVLine(rgba, y0, y1, x1, c)
 	}
 
 	label := fmt.Sprintf("score: %.3f", score)

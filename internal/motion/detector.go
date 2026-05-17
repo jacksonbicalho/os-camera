@@ -127,8 +127,8 @@ func (d *detector) processFrames() {
 				d.notifyRaw(Event{Time: ts, Score: score})
 			}
 			if score >= d.cfg.Threshold && d.cooldownElapsed(ts) {
-				bbox := computeBBox(prev, cur, d.width, d.height, zs)
-				jpegData := annotateFrame(cur, d.width, d.height, bbox, score, ColorGlobal)
+				bbox, bboxFound := computeBBox(prev, cur, d.width, d.height, zs)
+				jpegData := annotateFrame(cur, d.width, d.height, bbox, score, ColorGlobal, bboxFound)
 				frameName, saveErr := d.st.saveJPEG(d.cameraID, ts, jpegData)
 				if saveErr != nil {
 					d.log.Warn("motion: failed to save snapshot", "camera", d.cameraID, "error", saveErr)
@@ -178,12 +178,12 @@ func (d *detector) evaluateDetectZones(prev, cur []byte, zs []zones.Zone, ts tim
 		cooldownOk := cd <= 0 || ts.Sub(d.zoneLastEv[i]) >= time.Duration(cd)*time.Second
 		if zScore >= thr && cooldownOk {
 			d.zoneLastEv[i] = ts
-			bbox := computeBBoxInZone(prev, cur, d.width, d.height, dz)
+			bbox, bboxFound := computeBBoxInZone(prev, cur, d.width, d.height, dz)
 			zoneColor := ColorDetect
 			if dz.Color != "" {
 				zoneColor = hexToNRGBA(dz.Color)
 			}
-			jpegData := annotateFrame(cur, d.width, d.height, bbox, zScore, zoneColor)
+			jpegData := annotateFrame(cur, d.width, d.height, bbox, zScore, zoneColor, bboxFound)
 			frameName, saveErr := d.st.saveJPEG(d.cameraID, ts, jpegData)
 			if saveErr != nil {
 				d.log.Warn("motion: failed to save zone snapshot", "camera", d.cameraID, "zone", dz.Label, "error", saveErr)

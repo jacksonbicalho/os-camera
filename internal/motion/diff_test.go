@@ -106,10 +106,13 @@ func TestDiffFramesMaskedAllPixelsMaskedReturnsZero(t *testing.T) {
 // Frame 4×4, nenhum pixel diferente → bbox cobre frame inteiro
 func TestComputeBBoxNoDiff(t *testing.T) {
 	frame := make([]byte, 16)
-	got := computeBBox(frame, frame, 4, 4, nil)
+	got, found := computeBBox(frame, frame, 4, 4, nil)
 	want := BBox{X: 0, Y: 0, W: 1, H: 1}
 	if got != want {
 		t.Errorf("expected %+v, got %+v", want, got)
+	}
+	if found {
+		t.Error("expected found=false when no pixels differ")
 	}
 }
 
@@ -120,10 +123,13 @@ func TestComputeBBoxAllDiff(t *testing.T) {
 	for i := range b {
 		b[i] = 255
 	}
-	got := computeBBox(a, b, 4, 4, nil)
+	got, found := computeBBox(a, b, 4, 4, nil)
 	want := BBox{X: 0, Y: 0, W: 1, H: 1}
 	if got != want {
 		t.Errorf("expected %+v, got %+v", want, got)
+	}
+	if !found {
+		t.Error("expected found=true when all pixels differ")
 	}
 }
 
@@ -135,7 +141,7 @@ func TestComputeBBoxSinglePixel(t *testing.T) {
 	b := make([]byte, 16)
 	// pixel (px=1, py=1) → índice = py*w + px = 1*4+1 = 5
 	b[5] = 200 // diff = 200 > threshold
-	got := computeBBox(a, b, 4, 4, nil)
+	got, _ := computeBBox(a, b, 4, 4, nil)
 	want := BBox{X: 0.25, Y: 0.25, W: 0.25, H: 0.25}
 	if got != want {
 		t.Errorf("expected %+v, got %+v", want, got)
@@ -151,7 +157,7 @@ func TestComputeBBoxRegion(t *testing.T) {
 	for _, idx := range []int{5, 6, 9, 10} {
 		b[idx] = 200
 	}
-	got := computeBBox(a, b, 4, 4, nil)
+	got, _ := computeBBox(a, b, 4, 4, nil)
 	want := BBox{X: 0.25, Y: 0.25, W: 0.5, H: 0.5}
 	if got != want {
 		t.Errorf("expected %+v, got %+v", want, got)
@@ -164,7 +170,7 @@ func TestComputeBBoxRightEdge(t *testing.T) {
 	a := make([]byte, 4)
 	b := make([]byte, 4)
 	b[3] = 200
-	got := computeBBox(a, b, 4, 1, nil)
+	got, _ := computeBBox(a, b, 4, 1, nil)
 	want := BBox{X: 0.75, Y: 0, W: 0.25, H: 1}
 	if got != want {
 		t.Errorf("expected %+v, got %+v", want, got)
@@ -301,10 +307,13 @@ func TestComputeBBoxFiltersCodecArtifact(t *testing.T) {
 	b := make([]byte, 16)
 	// diff=15: faixa típica de artefato de I-frame H.265 (10–20 unidades)
 	b[5] = 15
-	got := computeBBox(a, b, 4, 4, nil)
+	got, found := computeBBox(a, b, 4, 4, nil)
 	want := BBox{X: 0, Y: 0, W: 1, H: 1} // fallback = frame inteiro
 	if got != want {
 		t.Errorf("artefato de codec expandiu o bbox: got %+v, want fallback %+v", got, want)
+	}
+	if found {
+		t.Error("expected found=false para artefato abaixo do threshold")
 	}
 }
 
@@ -315,10 +324,13 @@ func TestComputeBBoxRealMotion(t *testing.T) {
 	b := make([]byte, 16)
 	// diff=30: bordas de objeto em movimento real (gato, pessoa → 30–150+)
 	b[5] = 30 // pixel (px=1, py=1)
-	got := computeBBox(a, b, 4, 4, nil)
+	got, found := computeBBox(a, b, 4, 4, nil)
 	want := BBox{X: 0.25, Y: 0.25, W: 0.25, H: 0.25}
 	if got != want {
 		t.Errorf("movimento real não produziu bbox preciso: got %+v, want %+v", got, want)
+	}
+	if !found {
+		t.Error("expected found=true para movimento real acima do threshold")
 	}
 }
 
@@ -334,10 +346,13 @@ func TestComputeBBoxInZoneSubtleMotion(t *testing.T) {
 	b := make([]byte, 64)
 	b[4*8+4] = 15 // pixel (px=4, py=4)
 	z := zones.Zone{X: 0, Y: 0, W: 1, H: 1}
-	got := computeBBoxInZone(a, b, 8, 8, z)
+	got, found := computeBBoxInZone(a, b, 8, 8, z)
 	want := BBox{X: 0.5, Y: 0.5, W: 0.125, H: 0.125}
 	if got != want {
 		t.Errorf("movimento sutil na zona retornou fallback em vez de bbox preciso: got %+v, want %+v", got, want)
+	}
+	if !found {
+		t.Error("expected found=true para movimento sutil acima de zoneBboxPixelThreshold")
 	}
 }
 
@@ -349,22 +364,25 @@ func TestComputeBBoxInZoneLocalizesMotion(t *testing.T) {
 	b := make([]byte, 64)
 	b[5*8+4] = 200 // i=44
 	z := zones.Zone{X: 0, Y: 0.5, W: 1, H: 0.5}
-	got := computeBBoxInZone(a, b, 8, 8, z)
+	got, _ := computeBBoxInZone(a, b, 8, 8, z)
 	want := BBox{X: 0.5, Y: 0.625, W: 0.125, H: 0.125}
 	if got != want {
 		t.Errorf("expected %+v, got %+v", want, got)
 	}
 }
 
-// Sem pixels ativos dentro da zona → retorna o bbox da zona como fallback
+// Sem pixels ativos dentro da zona → retorna o bbox da zona como fallback e found=false
 func TestComputeBBoxInZoneNoActivePixels(t *testing.T) {
 	a := make([]byte, 16)
 	b := make([]byte, 16)
 	z := zones.Zone{X: 0.25, Y: 0.25, W: 0.5, H: 0.5}
-	got := computeBBoxInZone(a, b, 4, 4, z)
+	got, found := computeBBoxInZone(a, b, 4, 4, z)
 	want := BBox{X: z.X, Y: z.Y, W: z.W, H: z.H}
 	if got != want {
 		t.Errorf("expected zone fallback %+v, got %+v", want, got)
+	}
+	if found {
+		t.Error("expected found=false quando nenhum pixel ativo na zona")
 	}
 }
 
@@ -374,7 +392,7 @@ func TestComputeBBoxInZoneIgnoresPixelsOutsideZone(t *testing.T) {
 	b := make([]byte, 16)
 	b[0] = 200 // pixel (0,0), fora da zona
 	z := zones.Zone{X: 0.25, Y: 0.25, W: 0.75, H: 0.75}
-	got := computeBBoxInZone(a, b, 4, 4, z)
+	got, _ := computeBBoxInZone(a, b, 4, 4, z)
 	want := BBox{X: z.X, Y: z.Y, W: z.W, H: z.H}
 	if got != want {
 		t.Errorf("expected zone fallback %+v, got %+v", want, got)
@@ -390,7 +408,7 @@ func TestComputeBBoxIgnoresMaskedPixels(t *testing.T) {
 	b[0] = 200 // mascarado
 	b[3] = 200 // não mascarado
 	z := []zones.Zone{{X: 0, Y: 0, W: 0.5, H: 1}} // mascara pixels 0 e 1
-	got := computeBBox(a, b, 4, 1, z)
+	got, _ := computeBBox(a, b, 4, 1, z)
 	want := BBox{X: 0.75, Y: 0, W: 0.25, H: 1}
 	if got != want {
 		t.Errorf("expected %+v, got %+v", want, got)

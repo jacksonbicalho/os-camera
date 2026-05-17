@@ -24,8 +24,9 @@ const zoneBboxPixelThreshold = 12
 
 // computeBBox retorna o bounding box normalizado (0.0–1.0) da região com maior
 // diferença entre os frames. Pixels mascarados pelas zones são ignorados.
-// Se nenhum pixel ultrapassar o threshold, retorna o frame inteiro {0,0,1,1}.
-func computeBBox(prev, cur []byte, w, h int, zs []zones.Zone) BBox {
+// Retorna (bbox, true) quando pixels acima do threshold foram encontrados,
+// ou ({0,0,1,1}, false) quando nenhum pixel ultrapassou o threshold.
+func computeBBox(prev, cur []byte, w, h int, zs []zones.Zone) (BBox, bool) {
 	minX, minY := w, h
 	maxX, maxY := -1, -1
 	for i := range prev {
@@ -54,7 +55,7 @@ func computeBBox(prev, cur []byte, w, h int, zs []zones.Zone) BBox {
 		}
 	}
 	if maxX < 0 {
-		return BBox{0, 0, 1, 1}
+		return BBox{0, 0, 1, 1}, false
 	}
 	fw, fh := float64(w), float64(h)
 	return BBox{
@@ -62,13 +63,14 @@ func computeBBox(prev, cur []byte, w, h int, zs []zones.Zone) BBox {
 		Y: float64(minY) / fh,
 		W: float64(maxX-minX+1) / fw,
 		H: float64(maxY-minY+1) / fh,
-	}
+	}, true
 }
 
 // computeBBoxInZone retorna o bounding box normalizado (0.0–1.0) dos pixels
 // com maior diferença dentro da zona dz. Pixels fora da zona são ignorados.
-// Se nenhum pixel dentro da zona ultrapassar o threshold, retorna o bbox da zona.
-func computeBBoxInZone(prev, cur []byte, w, h int, dz zones.Zone) BBox {
+// Retorna (bbox, true) quando pixels acima do threshold foram encontrados,
+// ou (bbox da zona, false) quando nenhum pixel ultrapassou o threshold.
+func computeBBoxInZone(prev, cur []byte, w, h int, dz zones.Zone) (BBox, bool) {
 	x0z := int(math.Floor(dz.X * float64(w)))
 	y0z := int(math.Floor(dz.Y * float64(h)))
 	x1z := int(math.Ceil((dz.X + dz.W) * float64(w)))
@@ -100,7 +102,7 @@ func computeBBoxInZone(prev, cur []byte, w, h int, dz zones.Zone) BBox {
 		}
 	}
 	if maxX < 0 {
-		return BBox{dz.X, dz.Y, dz.W, dz.H}
+		return BBox{dz.X, dz.Y, dz.W, dz.H}, false
 	}
 	fw, fh := float64(w), float64(h)
 	return BBox{
@@ -108,7 +110,7 @@ func computeBBoxInZone(prev, cur []byte, w, h int, dz zones.Zone) BBox {
 		Y: float64(minY) / fh,
 		W: float64(maxX-minX+1) / fw,
 		H: float64(maxY-minY+1) / fh,
-	}
+	}, true
 }
 
 func diffFrames(a, b []byte) float64 {
