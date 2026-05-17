@@ -130,6 +130,10 @@ Fluxo de primeiro acesso: o admin inicial é criado com `must_change_password = 
 | `CAMERA_TIMEZONE` | `timezone` (fuso da instalação; usado pelo servidor para interpretar datas locais) |
 | `CAMERA_SERVER_JWT_SECRET` | `server.jwt_secret` (segredo JWT fixo; vazio = gerado aleatoriamente a cada boot) |
 
+## Diretório `amostras/`
+
+O diretório `amostras/` (listado no `.gitignore`) é reservado para arquivos que o navigator coloca para análise contextual — screenshots, logs, dumps de banco, exemplos de vídeo ou qualquer artefato que ajude a diagnosticar um problema. Claude deve inspecionar o conteúdo desse diretório quando o navigator mencionar que colocou algo lá, ou quando precisar de evidência concreta para uma investigação.
+
 ## Forma de trabalho
 
 O desenvolvimento segue **XP (Extreme Programming)** com **TDD red → green → refactor**:
