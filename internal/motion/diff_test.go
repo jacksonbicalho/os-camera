@@ -294,17 +294,31 @@ func TestDiffFramesForZoneScaledDetectsMotion(t *testing.T) {
 
 // --- computeBBox ---
 
-// Pixel com diff abaixo do antigo threshold (30) mas acima do novo (10)
-// deve retornar bbox correto em vez do frame inteiro
-func TestComputeBBoxLowDiffPixel(t *testing.T) {
+// Pixels com diff típico de artefato de I-frame H.265 (≤ 20) não devem
+// expandir o bbox — devem retornar o fallback de frame inteiro.
+func TestComputeBBoxFiltersCodecArtifact(t *testing.T) {
 	a := make([]byte, 16) // 4×4
 	b := make([]byte, 16)
-	// pixel (px=1, py=1) → i=5, diff=20
-	b[5] = 20
+	// diff=15: faixa típica de artefato de I-frame H.265 (10–20 unidades)
+	b[5] = 15
+	got := computeBBox(a, b, 4, 4, nil)
+	want := BBox{X: 0, Y: 0, W: 1, H: 1} // fallback = frame inteiro
+	if got != want {
+		t.Errorf("artefato de codec expandiu o bbox: got %+v, want fallback %+v", got, want)
+	}
+}
+
+// Pixels com diff acima do bboxPixelThreshold (movimento real) devem
+// produzir um bbox preciso.
+func TestComputeBBoxRealMotion(t *testing.T) {
+	a := make([]byte, 16) // 4×4
+	b := make([]byte, 16)
+	// diff=30: bordas de objeto em movimento real (gato, pessoa → 30–150+)
+	b[5] = 30 // pixel (px=1, py=1)
 	got := computeBBox(a, b, 4, 4, nil)
 	want := BBox{X: 0.25, Y: 0.25, W: 0.25, H: 0.25}
 	if got != want {
-		t.Errorf("expected %+v, got %+v", want, got)
+		t.Errorf("movimento real não produziu bbox preciso: got %+v, want %+v", got, want)
 	}
 }
 
