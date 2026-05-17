@@ -12,7 +12,7 @@ type BBox struct {
 
 // pixelThreshold é o delta mínimo (0–255) para considerar um pixel "diferente"
 // na computação do bounding box.
-const pixelThreshold = 30
+const pixelThreshold = 10
 
 // computeBBox retorna o bounding box normalizado (0.0–1.0) da região com maior
 // diferença entre os frames. Pixels mascarados pelas zones são ignorados.
@@ -47,6 +47,52 @@ func computeBBox(prev, cur []byte, w, h int, zs []zones.Zone) BBox {
 	}
 	if maxX < 0 {
 		return BBox{0, 0, 1, 1}
+	}
+	fw, fh := float64(w), float64(h)
+	return BBox{
+		X: float64(minX) / fw,
+		Y: float64(minY) / fh,
+		W: float64(maxX-minX+1) / fw,
+		H: float64(maxY-minY+1) / fh,
+	}
+}
+
+// computeBBoxInZone retorna o bounding box normalizado (0.0–1.0) dos pixels
+// com maior diferença dentro da zona dz. Pixels fora da zona são ignorados.
+// Se nenhum pixel dentro da zona ultrapassar o threshold, retorna o bbox da zona.
+func computeBBoxInZone(prev, cur []byte, w, h int, dz zones.Zone) BBox {
+	x0z := int(math.Floor(dz.X * float64(w)))
+	y0z := int(math.Floor(dz.Y * float64(h)))
+	x1z := int(math.Ceil((dz.X + dz.W) * float64(w)))
+	y1z := int(math.Ceil((dz.Y + dz.H) * float64(h)))
+
+	minX, minY := w, h
+	maxX, maxY := -1, -1
+	for y := y0z; y < y1z; y++ {
+		for x := x0z; x < x1z; x++ {
+			i := y*w + x
+			d := int(cur[i]) - int(prev[i])
+			if d < 0 {
+				d = -d
+			}
+			if d >= pixelThreshold {
+				if x < minX {
+					minX = x
+				}
+				if y < minY {
+					minY = y
+				}
+				if x > maxX {
+					maxX = x
+				}
+				if y > maxY {
+					maxY = y
+				}
+			}
+		}
+	}
+	if maxX < 0 {
+		return BBox{dz.X, dz.Y, dz.W, dz.H}
 	}
 	fw, fh := float64(w), float64(h)
 	return BBox{

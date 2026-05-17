@@ -178,7 +178,7 @@ func (d *detector) evaluateDetectZones(prev, cur []byte, zs []zones.Zone, ts tim
 		cooldownOk := cd <= 0 || ts.Sub(d.zoneLastEv[i]) >= time.Duration(cd)*time.Second
 		if zScore >= thr && cooldownOk {
 			d.zoneLastEv[i] = ts
-			bbox := BBox{X: dz.X, Y: dz.Y, W: dz.W, H: dz.H}
+			bbox := computeBBoxInZone(prev, cur, d.width, d.height, dz)
 			zoneColor := ColorDetect
 			if dz.Color != "" {
 				zoneColor = hexToNRGBA(dz.Color)
