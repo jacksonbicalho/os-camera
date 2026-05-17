@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -11,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"camera/internal/config"
+	"camera/internal/db"
 	"camera/internal/storage"
 )
 
@@ -486,6 +489,76 @@ func TestCheckSize_LogsWarnWhenAboveThreshold(t *testing.T) {
 
 	if !strings.Contains(buf.String(), "storage usage high") {
 		t.Errorf("expected storage usage warning, got: %s", buf.String())
+	}
+}
+
+func openTestDB(t *testing.T) *db.DB {
+	t.Helper()
+	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+	return database
+}
+
+func queryEndedAt(t *testing.T, database *db.DB, path string) sql.NullString {
+	t.Helper()
+	var endedAt sql.NullString
+	err := database.QueryRow(`SELECT ended_at FROM recordings WHERE path=?`, path).Scan(&endedAt)
+	if err != nil {
+		t.Fatalf("query ended_at for %s: %v", path, err)
+	}
+	return endedAt
+}
+
+func createTestCamera(t *testing.T, database *db.DB, id string) {
+	t.Helper()
+	dur5m := config.Duration(5 * time.Minute)
+	dur30s := config.Duration(30 * time.Second)
+	cam := config.CameraConfig{
+		ID:                id,
+		RTSPURL:           "rtsp://localhost/" + id,
+		ChunkDuration:     dur5m,
+		ReconnectInterval: dur30s,
+	}
+	if err := db.CreateCamera(database, cam, nil); err != nil {
+		t.Fatalf("create camera %s: %v", id, err)
+	}
+}
+
+// Quando syncRecordings insere um arquivo como último (ended_at NULL) e depois
+// um sucessor aparece, a segunda execução deve preencher o ended_at do primeiro.
+func TestSyncRecordings_UpdatesEndedAtWhenSuccessorAppears(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCamera(t, database, "cam1")
+
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	pathA := mp4WithTimestamp(dir, "cam1", base)
+	writeFile(t, pathA, base)
+
+	// Primeiro sync: só arquivo A → inserido com ended_at = NULL
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	if got := queryEndedAt(t, database, pathA); got.Valid {
+		t.Errorf("após primeiro sync ended_at deveria ser NULL, mas é %s", got.String)
+	}
+
+	// Arquivo B aparece
+	pathB := mp4WithTimestamp(dir, "cam1", base.Add(5*time.Minute))
+	writeFile(t, pathB, base.Add(5*time.Minute))
+
+	// Segundo sync: A deve ter ended_at preenchido com o início de B
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	got := queryEndedAt(t, database, pathA)
+	if !got.Valid {
+		t.Fatal("ended_at continua NULL após o sucessor aparecer; INSERT OR IGNORE não está sendo compensado com UPDATE")
+	}
+	want := base.Add(5 * time.Minute).UTC().Format(time.RFC3339)
+	if got.String != want {
+		t.Errorf("ended_at = %s, want %s", got.String, want)
 	}
 }
 

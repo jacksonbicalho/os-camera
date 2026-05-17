@@ -195,6 +195,11 @@ func (c *Cleaner) syncRecordings() {
 			if err := db.InsertRecording(c.db, rec); err != nil {
 				c.log.Warn("failed to insert recording", "path", fullPath, "err", err)
 			}
+			if !chunkEnd.IsZero() {
+				if err := db.UpdateRecordingEndedAt(c.db, fullPath, chunkEnd); err != nil {
+					c.log.Warn("failed to update recording ended_at", "path", fullPath, "err", err)
+				}
+			}
 		}
 	}
 
