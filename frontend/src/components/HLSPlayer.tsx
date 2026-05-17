@@ -3,8 +3,15 @@ import type HlsType from 'hls.js'
 import { getToken } from '../auth'
 import { useEventSource } from '../hooks/useEventSource'
 
+export interface HLSStats {
+  bandwidthKbps: number
+  latencySeconds: number
+}
+
 export interface HLSPlayerHandle {
   seekTo: (isoTime: string) => void
+  getStats: () => HLSStats | null
+  getVideoQuality: () => VideoPlaybackQuality | null
 }
 
 interface HLSPlayerProps {
@@ -22,6 +29,7 @@ interface MotionAlert {
 const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer({ src, className, cameraId, onGoToEvent }, ref) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const hlsRef = useRef<HlsType | null>(null)
   const [muted, setMuted] = useState(true)
   const [motionAlert, setMotionAlert] = useState<MotionAlert | null>(null)
   const alertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -48,7 +56,7 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
           return
         }
 
-        hls = new Hls({
+        hlsRef.current = hls = new Hls({
           liveSyncDurationCount: 3,
           liveMaxLatencyDurationCount: 6,
           maxBufferLength: 10,
@@ -83,6 +91,7 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
     return () => {
       cancelled = true
       hls?.destroy()
+      hlsRef.current = null
     }
   }, [src])
 
@@ -102,7 +111,20 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
     video.currentTime = Math.max(earliest, target)
   }, [])
 
-  useImperativeHandle(ref, () => ({ seekTo: handleSeekToEvent }), [handleSeekToEvent])
+  const getStats = useCallback((): HLSStats | null => {
+    const h = hlsRef.current
+    if (!h) return null
+    return {
+      bandwidthKbps: Math.round(h.bandwidthEstimate / 1000),
+      latencySeconds: h.latency ?? 0,
+    }
+  }, [])
+
+  const getVideoQuality = useCallback((): VideoPlaybackQuality | null => {
+    return videoRef.current?.getVideoPlaybackQuality?.() ?? null
+  }, [])
+
+  useImperativeHandle(ref, () => ({ seekTo: handleSeekToEvent, getStats, getVideoQuality }), [handleSeekToEvent, getStats, getVideoQuality])
 
   useEffect(() => {
     if (!fatalError) return

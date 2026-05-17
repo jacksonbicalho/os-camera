@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import { useSettings } from '../../hooks/useSettings'
@@ -39,6 +39,9 @@ interface CameraStatsData {
 
 export default function CameraDetailSettingsPage() {
   const { id } = useParams<{ id: string }>()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const from = (location.state as { from?: string } | null)?.from
   const settings = useSettings(`/settings/cameras/${id}`)
   const cam = settings?.cameras.find(c => c.id === id)
   const [stats, setStats] = useState<CameraStatsData | null>(null)
@@ -54,10 +57,20 @@ export default function CameraDetailSettingsPage() {
   return (
     <SettingsLayout>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-gray-200">{id}</h2>
+        <div className="flex items-center gap-3">
+          {from && (
+            <button
+              onClick={() => navigate(-1)}
+              className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              ← Voltar
+            </button>
+          )}
+          <h2 className="text-lg font-semibold text-gray-200">{id}</h2>
+        </div>
         <Link
           to="/settings/cameras"
-          state={{ editId: id }}
+          state={{ editId: id, from }}
           className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded transition-colors"
         >
           Editar

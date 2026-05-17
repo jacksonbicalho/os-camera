@@ -17,6 +17,7 @@ import { useMotionPeak } from '../hooks/useMotionPeak'
 import { mergeRecordings } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 import { useNotifications } from '../contexts/NotificationContext'
+import type { HLSStats } from '../components/HLSPlayer'
 
 interface RecordingsResponse {
   recordings: Recording[]
@@ -109,6 +110,8 @@ export default function CameraPage() {
   const [recControlsVisible, setRecControlsVisible] = useState(true)
   const [snapshotEvent, setSnapshotEvent] = useState<MotionEvent | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
+  const [showDebug, setShowDebug] = useState(false)
+  const [debugStats, setDebugStats] = useState<{ fps: number; dropped: number; hlsStats: HLSStats | null } | null>(null)
   const playerRef = useRef<HTMLDivElement>(null)
   const pendingSeekRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -381,6 +384,11 @@ export default function CameraPage() {
     else recPlayerRef.current?.requestFullscreen().catch(() => {})
   }
 
+  function toggleFullscreen() {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+    else playerRef.current?.requestFullscreen().catch(() => {})
+  }
+
   const liveUrl = `/stream/${id}/index.m3u8`
   const isLive = activeRecording === null
 
@@ -391,6 +399,36 @@ export default function CameraPage() {
     pendingLiveSeekRef.current = null
     hlsPlayerRef.current?.seekTo(t)
   }, [isLive])
+
+  // Polling de métricas de debug (FPS, frames descartados, stats HLS)
+  useEffect(() => {
+    if (!showDebug) return
+    let lastFrames = 0
+    let lastTs = performance.now()
+
+    function sample() {
+      const q = isLive
+        ? hlsPlayerRef.current?.getVideoQuality() ?? null
+        : videoRef.current?.getVideoPlaybackQuality?.() ?? null
+      let fps = 0
+      let dropped = 0
+      if (q) {
+        const now = performance.now()
+        const dt = (now - lastTs) / 1000
+        const df = q.totalVideoFrames - lastFrames
+        fps = dt > 0 ? Math.round(df / dt) : 0
+        dropped = q.droppedVideoFrames
+        lastFrames = q.totalVideoFrames
+        lastTs = now
+      }
+      const hlsStats = isLive ? (hlsPlayerRef.current?.getStats() ?? null) : null
+      setDebugStats({ fps, dropped, hlsStats })
+    }
+
+    sample()
+    const timer = setInterval(sample, 2000)
+    return () => { clearInterval(timer); setDebugStats(null) }
+  }, [showDebug, isLive])
 
   const sortedEvents = [...motionEvents].sort((a, b) => {
     const diff = new Date(a.time).getTime() - new Date(b.time).getTime()
@@ -429,7 +467,8 @@ export default function CameraPage() {
                 !isLive ? 'border-blue-600 ring-1 ring-blue-600' : 'border-gray-800'
               }`}
             >
-              <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
+              {/* Linha 1: status */}
+              <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700">
                 <div className="flex items-center gap-2">
                   {isLive ? (
                     <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded font-medium">AO VIVO</span>
@@ -438,7 +477,6 @@ export default function CameraPage() {
                       {format(selectedDate, "d 'de' MMMM", { locale: ptBR })} · {formatRecordingTime(activeRecording.start, timezone)}
                     </span>
                   )}
-                  <span className="text-xs text-gray-500">{id}</span>
                 </div>
                 {!isLive && (
                   <button
@@ -448,6 +486,72 @@ export default function CameraPage() {
                     ← Ao vivo
                   </button>
                 )}
+              </div>
+              {/* Linha 2: controles + ações */}
+              <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-800">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => { const v = videoRef.current; if (v) v.muted = !v.muted; setVideoMuted(m => !m) }}
+                    disabled={isLive}
+                    title={videoMuted ? 'Ativar áudio' : 'Silenciar'}
+                    className="text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {videoMuted ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                      </svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M12 6v12m-3.536-9.536a5 5 0 000 7.072M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                      </svg>
+                    )}
+                  </button>
+                  <select
+                    value={playbackRate}
+                    onChange={e => handleRateChange(Number(e.target.value))}
+                    disabled={isLive}
+                    className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-2 py-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {[1, 2, 4, 8, 16, 32].map(v => (
+                      <option key={v} value={v}>{v}x</option>
+                    ))}
+                  </select>
+                  <label className={`flex items-center gap-1.5 text-xs ${isLive ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-pointer'}`}>
+                    <input
+                      type="checkbox"
+                      checked={continuousPlay}
+                      onChange={e => setContinuousPlay(e.target.checked)}
+                      disabled={isLive}
+                      className="accent-blue-500 w-3 h-3"
+                    />
+                    Contínua
+                  </label>
+                  {continuousPlay && !isLive && (
+                    <span className="text-xs text-blue-400">· em sequência</span>
+                  )}
+                  {browserMaxRate !== null && (
+                    <span className="text-xs text-yellow-500">· {browserMaxRate}x máx</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 text-xs text-gray-400">
+                  <Link
+                    to={`/settings/cameras/${id}`}
+                    state={{ from: `/cameras/${id}` }}
+                    className="hover:text-gray-200 transition-colors"
+                  >Configurar</Link>
+                  <button
+                    onClick={() => setShowDebug(d => !d)}
+                    className={`hover:text-gray-200 transition-colors ${showDebug ? 'text-blue-400' : ''}`}
+                  >
+                    Debug
+                  </button>
+                  <button onClick={toggleFullscreen} aria-label="Tela inteira" className="hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V6a2 2 0 012-2h2M4 16v2a2 2 0 002 2h2m8-16h2a2 2 0 012 2v2m0 8v2a2 2 0 01-2 2h-2" />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
               {isLive ? (
@@ -563,89 +667,87 @@ export default function CameraPage() {
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* Controles de reprodução */}
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 px-1">
-              <button
-                onClick={() => {
-                  const video = videoRef.current
-                  if (video) video.muted = !video.muted
-                  setVideoMuted(m => !m)
-                }}
-                disabled={isLive}
-                title={videoMuted ? 'Ativar áudio' : 'Silenciar'}
-                className="flex items-center text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                {videoMuted ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                  </svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M12 6v12m-3.536-9.536a5 5 0 000 7.072M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                  </svg>
-                )}
-              </button>
-              <label className="flex items-center gap-2 text-xs text-gray-400">
-                Velocidade
-                <select
-                id='bata'
-                  value={playbackRate}
-                  onChange={e => handleRateChange(Number(e.target.value))}
-                  disabled={isLive}
-                  className="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {[1, 2, 4, 8, 16, 32].map(v => (
-                    <option key={v} value={v}>{v}x</option>
-                  ))}
-                </select>
-              </label>
-              <label className={`flex items-center gap-2 text-xs ${isLive ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-pointer'}`}>
-                <input
-                  type="checkbox"
-                  checked={continuousPlay}
-                  onChange={e => setContinuousPlay(e.target.checked)}
-                  disabled={isLive}
-                  className="accent-blue-500 w-3 h-3 cursor-pointer"
-                />
-                Reprodução contínua
-              </label>
-              {continuousPlay && !isLive && (
-                <span className="text-xs text-blue-400">· reproduzindo em sequência</span>
-              )}
-              {browserMaxRate !== null && (
-                <span className="text-xs text-yellow-500">· {browserMaxRate}x é o máximo suportado</span>
-              )}
-            </div>
-
-            {/* Detecção de movimento */}
-            <Link
-              to={`/settings/cameras/${id}/motion`}
-              className="block bg-gray-900 border border-gray-800 rounded-lg overflow-hidden hover:border-gray-700 transition-colors group"
-            >
-              <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Detecção de movimento</p>
-                <div className="flex items-center gap-3">
-                  {motionPeak !== null && effectiveThreshold > 0 && (
-                    <span className="text-xs text-gray-500 font-mono">
-                      pico {(() => {
-                        const v = motionPeak.peak_raw_score
-                        if (v <= 0) return '—'
-                        if (v >= 1) return v.toFixed(2)
-                        const d = Math.max(2, -Math.floor(Math.log10(v)) + 1)
-                        return v.toFixed(d)
-                      })()} · {(motionPeak.peak_raw_score / effectiveThreshold).toFixed(2)}× limiar
-                    </span>
+              {showDebug && (
+                <div className="border-t border-gray-800 px-4 py-3 flex flex-col gap-3">
+                  {/* Stream info */}
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Stream</p>
+                    <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-xs font-mono">
+                      <span className="text-gray-500">Codec</span>
+                      <span className="col-span-2 text-gray-300">{cam?.video_codec || '—'}</span>
+                      <span className="text-gray-500">Resolução</span>
+                      <span className="col-span-2 text-gray-300">{cam?.width && cam.height ? `${cam.width} × ${cam.height}` : '—'}</span>
+                      <span className="text-gray-500">Áudio</span>
+                      <span className="col-span-2 text-gray-300">{cam?.has_audio == null ? '—' : cam.has_audio ? 'sim' : 'não'}</span>
+                    </div>
+                  </div>
+                  {/* Playback quality */}
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Reprodução</p>
+                    <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-xs font-mono">
+                      <span className="text-gray-500">FPS</span>
+                      <span className="col-span-2 text-gray-300">{debugStats ? `${debugStats.fps} fps` : '—'}</span>
+                      <span className="text-gray-500">Frames descartados</span>
+                      <span className={`col-span-2 ${debugStats && debugStats.dropped > 0 ? 'text-yellow-400' : 'text-gray-300'}`}>
+                        {debugStats ? debugStats.dropped : '—'}
+                      </span>
+                    </div>
+                  </div>
+                  {/* HLS / rede (live only) */}
+                  {isLive && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Rede</p>
+                      <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-xs font-mono">
+                        <span className="text-gray-500">Bitrate</span>
+                        <span className="col-span-2 text-gray-300">
+                          {debugStats?.hlsStats ? `${debugStats.hlsStats.bandwidthKbps} kbps` : '—'}
+                        </span>
+                        <span className="text-gray-500">Latência</span>
+                        <span className="col-span-2 text-gray-300">
+                          {debugStats?.hlsStats ? `${debugStats.hlsStats.latencySeconds.toFixed(1)} s` : '—'}
+                        </span>
+                      </div>
+                    </div>
                   )}
-                  <span className="text-xs text-blue-400 group-hover:text-blue-300 transition-colors">Configurar →</span>
+                  {/* Detecção de movimento */}
+                  {cam?.motion && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Detecção de movimento</p>
+                      <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-xs font-mono">
+                        <span className="text-gray-500">FPS captura</span>
+                        <span className="col-span-2 text-gray-300">{cam.motion.fps ?? '—'}</span>
+                        {(cam.motion.capture_width ?? 0) > 0 && (
+                          <>
+                            <span className="text-gray-500">Resolução captura</span>
+                            <span className="col-span-2 text-gray-300">{cam.motion.capture_width} × {cam.motion.capture_height}</span>
+                          </>
+                        )}
+                        <span className="text-gray-500">Threshold</span>
+                        <span className="col-span-2 text-gray-300">{effectiveThreshold}</span>
+                        {motionPeak !== null && effectiveThreshold > 0 && (
+                          <>
+                            <span className="text-gray-500">Pico</span>
+                            <span className="col-span-2 text-gray-300">
+                              {(() => {
+                                const v = motionPeak.peak_raw_score
+                                if (v <= 0) return '—'
+                                if (v >= 1) return v.toFixed(2)
+                                const d = Math.max(2, -Math.floor(Math.log10(v)) + 1)
+                                return `${v.toFixed(d)} (${(v / effectiveThreshold).toFixed(2)}× limiar)`
+                              })()}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      <div className="mt-3">
+                        <MotionScoreChart cameraId={id!} threshold={effectiveThreshold} />
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="px-5 py-4">
-                <MotionScoreChart cameraId={id!} threshold={effectiveThreshold} />
-              </div>
-            </Link>
+              )}
+            </div>
+
           </div>
 
           {/* Painel direito */}
