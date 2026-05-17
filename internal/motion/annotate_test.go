@@ -14,7 +14,7 @@ func TestAnnotateFrameReturnsValidJPEG(t *testing.T) {
 	w, h := 8, 6
 	frame := make([]byte, w*h)
 	bbox := BBox{X: 0.25, Y: 0.25, W: 0.5, H: 0.5}
-	data := annotateFrame(frame, w, h, bbox, 0.042, ColorGlobal)
+	data := annotateFrame(frame, w, h, bbox, 0.042, ColorGlobal, true)
 
 	img, err := jpeg.Decode(bytes.NewReader(data))
 	if err != nil {
@@ -31,7 +31,7 @@ func TestAnnotateFrameRectangleBorderIsWhite(t *testing.T) {
 	w, h := 16, 12
 	frame := make([]byte, w*h) // frame totalmente preto
 	bbox := BBox{X: 0.25, Y: 0.25, W: 0.5, H: 0.5}
-	data := annotateFrame(frame, w, h, bbox, 0.1, ColorGlobal)
+	data := annotateFrame(frame, w, h, bbox, 0.1, ColorGlobal, true)
 
 	img, err := jpeg.Decode(bytes.NewReader(data))
 	if err != nil {
@@ -83,7 +83,7 @@ func TestAnnotateFrameFullBBox(t *testing.T) {
 	w, h := 4, 4
 	frame := make([]byte, w*h)
 	bbox := BBox{X: 0, Y: 0, W: 1, H: 1}
-	data := annotateFrame(frame, w, h, bbox, 1.0, ColorGlobal)
+	data := annotateFrame(frame, w, h, bbox, 1.0, ColorGlobal, false)
 	if len(data) == 0 {
 		t.Fatal("expected non-empty JPEG output")
 	}
