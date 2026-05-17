@@ -218,3 +218,44 @@ func TestCreateCamera_WithMotion(t *testing.T) {
 		t.Errorf("motion.threshold: got %v, want 0.05", got.Motion.Threshold)
 	}
 }
+
+func TestMotionConfig_PlaybackLeadSeconds(t *testing.T) {
+	database := openTestDB(t)
+
+	motion := &config.MotionConfig{
+		Enabled:              true,
+		Threshold:            0.05,
+		PlaybackLeadSeconds:  20,
+	}
+	if err := db.CreateCamera(database, makeCamera("cam-lead"), motion); err != nil {
+		t.Fatalf("CreateCamera: %v", err)
+	}
+
+	got, err := db.GetCamera(database, "cam-lead")
+	if err != nil {
+		t.Fatalf("GetCamera: %v", err)
+	}
+	if got.Motion == nil {
+		t.Fatal("motion config não retornada")
+	}
+	if got.Motion.PlaybackLeadSeconds != 20 {
+		t.Errorf("playback_lead_seconds: got %d, want 20", got.Motion.PlaybackLeadSeconds)
+	}
+}
+
+func TestMotionConfig_PlaybackLeadSecondsDefault(t *testing.T) {
+	database := openTestDB(t)
+
+	motion := &config.MotionConfig{Enabled: true, Threshold: 0.05}
+	if err := db.CreateCamera(database, makeCamera("cam-default"), motion); err != nil {
+		t.Fatalf("CreateCamera: %v", err)
+	}
+
+	got, err := db.GetCamera(database, "cam-default")
+	if err != nil {
+		t.Fatalf("GetCamera: %v", err)
+	}
+	if got.Motion.PlaybackLeadSeconds != 10 {
+		t.Errorf("playback_lead_seconds default: got %d, want 10", got.Motion.PlaybackLeadSeconds)
+	}
+}

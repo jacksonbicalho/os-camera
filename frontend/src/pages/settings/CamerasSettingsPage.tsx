@@ -11,6 +11,7 @@ interface MotionConfig {
   cooldown_seconds: number
   capture_width?: number
   capture_height?: number
+  playback_lead_seconds?: number
 }
 
 interface Camera {
@@ -43,6 +44,7 @@ interface CameraFormData {
   motion_cooldown: string
   motion_capture_auto: boolean
   motion_capture_pct: number
+  motion_playback_lead: string
 }
 
 const RESOLUTIONS = [
@@ -79,7 +81,7 @@ function emptyForm(cam?: Camera): CameraFormData {
       video_codec: '', has_audio: '', resolution: '0x0', display_order: '0',
       hls_video_mode: 'auto',
       motion_enabled: false, motion_threshold: '0.02', motion_fps: '2', motion_cooldown: '30',
-      motion_capture_auto: true, motion_capture_pct: 25,
+      motion_capture_auto: true, motion_capture_pct: 25, motion_playback_lead: '10',
     }
   }
   const capW = cam.motion?.capture_width ?? 0
@@ -100,6 +102,7 @@ function emptyForm(cam?: Camera): CameraFormData {
     motion_cooldown: String(cam.motion?.cooldown_seconds ?? 30),
     motion_capture_auto: auto,
     motion_capture_pct: capturePct(capW, cam.width ?? 0),
+    motion_playback_lead: String(cam.motion?.playback_lead_seconds ?? 10),
   }
 }
 
@@ -122,6 +125,7 @@ function formToPayload(f: CameraFormData, includeID = true) {
       cooldown_seconds: parseInt(f.motion_cooldown) || 30,
       capture_width: f.motion_capture_auto ? 0 : Math.round(width * f.motion_capture_pct / 100),
       capture_height: f.motion_capture_auto ? 0 : Math.round(height * f.motion_capture_pct / 100),
+      playback_lead_seconds: parseInt(f.motion_playback_lead) || 10,
     },
   }
   if (includeID) payload.id = f.id
@@ -258,6 +262,10 @@ function CameraForm({ initial, onSave, onCancel, saving }: CameraFormProps) {
               <div>
                 <label className={labelClass}>Cooldown (segundos)</label>
                 <input type="number" min="0" value={form.motion_cooldown} onChange={e => set('motion_cooldown', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Segundos antes do evento</label>
+                <input type="number" min="1" max="300" value={form.motion_playback_lead} onChange={e => set('motion_playback_lead', e.target.value)} className={inputClass} />
               </div>
               <div className="sm:col-span-2">
                 <label className={labelClass}>Resolução de análise</label>

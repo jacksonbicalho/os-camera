@@ -73,6 +73,7 @@ export default function CameraPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [timezone, setTimezone] = useState('UTC')
+  const [playbackLeadSeconds, setPlaybackLeadSeconds] = useState(10)
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     const state = location.state as { eventTime?: string } | null
     if (state?.eventTime) {
@@ -94,6 +95,7 @@ export default function CameraPage() {
   const [eventsPage, setEventsPage] = useState(1)
   const [eventsSortOrder, setEventsSortOrder] = useState<'asc' | 'desc'>('desc')
   const [activeEventTime, setActiveEventTime] = useState<string | null>(null)
+  const [activeEventId, setActiveEventId] = useState<number | null>(null)
   const [scrollNonce, setScrollNonce] = useState(0)
   const [recordingsDisplayPage, setRecordingsDisplayPage] = useState(1)
   const [playbackRate, setPlaybackRate] = useState(1)
@@ -115,6 +117,7 @@ export default function CameraPage() {
   const activeEventItemRef = useRef<HTMLButtonElement | null>(null)
   const recordingsRef = useRef(recordings)
   const activeEventTimeRef = useRef(activeEventTime)
+  const activeEventIdRef = useRef(activeEventId)
   const allMotionEventsRef = useRef(motionEvents)
   const visibleEventsRef = useRef<typeof visibleEvents>([])
   const continuousPlayRef = useRef(continuousPlay)
@@ -127,6 +130,7 @@ export default function CameraPage() {
 
   useEffect(() => { recordingsRef.current = recordings }, [recordings])
   useEffect(() => { allMotionEventsRef.current = motionEvents }, [motionEvents])
+  useEffect(() => { activeEventIdRef.current = activeEventId }, [activeEventId])
 
   useEffect(() => {
     if (!snapshotEvent) return
@@ -178,6 +182,17 @@ export default function CameraPage() {
       .then(d => { if (d.timezone) setTimezone(d.timezone) })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!id) return
+    fetch('/api/cameras', { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then((list: Array<{ id: string; playback_lead_seconds?: number }> | null) => {
+        const cam = list?.find(c => c.id === id)
+        if (cam?.playback_lead_seconds) setPlaybackLeadSeconds(cam.playback_lead_seconds)
+      })
+      .catch(() => {})
+  }, [id])
 
   useEffect(() => {
     let cancelled = false
@@ -278,13 +293,16 @@ export default function CameraPage() {
       if (evTime >= recStart && evTime < nextStart) {
         if (asc[i].is_recording) {
           setActiveEventTime(ev.time)
+          setActiveEventId(ev.id ?? null)
           setActiveRecording(null)
-          hlsPlayerRef.current?.seekTo(ev.time)
+          const leadTime = new Date(evTime - playbackLeadSeconds * 1000).toISOString()
+          hlsPlayerRef.current?.seekTo(leadTime)
           if (!skipScroll) setScrollNonce(n => n + 1)
           return
         }
-        const seekTime = Math.max(0, (evTime - recStart) / 1000 - 10)
+        const seekTime = Math.max(0, (evTime - recStart) / 1000 - playbackLeadSeconds)
         setActiveEventTime(ev.time)
+        setActiveEventId(ev.id ?? null)
         if (!skipScroll) setScrollNonce(n => n + 1)
         if (activeRecording?.filename === asc[i].filename) {
           if (videoRef.current) {
@@ -360,7 +378,11 @@ export default function CameraPage() {
   })
   const visibleEvents = sortedEvents.slice(0, eventsPage * PAGE_SIZE)
   const hasMoreEvents = sortedEvents.length > eventsPage * PAGE_SIZE
-  const activeEventIdx = activeEventTime !== null ? visibleEvents.findIndex(e => e.time === activeEventTime) : -1
+  const activeEventIdx = activeEventId !== null
+    ? visibleEvents.findIndex(e => e.id === activeEventId)
+    : activeEventTime !== null
+      ? visibleEvents.findIndex(e => e.time === activeEventTime)
+      : -1
 
   const displayedRecordings = recordings.slice(0, recordingsDisplayPage * PAGE_SIZE)
   const hasMoreDisplayedRecordings = displayedRecordings.length < recordings.length
@@ -447,7 +469,11 @@ export default function CameraPage() {
                       if (activeEventTimeRef.current !== null) {
                         const allAsc = [...allMotionEventsRef.current]
                           .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
-                        const curIdx = allAsc.findIndex(e => e.time === activeEventTimeRef.current)
+                        const curIdx = allAsc.findIndex(e =>
+                          activeEventIdRef.current !== null
+                            ? e.id === activeEventIdRef.current
+                            : e.time === activeEventTimeRef.current
+                        )
                         const next = curIdx !== -1 ? allAsc[curIdx + 1] : null
                         if (next) playEventAt(next, recordingsRef.current, true)
                         return
@@ -545,6 +571,7 @@ export default function CameraPage() {
               <label className="flex items-center gap-2 text-xs text-gray-400">
                 Velocidade
                 <select
+                id='bata'
                   value={playbackRate}
                   onChange={e => handleRateChange(Number(e.target.value))}
                   disabled={isLive}
@@ -730,7 +757,7 @@ export default function CameraPage() {
                     const thumbURL = ev.frame ? snapshotURL(id!, ev.time, ev.frame) : null
                     return (
                       <button
-                        key={ev.time}
+                        key={ev.id ?? `${ev.time}-${i}`}
                         ref={isActive ? (el) => { activeEventItemRef.current = el } : null}
                         onClick={() => { playEventAt(ev); setScrollNonce(n => n + 1) }}
                         className={`w-full flex items-center justify-between px-3 py-2 transition-colors text-left ${
