@@ -146,16 +146,10 @@ func main() {
 			RTSPURL:    cam.RTSPURL,
 		}, prober, slog)
 
-		// Persist auto-detected values back to DB so settings page reflects real data.
-		if database != nil && cam.VideoCodec == "" && cam.HasAudio == nil && cam.Width == 0 && cam.Height == 0 {
-			if err := db.UpdateCameraStreamInfo(database, cam.ID, stream.VideoCodec, &stream.HasAudio, stream.Width, stream.Height); err != nil {
-				slog.Warn("failed to persist stream info", "camera", cam.ID, "error", err)
-			}
-		}
-
-		// Persist auto-detected stream info back to the DB so the UI reflects
-		// actual codec/resolution instead of showing "auto" indefinitely.
-		if database != nil && cam.VideoCodec == "" && cam.HasAudio == nil && cam.Width == 0 && cam.Height == 0 {
+		// Persiste os dados detectados pelo ffprobe no banco.
+		// Só atualiza quando ffprobe detectou dimensões reais (Width > 0) e a câmera
+		// ainda não tem dimensões salvas — evita gravar fallbacks de falha no banco.
+		if database != nil && stream.Width > 0 && cam.Width == 0 {
 			if err := db.UpdateCameraStreamInfo(database, cam.ID, stream.VideoCodec, &stream.HasAudio, stream.Width, stream.Height); err != nil {
 				slog.Warn("failed to persist stream info", "camera", cam.ID, "error", err)
 			}
