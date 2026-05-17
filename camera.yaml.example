@@ -5,7 +5,7 @@
 debug: false
 timezone: America/Sao_Paulo       # env: CAMERA_TIMEZONE — fuso horário da instalação (padrão: UTC)
 
-db_path: /data/camera.db           # caminho do banco SQLite (criado automaticamente)
+db_path: /var/camera/data/camera.db  # caminho do banco SQLite (criado automaticamente)
 
 log:
   output: stdout                   # stdout | file
@@ -13,12 +13,12 @@ log:
 
 server:
   port: 8080
-  segments_path: /tmp/hls          # diretório para segmentos HLS do streaming ao vivo
+  segments_path: /var/camera/data/hls      # diretório para segmentos HLS do streaming ao vivo
   hls_dvr_seconds: 0               # 0 = DVR desabilitado; >0 = janela DVR em segundos
   jwt_secret: ""                   # env: CAMERA_SERVER_JWT_SECRET — vazio = gerado aleatoriamente a cada boot
 
 storage:
-  path: /data/recordings           # env: CAMERA_STORAGE_PATH — diretório de gravações
+  path: /var/camera/data/recordings        # env: CAMERA_STORAGE_PATH — diretório de gravações
   retention:
     with_motion_minutes: 10080     # 7 dias — 0 = nunca apaga gravações com movimento
     without_motion_minutes: 1440   # 1 dia  — 0 = desabilitado

@@ -9,10 +9,10 @@ import (
 func TestInitWizardDefaultInputs(t *testing.T) {
 	lines := []string{
 		"",         // port: 8080
-		"",         // db_path: /data/camera.db
-		"",         // segments_path: /tmp/hls
+		"",         // db_path: /var/camera/data/camera.db
+		"",         // segments_path: /var/camera/data/hls
 		"",         // hls_dvr: 0
-		"",         // storage path: /data/recordings
+		"",         // storage path: /var/camera/data/recordings
 		"",         // with_motion_minutes: 10080
 		"",         // without_motion_minutes: 1440
 		"",         // max_size: 10
@@ -30,10 +30,10 @@ func TestInitWizardDefaultInputs(t *testing.T) {
 
 	wants := []string{
 		"port: 8080",
-		"db_path: /data/camera.db",
-		"segments_path: /tmp/hls",
+		"db_path: /var/camera/data/camera.db",
+		"segments_path: /var/camera/data/hls",
 		"hls_dvr_seconds: 0",
-		"path: /data/recordings",
+		"path: /var/camera/data/recordings",
 		"with_motion_minutes: 10080",
 		"without_motion_minutes: 1440",
 		"max_size_gb: 10.0",

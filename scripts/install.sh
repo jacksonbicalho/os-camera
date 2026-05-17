@@ -7,12 +7,12 @@ BINARY_NAME="camera"
 # Defaults — sobrescritos por flags ou por install.conf (na desinstalação)
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/camera"
-DATA_DIR="/var/data/recordings"
-SEGMENTS_DIR="/var/data/hls"
+DATA_DIR="/var/camera/data/recordings"
+SEGMENTS_DIR="/var/camera/data/hls"
 SERVICE_NAME="camera"
 
 # Caminhos derivados (recalculados após parse de flags)
-STATE_DIR="/var/lib/camera"
+STATE_DIR="/var/camera"
 STATE_FILE="${STATE_DIR}/install.conf"
 
 # --- helpers ---
@@ -116,7 +116,7 @@ do_install() {
 debug: false
 timezone: UTC   # ex: America/Sao_Paulo
 
-db_path: ${DATA_DIR}/camera.db   # banco SQLite (criado automaticamente)
+db_path: ${STATE_DIR}/data/camera.db  # banco SQLite (criado automaticamente)
 
 log:
   output: stdout   # stdout | file

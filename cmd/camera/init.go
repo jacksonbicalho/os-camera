@@ -102,12 +102,12 @@ func initWizard(input io.Reader, output io.Writer) (string, error) {
 
 	fmt.Fprintln(output, "\n--- Servidor ---")
 	port := wi.askInt("Porta HTTP", 8080)
-	dbPath := wi.ask("Caminho do banco de dados", "/data/camera.db")
-	segmentsPath := wi.ask("Caminho dos segmentos HLS", "/tmp/hls")
+	dbPath := wi.ask("Caminho do banco de dados", "/var/camera/data/camera.db")
+	segmentsPath := wi.ask("Caminho dos segmentos HLS", "/var/camera/data/hls")
 	hlsDVR := wi.askInt("Segundos de janela DVR (0 = desabilitado)", 0)
 
 	fmt.Fprintln(output, "\n--- Storage ---")
-	storagePath := wi.ask("Caminho de gravações", "/data/recordings")
+	storagePath := wi.ask("Caminho de gravações", "/var/camera/data/recordings")
 	withMotionMin := wi.askInt("Retenção COM movimento em minutos (0 = nunca apaga; 10080 = 7 dias)", 10080)
 	withoutMotionMin := wi.askInt("Retenção SEM movimento em minutos (0 = nunca apaga; 1440 = 1 dia)", 1440)
 	maxSizeGB := wi.askFloat("Tamanho máximo em GB (0 = desabilitado)", 10)
