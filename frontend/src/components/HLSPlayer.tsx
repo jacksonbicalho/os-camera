@@ -29,7 +29,6 @@ interface MotionAlert {
 
 const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer({ src, className, cameraId, muted = true, onGoToEvent }, ref) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const wrapperRef = useRef<HTMLDivElement>(null)
   const hlsRef = useRef<HlsType | null>(null)
   const [motionAlert, setMotionAlert] = useState<MotionAlert | null>(null)
   const alertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -141,17 +140,8 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
     handleMotionMessage,
   )
 
-  function handleFullscreen(e: React.MouseEvent) {
-    e.stopPropagation()
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {})
-    } else {
-      wrapperRef.current?.requestFullscreen().catch(() => {})
-    }
-  }
-
   return (
-    <div ref={wrapperRef} className="relative">
+    <div className="relative">
       <video
         ref={videoRef}
         className={className}
@@ -215,15 +205,6 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
           </div>
         </div>
       )}
-      <button
-        onClick={handleFullscreen}
-        aria-label="Tela inteira"
-        className="absolute bottom-2 right-2 p-1.5 rounded bg-black/40 text-white/70 hover:text-white hover:bg-black/60 transition-colors"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V6a2 2 0 012-2h2M4 16v2a2 2 0 002 2h2m8-16h2a2 2 0 012 2v2m0 8v2a2 2 0 01-2 2h-2" />
-        </svg>
-      </button>
     </div>
   )
 })

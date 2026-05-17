@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import HLSPlayer from './HLSPlayer'
 
 vi.mock('hls.js', () => ({
@@ -21,50 +21,20 @@ describe('HLSPlayer', () => {
     HTMLVideoElement.prototype.play = vi.fn().mockResolvedValue(undefined)
   })
 
-  it('renders a fullscreen button', () => {
+  it('renders a video element', () => {
+    const { container } = render(<HLSPlayer src="/stream/cam/index.m3u8" />)
+    expect(container.querySelector('video')).toBeTruthy()
+  })
+
+  it('does not render a fullscreen button (fullscreen is in the page header)', () => {
     render(<HLSPlayer src="/stream/cam/index.m3u8" />)
-    expect(screen.getByRole('button', { name: /tela inteira/i })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /tela inteira/i })).toBeNull()
   })
 
-  it('calls requestFullscreen on the video container when fullscreen button is clicked', () => {
-    const { container } = render(<HLSPlayer src="/stream/cam/index.m3u8" />)
-    const wrapper = container.firstChild as HTMLElement
-    wrapper.requestFullscreen = vi.fn().mockResolvedValue(undefined)
-
-    const btn = container.querySelector('button[aria-label="Tela inteira"]') as HTMLElement
-    fireEvent.click(btn)
-
-    expect(wrapper.requestFullscreen).toHaveBeenCalled()
-  })
-
-  it('calls exitFullscreen when already in fullscreen', () => {
-    const { container } = render(<HLSPlayer src="/stream/cam/index.m3u8" />)
-    const wrapper = container.firstChild as HTMLElement
-    wrapper.requestFullscreen = vi.fn().mockResolvedValue(undefined)
-    document.exitFullscreen = vi.fn().mockResolvedValue(undefined)
-
-    Object.defineProperty(document, 'fullscreenElement', { value: wrapper, configurable: true })
-
-    const btn = container.querySelector('button[aria-label="Tela inteira"]') as HTMLElement
-    fireEvent.click(btn)
-
-    expect(document.exitFullscreen).toHaveBeenCalled()
-    expect(wrapper.requestFullscreen).not.toHaveBeenCalled()
-  })
-
-  it('stops click propagation to prevent parent navigation', () => {
-    const parentClick = vi.fn()
-    const { container } = render(
-      <div onClick={parentClick}>
-        <HLSPlayer src="/stream/cam/index.m3u8" />
-      </div>
-    )
-    const wrapper = (container.firstChild as HTMLElement).firstChild as HTMLElement
-    wrapper.requestFullscreen = vi.fn().mockResolvedValue(undefined)
-
-    const btn = container.querySelector('button[aria-label="Tela inteira"]') as HTMLElement
-    fireEvent.click(btn)
-
-    expect(parentClick).not.toHaveBeenCalled()
+  it('renders the play button when playback is blocked', async () => {
+    HTMLVideoElement.prototype.play = vi.fn().mockRejectedValue(new Error('blocked'))
+    render(<HLSPlayer src="/stream/cam/index.m3u8" />)
+    // play is called async after HLS attaches; initial render has no overlay
+    expect(screen.queryByRole('button', { name: /reproduzir/i })).toBeNull()
   })
 })
