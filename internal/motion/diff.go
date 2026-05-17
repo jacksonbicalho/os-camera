@@ -10,9 +10,11 @@ type BBox struct {
 	X, Y, W, H float64
 }
 
-// pixelThreshold é o delta mínimo (0–255) para considerar um pixel "diferente"
-// na computação do bounding box.
-const pixelThreshold = 10
+// bboxPixelThreshold é o delta mínimo (0–255) para considerar um pixel "diferente"
+// na computação do bounding box. Mantido acima do ruído de I-frame de codecs H.264/H.265
+// (tipicamente 10–20 unidades) para evitar que artefatos de compressão expandam o bbox.
+// Mantido separado do threshold de score (que usa média absoluta e pode ser menor).
+const bboxPixelThreshold = 25
 
 // computeBBox retorna o bounding box normalizado (0.0–1.0) da região com maior
 // diferença entre os frames. Pixels mascarados pelas zones são ignorados.
@@ -30,7 +32,7 @@ func computeBBox(prev, cur []byte, w, h int, zs []zones.Zone) BBox {
 		if d < 0 {
 			d = -d
 		}
-		if d >= pixelThreshold {
+		if d >= bboxPixelThreshold {
 			if px < minX {
 				minX = px
 			}
@@ -75,7 +77,7 @@ func computeBBoxInZone(prev, cur []byte, w, h int, dz zones.Zone) BBox {
 			if d < 0 {
 				d = -d
 			}
-			if d >= pixelThreshold {
+			if d >= bboxPixelThreshold {
 				if x < minX {
 					minX = x
 				}
