@@ -18,6 +18,7 @@ interface HLSPlayerProps {
   src: string
   className?: string
   cameraId?: string
+  muted?: boolean
   onGoToEvent?: (eventTime: string) => void
 }
 
@@ -26,11 +27,10 @@ interface MotionAlert {
   time: string
 }
 
-const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer({ src, className, cameraId, onGoToEvent }, ref) {
+const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer({ src, className, cameraId, muted = true, onGoToEvent }, ref) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const hlsRef = useRef<HlsType | null>(null)
-  const [muted, setMuted] = useState(true)
   const [motionAlert, setMotionAlert] = useState<MotionAlert | null>(null)
   const alertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [playBlocked, setPlayBlocked] = useState(false)
@@ -95,6 +95,10 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
     }
   }, [src])
 
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.muted = muted
+  }, [muted])
+
   const handleMotionMessage = useCallback((data: string) => {
     const ev = JSON.parse(data) as { score: number; time: string }
     setMotionAlert({ score: ev.score, time: ev.time })
@@ -136,14 +140,6 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
     cameraId ? `/api/cameras/${cameraId}/motion/live` : null,
     handleMotionMessage,
   )
-
-  function handleMute(e: React.MouseEvent) {
-    e.stopPropagation()
-    const video = videoRef.current
-    if (!video) return
-    video.muted = !video.muted
-    setMuted(video.muted)
-  }
 
   function handleFullscreen(e: React.MouseEvent) {
     e.stopPropagation()
@@ -219,22 +215,6 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
           </div>
         </div>
       )}
-      <button
-        onClick={handleMute}
-        aria-label={muted ? 'Ativar áudio' : 'Silenciar'}
-        className="absolute bottom-2 right-10 p-1.5 rounded bg-black/40 text-white/70 hover:text-white hover:bg-black/60 transition-colors"
-      >
-        {muted ? (
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-          </svg>
-        ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M12 6v12m-3.536-9.536a5 5 0 000 7.072M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-          </svg>
-        )}
-      </button>
       <button
         onClick={handleFullscreen}
         aria-label="Tela inteira"
