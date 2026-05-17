@@ -333,9 +333,9 @@ export default function CamerasSettingsPage() {
   const [cameras, setCameras] = useState<Camera[]>([])
   const [loading, setLoading] = useState(isAdmin)
   const [creating, setCreating] = useState(isNewRoute)
-  const [editingId, setEditingId] = useState<string | null>(
-    (location.state as { editId?: string } | null)?.editId ?? null
-  )
+  const locationState = location.state as { editId?: string; from?: string } | null
+  const [editingId, setEditingId] = useState<string | null>(locationState?.editId ?? null)
+  const from = locationState?.from ?? null
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleteData, setDeleteData] = useState(false)
@@ -438,7 +438,17 @@ export default function CamerasSettingsPage() {
   return (
     <SettingsLayout>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-gray-200">Câmeras</h2>
+        <div className="flex items-center gap-3">
+          {from && (
+            <button
+              onClick={() => navigate(-1)}
+              className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              ← Voltar
+            </button>
+          )}
+          <h2 className="text-lg font-semibold text-gray-200">Câmeras</h2>
+        </div>
         {!creating && !noDb && (
           <button
             onClick={() => { setCreating(true); setEditingId(null); setError(null) }}
