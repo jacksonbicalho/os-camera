@@ -18,7 +18,7 @@ type Resolver struct {
 // Resolve probes the RTSP stream when all stream fields are unset ("auto"),
 // then merges any explicit overrides on top of the probed values.
 func Resolve(ctx context.Context, r Resolver, prober *Prober, log *slog.Logger) StreamInfo {
-	needsProbe := r.VideoCodec == "" && r.HasAudio == nil && r.Width == 0 && r.Height == 0
+	needsProbe := r.Width == 0 || r.Height == 0
 
 	var info StreamInfo
 	if needsProbe {
