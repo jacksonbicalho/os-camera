@@ -389,6 +389,7 @@ export default function CamerasSettingsPage() {
       })
       if (!res.ok) { setError((await res.text()).trim() || 'Erro ao atualizar câmera'); return }
       await reloadCameras()
+      if (from) { navigate(from); return }
       setEditingId(null)
     } finally { setSaving(false) }
   }
@@ -495,7 +496,7 @@ export default function CamerasSettingsPage() {
                 <CameraForm
                   initial={cam}
                   onSave={data => handleUpdate(cam.id, data)}
-                  onCancel={() => { setEditingId(null); setError(null) }}
+                  onCancel={() => { if (from) { navigate(from); return }; setEditingId(null); setError(null) }}
                   saving={saving}
                 />
               ) : (

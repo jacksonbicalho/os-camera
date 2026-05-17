@@ -111,7 +111,7 @@ export default function CameraPage() {
   const [snapshotEvent, setSnapshotEvent] = useState<MotionEvent | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const [showDebug, setShowDebug] = useState(false)
-  const [debugStats, setDebugStats] = useState<{ fps: number; dropped: number; hlsStats: HLSStats | null } | null>(null)
+  const [debugStats, setDebugStats] = useState<{ fps: number; dropped: number; hlsStats: HLSStats | null; lagMs: number } | null>(null)
   const playerRef = useRef<HTMLDivElement>(null)
   const pendingSeekRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -400,20 +400,24 @@ export default function CameraPage() {
     hlsPlayerRef.current?.seekTo(t)
   }, [isLive])
 
-  // Polling de métricas de debug (FPS, frames descartados, stats HLS)
+  // Polling de métricas de debug (FPS, frames descartados, stats HLS, lag do event loop)
   useEffect(() => {
     if (!showDebug) return
     let lastFrames = 0
     let lastTs = performance.now()
+    let lastTickAt = performance.now()
 
     function sample() {
+      const now = performance.now()
+      const lagMs = Math.max(0, Math.round(now - lastTickAt - 2000))
+      lastTickAt = now
+
       const q = isLive
         ? hlsPlayerRef.current?.getVideoQuality() ?? null
         : videoRef.current?.getVideoPlaybackQuality?.() ?? null
       let fps = 0
       let dropped = 0
       if (q) {
-        const now = performance.now()
         const dt = (now - lastTs) / 1000
         const df = q.totalVideoFrames - lastFrames
         fps = dt > 0 ? Math.round(df / dt) : 0
@@ -422,7 +426,7 @@ export default function CameraPage() {
         lastTs = now
       }
       const hlsStats = isLive ? (hlsPlayerRef.current?.getStats() ?? null) : null
-      setDebugStats({ fps, dropped, hlsStats })
+      setDebugStats({ fps, dropped, hlsStats, lagMs })
     }
 
     sample()
@@ -678,6 +682,10 @@ export default function CameraPage() {
                       <span className={`col-span-2 ${debugStats && debugStats.dropped > 0 ? 'text-yellow-400' : 'text-gray-300'}`}>
                         {debugStats ? debugStats.dropped : '—'}
                       </span>
+                      <span className="text-gray-500">Pressão CPU</span>
+                      <span className={`col-span-2 ${debugStats && debugStats.lagMs > 150 ? 'text-red-400' : debugStats && debugStats.lagMs > 50 ? 'text-yellow-400' : 'text-gray-300'}`}>
+                        {debugStats ? `${debugStats.lagMs} ms lag` : '—'}
+                      </span>
                     </div>
                   </div>
                   {/* HLS / rede (live only) */}
@@ -709,7 +717,7 @@ export default function CameraPage() {
                             <span className="col-span-2 text-gray-300">{cam.motion.capture_width} × {cam.motion.capture_height}</span>
                           </>
                         )}
-                        <span className="text-gray-500">Threshold</span>
+                        <span className="text-gray-500">Limiar</span>
                         <span className="col-span-2 text-gray-300">{effectiveThreshold}</span>
                         {motionPeak !== null && effectiveThreshold > 0 && (
                           <>
