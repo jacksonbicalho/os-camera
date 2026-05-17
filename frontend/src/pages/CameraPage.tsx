@@ -114,6 +114,7 @@ export default function CameraPage() {
   const recPlayerRef = useRef<HTMLDivElement>(null)
   const recHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hlsPlayerRef = useRef<HLSPlayerHandle>(null)
+  const pendingLiveSeekRef = useRef<string | null>(null)
   const activeEventItemRef = useRef<HTMLButtonElement | null>(null)
   const recordingsRef = useRef(recordings)
   const activeEventTimeRef = useRef(activeEventTime)
@@ -296,7 +297,11 @@ export default function CameraPage() {
           setActiveEventId(ev.id ?? null)
           setActiveRecording(null)
           const leadTime = new Date(evTime - playbackLeadSeconds * 1000).toISOString()
-          hlsPlayerRef.current?.seekTo(leadTime)
+          if (hlsPlayerRef.current) {
+            hlsPlayerRef.current.seekTo(leadTime)
+          } else {
+            pendingLiveSeekRef.current = leadTime
+          }
           if (!skipScroll) setScrollNonce(n => n + 1)
           return
         }
@@ -316,6 +321,10 @@ export default function CameraPage() {
         return
       }
     }
+    // Nenhuma gravação corresponde: seleciona o evento na lista sem acionar playback
+    setActiveEventTime(ev.time)
+    setActiveEventId(ev.id ?? null)
+    if (!skipScroll) setScrollNonce(n => n + 1)
   }
 
   function handleGoToEvent(eventTime: string) {
@@ -372,6 +381,15 @@ export default function CameraPage() {
 
   const liveUrl = `/stream/${id}/index.m3u8`
   const isLive = activeRecording === null
+
+  // Aplica seek pendente no HLS quando o player monta (troca de MP4 → live)
+  useEffect(() => {
+    if (!isLive || !pendingLiveSeekRef.current) return
+    const t = pendingLiveSeekRef.current
+    pendingLiveSeekRef.current = null
+    hlsPlayerRef.current?.seekTo(t)
+  }, [isLive])
+
   const sortedEvents = [...motionEvents].sort((a, b) => {
     const diff = new Date(a.time).getTime() - new Date(b.time).getTime()
     return eventsSortOrder === 'asc' ? diff : -diff

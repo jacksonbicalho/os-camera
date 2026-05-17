@@ -294,6 +294,62 @@ func TestDiffFramesForZoneScaledDetectsMotion(t *testing.T) {
 
 // --- computeBBox ---
 
+// Pixel com diff abaixo do antigo threshold (30) mas acima do novo (10)
+// deve retornar bbox correto em vez do frame inteiro
+func TestComputeBBoxLowDiffPixel(t *testing.T) {
+	a := make([]byte, 16) // 4×4
+	b := make([]byte, 16)
+	// pixel (px=1, py=1) → i=5, diff=20
+	b[5] = 20
+	got := computeBBox(a, b, 4, 4, nil)
+	want := BBox{X: 0.25, Y: 0.25, W: 0.25, H: 0.25}
+	if got != want {
+		t.Errorf("expected %+v, got %+v", want, got)
+	}
+}
+
+// --- computeBBoxInZone ---
+
+// Retorna o bbox do objeto em movimento dentro da zona (não o bbox da zona inteira)
+func TestComputeBBoxInZoneLocalizesMotion(t *testing.T) {
+	// Frame 8×8, zona cobre a metade inferior (y=0.5..1.0)
+	// Movimento apenas no pixel (px=4, py=5)
+	a := make([]byte, 64)
+	b := make([]byte, 64)
+	b[5*8+4] = 200 // i=44
+	z := zones.Zone{X: 0, Y: 0.5, W: 1, H: 0.5}
+	got := computeBBoxInZone(a, b, 8, 8, z)
+	want := BBox{X: 0.5, Y: 0.625, W: 0.125, H: 0.125}
+	if got != want {
+		t.Errorf("expected %+v, got %+v", want, got)
+	}
+}
+
+// Sem pixels ativos dentro da zona → retorna o bbox da zona como fallback
+func TestComputeBBoxInZoneNoActivePixels(t *testing.T) {
+	a := make([]byte, 16)
+	b := make([]byte, 16)
+	z := zones.Zone{X: 0.25, Y: 0.25, W: 0.5, H: 0.5}
+	got := computeBBoxInZone(a, b, 4, 4, z)
+	want := BBox{X: z.X, Y: z.Y, W: z.W, H: z.H}
+	if got != want {
+		t.Errorf("expected zone fallback %+v, got %+v", want, got)
+	}
+}
+
+// Pixel ativo fora da zona não deve influenciar o bbox
+func TestComputeBBoxInZoneIgnoresPixelsOutsideZone(t *testing.T) {
+	a := make([]byte, 16)
+	b := make([]byte, 16)
+	b[0] = 200 // pixel (0,0), fora da zona
+	z := zones.Zone{X: 0.25, Y: 0.25, W: 0.75, H: 0.75}
+	got := computeBBoxInZone(a, b, 4, 4, z)
+	want := BBox{X: z.X, Y: z.Y, W: z.W, H: z.H}
+	if got != want {
+		t.Errorf("expected zone fallback %+v, got %+v", want, got)
+	}
+}
+
 // Pixels mascarados não devem contar para o bbox
 // Frame 4×1: pixel 0 mascarado (diff alto) + pixel 3 não mascarado (diff alto)
 // → bbox deve ser apenas o pixel 3
