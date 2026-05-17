@@ -589,6 +589,7 @@ export default function CameraPage() {
                         e.currentTarget.currentTime = pendingSeekRef.current
                         pendingSeekRef.current = null
                       }
+                      e.currentTarget.play().catch(() => {})
                     }}
                     onVolumeChange={e => setVideoMuted(e.currentTarget.muted)}
                     onEnded={() => {
