@@ -93,48 +93,53 @@ do_install() {
     if [ -f "$CONFIG_FILE" ]; then
         warn "Config já existe — não foi sobrescrito: ${CONFIG_FILE}"
         config_ready=1
-    elif [ -t 0 ]; then
-        # stdin é um terminal: rodar o wizard interativamente
+    else
         info "Iniciando assistente de configuração..."
         printf '\n'
-        if "${INSTALL_DIR}/${BINARY_NAME}" init --output "${CONFIG_FILE}"; then
-            config_ready=1
-        else
-            warn "Wizard cancelado ou falhou. Gerando config mínimo de exemplo em ${CONFIG_FILE}."
+        # Tenta rodar o wizard interativamente.
+        # curl | bash não tem stdin TTY, mas /dev/tty permite leitura do terminal mesmo assim.
+        if [ -t 0 ]; then
+            "${INSTALL_DIR}/${BINARY_NAME}" init --output "${CONFIG_FILE}" && config_ready=1 || true
+        elif [ -e /dev/tty ]; then
+            "${INSTALL_DIR}/${BINARY_NAME}" init --output "${CONFIG_FILE}" </dev/tty && config_ready=1 || true
         fi
+        [ "$config_ready" = "0" ] && warn "Wizard cancelado ou indisponível. Gerando config mínimo em ${CONFIG_FILE}."
     fi
 
     if [ "$config_ready" = "0" ]; then
-        # Instalação via pipe (curl | bash) ou wizard falhou: gerar placeholder
+        # Fallback: gerar placeholder com esquema atual
         cat > "$CONFIG_FILE" <<YAML
 # Configuração gerada pelo instalador. Edite conforme necessário.
 # Execute: camera init --output <este arquivo>
 # Documentação: https://github.com/jacksonbicalho/camera
 
+debug: false
 timezone: UTC   # ex: America/Sao_Paulo
+
+db_path: ${DATA_DIR}/camera.db   # banco SQLite (criado automaticamente)
+
+log:
+  output: stdout   # stdout | file
+  path:            # diretório quando output: file
 
 server:
   port: 8080
   segments_path: ${SEGMENTS_DIR}
-  username: admin
-  password: troque-esta-senha   # ALTERE antes de expor na rede
+  hls_dvr_seconds: 0   # 0 = desabilitado
+  jwt_secret: ""       # vazio = gerado aleatoriamente a cada boot
 
 storage:
   path: ${DATA_DIR}
   retention:
-    with_motion_minutes: 10080    # 7 dias
-    without_motion_minutes: 1440  # 1 dia
+    with_motion_minutes: 10080    # 7 dias  (0 = nunca apaga)
+    without_motion_minutes: 1440  # 1 dia   (0 = desabilitado)
+  interval_minutes: 60
   max_size_gb: 20
+  warn_percent: 90
 
-motion:
-  enabled: false
-  threshold: 0.02
-  fps: 2
-  cooldown_seconds: 30
-
-cameras: []   # adicione suas câmeras aqui e reinicie o serviço
-#   - id: entrada
-#     rtsp_url: rtsp://192.168.1.10:554/stream
+admin:
+  username: admin
+  password: changeme   # OBRIGATÓRIO trocar no primeiro login
 YAML
         ok "Config mínimo criado em ${CONFIG_FILE}"
     fi
