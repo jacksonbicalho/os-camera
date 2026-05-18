@@ -259,7 +259,7 @@ function paintCanvas(
 
 export default function CameraZonesSettingsPage() {
   const { id } = useParams<{ id: string }>()
-  const settings = useSettings(`/settings/cameras/${id}/zones`)
+  const { settings } = useSettings(`/settings/cameras/${id}/zones`)
   const cam = settings?.cameras.find(c => c.id === id)
 
   const capW = cam

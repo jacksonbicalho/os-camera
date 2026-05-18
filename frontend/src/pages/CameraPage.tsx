@@ -352,7 +352,7 @@ export default function CameraPage() {
     setScrollNonce(n => n + 1)
   }
 
-  const settings = useSettings(`/cameras/${id}`)
+  const { settings } = useSettings(`/cameras/${id}`)
   const motionPeak = useMotionPeak(id, `/cameras/${id}`)
   const { markRead } = useNotifications()
   const cam = settings?.cameras.find(c => c.id === id)

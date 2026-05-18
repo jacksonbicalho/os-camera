@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useParams, useLocation } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
+import CameraForm from '../../components/CameraForm'
+import { type CameraFormData, type Camera, formToPayload } from '../../components/cameraFormUtils'
 import { useSettings } from '../../hooks/useSettings'
 import { authHeaders } from '../../auth'
 
@@ -40,11 +42,13 @@ interface CameraStatsData {
 export default function CameraDetailSettingsPage() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
-  const navigate = useNavigate()
-  const from = (location.state as { from?: string } | null)?.from
-  const settings = useSettings(`/settings/cameras/${id}`)
-  const cam = settings?.cameras.find(c => c.id === id)
+  const startEditing = (location.state as { editing?: boolean } | null)?.editing ?? false
+  const { settings, reload } = useSettings(`/settings/cameras/${id}`)
+  const cam = settings?.cameras.find(c => c.id === id) as Camera | undefined
   const [stats, setStats] = useState<CameraStatsData | null>(null)
+  const [editing, setEditing] = useState(startEditing)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -54,33 +58,70 @@ export default function CameraDetailSettingsPage() {
       .catch(() => {})
   }, [id])
 
+  const handleUpdate = async (data: CameraFormData) => {
+    if (!id) return
+    setSaving(true); setError(null)
+    try {
+      const res = await fetch(`/api/settings/cameras/${id}`, {
+        method: 'PUT',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(formToPayload(data, false)),
+      })
+      if (!res.ok) { setError((await res.text()).trim() || 'Erro ao atualizar câmera'); return }
+      setEditing(false)
+      reload()
+    } finally { setSaving(false) }
+  }
+
   return (
     <SettingsLayout>
+      <nav className="flex items-center gap-1.5 text-xs text-gray-500 mb-5">
+        <Link to="/settings/cameras" className="hover:text-gray-300 transition-colors">Câmeras</Link>
+        <span>/</span>
+        <span className={editing ? 'hover:text-gray-300' : 'text-gray-300'}>
+          {editing
+            ? <Link to={`/settings/cameras/${id}`} onClick={() => setEditing(false)} className="hover:text-gray-300 transition-colors">{id}</Link>
+            : id}
+        </span>
+        {editing && (
+          <>
+            <span>/</span>
+            <span className="text-gray-300">Editar</span>
+          </>
+        )}
+      </nav>
+
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          {from && (
-            <button
-              onClick={() => navigate(-1)}
-              className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
-            >
-              ← Voltar
-            </button>
-          )}
-          <h2 className="text-lg font-semibold text-gray-200">{id}</h2>
-        </div>
-        <Link
-          to="/settings/cameras"
-          state={{ editId: id, from }}
-          className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded transition-colors"
-        >
-          Editar
-        </Link>
+        <h2 className="text-lg font-semibold text-gray-200">
+          {editing ? `${id} — editando` : id}
+        </h2>
+        {!editing && (
+          <button
+            onClick={() => { setEditing(true); setError(null) }}
+            className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded transition-colors"
+          >
+            Editar
+          </button>
+        )}
       </div>
+
+      {error && (
+        <div className="mb-4 px-3 py-2 bg-red-900/30 border border-red-700/50 rounded text-xs text-red-400">
+          {error}
+        </div>
+      )}
 
       {!settings ? (
         <p className="text-gray-500 text-sm">Carregando...</p>
       ) : !cam ? (
         <p className="text-gray-500 text-sm">Câmera não encontrada.</p>
+      ) : editing ? (
+        <CameraForm
+          initial={cam}
+          onSave={handleUpdate}
+          onCancel={() => { setEditing(false); setError(null) }}
+          saving={saving}
+        />
       ) : (
         <div className="flex flex-col gap-4">
           <SettingsSection

@@ -66,6 +66,7 @@ export interface AboutInfo {
 export function useSettings(redirectTo: string) {
   const navigate = useNavigate()
   const [settings, setSettings] = useState<Settings | null>(null)
+  const [key, setKey] = useState(0)
 
   useEffect(() => {
     fetch('/api/settings', { headers: authHeaders() })
@@ -75,9 +76,11 @@ export function useSettings(redirectTo: string) {
       })
       .then(data => { if (data) setSettings(data) })
       .catch(() => {})
-  }, [navigate, redirectTo])
+  }, [navigate, redirectTo, key])
 
-  return settings
+  const reload = () => setKey(k => k + 1)
+
+  return { settings, reload }
 }
 
 export function useAbout(redirectTo: string) {
