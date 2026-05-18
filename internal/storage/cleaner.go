@@ -385,13 +385,25 @@ func (c *Cleaner) CheckSize() {
 func (c *Cleaner) Run(ctx context.Context, interval time.Duration) {
 	c.Clean()
 	c.CheckSize()
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+
+	// syncRecordings runs on a short cadence so motion events are associated
+	// with recordings quickly after each chunk is finalized. The full clean
+	// (retention + size enforcement) runs on the slower configured interval.
+	const syncInterval = time.Minute
+	syncTicker := time.NewTicker(syncInterval)
+	defer syncTicker.Stop()
+	cleanTicker := time.NewTicker(interval)
+	defer cleanTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-syncTicker.C:
+			if c.db != nil {
+				c.syncRecordings()
+			}
+		case <-cleanTicker.C:
 			c.Clean()
 			c.CheckSize()
 		}
