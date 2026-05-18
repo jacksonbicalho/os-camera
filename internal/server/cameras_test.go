@@ -313,6 +313,118 @@ func TestDeleteCamera_CallsOnCameraStop(t *testing.T) {
 	}
 }
 
+// --- validação de campos ---
+
+func doCreateWithMotion(t *testing.T, srv http.Handler, token, motionJSON string) int {
+	t.Helper()
+	body := `{"id":"camV","rtsp_url":"rtsp://v","motion":` + motionJSON + `}`
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/cameras", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	return w.Code
+}
+
+func doUpdateWithMotion(t *testing.T, srv http.Handler, token, motionJSON string) int {
+	t.Helper()
+	body := `{"rtsp_url":"rtsp://v","motion":` + motionJSON + `}`
+	req := httptest.NewRequest(http.MethodPut, "/api/settings/cameras/cam1", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	return w.Code
+}
+
+func TestCreateCamera_InvalidMotionThreshold(t *testing.T) {
+	srv, adminToken, _ := setupCamerasServer(t)
+	if code := doCreateWithMotion(t, srv, adminToken, `{"enabled":true,"threshold":1.5}`); code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for threshold=1.5, got %d", code)
+	}
+	if code := doCreateWithMotion(t, srv, adminToken, `{"enabled":true,"threshold":-0.1}`); code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for threshold=-0.1, got %d", code)
+	}
+}
+
+func TestCreateCamera_InvalidMotionFPS(t *testing.T) {
+	srv, adminToken, _ := setupCamerasServer(t)
+	if code := doCreateWithMotion(t, srv, adminToken, `{"enabled":true,"fps":31}`); code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for fps=31, got %d", code)
+	}
+}
+
+func TestCreateCamera_InvalidMotionCooldown(t *testing.T) {
+	srv, adminToken, _ := setupCamerasServer(t)
+	if code := doCreateWithMotion(t, srv, adminToken, `{"enabled":true,"cooldown_seconds":-1}`); code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for cooldown_seconds=-1, got %d", code)
+	}
+}
+
+func TestCreateCamera_InvalidMotionPlaybackLead(t *testing.T) {
+	srv, adminToken, _ := setupCamerasServer(t)
+	if code := doCreateWithMotion(t, srv, adminToken, `{"enabled":true,"playback_lead_seconds":301}`); code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for playback_lead_seconds=301, got %d", code)
+	}
+	if code := doCreateWithMotion(t, srv, adminToken, `{"enabled":true,"playback_lead_seconds":-1}`); code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for playback_lead_seconds=-1, got %d", code)
+	}
+}
+
+func TestCreateCamera_ZeroMotionFieldsAreValid(t *testing.T) {
+	srv, adminToken, _ := setupCamerasServer(t)
+	// threshold=0 e fps=0 significam "usar padrão do sistema" — devem ser aceitos
+	if code := doCreateWithMotion(t, srv, adminToken, `{"enabled":true,"threshold":0,"fps":0}`); code != http.StatusCreated {
+		t.Fatalf("expected 201 for zero-value defaults, got %d", code)
+	}
+}
+
+func TestCreateCamera_InvalidChunkDuration(t *testing.T) {
+	srv, adminToken, _ := setupCamerasServer(t)
+	body := `{"id":"camDur","rtsp_url":"rtsp://dur","chunk_duration":"banana"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/cameras", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for bad chunk_duration, got %d", w.Code)
+	}
+}
+
+func TestCreateCamera_InvalidReconnectInterval(t *testing.T) {
+	srv, adminToken, _ := setupCamerasServer(t)
+	body := `{"id":"camRec","rtsp_url":"rtsp://rec","reconnect_interval":"nope"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/cameras", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for bad reconnect_interval, got %d", w.Code)
+	}
+}
+
+func TestUpdateCamera_InvalidMotionThreshold(t *testing.T) {
+	srv, adminToken, _ := setupCamerasServer(t)
+	if code := doUpdateWithMotion(t, srv, adminToken, `{"enabled":true,"threshold":2.0}`); code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for threshold=2.0 on PUT, got %d", code)
+	}
+}
+
+func TestUpdateCamera_InvalidChunkDuration(t *testing.T) {
+	srv, adminToken, _ := setupCamerasServer(t)
+	body := `{"rtsp_url":"rtsp://x","chunk_duration":"abc"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/settings/cameras/cam1", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for bad chunk_duration on PUT, got %d", w.Code)
+	}
+}
+
 func TestUpdateCamera_CallsStopThenStart(t *testing.T) {
 	database := openServerTestDB(t)
 	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {

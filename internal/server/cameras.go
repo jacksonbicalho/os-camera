@@ -14,6 +14,25 @@ import (
 	"camera/internal/ffprobe"
 )
 
+func validateMotionConfig(m *motionConfigDTO) error {
+	if m.Threshold != 0 && (m.Threshold < 0.001 || m.Threshold > 1.0) {
+		return fmt.Errorf("threshold must be between 0.001 and 1.0 (got %.4f)", m.Threshold)
+	}
+	if m.FPS != 0 && (m.FPS < 1 || m.FPS > 30) {
+		return fmt.Errorf("fps must be between 1 and 30 (got %d)", m.FPS)
+	}
+	if m.CooldownSeconds < 0 {
+		return fmt.Errorf("cooldown_seconds must be >= 0 (got %d)", m.CooldownSeconds)
+	}
+	if m.PlaybackLeadSeconds < 0 || m.PlaybackLeadSeconds > 300 {
+		return fmt.Errorf("playback_lead_seconds must be between 0 and 300 (got %d)", m.PlaybackLeadSeconds)
+	}
+	if m.CaptureWidth < 0 || m.CaptureHeight < 0 {
+		return fmt.Errorf("capture dimensions must be >= 0")
+	}
+	return nil
+}
+
 func formatDuration(d time.Duration) string {
 	if d == 0 {
 		return "0s"
@@ -132,6 +151,12 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id and rtsp_url are required", http.StatusBadRequest)
 		return
 	}
+	if req.Motion != nil {
+		if err := validateMotionConfig(req.Motion); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 
 	cam := config.CameraConfig{
 		ID:           req.ID,
@@ -144,14 +169,20 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		HLSVideoMode: req.HLSVideoMode,
 	}
 	if req.ChunkDuration != "" {
-		if d, err := time.ParseDuration(req.ChunkDuration); err == nil {
-			cam.ChunkDuration = config.Duration(d)
+		d, err := time.ParseDuration(req.ChunkDuration)
+		if err != nil {
+			http.Error(w, "invalid chunk_duration: "+err.Error(), http.StatusBadRequest)
+			return
 		}
+		cam.ChunkDuration = config.Duration(d)
 	}
 	if req.ReconnectInterval != "" {
-		if d, err := time.ParseDuration(req.ReconnectInterval); err == nil {
-			cam.ReconnectInterval = config.Duration(d)
+		d, err := time.ParseDuration(req.ReconnectInterval)
+		if err != nil {
+			http.Error(w, "invalid reconnect_interval: "+err.Error(), http.StatusBadRequest)
+			return
 		}
+		cam.ReconnectInterval = config.Duration(d)
 	}
 
 	// When all stream fields are "auto", probe the stream before inserting so
@@ -234,6 +265,12 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rtsp_url is required", http.StatusBadRequest)
 		return
 	}
+	if req.Motion != nil {
+		if err := validateMotionConfig(req.Motion); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 
 	cam := config.CameraConfig{
 		ID:           id,
@@ -246,14 +283,20 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		HLSVideoMode: req.HLSVideoMode,
 	}
 	if req.ChunkDuration != "" {
-		if d, err := time.ParseDuration(req.ChunkDuration); err == nil {
-			cam.ChunkDuration = config.Duration(d)
+		d, err := time.ParseDuration(req.ChunkDuration)
+		if err != nil {
+			http.Error(w, "invalid chunk_duration: "+err.Error(), http.StatusBadRequest)
+			return
 		}
+		cam.ChunkDuration = config.Duration(d)
 	}
 	if req.ReconnectInterval != "" {
-		if d, err := time.ParseDuration(req.ReconnectInterval); err == nil {
-			cam.ReconnectInterval = config.Duration(d)
+		d, err := time.ParseDuration(req.ReconnectInterval)
+		if err != nil {
+			http.Error(w, "invalid reconnect_interval: "+err.Error(), http.StatusBadRequest)
+			return
 		}
+		cam.ReconnectInterval = config.Duration(d)
 	}
 
 	var motion *config.MotionConfig
