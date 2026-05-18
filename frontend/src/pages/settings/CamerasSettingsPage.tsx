@@ -188,10 +188,12 @@ function CameraForm({ initial, onSave, onCancel, saving }: CameraFormProps) {
         <div>
           <label className={labelClass}>Duração do chunk</label>
           <input value={form.chunk_duration} onChange={e => set('chunk_duration', e.target.value)} className={inputClass} placeholder="5m" />
+          <p className="text-xs text-gray-600 mt-0.5">ex: 30s, 5m, 1h</p>
         </div>
         <div>
           <label className={labelClass}>Intervalo de reconexão</label>
           <input value={form.reconnect_interval} onChange={e => set('reconnect_interval', e.target.value)} className={inputClass} placeholder="30s" />
+          <p className="text-xs text-gray-600 mt-0.5">ex: 10s, 1m, 5m</p>
         </div>
         <div>
           <label className={labelClass}>Codec de vídeo</label>
@@ -252,20 +254,24 @@ function CameraForm({ initial, onSave, onCancel, saving }: CameraFormProps) {
           {form.motion_enabled && (
             <>
               <div>
-                <label className={labelClass}>Limiar (0.0 – 1.0)</label>
-                <input type="number" step="0.001" min="0" max="1" value={form.motion_threshold} onChange={e => set('motion_threshold', e.target.value)} className={inputClass} />
+                <label className={labelClass}>Limiar</label>
+                <input type="number" step="0.001" min="0.001" max="1" value={form.motion_threshold} onChange={e => set('motion_threshold', e.target.value)} className={inputClass} />
+                <p className="text-xs text-gray-600 mt-0.5">0.001 – 1.0 · quanto menor, mais sensível</p>
               </div>
               <div>
                 <label className={labelClass}>FPS de análise</label>
-                <input type="number" min="1" value={form.motion_fps} onChange={e => set('motion_fps', e.target.value)} className={inputClass} />
+                <input type="number" min="1" max="30" value={form.motion_fps} onChange={e => set('motion_fps', e.target.value)} className={inputClass} />
+                <p className="text-xs text-gray-600 mt-0.5">1 – 30 fps · padrão: 2</p>
               </div>
               <div>
                 <label className={labelClass}>Cooldown (segundos)</label>
                 <input type="number" min="0" value={form.motion_cooldown} onChange={e => set('motion_cooldown', e.target.value)} className={inputClass} />
+                <p className="text-xs text-gray-600 mt-0.5">Tempo mínimo entre eventos · 0 = sem cooldown</p>
               </div>
               <div>
                 <label className={labelClass}>Segundos antes do evento</label>
-                <input type="number" min="1" max="300" value={form.motion_playback_lead} onChange={e => set('motion_playback_lead', e.target.value)} className={inputClass} />
+                <input type="number" min="0" max="300" value={form.motion_playback_lead} onChange={e => set('motion_playback_lead', e.target.value)} className={inputClass} />
+                <p className="text-xs text-gray-600 mt-0.5">0 – 300 s · recua o player antes do instante detectado</p>
               </div>
               <div className="sm:col-span-2">
                 <label className={labelClass}>Resolução de análise</label>
