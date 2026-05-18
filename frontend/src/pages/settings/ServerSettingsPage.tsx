@@ -3,7 +3,7 @@ import SettingsSection from '../../components/SettingsSection'
 import { useSettings } from '../../hooks/useSettings'
 
 export default function ServerSettingsPage() {
-  const settings = useSettings('/settings/server')
+  const { settings } = useSettings('/settings/server')
   const s = settings?.server
 
   return (

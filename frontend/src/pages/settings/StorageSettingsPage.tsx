@@ -11,7 +11,7 @@ function fmtMinutes(m: number): string {
 }
 
 export default function StorageSettingsPage() {
-  const settings = useSettings('/settings/storage')
+  const { settings } = useSettings('/settings/storage')
   const s = settings?.storage
 
   return (

@@ -1,4 +1,4 @@
-import { useParams, Link, useLocation, useNavigate } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import MotionScoreChart from '../../components/MotionScoreChart'
@@ -106,10 +106,7 @@ function RatioGuide({ peak, threshold }: { peak: number; threshold: number }) {
 
 export default function CameraMotionSettingsPage() {
   const { id } = useParams<{ id: string }>()
-  const location = useLocation()
-  const navigate = useNavigate()
-  const from = (location.state as { from?: string } | null)?.from
-  const settings = useSettings(`/settings/cameras/${id}/motion`)
+  const { settings } = useSettings(`/settings/cameras/${id}/motion`)
   const peak = useMotionPeak(id, `/settings/cameras/${id}/motion`)
   const cam = settings?.cameras.find(c => c.id === id)
 
@@ -126,20 +123,10 @@ export default function CameraMotionSettingsPage() {
         <span className="text-gray-300">Detecção de movimento</span>
       </nav>
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          {from && (
-            <button
-              onClick={() => navigate(-1)}
-              className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
-            >
-              ← Voltar
-            </button>
-          )}
-          <h2 className="text-lg font-semibold text-gray-200">{id} — detecção de movimento</h2>
-        </div>
+        <h2 className="text-lg font-semibold text-gray-200">{id} — detecção de movimento</h2>
         <Link
-          to="/settings/cameras"
-          state={{ editId: id, from: location.pathname }}
+          to={`/settings/cameras/${id}`}
+          state={{ editing: true }}
           className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded transition-colors"
         >
           Editar

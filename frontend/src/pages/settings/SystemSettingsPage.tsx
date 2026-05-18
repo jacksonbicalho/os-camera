@@ -3,7 +3,7 @@ import SettingsSection from '../../components/SettingsSection'
 import { useSettings } from '../../hooks/useSettings'
 
 export default function SystemSettingsPage() {
-  const settings = useSettings('/settings/system')
+  const { settings } = useSettings('/settings/system')
 
   return (
     <SettingsLayout>
