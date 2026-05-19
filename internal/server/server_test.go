@@ -1181,8 +1181,8 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 	if resp.Motion.Threshold != 0.02 {
 		t.Errorf("expected threshold 0.02, got %f", resp.Motion.Threshold)
 	}
-	if resp.Defaults.ChunkDuration != "5m0s" {
-		t.Errorf("expected chunk_duration 5m0s, got %q", resp.Defaults.ChunkDuration)
+	if resp.Defaults.ChunkDuration != "5m" {
+		t.Errorf("expected chunk_duration 5m, got %q", resp.Defaults.ChunkDuration)
 	}
 	if resp.Defaults.ReconnectInterval != "10s" {
 		t.Errorf("expected reconnect_interval 10s, got %q", resp.Defaults.ReconnectInterval)
