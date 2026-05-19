@@ -16,6 +16,7 @@ import { useSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { mergeRecordings } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
+import RecordingTimeline from '../components/RecordingTimeline'
 import { useNotifications } from '../contexts/NotificationContext'
 import type { HLSStats } from '../components/HLSPlayer'
 
@@ -120,6 +121,7 @@ export default function CameraPage() {
   const hlsPlayerRef = useRef<HLSPlayerHandle>(null)
   const pendingLiveSeekRef = useRef<string | null>(null)
   const activeEventItemRef = useRef<HTMLButtonElement | null>(null)
+  const activeRecordingItemRef = useRef<HTMLDivElement | null>(null)
   const recordingsRef = useRef(recordings)
   const activeEventTimeRef = useRef(activeEventTime)
   const activeEventIdRef = useRef(activeEventId)
@@ -168,6 +170,12 @@ export default function CameraPage() {
     if (continuousPlayRef.current) return
     activeEventItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [activeEventTime, scrollNonce])
+
+  const activeRecordingFilename = activeRecording?.filename
+  useEffect(() => {
+    if (!activeRecordingFilename) return
+    activeRecordingItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [activeRecordingFilename, recordingsDisplayPage])
 
   // Handles same-route navigation (component doesn't remount when already on this camera)
   useEffect(() => {
@@ -275,6 +283,31 @@ export default function CameraPage() {
     setRecordingsTotal(result.total)
     setHasMore(result.hasMore)
     setMotionEvents(events)
+  }
+
+  function handleTimelineSeek(recording: Recording, offsetSeconds: number) {
+    setActiveEventTime(null)
+    setActiveEventId(null)
+    setActiveTab('recordings')
+
+    // Expand displayed list pages until the recording is visible
+    const recIdx = recordings.findIndex(r => r.filename === recording.filename)
+    if (recIdx !== -1) {
+      const neededPage = Math.ceil((recIdx + 1) / PAGE_SIZE)
+      if (neededPage > recordingsDisplayPageRef.current) {
+        setRecordingsDisplayPage(neededPage)
+      }
+    }
+
+    if (activeRecording?.filename === recording.filename) {
+      if (videoRef.current) {
+        videoRef.current.currentTime = offsetSeconds
+        videoRef.current.play().catch(() => {})
+      }
+    } else {
+      pendingSeekRef.current = offsetSeconds
+      setActiveRecording(recording)
+    }
   }
 
   async function handleConfirmDelete() {
@@ -770,8 +803,9 @@ export default function CameraPage() {
               />
             </div>
 
-            {/* Lista de gravações / eventos */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+            {/* Lista de gravações / eventos + timeline acoplada */}
+            <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden flex">
+              <div className="flex-1 min-w-0">
               {/* Abas */}
               <div className="flex border-b border-gray-800">
                 {(['recordings', 'events'] as const).map(tab => (
@@ -818,6 +852,7 @@ export default function CameraPage() {
                       return (
                         <div
                           key={rec.filename}
+                          ref={isActive ? el => { activeRecordingItemRef.current = el } : null}
                           className={`group flex items-center justify-between px-3 py-2 transition-colors ${
                             rec.is_recording
                               ? 'opacity-50'
@@ -905,6 +940,15 @@ export default function CameraPage() {
                   })}
                 </ListPanel>
               )}
+              </div>
+              <RecordingTimeline
+                recordings={recordings}
+                motionEvents={motionEvents}
+                activeRecording={activeRecording}
+                activeTime={activeEventTime ?? activeRecording?.start ?? null}
+                timezone={timezone}
+                onSeek={handleTimelineSeek}
+              />
             </div>
           </div>
         </div>
