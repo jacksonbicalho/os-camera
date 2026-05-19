@@ -58,6 +58,7 @@ func NewProber(exec Executor) *Prober {
 
 func (p *Prober) Probe(ctx context.Context, url string) ([]byte, error) {
 	return p.exec.Execute(ctx, "ffprobe",
+		"-rtsp_transport", "tcp",
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_streams",

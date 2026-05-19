@@ -2,8 +2,10 @@ package motion
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -50,7 +52,7 @@ func TestDetectorRecordsEventWhenDiffExceedsThreshold(t *testing.T) {
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
 	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
 
-	det.processFrames()
+	det.processFrames(context.Background())
 
 	if len(captured) != 1 {
 		t.Fatalf("expected 1 motion event, got %d", len(captured))
@@ -73,7 +75,7 @@ func TestDetectorIgnoresSmallDiff(t *testing.T) {
 	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
 	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
 
-	det.processFrames()
+	det.processFrames(context.Background())
 
 	if len(captured) != 0 {
 		t.Fatalf("expected 0 motion events, got %d", len(captured))
@@ -96,7 +98,7 @@ func TestDetectorTimestampIsApproxNow(t *testing.T) {
 	det := newDetector("entrada", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
 
 	before := time.Now().UTC().Truncate(time.Second)
-	det.processFrames()
+	det.processFrames(context.Background())
 	after := time.Now().UTC().Add(time.Second)
 
 	if capturedAt.IsZero() {
@@ -123,7 +125,7 @@ func TestDetectorNotifyRawCalledForSubThresholdDiff(t *testing.T) {
 		rawEvents = append(rawEvents, ev)
 	}, nil)
 
-	det.processFrames()
+	det.processFrames(context.Background())
 
 	if len(rawEvents) != 1 {
 		t.Fatalf("expected 1 raw event, got %d", len(rawEvents))
@@ -148,7 +150,7 @@ func TestDetectorNotifyRawCalledAlongsideNotify(t *testing.T) {
 		nil,
 	)
 
-	det.processFrames()
+	det.processFrames(context.Background())
 
 	if notified != 1 {
 		t.Fatalf("expected notify called 1 time, got %d", notified)
@@ -185,7 +187,7 @@ func TestDetectorCooldownSuppressesEventsWithinWindow(t *testing.T) {
 		return t0.Add(10 * time.Second) // second diff: within 30s cooldown
 	}
 
-	det.processFrames()
+	det.processFrames(context.Background())
 
 	if notified != 1 {
 		t.Errorf("expected 1 notify within cooldown, got %d", notified)
@@ -218,7 +220,7 @@ func TestDetectorCooldownAllowsEventAfterWindow(t *testing.T) {
 		return t0.Add(31 * time.Second) // after cooldown window
 	}
 
-	det.processFrames()
+	det.processFrames(context.Background())
 
 	if notified != 2 {
 		t.Errorf("expected 2 notifies after cooldown expires, got %d", notified)
@@ -241,11 +243,69 @@ func TestDetectorCooldownZeroDisablesSuppression(t *testing.T) {
 	det := newDetector("cam", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(),
 		func(Event) { notified++ }, nil, nil)
 
-	det.processFrames()
+	det.processFrames(context.Background())
 
 	if notified != 2 {
 		t.Errorf("expected 2 notifies when cooldown=0, got %d", notified)
 	}
+}
+
+func TestDetectorContextCancellationTerminatesProcess(t *testing.T) {
+	// fakeBlockProcess blocks until Terminate() is called, simulating an infinite
+	// RTSP stream that never returns EOF.
+	done := make(chan struct{})
+	proc := &fakeBlockProcess{done: done}
+	cmd := &fakeBlockCommander{process: proc}
+	st := newStore(t.TempDir(), nil)
+
+	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
+	det := newDetector("cam", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	finished := make(chan struct{})
+	go func() {
+		det.processFrames(ctx)
+		close(finished)
+	}()
+
+	cancel()
+
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("processFrames did not return after context cancellation")
+	}
+	if !proc.terminated {
+		t.Error("expected Terminate() to be called on context cancellation")
+	}
+}
+
+// fakeBlockProcess blocks Read until Terminate is called.
+type fakeBlockProcess struct {
+	terminated bool
+	once       sync.Once
+	done       chan struct{}
+}
+
+func (p *fakeBlockProcess) Read(b []byte) (int, error) {
+	<-p.done
+	return 0, io.EOF
+}
+func (p *fakeBlockProcess) Terminate() error {
+	p.once.Do(func() {
+		p.terminated = true
+		close(p.done)
+	})
+	return nil
+}
+func (p *fakeBlockProcess) Wait() error { return nil }
+
+type fakeBlockCommander struct {
+	process *fakeBlockProcess
+}
+
+func (c *fakeBlockCommander) Start(url string, width, height, fps int) (frameProcess, error) {
+	return c.process, nil
 }
 
 func TestDetectorExclusionZoneSuppressesEvent(t *testing.T) {
@@ -266,7 +326,7 @@ func TestDetectorExclusionZoneSuppressesEvent(t *testing.T) {
 	det := newDetector("cam", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil,
 		func() []zones.Zone { return []zones.Zone{fullZone} })
 
-	det.processFrames()
+	det.processFrames(context.Background())
 
 	if len(captured) != 0 {
 		t.Fatalf("expected 0 events with full exclusion zone, got %d", len(captured))

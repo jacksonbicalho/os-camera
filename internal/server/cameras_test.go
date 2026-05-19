@@ -178,6 +178,41 @@ func TestUpdateCamera_Success(t *testing.T) {
 	}
 }
 
+func TestUpdateCamera_PreservesRTSPPasswordWhenMasked(t *testing.T) {
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "admin_user", "adminpw", "admin", false); err != nil {
+		t.Fatalf("criar admin: %v", err)
+	}
+	originalURL := "rtsp://admin:secret123@192.168.1.10:554/stream"
+	if err := db.CreateCamera(database, config.CameraConfig{ID: "cam1", RTSPURL: originalURL}, nil); err != nil {
+		t.Fatalf("criar câmera: %v", err)
+	}
+	srv := server.NewServer(config.ServerConfig{}, "UTC", nil, discardLogger(), nil).WithDB(database)
+	adminToken := loginAndGetToken(t, srv, "admin_user", "adminpw")
+
+	// Submit with masked URL (password replaced by "xxxxx" — Go's url.Redacted() sentinel)
+	maskedURL := "rtsp://admin:xxxxx@192.168.1.10:554/stream"
+	body := fmt.Sprintf(`{"rtsp_url":%q}`, maskedURL)
+	req := httptest.NewRequest(http.MethodPut, "/api/settings/cameras/cam1", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// The stored URL must retain the original password, not "xxxxx"
+	updated, err := db.GetCamera(database, "cam1")
+	if err != nil {
+		t.Fatalf("GetCamera: %v", err)
+	}
+	if updated.RTSPURL != originalURL {
+		t.Errorf("expected RTSP URL %q, got %q", originalURL, updated.RTSPURL)
+	}
+}
+
 func TestUpdateCamera_NotFound(t *testing.T) {
 	srv, adminToken, _ := setupCamerasServer(t)
 
