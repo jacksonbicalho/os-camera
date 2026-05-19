@@ -39,7 +39,7 @@ func (r *Recorder) Start(now time.Time) error {
 	pattern := OutputPattern(r.storage.Path, r.camera.ID, now)
 	duration := int(r.camera.EffectiveChunkDuration().Seconds())
 	r.log.Debug("starting ffmpeg", "camera", r.camera.ID, "pattern", pattern, "chunk_duration", duration)
-	args := []string{"-i", r.camera.RTSPURL, "-c", "copy"}
+	args := []string{"-rtsp_transport", "tcp", "-i", r.camera.RTSPURL, "-c", "copy"}
 	if !r.stream.HasAudio {
 		args = append(args, "-an")
 	}

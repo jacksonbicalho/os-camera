@@ -1,6 +1,7 @@
 package motion
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -89,16 +90,20 @@ func (d *detector) unregisterInspector(id string) {
 	d.inspMu.Unlock()
 }
 
-// processFrames starts the frame commander, reads frames until EOF,
-// and records a motion event whenever the diff between consecutive frames
-// exceeds the configured threshold.
-func (d *detector) processFrames() {
+// processFrames starts the frame commander, reads frames until EOF or ctx
+// cancellation, and records a motion event whenever the diff between consecutive
+// frames exceeds the configured threshold.
+func (d *detector) processFrames(ctx context.Context) {
 	d.log.Debug("motion: starting frame capture", "camera", d.cameraID, "width", d.width, "height", d.height, "fps", d.cfg.FPS)
 	proc, err := d.commander.Start(d.url, d.width, d.height, d.cfg.FPS)
 	if err != nil {
 		d.log.Error("motion: failed to start frame capture", "camera", d.cameraID, "error", err)
 		return
 	}
+	go func() {
+		<-ctx.Done()
+		proc.Terminate()
+	}()
 	defer func() {
 		proc.Terminate()
 		proc.Wait()

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -240,7 +241,8 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 	}
 	id := r.PathValue("id")
 
-	if _, err := db.GetCamera(s.db, id); err != nil {
+	existing, err := db.GetCamera(s.db, id)
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -264,6 +266,13 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 	if req.RTSPURL == "" {
 		http.Error(w, "rtsp_url is required", http.StatusBadRequest)
 		return
+	}
+	// If the client submitted the masked URL (password == "xxxxx" from Redacted()),
+	// restore the original URL so the real credentials are not overwritten.
+	if u, err := url.Parse(req.RTSPURL); err == nil && u.User != nil {
+		if pass, hasPass := u.User.Password(); hasPass && pass == "xxxxx" {
+			req.RTSPURL = existing.RTSPURL
+		}
 	}
 	if req.Motion != nil {
 		if err := validateMotionConfig(req.Motion); err != nil {

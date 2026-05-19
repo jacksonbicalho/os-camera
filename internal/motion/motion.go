@@ -108,7 +108,7 @@ func (m *Monitor) Run(ctx context.Context) {
 	defer close(m.events)
 	defer close(m.rawScores)
 	for {
-		m.det.processFrames()
+		m.det.processFrames(ctx)
 		select {
 		case <-ctx.Done():
 			return
