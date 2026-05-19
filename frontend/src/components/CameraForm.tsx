@@ -105,6 +105,14 @@ export default function CameraForm({ initial, onSave, onCancel, saving }: Camera
             <option value="copy">Cópia (sem transcodificação)</option>
           </select>
         </div>
+        <div>
+          <label className={labelClass}>Modo de gravação</label>
+          <select value={form.record_video_mode} onChange={e => set('record_video_mode', e.target.value)} className={inputClass}>
+            <option value="auto">Auto (transcodifica HEVC → H.264)</option>
+            <option value="h264">H.264 (sempre transcodifica)</option>
+            <option value="copy">Cópia (sem transcodificação)</option>
+          </select>
+        </div>
       </div>
 
       <div className="border-t border-gray-800 pt-3">

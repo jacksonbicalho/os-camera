@@ -72,6 +72,7 @@ type cameraConfigDTO struct {
 	Height            int              `json:"height,omitempty"`
 	DisplayOrder      int              `json:"display_order"`
 	HLSVideoMode      string           `json:"hls_video_mode"`
+	RecordVideoMode   string           `json:"record_video_mode"`
 	Motion            *motionConfigDTO `json:"motion"`
 }
 
@@ -87,6 +88,7 @@ func cameraToDTO(cam config.CameraConfig) cameraConfigDTO {
 		Height:            cam.Height,
 		DisplayOrder:      cam.DisplayOrder,
 		HLSVideoMode:      cam.HLSVideoMode,
+		RecordVideoMode:   cam.RecordVideoMode,
 	}
 	if cam.Motion != nil {
 		dto.Motion = &motionConfigDTO{
@@ -142,6 +144,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		Height            int              `json:"height"`
 		DisplayOrder      int              `json:"display_order"`
 		HLSVideoMode      string           `json:"hls_video_mode"`
+		RecordVideoMode   string           `json:"record_video_mode"`
 		Motion            *motionConfigDTO `json:"motion"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -160,14 +163,15 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cam := config.CameraConfig{
-		ID:           req.ID,
-		RTSPURL:      req.RTSPURL,
-		VideoCodec:   req.VideoCodec,
-		HasAudio:     req.HasAudio,
-		Width:        req.Width,
-		Height:       req.Height,
-		DisplayOrder: req.DisplayOrder,
-		HLSVideoMode: req.HLSVideoMode,
+		ID:              req.ID,
+		RTSPURL:         req.RTSPURL,
+		VideoCodec:      req.VideoCodec,
+		HasAudio:        req.HasAudio,
+		Width:           req.Width,
+		Height:          req.Height,
+		DisplayOrder:    req.DisplayOrder,
+		HLSVideoMode:    req.HLSVideoMode,
+		RecordVideoMode: req.RecordVideoMode,
 	}
 	if req.ChunkDuration != "" {
 		d, err := time.ParseDuration(req.ChunkDuration)
@@ -257,6 +261,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		Height            int              `json:"height"`
 		DisplayOrder      int              `json:"display_order"`
 		HLSVideoMode      string           `json:"hls_video_mode"`
+		RecordVideoMode   string           `json:"record_video_mode"`
 		Motion            *motionConfigDTO `json:"motion"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -282,14 +287,15 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cam := config.CameraConfig{
-		ID:           id,
-		RTSPURL:      req.RTSPURL,
-		VideoCodec:   req.VideoCodec,
-		HasAudio:     req.HasAudio,
-		Width:        req.Width,
-		Height:       req.Height,
-		DisplayOrder: req.DisplayOrder,
-		HLSVideoMode: req.HLSVideoMode,
+		ID:              id,
+		RTSPURL:         req.RTSPURL,
+		VideoCodec:      req.VideoCodec,
+		HasAudio:        req.HasAudio,
+		Width:           req.Width,
+		Height:          req.Height,
+		DisplayOrder:    req.DisplayOrder,
+		HLSVideoMode:    req.HLSVideoMode,
+		RecordVideoMode: req.RecordVideoMode,
 	}
 	if req.ChunkDuration != "" {
 		d, err := time.ParseDuration(req.ChunkDuration)

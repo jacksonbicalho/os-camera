@@ -136,6 +136,7 @@ export default function CameraDetailSettingsPage() {
             fields={[
               { label: 'Codec de vídeo', value: cam.video_codec || 'auto' },
               { label: 'Modo HLS', value: cam.hls_video_mode || 'auto' },
+              { label: 'Modo gravação', value: cam.record_video_mode || 'auto' },
               { label: 'Áudio', value: fmtHasAudio(cam.has_audio) },
               { label: 'Resolução', value: fmtResolution(cam.width, cam.height) },
             ]}
