@@ -783,6 +783,14 @@ export default function CameraPage() {
               )}
             </div>
 
+            <RecordingTimeline
+              recordings={recordings}
+              motionEvents={motionEvents}
+              activeRecording={activeRecording}
+              activeTime={activeEventTime ?? activeRecording?.start ?? null}
+              timezone={timezone}
+              onSeek={handleTimelineSeek}
+            />
           </div>
 
           {/* Painel direito */}
@@ -809,9 +817,9 @@ export default function CameraPage() {
               />
             </div>
 
-            {/* Lista de gravações / eventos + timeline acoplada */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden grid grid-cols-[1fr_4rem]">
-              <div className="min-w-0">
+            {/* Lista de gravações / eventos */}
+            <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+              <div>
               {/* Abas */}
               <div className="flex border-b border-gray-800">
                 {(['recordings', 'events'] as const).map(tab => (
@@ -841,7 +849,6 @@ export default function CameraPage() {
                   onLoadMore={() => setRecordingsDisplayPage(p => p + 1)}
                   empty={recordings.length === 0}
                   emptyMessage="Sem gravações nesta data."
-                  scroll={false}
                 >
                   {(() => {
                     const recordingsAsc = [...recordings].sort((a, b) => a.filename.localeCompare(b.filename))
@@ -948,15 +955,6 @@ export default function CameraPage() {
                 </ListPanel>
               )}
               </div>
-              <RecordingTimeline
-                recordings={recordings}
-                motionEvents={motionEvents}
-                activeRecording={activeRecording}
-                activeTime={activeEventTime ?? activeRecording?.start ?? null}
-                timezone={timezone}
-                sortOrder={sortOrder}
-                onSeek={handleTimelineSeek}
-              />
             </div>
           </div>
         </div>

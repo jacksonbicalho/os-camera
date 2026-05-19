@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from 'react'
+import { useRef, useCallback, useEffect, useState } from 'react'
 import type { Recording, MotionEvent } from '../pages/cameraUtils'
 
 interface Props {
@@ -7,50 +7,49 @@ interface Props {
   activeRecording: Recording | null
   activeTime: string | null
   timezone: string
-  sortOrder: 'asc' | 'desc'
   onSeek: (recording: Recording, offsetSeconds: number) => void
 }
 
-const RULER_W = 26
-const CENTER_X = 0.5
+const TOTAL_H = 72
+const RULER_H = 26
+const SEG_TOP = 34
+const SEG_H   = 30
 
-export default function RecordingTimeline({ recordings, motionEvents, activeRecording, activeTime, timezone, sortOrder, onSeek }: Props) {
+const ZOOM_LEVELS = [1, 2, 4, 8]
+
+export default function RecordingTimeline({ recordings, motionEvents, activeRecording, activeTime, timezone, onSeek }: Props) {
+  const outerRef     = useRef<HTMLDivElement>(null)
+  const scrollRef    = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const isDragging = useRef(false)
+  const isDragging   = useRef(false)
+  const [zoom, setZoom] = useState(1)
+  const zoomIdx = ZOOM_LEVELS.indexOf(zoom)
 
   const recsAsc = [...recordings].sort((a, b) => a.filename.localeCompare(b.filename))
   const N = recsAsc.length
 
-  // Each block knows its recording, its wall-clock span, and its equal-height
-  // visual position (startFrac = i/N, heightFrac = 1/N).
   const blocks = recsAsc.map((rec, i) => {
     const startMs = new Date(rec.start).getTime()
     const endMs = i + 1 < recsAsc.length
       ? new Date(recsAsc[i + 1].start).getTime()
       : startMs + 5 * 60 * 1000
-    const heightFrac = 1 / N
-    const startFrac = sortOrder === 'desc' ? (N - 1 - i) / N : i / N
-    return { rec, startMs, endMs, startFrac, heightFrac }
+    return { rec, startMs, endMs, startFrac: i / N, widthFrac: 1 / N }
   })
 
   const rangeStart = blocks.length > 0 ? blocks[0].startMs : 0
   const rangeEnd   = blocks.length > 0 ? blocks[blocks.length - 1].endMs : 1
   const totalMs    = Math.max(rangeEnd - rangeStart, 1)
 
-  // Maps a timestamp to a vertical fraction using equal-height block layout.
-  // Each of N recordings occupies 1/N of the height; position within a block
-  // is interpolated linearly between that block's startMs and endMs.
   const timeToFrac = (ms: number): number => {
     for (let i = 0; i < blocks.length; i++) {
       const { startMs, endMs } = blocks[i]
       if (ms <= endMs) {
         const span = endMs - startMs
         const within = span > 0 ? Math.max(0, Math.min(1, (ms - startMs) / span)) : 0
-        const ascFrac = (i + within) / N
-        return sortOrder === 'desc' ? 1 - ascFrac : ascFrac
+        return (i + within) / N
       }
     }
-    return sortOrder === 'desc' ? 0 : 1
+    return 1
   }
 
   const eventDots = motionEvents
@@ -61,14 +60,15 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
     ? Math.max(0, Math.min(1, timeToFrac(new Date(activeTime).getTime())))
     : null
 
-  // Adaptive label interval (minutes)
+  // Label interval ajustado pelo zoom: mais zoom → mais labels
   const rangeMin = totalMs / 60000
-  const intervalMin =
+  const baseIntervalMin =
     rangeMin <= 10  ? 1  :
     rangeMin <= 30  ? 2  :
     rangeMin <= 120 ? 5  :
     rangeMin <= 360 ? 10 :
     rangeMin <= 720 ? 15 : 30
+  const intervalMin = Math.max(1, Math.floor(baseIntervalMin / zoom))
 
   const intervalMs    = intervalMin * 60000
   const firstBoundary = Math.ceil(rangeStart / intervalMs) * intervalMs
@@ -80,7 +80,7 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
     labels.push({ f: timeToFrac(ms), label: fmt.format(new Date(ms)) })
   }
   const minorStepMin = Math.max(1, Math.floor(intervalMin / 5))
-  const minorStepMs = minorStepMin * 60000
+  const minorStepMs  = minorStepMin * 60000
   const firstMinorBoundary = Math.ceil(rangeStart / minorStepMs) * minorStepMs
   const minorTicks: number[] = []
   for (let ms = firstMinorBoundary; ms <= rangeEnd; ms += minorStepMs) {
@@ -88,30 +88,37 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
     minorTicks.push(timeToFrac(ms))
   }
 
-  const seekAtY = useCallback((clientY: number) => {
+  const seekAtX = useCallback((clientX: number) => {
     const el = containerRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
-    const f = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height))
-    const ascF = sortOrder === 'desc' ? 1 - f : f
+    const f = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
     const n = blocks.length
     if (n === 0) return
-    const blockIdx = Math.min(n - 1, Math.floor(ascF * n))
-    const withinFrac = ascF * n - blockIdx
+    const blockIdx = Math.min(n - 1, Math.floor(f * n))
+    const withinFrac = f * n - blockIdx
     const { rec, startMs, endMs } = blocks[blockIdx]
     if (rec.is_recording) return
     const offsetSeconds = Math.max(0, withinFrac * (endMs - startMs) / 1000)
     onSeek(rec, offsetSeconds)
-  }, [blocks, sortOrder, onSeek])
+  }, [blocks, onSeek])
+
+  // Mantém a agulha centrada no scroll quando o zoom ou posição ativa muda
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || activeFrac === null) return
+    const target = activeFrac * el.scrollWidth - el.clientWidth / 2
+    el.scrollLeft = Math.max(0, Math.min(el.scrollWidth - el.clientWidth, target))
+  }, [activeFrac, zoom])
 
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    const onTouchStart = (e: TouchEvent) => { isDragging.current = true; seekAtY(e.touches[0].clientY) }
+    const onTouchStart = (e: TouchEvent) => { isDragging.current = true; seekAtX(e.touches[0].clientX) }
     const onTouchMove  = (e: TouchEvent) => {
       if (!isDragging.current) return
       e.preventDefault()
-      seekAtY(e.touches[0].clientY)
+      seekAtX(e.touches[0].clientX)
     }
     const onTouchEnd = () => { isDragging.current = false }
     el.addEventListener('touchstart', onTouchStart, { passive: true })
@@ -122,103 +129,181 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
       el.removeEventListener('touchmove',  onTouchMove)
       el.removeEventListener('touchend',   onTouchEnd)
     }
-  }, [seekAtY])
+  }, [seekAtX])
 
   const activeLabel = activeTime ? fmt.format(new Date(activeTime)) : null
 
-  if (recsAsc.length === 0) return <div className="relative w-full h-full border-l border-gray-800 bg-gray-900/40" />
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === '+' || e.key === '=') {
+      e.preventDefault()
+      setZoom(z => ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, ZOOM_LEVELS.indexOf(z) + 1)])
+      return
+    }
+    if (e.key === '-') {
+      e.preventDefault()
+      setZoom(z => ZOOM_LEVELS[Math.max(0, ZOOM_LEVELS.indexOf(z) - 1)])
+      return
+    }
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    e.preventDefault()
+    const currentIdx = activeRecording
+      ? blocks.findIndex(b => b.rec.filename === activeRecording.filename)
+      : -1
+    const targetIdx = e.key === 'ArrowRight' ? currentIdx + 1 : currentIdx - 1
+    if (targetIdx < 0 || targetIdx >= blocks.length) return
+    const { rec } = blocks[targetIdx]
+    if (!rec.is_recording) onSeek(rec, 0)
+  }
+
+  if (N === 0) {
+    return (
+      <div className="w-full rounded-lg bg-zinc-950 border border-zinc-800" style={{ height: TOTAL_H }} />
+    )
+  }
 
   return (
     <div
-      ref={containerRef}
-      className="relative w-full h-full border-l border-gray-800 bg-gray-900/40 cursor-pointer select-none overflow-hidden"
-      title="Linha do tempo — clique ou arraste para navegar"
-      onMouseDown={e => { isDragging.current = true; seekAtY(e.clientY) }}
-      onMouseMove={e => { if (isDragging.current) seekAtY(e.clientY) }}
-      onMouseUp={() => { isDragging.current = false }}
-      onMouseLeave={() => { isDragging.current = false }}
+      ref={outerRef}
+      tabIndex={0}
+      className="relative w-full rounded-lg bg-zinc-950 border border-zinc-800 select-none focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+      style={{ height: TOTAL_H }}
+      title="Linha do tempo — clique ou arraste · ← → gravação · +/− zoom"
+      onKeyDown={handleKeyDown}
     >
-      <div className="absolute inset-y-0 left-0 bg-zinc-800/65 border-r border-zinc-600/45" style={{ width: RULER_W }} />
-      <div className="absolute inset-y-0 border-l border-amber-300/80" style={{ left: `calc(${CENTER_X * 100}% - 0.5px)` }} />
+      {/* Botões de zoom */}
+      <div
+        className="absolute top-1 right-1 z-40 flex items-center gap-0.5"
+        onMouseDown={e => e.stopPropagation()}
+      >
+        <button
+          onClick={() => setZoom(z => ZOOM_LEVELS[Math.max(0, ZOOM_LEVELS.indexOf(z) - 1)])}
+          disabled={zoomIdx === 0}
+          className="w-5 h-5 flex items-center justify-center rounded text-amber-400/70 hover:text-amber-300 hover:bg-amber-500/10 disabled:opacity-30 disabled:cursor-not-allowed text-xs leading-none transition-colors"
+          title="Diminuir zoom (−)"
+        >−</button>
+        <span className="text-[9px] text-amber-400/50 tabular-nums w-5 text-center">{zoom}×</span>
+        <button
+          onClick={() => setZoom(z => ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, ZOOM_LEVELS.indexOf(z) + 1)])}
+          disabled={zoomIdx === ZOOM_LEVELS.length - 1}
+          className="w-5 h-5 flex items-center justify-center rounded text-amber-400/70 hover:text-amber-300 hover:bg-amber-500/10 disabled:opacity-30 disabled:cursor-not-allowed text-xs leading-none transition-colors"
+          title="Aumentar zoom (+)"
+        >+</button>
+      </div>
 
-      {/* Tick marks + labels */}
-      {labels.map(({ f, label }) => (
+      {/* Área rolável */}
+      <div
+        ref={scrollRef}
+        className="w-full h-full overflow-x-auto overflow-y-hidden"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {/* Conteúdo escalado */}
         <div
-          key={label}
-          className="absolute inset-x-0 pointer-events-none"
-          style={{ top: `${f * 100}%` }}
+          ref={containerRef}
+          className="relative h-full cursor-pointer"
+          style={{ width: `${zoom * 100}%`, minWidth: '100%' }}
+          onMouseDown={e => { isDragging.current = true; seekAtX(e.clientX); outerRef.current?.focus() }}
+          onMouseMove={e => { if (isDragging.current) seekAtX(e.clientX) }}
+          onMouseUp={() => { isDragging.current = false }}
+          onMouseLeave={() => { isDragging.current = false }}
         >
-          <div className="absolute border-t border-zinc-500/45" style={{ left: RULER_W - 2, right: 0 }} />
-          <span
-            className="absolute text-zinc-300 leading-none whitespace-nowrap"
-            style={{ fontSize: 6.5, left: 2, top: 2 }}
-          >
-            {label}
-          </span>
+          {/* Régua */}
+          <div className="absolute left-0 right-0 top-0 bg-zinc-900 border-b border-zinc-700/50" style={{ height: RULER_H }} />
+
+          {/* Labels e ticks principais */}
+          {labels.map(({ f, label }) => (
+            <div
+              key={label}
+              className="absolute top-0 bottom-0 pointer-events-none"
+              style={{ left: `${f * 100}%` }}
+            >
+              <div className="absolute top-0 w-px bg-amber-500/50" style={{ height: RULER_H }} />
+              <div className="absolute w-px bg-amber-500/10" style={{ top: RULER_H, bottom: 0 }} />
+              <span
+                className="absolute text-amber-400/80 leading-none whitespace-nowrap"
+                style={{ fontSize: 9, top: 4, transform: 'translateX(-50%)' }}
+              >
+                {label}
+              </span>
+            </div>
+          ))}
+
+          {/* Ticks menores */}
+          {minorTicks.map((f, i) => (
+            <div
+              key={`m-${i}`}
+              className="absolute top-0 pointer-events-none w-px bg-amber-500/20"
+              style={{ left: `${f * 100}%`, height: RULER_H * 0.5 }}
+            />
+          ))}
+
+          {/* Blocos de gravação */}
+          {blocks.map(({ rec, startFrac, widthFrac }) => {
+            const isActive = activeRecording?.filename === rec.filename
+            return (
+              <div
+                key={rec.filename}
+                className={`absolute rounded-sm pointer-events-none transition-colors ${
+                  rec.is_recording
+                    ? 'bg-red-400/80'
+                    : isActive
+                      ? 'bg-amber-200/90'
+                      : 'bg-amber-500/50'
+                }`}
+                style={{
+                  left:   `${startFrac * 100}%`,
+                  width:  `max(${widthFrac * 100}%, 2px)`,
+                  top:    SEG_TOP,
+                  height: SEG_H,
+                }}
+              />
+            )
+          })}
+
+          {/* Dots de eventos de movimento */}
+          {eventDots.map(({ ev, f }, i) => (
+            <div
+              key={ev.id ?? `${ev.time}-${i}`}
+              className="absolute rounded-full pointer-events-none"
+              style={{
+                left:            `${f * 100}%`,
+                top:             SEG_TOP - 7,
+                width:           5,
+                height:          5,
+                transform:       'translateX(-50%)',
+                backgroundColor: ev.color ?? '#fb923c',
+              }}
+            />
+          ))}
+
+          {/* Agulha */}
+          {activeFrac !== null && (
+            <div
+              className="absolute top-0 bottom-0 z-20 pointer-events-none"
+              style={{
+                left:            `${activeFrac * 100}%`,
+                width:           2,
+                transform:       'translateX(-50%)',
+                backgroundColor: '#f97316',
+                boxShadow:       '0 0 6px 1px rgba(249,115,22,0.5)',
+              }}
+            />
+          )}
+
+          {/* Label de tempo ativo */}
+          {activeFrac !== null && activeLabel && (
+            <div
+              className="absolute z-30 pointer-events-none px-1.5 py-0.5 rounded bg-orange-500/90 text-[10px] font-semibold text-white whitespace-nowrap"
+              style={{
+                top:       RULER_H + 2,
+                left:      `${activeFrac * 100}%`,
+                transform: 'translateX(-50%)',
+              }}
+            >
+              {activeLabel}
+            </div>
+          )}
         </div>
-      ))}
-
-      {/* Minor ticks for denser time scale */}
-      {minorTicks.map((f, i) => (
-        <div key={`minor-${i}`} className="absolute inset-x-0 pointer-events-none" style={{ top: `${f * 100}%` }}>
-          <div className="absolute border-t border-zinc-600/30" style={{ left: RULER_W - 1, right: 0 }} />
-        </div>
-      ))}
-
-      {/* Recording marks around center line */}
-      {blocks.map(({ rec, startFrac, heightFrac }) => {
-        const isActive = activeRecording?.filename === rec.filename
-        return (
-          <div
-            key={rec.filename}
-            className={`absolute rounded-full pointer-events-none transition-colors ${
-              rec.is_recording
-                ? 'bg-red-400/90'
-                : isActive
-                  ? 'bg-amber-200/95'
-                  : 'bg-amber-300/85'
-            }`}
-            style={{
-              top:    `${startFrac * 100}%`,
-              height: `max(${heightFrac * 100}%, 1px)`,
-              left:   `calc(${CENTER_X * 100}% - ${isActive ? 20 : 14}px)`,
-              width:  `${isActive ? 40 : 28}px`,
-            }}
-          />
-        )
-      })}
-
-      {/* Motion event dots */}
-      {eventDots.map(({ ev, f }, i) => (
-        <div
-          key={ev.id ?? `${ev.time}-${i}`}
-          className="absolute h-[2px] rounded-full pointer-events-none"
-          style={{
-            top:       `${f * 100}%`,
-            left:      `calc(${CENTER_X * 100}% - ${6 + Math.round(Math.max(0, Math.min(1, ev.score)) * 12)}px)`,
-            width:     `${(6 + Math.round(Math.max(0, Math.min(1, ev.score)) * 12)) * 2}px`,
-            height:    `${1 + Math.round(Math.max(0, Math.min(1, ev.score)) * 2)}px`,
-            transform: 'translateY(-50%)',
-            backgroundColor: ev.color ?? '#facc15',
-          }}
-        />
-      ))}
-
-      {/* Playhead */}
-      {activeFrac !== null && (
-        <div
-          className="absolute inset-x-0 z-20 pointer-events-none"
-          style={{ top: `${activeFrac * 100}%` }}
-        >
-          <div className="absolute border-t border-amber-200/70" style={{ left: RULER_W, right: 0 }} />
-        </div>
-      )}
-
-      {activeLabel && (
-        <div className="absolute top-1 left-1/2 -translate-x-1/2 z-30 px-2 py-0.5 rounded-full bg-red-700/90 text-[11px] font-semibold text-white pointer-events-none transition-all duration-150 ease-out">
-          {activeLabel}
-        </div>
-      )}
+      </div>
     </div>
   )
 }
