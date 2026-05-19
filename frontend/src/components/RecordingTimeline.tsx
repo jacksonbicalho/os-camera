@@ -19,40 +19,46 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
   const isDragging = useRef(false)
 
   const recsAsc = [...recordings].sort((a, b) => a.filename.localeCompare(b.filename))
+  const N = recsAsc.length
 
-  const blockData = recsAsc.map((rec, i) => {
+  // Each block knows its recording, its wall-clock span, and its equal-height
+  // visual position (startFrac = i/N, heightFrac = 1/N).
+  const blocks = recsAsc.map((rec, i) => {
     const startMs = new Date(rec.start).getTime()
-    const nextMs = i + 1 < recsAsc.length
+    const endMs = i + 1 < recsAsc.length
       ? new Date(recsAsc[i + 1].start).getTime()
       : startMs + 5 * 60 * 1000
-    return { rec, startMs, endMs: nextMs }
+    const heightFrac = 1 / N
+    const startFrac = sortOrder === 'desc' ? (N - 1 - i) / N : i / N
+    return { rec, startMs, endMs, startFrac, heightFrac }
   })
 
-  const rangeStart = blockData.length > 0 ? blockData[0].startMs : 0
-  const rangeEnd   = blockData.length > 0 ? blockData[blockData.length - 1].endMs : 1
+  const rangeStart = blocks.length > 0 ? blocks[0].startMs : 0
+  const rangeEnd   = blocks.length > 0 ? blocks[blocks.length - 1].endMs : 1
   const totalMs    = Math.max(rangeEnd - rangeStart, 1)
 
-  // Flip y-axis when list is sorted descending (newest at top)
-  const frac = (ms: number) => {
-    const f = (ms - rangeStart) / totalMs
-    return sortOrder === 'desc' ? 1 - f : f
+  // Maps a timestamp to a vertical fraction using equal-height block layout.
+  // Each of N recordings occupies 1/N of the height; position within a block
+  // is interpolated linearly between that block's startMs and endMs.
+  const timeToFrac = (ms: number): number => {
+    for (let i = 0; i < blocks.length; i++) {
+      const { startMs, endMs } = blocks[i]
+      if (ms <= endMs) {
+        const span = endMs - startMs
+        const within = span > 0 ? Math.max(0, Math.min(1, (ms - startMs) / span)) : 0
+        const ascFrac = (i + within) / N
+        return sortOrder === 'desc' ? 1 - ascFrac : ascFrac
+      }
+    }
+    return sortOrder === 'desc' ? 0 : 1
   }
 
-  const blocks = blockData.map(({ rec, startMs, endMs }) => {
-    const heightFrac = (endMs - startMs) / totalMs
-    // When desc, the visual top of the block is the flipped end time
-    const startFrac = sortOrder === 'desc'
-      ? 1 - (endMs - rangeStart) / totalMs
-      : (startMs - rangeStart) / totalMs
-    return { rec, startFrac, heightFrac }
-  })
-
   const eventDots = motionEvents
-    .map(ev => ({ ev, f: frac(new Date(ev.time).getTime()) }))
+    .map(ev => ({ ev, f: timeToFrac(new Date(ev.time).getTime()) }))
     .filter(d => d.f >= 0 && d.f <= 1)
 
   const activeFrac = activeTime !== null
-    ? Math.max(0, Math.min(1, frac(new Date(activeTime).getTime())))
+    ? Math.max(0, Math.min(1, timeToFrac(new Date(activeTime).getTime())))
     : null
 
   // Adaptive label interval (minutes)
@@ -71,9 +77,7 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
   })
   const labels: { f: number; label: string }[] = []
   for (let ms = firstBoundary; ms <= rangeEnd; ms += intervalMs) {
-    const f = (ms - rangeStart) / totalMs
-    if (f < 0 || f > 1) continue
-    labels.push({ f, label: fmt.format(new Date(ms)) })
+    labels.push({ f: timeToFrac(ms), label: fmt.format(new Date(ms)) })
   }
   const minorStepMin = Math.max(1, Math.floor(intervalMin / 5))
   const minorStepMs = minorStepMin * 60000
@@ -81,8 +85,7 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
   const minorTicks: number[] = []
   for (let ms = firstMinorBoundary; ms <= rangeEnd; ms += minorStepMs) {
     if ((ms - firstBoundary) % intervalMs === 0) continue
-    const f = (ms - rangeStart) / totalMs
-    if (f >= 0 && f <= 1) minorTicks.push(f)
+    minorTicks.push(timeToFrac(ms))
   }
 
   const seekAtY = useCallback((clientY: number) => {
@@ -90,21 +93,16 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
     if (!el) return
     const rect = el.getBoundingClientRect()
     const f = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height))
-
-    let found: typeof blocks[0] | null = null
-    for (const b of blocks) {
-      if (f >= b.startFrac && f < b.startFrac + b.heightFrac) { found = b; break }
-    }
-    if (!found) {
-      for (let i = blocks.length - 1; i >= 0; i--) {
-        if (blocks[i].startFrac <= f) { found = blocks[i]; break }
-      }
-    }
-    if (!found || found.rec.is_recording) return
-
-    const offsetSeconds = Math.max(0, (f - found.startFrac) * totalMs / 1000)
-    onSeek(found.rec, offsetSeconds)
-  }, [blocks, totalMs, onSeek])
+    const ascF = sortOrder === 'desc' ? 1 - f : f
+    const n = blocks.length
+    if (n === 0) return
+    const blockIdx = Math.min(n - 1, Math.floor(ascF * n))
+    const withinFrac = ascF * n - blockIdx
+    const { rec, startMs, endMs } = blocks[blockIdx]
+    if (rec.is_recording) return
+    const offsetSeconds = Math.max(0, withinFrac * (endMs - startMs) / 1000)
+    onSeek(rec, offsetSeconds)
+  }, [blocks, sortOrder, onSeek])
 
   useEffect(() => {
     const el = containerRef.current
@@ -150,9 +148,7 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
           className="absolute inset-x-0 pointer-events-none"
           style={{ top: `${f * 100}%` }}
         >
-          {/* Tick extends from ruler into content area */}
           <div className="absolute border-t border-zinc-500/45" style={{ left: RULER_W - 2, right: 0 }} />
-          {/* Label inside ruler */}
           <span
             className="absolute text-zinc-300 leading-none whitespace-nowrap"
             style={{ fontSize: 6.5, left: 2, top: 2 }}
@@ -208,7 +204,7 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
         />
       ))}
 
-      {/* Playhead — horizontal line + left-pointing triangle handle */}
+      {/* Playhead */}
       {activeFrac !== null && (
         <div
           className="absolute inset-x-0 z-20 pointer-events-none"
