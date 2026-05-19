@@ -11,8 +11,8 @@ interface Props {
   onSeek: (recording: Recording, offsetSeconds: number) => void
 }
 
-// Width in px reserved for the time ruler on the left
-const RULER_W = 22
+const RULER_W = 26
+const CENTER_X = 0.5
 
 export default function RecordingTimeline({ recordings, motionEvents, activeRecording, activeTime, timezone, sortOrder, onSeek }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -58,11 +58,11 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
   // Adaptive label interval (minutes)
   const rangeMin = totalMs / 60000
   const intervalMin =
-    rangeMin <= 10  ? 2  :
-    rangeMin <= 30  ? 5  :
-    rangeMin <= 120 ? 15 :
-    rangeMin <= 360 ? 30 :
-    rangeMin <= 720 ? 60 : 120
+    rangeMin <= 10  ? 1  :
+    rangeMin <= 30  ? 2  :
+    rangeMin <= 120 ? 5  :
+    rangeMin <= 360 ? 10 :
+    rangeMin <= 720 ? 15 : 30
 
   const intervalMs    = intervalMin * 60000
   const firstBoundary = Math.ceil(rangeStart / intervalMs) * intervalMs
@@ -74,6 +74,15 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
     const f = (ms - rangeStart) / totalMs
     if (f < 0 || f > 1) continue
     labels.push({ f, label: fmt.format(new Date(ms)) })
+  }
+  const minorStepMin = Math.max(1, Math.floor(intervalMin / 5))
+  const minorStepMs = minorStepMin * 60000
+  const firstMinorBoundary = Math.ceil(rangeStart / minorStepMs) * minorStepMs
+  const minorTicks: number[] = []
+  for (let ms = firstMinorBoundary; ms <= rangeEnd; ms += minorStepMs) {
+    if ((ms - firstBoundary) % intervalMs === 0) continue
+    const f = (ms - rangeStart) / totalMs
+    if (f >= 0 && f <= 1) minorTicks.push(f)
   }
 
   const seekAtY = useCallback((clientY: number) => {
@@ -117,9 +126,9 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
     }
   }, [seekAtY])
 
-  if (recsAsc.length === 0) {
-    return <div className="relative w-full h-full border-l border-gray-800 bg-gray-900/40" />
-  }
+  const activeLabel = activeTime ? fmt.format(new Date(activeTime)) : null
+
+  if (recsAsc.length === 0) return <div className="relative w-full h-full border-l border-gray-800 bg-gray-900/40" />
 
   return (
     <div
@@ -131,11 +140,8 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
       onMouseUp={() => { isDragging.current = false }}
       onMouseLeave={() => { isDragging.current = false }}
     >
-      {/* Ruler background strip */}
-      <div
-        className="absolute inset-y-0 left-0 bg-gray-800/60 border-r border-gray-700/50"
-        style={{ width: RULER_W }}
-      />
+      <div className="absolute inset-y-0 left-0 bg-zinc-800/65 border-r border-zinc-600/45" style={{ width: RULER_W }} />
+      <div className="absolute inset-y-0 border-l border-amber-300/80" style={{ left: `calc(${CENTER_X * 100}% - 0.5px)` }} />
 
       {/* Tick marks + labels */}
       {labels.map(({ f, label }) => (
@@ -145,13 +151,10 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
           style={{ top: `${f * 100}%` }}
         >
           {/* Tick extends from ruler into content area */}
-          <div
-            className="absolute border-t border-gray-500/70"
-            style={{ left: RULER_W - 4, right: 0 }}
-          />
+          <div className="absolute border-t border-zinc-500/45" style={{ left: RULER_W - 2, right: 0 }} />
           {/* Label inside ruler */}
           <span
-            className="absolute text-gray-300 leading-none whitespace-nowrap"
+            className="absolute text-zinc-300 leading-none whitespace-nowrap"
             style={{ fontSize: 6.5, left: 2, top: 2 }}
           >
             {label}
@@ -159,24 +162,31 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
         </div>
       ))}
 
-      {/* Recording blocks (right of ruler) */}
+      {/* Minor ticks for denser time scale */}
+      {minorTicks.map((f, i) => (
+        <div key={`minor-${i}`} className="absolute inset-x-0 pointer-events-none" style={{ top: `${f * 100}%` }}>
+          <div className="absolute border-t border-zinc-600/30" style={{ left: RULER_W - 1, right: 0 }} />
+        </div>
+      ))}
+
+      {/* Recording marks around center line */}
       {blocks.map(({ rec, startFrac, heightFrac }) => {
         const isActive = activeRecording?.filename === rec.filename
         return (
           <div
             key={rec.filename}
-            className={`absolute rounded-[2px] pointer-events-none transition-colors ${
+            className={`absolute rounded-full pointer-events-none transition-colors ${
               rec.is_recording
-                ? 'bg-red-500/60 border border-red-400/40'
+                ? 'bg-red-400/90'
                 : isActive
-                  ? 'bg-blue-500/80 border border-blue-400/60'
-                  : 'bg-blue-800/50 border border-blue-700/30'
+                  ? 'bg-amber-200/95'
+                  : 'bg-amber-300/85'
             }`}
             style={{
               top:    `${startFrac * 100}%`,
-              height: `max(${heightFrac * 100}%, 2px)`,
-              left:   RULER_W + 2,
-              right:  2,
+              height: `max(${heightFrac * 100}%, 1px)`,
+              left:   `calc(${CENTER_X * 100}% - ${isActive ? 20 : 14}px)`,
+              width:  `${isActive ? 40 : 28}px`,
             }}
           />
         )
@@ -186,12 +196,14 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
       {eventDots.map(({ ev, f }, i) => (
         <div
           key={ev.id ?? `${ev.time}-${i}`}
-          className="absolute w-1.5 h-1.5 rounded-full pointer-events-none"
+          className="absolute h-[2px] rounded-full pointer-events-none"
           style={{
             top:       `${f * 100}%`,
-            right:     6,
+            left:      `calc(${CENTER_X * 100}% - ${6 + Math.round(Math.max(0, Math.min(1, ev.score)) * 12)}px)`,
+            width:     `${(6 + Math.round(Math.max(0, Math.min(1, ev.score)) * 12)) * 2}px`,
+            height:    `${1 + Math.round(Math.max(0, Math.min(1, ev.score)) * 2)}px`,
             transform: 'translateY(-50%)',
-            backgroundColor: ev.color ?? '#fb923c',
+            backgroundColor: ev.color ?? '#facc15',
           }}
         />
       ))}
@@ -202,29 +214,13 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
           className="absolute inset-x-0 z-20 pointer-events-none"
           style={{ top: `${activeFrac * 100}%` }}
         >
-          {/* Line across content area */}
-          <div
-            className="absolute border-t-2 border-blue-400"
-            style={{ left: RULER_W, right: 0 }}
-          />
-          {/* Triangle handle sitting on the ruler / content boundary */}
-          <div
-            className="absolute"
-            style={{
-              left:        RULER_W - 1,
-              top:         -5,
-              width:       0,
-              height:      0,
-              borderTop:    '5px solid transparent',
-              borderBottom: '5px solid transparent',
-              borderLeft:   '7px solid #60a5fa',
-            }}
-          />
-          {/* Small circle at the tip for easier grabbing */}
-          <div
-            className="absolute rounded-full bg-blue-400"
-            style={{ left: RULER_W - 5, top: -3, width: 6, height: 6 }}
-          />
+          <div className="absolute border-t border-amber-200/70" style={{ left: RULER_W, right: 0 }} />
+        </div>
+      )}
+
+      {activeLabel && (
+        <div className="absolute top-1 left-1/2 -translate-x-1/2 z-30 px-2 py-0.5 rounded-full bg-red-700/90 text-[11px] font-semibold text-white pointer-events-none transition-all duration-150 ease-out">
+          {activeLabel}
         </div>
       )}
     </div>

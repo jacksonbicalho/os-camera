@@ -122,6 +122,7 @@ export default function CameraPage() {
   const pendingLiveSeekRef = useRef<string | null>(null)
   const activeEventItemRef = useRef<HTMLButtonElement | null>(null)
   const activeRecordingItemRef = useRef<HTMLDivElement | null>(null)
+  const skipNextRecordingScrollRef = useRef(false)
   const recordingsRef = useRef(recordings)
   const activeEventTimeRef = useRef(activeEventTime)
   const activeEventIdRef = useRef(activeEventId)
@@ -174,8 +175,20 @@ export default function CameraPage() {
   const activeRecordingFilename = activeRecording?.filename
   useEffect(() => {
     if (!activeRecordingFilename) return
+    if (skipNextRecordingScrollRef.current) {
+      skipNextRecordingScrollRef.current = false
+      return
+    }
+    const idx = recordings.findIndex(r => r.filename === activeRecordingFilename)
+    if (idx >= 0) {
+      const neededPage = Math.ceil((idx + 1) / PAGE_SIZE)
+      if (neededPage > recordingsDisplayPageRef.current) {
+        setRecordingsDisplayPage(neededPage)
+        return
+      }
+    }
     activeRecordingItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [activeRecordingFilename, recordingsDisplayPage])
+  }, [activeRecordingFilename, recordingsDisplayPage, recordings])
 
   // Handles same-route navigation (component doesn't remount when already on this camera)
   useEffect(() => {
@@ -289,15 +302,7 @@ export default function CameraPage() {
     setActiveEventTime(null)
     setActiveEventId(null)
     setActiveTab('recordings')
-
-    // Expand displayed list pages until the recording is visible
-    const recIdx = recordings.findIndex(r => r.filename === recording.filename)
-    if (recIdx !== -1) {
-      const neededPage = Math.ceil((recIdx + 1) / PAGE_SIZE)
-      if (neededPage > recordingsDisplayPageRef.current) {
-        setRecordingsDisplayPage(neededPage)
-      }
-    }
+    setScrollNonce(n => n + 1)
 
     if (activeRecording?.filename === recording.filename) {
       if (videoRef.current) {
@@ -647,6 +652,7 @@ export default function CameraPage() {
                         const displayedCount = recordingsDisplayPageRef.current * PAGE_SIZE
                         const isVisible = recordingsRef.current.slice(0, displayedCount).some(r => r.filename === next.filename)
                         if (!isVisible) setRecordingsDisplayPage(p => p + 1)
+                        skipNextRecordingScrollRef.current = true
                         setActiveRecording(next)
                       }
                     }}
@@ -948,6 +954,7 @@ export default function CameraPage() {
                 activeRecording={activeRecording}
                 activeTime={activeEventTime ?? activeRecording?.start ?? null}
                 timezone={timezone}
+                sortOrder={sortOrder}
                 onSeek={handleTimelineSeek}
               />
             </div>

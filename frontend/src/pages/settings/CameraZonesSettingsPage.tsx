@@ -12,6 +12,7 @@ interface Zone {
   y: number
   w: number
   h: number
+  rotation_deg?: number
   type?: 'exclude' | 'detect'
   label?: string
   threshold?: number
@@ -52,10 +53,13 @@ type Interaction =
   | { mode: 'drawing'; startX: number; startY: number; curX: number; curY: number }
   | { mode: 'moving'; idx: number; orig: Zone; startX: number; startY: number; curX: number; curY: number }
   | { mode: 'resizing'; idx: number; orig: Zone; handle: ResizeHandle; startX: number; startY: number; curX: number; curY: number }
+  | { mode: 'rotating'; idx: number; orig: Zone; startX: number; startY: number; curX: number; curY: number }
   | null
 
 const HANDLE_PX = 10
 const DELETE_PX = 12
+const ROTATE_HANDLE_PX = 12
+const ROTATE_OFFSET_PX = 22
 const SNAP = 0.025
 
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)) }
@@ -114,6 +118,34 @@ function applyMove(orig: Zone, dx: number, dy: number, cw: number, ch: number): 
   const nx = clamp(orig.x + dx / cw, 0, 1 - orig.w)
   const ny = clamp(orig.y + dy / ch, 0, 1 - orig.h)
   return { ...orig, x: nx, y: ny }
+}
+
+function normalizeDeg(v: number): number {
+  let d = v % 360
+  if (d < 0) d += 360
+  return d
+}
+
+function zoneCenterPx(z: Zone, cw: number, ch: number): { cx: number; cy: number } {
+  return { cx: (z.x + z.w / 2) * cw, cy: (z.y + z.h / 2) * ch }
+}
+
+function rotateHandlePos(z: Zone, cw: number, ch: number): { hx: number; hy: number } {
+  const { cx, cy } = zoneCenterPx(z, cw, ch)
+  const a = ((z.rotation_deg ?? 0) * Math.PI) / 180
+  const topDist = z.h * ch / 2
+  const localY = -(topDist + ROTATE_OFFSET_PX)
+  return {
+    hx: cx - localY * Math.sin(a),
+    hy: cy + localY * Math.cos(a),
+  }
+}
+
+function detectRotateHandle(zones: Zone[], selectedIdx: number | null, px: number, py: number, cw: number, ch: number): number {
+  if (selectedIdx === null || !zones[selectedIdx]) return -1
+  const { hx, hy } = rotateHandlePos(zones[selectedIdx], cw, ch)
+  if (Math.hypot(px - hx, py - hy) <= ROTATE_HANDLE_PX) return selectedIdx
+  return -1
 }
 
 function detectHandle(zones: Zone[], px: number, py: number, cw: number, ch: number): { idx: number; handle: ResizeHandle } | null {
@@ -216,6 +248,11 @@ function paintCanvas(
       return applyMove(ia.orig, ia.curX - ia.startX, ia.curY - ia.startY, cw, ch)
     if (ia?.mode === 'resizing' && ia.idx === i)
       return applyResize(ia.orig, ia.handle, ia.curX - ia.startX, ia.curY - ia.startY, cw, ch)
+    if (ia?.mode === 'rotating' && ia.idx === i) {
+      const { cx, cy } = zoneCenterPx(ia.orig, cw, ch)
+      const deg = normalizeDeg(Math.atan2(ia.curY - cy, ia.curX - cx) * 180 / Math.PI + 90)
+      return { ...ia.orig, rotation_deg: deg }
+    }
     return z
   })
   if (ia?.mode === 'drawing') {
@@ -229,17 +266,38 @@ function paintCanvas(
     const isSelected = !isDrawing && selectedIdx === i
     const colors = zoneColor(z, isSelected)
 
+    const cx = px + pw / 2
+    const cy = py + ph / 2
+    const a = ((z.rotation_deg ?? 0) * Math.PI) / 180
+    ctx.save()
+    ctx.translate(cx, cy)
+    ctx.rotate(a)
     ctx.fillStyle = colors.fill
-    ctx.fillRect(px, py, pw, ph)
+    ctx.fillRect(-pw / 2, -ph / 2, pw, ph)
     ctx.strokeStyle = colors.stroke
     ctx.lineWidth = isSelected ? 2 : 1.5
-    ctx.strokeRect(px, py, pw, ph)
+    ctx.strokeRect(-pw / 2, -ph / 2, pw, ph)
+    ctx.restore()
 
     if (!isDrawing) {
       const corners: [number, number][] = [[px, py], [px + pw, py], [px + pw, py + ph], [px, py + ph]]
       for (const [hx, hy] of corners) {
         ctx.fillStyle = colors.handle
         ctx.fillRect(hx - 5, hy - 5, 10, 10)
+      }
+      if (isSelected) {
+        const { cx, cy } = zoneCenterPx(z, cw, ch)
+        const { hx, hy } = rotateHandlePos(z, cw, ch)
+        ctx.beginPath()
+        ctx.moveTo(cx, cy - ph / 2)
+        ctx.lineTo(hx, hy)
+        ctx.strokeStyle = colors.handle
+        ctx.lineWidth = 1.2
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.arc(hx, hy, 7, 0, Math.PI * 2)
+        ctx.fillStyle = colors.handle
+        ctx.fill()
       }
       drawDeleteButton(ctx, px + pw - DELETE_PX, py + DELETE_PX, colors.stroke)
 
@@ -381,6 +439,8 @@ export default function CameraZonesSettingsPage() {
     const cw = canvas.width; const ch = canvas.height
     const del = detectDeleteButton(currentZones, px, py, cw, ch)
     if (del >= 0) { setCursorStyle('pointer'); return }
+    const rot = detectRotateHandle(currentZones, selectedIdxRef.current, px, py, cw, ch)
+    if (rot >= 0) { setCursorStyle('alias'); return }
     const h = detectHandle(currentZones, px, py, cw, ch)
     if (h) { setCursorStyle(HANDLE_CURSORS[h.handle]); return }
     const hit = hitTest(currentZones, px, py, cw, ch)
@@ -406,6 +466,14 @@ export default function CameraZonesSettingsPage() {
         return prev
       })
       setZones(prev => prev.filter((_, i) => i !== delIdx))
+      return
+    }
+    const rotIdx = detectRotateHandle(zones, selectedIdx, x, y, cw, ch)
+    if (rotIdx >= 0) {
+      if (rotIdx !== selectedIdx) { setRegionScore(null); setPeakScore(null) }
+      setSelectedIdx(rotIdx)
+      setInteraction({ mode: 'rotating', idx: rotIdx, orig: zones[rotIdx], startX: x, startY: y, curX: x, curY: y })
+      setCursorStyle('alias')
       return
     }
     const h = detectHandle(zones, x, y, cw, ch)
@@ -460,6 +528,10 @@ export default function CameraZonesSettingsPage() {
     } else if (interaction.mode === 'resizing') {
       const resized = applyResize(interaction.orig, interaction.handle, interaction.curX - interaction.startX, interaction.curY - interaction.startY, cw, ch)
       setZones(prev => prev.map((z, i) => i === interaction.idx ? resized : z))
+    } else if (interaction.mode === 'rotating') {
+      const { cx, cy } = zoneCenterPx(interaction.orig, cw, ch)
+      const deg = normalizeDeg(Math.atan2(interaction.curY - cy, interaction.curX - cx) * 180 / Math.PI + 90)
+      setZones(prev => prev.map((z, i) => i === interaction.idx ? { ...z, rotation_deg: deg } : z))
     }
     setInteraction(null)
     const { x, y } = relPos(e)
@@ -573,6 +645,19 @@ export default function CameraZonesSettingsPage() {
                     onChange={e => updateSelectedZone({ label: e.target.value || undefined })}
                     placeholder="ex: entrada"
                     className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-600 w-full"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1 min-w-32">
+                  <label className="text-xs text-gray-400">Rotação (graus)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={360}
+                    step={0.1}
+                    value={Math.round(((selectedZone.rotation_deg ?? 0) + Number.EPSILON) * 10) / 10}
+                    onChange={e => updateSelectedZone({ rotation_deg: normalizeDeg(parseFloat(e.target.value) || 0) })}
+                    className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-600 w-28"
                   />
                 </div>
 
