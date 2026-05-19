@@ -510,6 +510,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		Width             int        `json:"width"`
 		Height            int        `json:"height"`
 		HLSVideoMode      string     `json:"hls_video_mode"`
+		RecordVideoMode   string     `json:"record_video_mode"`
 		Motion            *motionDTO `json:"motion"`
 	}
 	camList := s.cameras
@@ -558,6 +559,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			Width:             width,
 			Height:            height,
 			HLSVideoMode:      c.HLSVideoMode,
+			RecordVideoMode:   c.RecordVideoMode,
 			Motion:            motion,
 		}
 	}

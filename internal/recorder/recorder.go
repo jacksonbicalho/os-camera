@@ -39,9 +39,20 @@ func (r *Recorder) Start(now time.Time) error {
 	pattern := OutputPattern(r.storage.Path, r.camera.ID, now)
 	duration := int(r.camera.EffectiveChunkDuration().Seconds())
 	r.log.Debug("starting ffmpeg", "camera", r.camera.ID, "pattern", pattern, "chunk_duration", duration)
-	args := []string{"-rtsp_transport", "tcp", "-i", r.camera.RTSPURL, "-c", "copy"}
-	if !r.stream.HasAudio {
-		args = append(args, "-an")
+	args := []string{"-rtsp_transport", "tcp", "-i", r.camera.RTSPURL}
+	if r.needsTranscode() {
+		r.log.Warn("transcoding video to h264", "camera", r.camera.ID, "source_codec", r.stream.VideoCodec, "mode", r.camera.RecordVideoMode)
+		args = append(args, "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency")
+		if r.stream.HasAudio {
+			args = append(args, "-c:a", "copy")
+		} else {
+			args = append(args, "-an")
+		}
+	} else {
+		args = append(args, "-c", "copy")
+		if !r.stream.HasAudio {
+			args = append(args, "-an")
+		}
 	}
 	args = append(args,
 		"-f", "segment",
@@ -60,6 +71,17 @@ func (r *Recorder) Start(now time.Time) error {
 	r.process = proc
 	r.log.Info("recording started", "camera", r.camera.ID)
 	return nil
+}
+
+func (r *Recorder) needsTranscode() bool {
+	switch r.camera.RecordVideoMode {
+	case "h264":
+		return true
+	case "copy":
+		return false
+	default: // "auto" or empty
+		return r.stream.VideoCodec != "" && r.stream.VideoCodec != "h264"
+	}
 }
 
 func (r *Recorder) Stop() {

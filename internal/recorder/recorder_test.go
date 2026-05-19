@@ -212,3 +212,135 @@ func TestRecorderDoesNotAddAnFlagWhenHasAudio(t *testing.T) {
 		t.Error("expected no -an in ffmpeg args when HasAudio = true")
 	}
 }
+
+func TestRecorderTranscodesWhenModeIsH264(t *testing.T) {
+	tmpDir := t.TempDir()
+	ts := time.Date(2026, 4, 30, 14, 30, 0, 0, time.UTC)
+
+	camera := config.CameraConfig{
+		ID:              "cam1",
+		RTSPURL:         "rtsp://192.168.1.10:554/stream",
+		RecordVideoMode: "h264",
+	}
+	storage := config.StorageConfig{Path: tmpDir}
+	stream := ffprobe.StreamInfo{HasAudio: false}
+
+	cmd := &fakeCommander{}
+	rec := recorder.NewRecorder(camera, storage, stream, cmd, discardLogger())
+	if err := rec.Start(ts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := cmd.calls[0]
+	if !containsSequence(args, "-c:v", "libx264") {
+		t.Error("expected -c:v libx264 in args when RecordVideoMode=h264")
+	}
+	if !containsSequence(args, "-preset", "ultrafast") {
+		t.Error("expected -preset ultrafast in args when RecordVideoMode=h264")
+	}
+	if containsSequence(args, "-c", "copy") {
+		t.Error("expected no -c copy when transcoding")
+	}
+}
+
+func TestRecorderTranscodesInAutoModeWithHEVCSource(t *testing.T) {
+	tmpDir := t.TempDir()
+	ts := time.Date(2026, 4, 30, 14, 30, 0, 0, time.UTC)
+
+	camera := config.CameraConfig{
+		ID:              "cam1",
+		RTSPURL:         "rtsp://192.168.1.10:554/stream",
+		RecordVideoMode: "", // auto
+	}
+	storage := config.StorageConfig{Path: tmpDir}
+	stream := ffprobe.StreamInfo{VideoCodec: "hevc", HasAudio: false}
+
+	cmd := &fakeCommander{}
+	rec := recorder.NewRecorder(camera, storage, stream, cmd, discardLogger())
+	if err := rec.Start(ts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := cmd.calls[0]
+	if !containsSequence(args, "-c:v", "libx264") {
+		t.Error("expected -c:v libx264 in auto mode with hevc source")
+	}
+}
+
+func TestRecorderCopiesInAutoModeWithH264Source(t *testing.T) {
+	tmpDir := t.TempDir()
+	ts := time.Date(2026, 4, 30, 14, 30, 0, 0, time.UTC)
+
+	camera := config.CameraConfig{
+		ID:              "cam1",
+		RTSPURL:         "rtsp://192.168.1.10:554/stream",
+		RecordVideoMode: "", // auto
+	}
+	storage := config.StorageConfig{Path: tmpDir}
+	stream := ffprobe.StreamInfo{VideoCodec: "h264", HasAudio: false}
+
+	cmd := &fakeCommander{}
+	rec := recorder.NewRecorder(camera, storage, stream, cmd, discardLogger())
+	if err := rec.Start(ts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := cmd.calls[0]
+	if !containsSequence(args, "-c", "copy") {
+		t.Error("expected -c copy in auto mode with h264 source")
+	}
+	if containsSequence(args, "-c:v", "libx264") {
+		t.Error("expected no libx264 in auto mode with h264 source")
+	}
+}
+
+func TestRecorderCopiesWhenModeIsCopy(t *testing.T) {
+	tmpDir := t.TempDir()
+	ts := time.Date(2026, 4, 30, 14, 30, 0, 0, time.UTC)
+
+	camera := config.CameraConfig{
+		ID:              "cam1",
+		RTSPURL:         "rtsp://192.168.1.10:554/stream",
+		RecordVideoMode: "copy",
+	}
+	storage := config.StorageConfig{Path: tmpDir}
+	stream := ffprobe.StreamInfo{VideoCodec: "hevc", HasAudio: false}
+
+	cmd := &fakeCommander{}
+	rec := recorder.NewRecorder(camera, storage, stream, cmd, discardLogger())
+	if err := rec.Start(ts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := cmd.calls[0]
+	if !containsSequence(args, "-c", "copy") {
+		t.Error("expected -c copy when RecordVideoMode=copy, regardless of source codec")
+	}
+}
+
+func TestRecorderTranscodeWithAudioUsesAudioCopy(t *testing.T) {
+	tmpDir := t.TempDir()
+	ts := time.Date(2026, 4, 30, 14, 30, 0, 0, time.UTC)
+
+	camera := config.CameraConfig{
+		ID:              "cam1",
+		RTSPURL:         "rtsp://192.168.1.10:554/stream",
+		RecordVideoMode: "h264",
+	}
+	storage := config.StorageConfig{Path: tmpDir}
+	stream := ffprobe.StreamInfo{VideoCodec: "hevc", HasAudio: true}
+
+	cmd := &fakeCommander{}
+	rec := recorder.NewRecorder(camera, storage, stream, cmd, discardLogger())
+	if err := rec.Start(ts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := cmd.calls[0]
+	if !containsSequence(args, "-c:a", "copy") {
+		t.Error("expected -c:a copy when transcoding video but audio is present")
+	}
+	if containsArg(args, "-an") {
+		t.Error("expected no -an when audio is present during transcoding")
+	}
+}

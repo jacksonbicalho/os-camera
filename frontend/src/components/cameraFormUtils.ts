@@ -19,6 +19,7 @@ export interface Camera {
   height: number
   display_order: number
   hls_video_mode: string
+  record_video_mode: string
   motion: MotionConfig | null
 }
 
@@ -32,6 +33,7 @@ export interface CameraFormData {
   resolution: string
   display_order: string
   hls_video_mode: string
+  record_video_mode: string
   motion_enabled: boolean
   motion_threshold: string
   motion_fps: string
@@ -74,6 +76,7 @@ export function emptyForm(cam?: Camera): CameraFormData {
       id: '', rtsp_url: '', chunk_duration: '5m', reconnect_interval: '30s',
       video_codec: '', has_audio: '', resolution: '0x0', display_order: '0',
       hls_video_mode: 'auto',
+      record_video_mode: 'auto',
       motion_enabled: false, motion_threshold: '0.02', motion_fps: '2', motion_cooldown: '30',
       motion_capture_auto: true, motion_capture_pct: 25, motion_playback_lead: '10',
     }
@@ -90,6 +93,7 @@ export function emptyForm(cam?: Camera): CameraFormData {
     resolution: encodeResolution(cam.width ?? 0, cam.height ?? 0),
     display_order: String(cam.display_order ?? 0),
     hls_video_mode: cam.hls_video_mode || 'auto',
+    record_video_mode: cam.record_video_mode || 'auto',
     motion_enabled: cam.motion?.enabled ?? false,
     motion_threshold: String(cam.motion?.threshold ?? 0.02),
     motion_fps: String(cam.motion?.fps ?? 2),
@@ -112,6 +116,7 @@ export function formToPayload(f: CameraFormData, includeID = true) {
     height,
     display_order: parseInt(f.display_order) || 0,
     hls_video_mode: f.hls_video_mode || 'auto',
+    record_video_mode: f.record_video_mode || 'auto',
     motion: {
       enabled: f.motion_enabled,
       threshold: parseFloat(f.motion_threshold) || 0.02,

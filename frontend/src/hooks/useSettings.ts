@@ -22,6 +22,7 @@ export interface CameraSettings {
   width: number
   height: number
   hls_video_mode: string
+  record_video_mode: string
   motion: MotionSettings | null
 }
 
