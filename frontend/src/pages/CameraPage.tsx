@@ -804,8 +804,8 @@ export default function CameraPage() {
             </div>
 
             {/* Lista de gravações / eventos + timeline acoplada */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden flex">
-              <div className="flex-1 min-w-0">
+            <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden grid grid-cols-[1fr_4rem]">
+              <div className="min-w-0">
               {/* Abas */}
               <div className="flex border-b border-gray-800">
                 {(['recordings', 'events'] as const).map(tab => (
@@ -835,6 +835,7 @@ export default function CameraPage() {
                   onLoadMore={() => setRecordingsDisplayPage(p => p + 1)}
                   empty={recordings.length === 0}
                   emptyMessage="Sem gravações nesta data."
+                  scroll={false}
                 >
                   {(() => {
                     const recordingsAsc = [...recordings].sort((a, b) => a.filename.localeCompare(b.filename))
