@@ -8,6 +8,7 @@ interface ListPanelProps {
   loadingMore?: boolean
   emptyMessage: string
   empty: boolean
+  scroll?: boolean
   children: ReactNode
 }
 
@@ -19,6 +20,7 @@ export default function ListPanel({
   loadingMore = false,
   emptyMessage,
   empty,
+  scroll = true,
   children,
 }: ListPanelProps) {
   return (
@@ -31,7 +33,7 @@ export default function ListPanel({
           {sortOrder === 'desc' ? '↓ Recente' : '↑ Antigo'}
         </button>
       </div>
-      <div className="divide-y divide-gray-800 max-h-90 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-700 [&::-webkit-scrollbar-thumb]:rounded-full">
+      <div className={`divide-y divide-gray-800 ${scroll ? 'max-h-90 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-700 [&::-webkit-scrollbar-thumb]:rounded-full' : ''}`}>
         {empty
           ? <p className="px-3 py-4 text-sm text-gray-500">{emptyMessage}</p>
           : children
