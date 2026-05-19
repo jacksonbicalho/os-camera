@@ -551,8 +551,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		cameras[i] = cameraDTO{
 			ID:                c.ID,
 			RTSPURL:           maskRTSP(c.RTSPURL),
-			ChunkDuration:     c.EffectiveChunkDuration().String(),
-			ReconnectInterval: c.EffectiveReconnectInterval().String(),
+			ChunkDuration:     formatDuration(c.EffectiveChunkDuration()),
+			ReconnectInterval: formatDuration(c.EffectiveReconnectInterval()),
 			VideoCodec:        videoCodec,
 			HasAudio:          hasAudio,
 			Width:             width,
@@ -592,8 +592,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			CooldownSeconds: s.motionCfg.CooldownSeconds,
 		},
 		"defaults": map[string]any{
-			"chunk_duration":     config.DefaultChunkDuration.String(),
-			"reconnect_interval": config.DefaultReconnectInterval.String(),
+			"chunk_duration":     formatDuration(config.DefaultChunkDuration),
+			"reconnect_interval": formatDuration(config.DefaultReconnectInterval),
 		},
 		"cameras": cameras,
 	}
