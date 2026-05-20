@@ -23,6 +23,8 @@ export interface CameraSettings {
   height: number
   hls_video_mode: string
   record_video_mode: string
+  hls_segment_seconds: number | null
+  hls_list_size: number | null
   motion: MotionSettings | null
 }
 

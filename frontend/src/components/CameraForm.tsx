@@ -113,6 +113,54 @@ export default function CameraForm({ initial, onSave, onCancel, saving }: Camera
             <option value="copy">Cópia (sem transcodificação)</option>
           </select>
         </div>
+
+        <div>
+          <label className={labelClass}>Duração do segmento HLS (s)</label>
+          <select
+            value={form.hls_segment_seconds}
+            onChange={e => set('hls_segment_seconds', e.target.value)}
+            disabled={form.hls_segment_seconds_default}
+            className={`${inputClass} disabled:opacity-40 disabled:cursor-not-allowed`}
+          >
+            <option value="1">1 s</option>
+            <option value="2">2 s</option>
+            <option value="4">4 s</option>
+          </select>
+          <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.hls_segment_seconds_default}
+              onChange={e => set('hls_segment_seconds_default', e.target.checked)}
+              className="accent-blue-500"
+            />
+            <span className="text-xs text-gray-500">Usar valor padrão (2 s)</span>
+          </label>
+        </div>
+
+        <div>
+          <label className={labelClass}>Tamanho da janela HLS</label>
+          <select
+            value={form.hls_list_size}
+            onChange={e => set('hls_list_size', e.target.value)}
+            disabled={form.hls_list_size_default}
+            className={`${inputClass} disabled:opacity-40 disabled:cursor-not-allowed`}
+          >
+            <option value="2">2 segmentos</option>
+            <option value="3">3 segmentos</option>
+            <option value="5">5 segmentos</option>
+            <option value="10">10 segmentos</option>
+          </select>
+          <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.hls_list_size_default}
+              onChange={e => set('hls_list_size_default', e.target.checked)}
+              className="accent-blue-500"
+            />
+            <span className="text-xs text-gray-500">Usar valor padrão (5 segmentos)</span>
+          </label>
+          <p className="text-xs text-gray-600 mt-0.5">Segmento menor + janela menor = menos latência ao vivo</p>
+        </div>
       </div>
 
       <div className="border-t border-gray-800 pt-3">

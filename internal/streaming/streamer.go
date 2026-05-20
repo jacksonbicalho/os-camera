@@ -57,8 +57,8 @@ func (s *HLSStreamer) Start() error {
 		}
 	}
 
-	const segmentSeconds = 2
-	listSize, hlsFlags := hlsListSizeAndFlags(s.server.HLSDVRSeconds, segmentSeconds)
+	segmentSeconds := s.camera.HLSSegmentSecondsOrDefault()
+	listSize, hlsFlags := hlsListSizeAndFlags(s.server.HLSDVRSeconds, segmentSeconds, s.camera.HLSListSizeOrDefault())
 	args = append(args,
 		"-f", "hls",
 		"-hls_time", strconv.Itoa(segmentSeconds),
@@ -96,13 +96,13 @@ func (s *HLSStreamer) needsTranscode() bool {
 	}
 }
 
-func hlsListSizeAndFlags(dvrSeconds, segmentSeconds int) (listSize int, flags string) {
+func hlsListSizeAndFlags(dvrSeconds, segmentSeconds, defaultListSize int) (listSize int, flags string) {
 	if dvrSeconds <= 0 {
-		return 5, "delete_segments+append_list+independent_segments"
+		return defaultListSize, "delete_segments+append_list+independent_segments"
 	}
 	size := dvrSeconds / segmentSeconds
-	if size < 5 {
-		size = 5
+	if size < defaultListSize {
+		size = defaultListSize
 	}
 	parts := []string{"append_list", "independent_segments", "program_date_time"}
 	return size, strings.Join(parts, "+")

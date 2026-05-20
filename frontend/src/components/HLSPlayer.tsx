@@ -19,6 +19,7 @@ interface HLSPlayerProps {
   className?: string
   cameraId?: string
   muted?: boolean
+  segmentSeconds?: number | null
   onGoToEvent?: (eventTime: string) => void
 }
 
@@ -27,7 +28,7 @@ interface MotionAlert {
   time: string
 }
 
-const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer({ src, className, cameraId, muted = true, onGoToEvent }, ref) {
+const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer({ src, className, cameraId, muted = true, segmentSeconds, onGoToEvent }, ref) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<HlsType | null>(null)
   const [motionAlert, setMotionAlert] = useState<MotionAlert | null>(null)
@@ -55,9 +56,11 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
           return
         }
 
+        const segSec = segmentSeconds ?? 2
+        const liveSyncCount = segSec <= 1 ? 3 : 2
         hlsRef.current = hls = new Hls({
-          liveSyncDurationCount: 3,
-          liveMaxLatencyDurationCount: 6,
+          liveSyncDurationCount: liveSyncCount,
+          liveMaxLatencyDurationCount: liveSyncCount * 2,
           maxBufferLength: 10,
           lowLatencyMode: false,
           // Retry manifest when stream isn't ready yet (e.g. right after camera creation)
@@ -92,7 +95,7 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
       hls?.destroy()
       hlsRef.current = null
     }
-  }, [src])
+  }, [src, segmentSeconds])
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.muted = muted

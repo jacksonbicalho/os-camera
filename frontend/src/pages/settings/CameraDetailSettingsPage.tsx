@@ -139,6 +139,14 @@ export default function CameraDetailSettingsPage() {
               { label: 'Modo gravação', value: cam.record_video_mode || 'auto' },
               { label: 'Áudio', value: fmtHasAudio(cam.has_audio) },
               { label: 'Resolução', value: fmtResolution(cam.width, cam.height) },
+              {
+                label: 'Segmento HLS',
+                value: cam.hls_segment_seconds != null ? `${cam.hls_segment_seconds} s` : 'padrão (2 s)',
+              },
+              {
+                label: 'Janela HLS',
+                value: cam.hls_list_size != null ? `${cam.hls_list_size} segmentos` : 'padrão (5 segmentos)',
+              },
             ]}
           />
           <SettingsSection
