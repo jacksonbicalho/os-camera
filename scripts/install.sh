@@ -14,6 +14,7 @@ SERVICE_NAME="camera"
 # Caminhos derivados (recalculados após parse de flags)
 STATE_DIR="/var/camera"
 STATE_FILE="${STATE_DIR}/install.conf"
+DB_PATH=""  # preenchido após leitura do config ou usa padrão
 
 # --- helpers ---
 
@@ -134,7 +135,7 @@ storage:
     with_motion_minutes: 10080    # 7 dias  (0 = nunca apaga)
     without_motion_minutes: 1440  # 1 dia   (0 = desabilitado)
   interval_minutes: 60
-  max_size_gb: 20
+  max_size_gb: 0
   warn_percent: 90
 
 admin:
@@ -177,11 +178,15 @@ UNIT
 
     info "Salvando estado da instalação em ${STATE_FILE} ..."
     mkdir -p "$STATE_DIR"
+    # Extrair db_path do config (melhor esforço); usa padrão se não encontrar
+    _db_path=$(grep "^db_path:" "$CONFIG_FILE" 2>/dev/null | sed 's/^db_path: *//; s/ *#.*//' | tr -d '"' | xargs)
+    [ -z "$_db_path" ] && _db_path="${STATE_DIR}/data/camera.db"
     cat > "$STATE_FILE" <<CONF
 INSTALL_DIR=${INSTALL_DIR}
 CONFIG_DIR=${CONFIG_DIR}
 DATA_DIR=${DATA_DIR}
 SEGMENTS_DIR=${SEGMENTS_DIR}
+DB_PATH=${_db_path}
 SERVICE_NAME=${SERVICE_NAME}
 SERVICE_FILE=${SERVICE_FILE}
 CONFIG_FILE=${CONFIG_FILE}
@@ -237,6 +242,7 @@ do_uninstall() {
         case "$arg" in
             --remove-config) remove_config=1 ;;
             --remove-data)   remove_data=1   ;;
+            --remove-all)    remove_config=1; remove_data=1 ;;
             --uninstall)     ;;  # ignorado aqui, já processado no entrypoint
         esac
     done
@@ -291,21 +297,42 @@ do_uninstall() {
         ok "Configuração removida"
     fi
 
-    if [ "$remove_data" = "1" ] && [ -d "$DATA_DIR" ]; then
-        info "Removendo ${DATA_DIR} ..."
-        rm -rf "$DATA_DIR"
-        ok "Dados removidos"
+    if [ "$remove_data" = "1" ]; then
+        if [ -d "$DATA_DIR" ]; then
+            info "Removendo gravações ${DATA_DIR} ..."
+            rm -rf "$DATA_DIR"
+            ok "Gravações removidas"
+        fi
+        if [ -d "$SEGMENTS_DIR" ]; then
+            info "Removendo segmentos HLS ${SEGMENTS_DIR} ..."
+            rm -rf "$SEGMENTS_DIR"
+            ok "Segmentos HLS removidos"
+        fi
+        if [ -n "$DB_PATH" ] && [ -f "$DB_PATH" ]; then
+            info "Removendo banco de dados ${DB_PATH} ..."
+            rm -f "$DB_PATH"
+            ok "Banco removido"
+        fi
     fi
 
     printf '\n'
     ok "Desinstalação concluída."
     if [ "$remove_config" = "0" ] && [ -d "$CONFIG_DIR" ]; then
-        printf '  Config mantido: %s\n' "$CONFIG_DIR"
-        printf '  Para remover:   %s-uninstall --remove-config\n' "$BINARY_NAME"
+        printf '  Config mantido:   %s\n' "$CONFIG_DIR"
+        printf '  Para remover:     %s-uninstall --remove-config\n' "$BINARY_NAME"
     fi
-    if [ "$remove_data" = "0" ] && [ -d "$DATA_DIR" ]; then
-        printf '  Dados mantidos: %s\n' "$DATA_DIR"
-        printf '  Para remover:   %s-uninstall --remove-data\n' "$BINARY_NAME"
+    if [ "$remove_data" = "0" ]; then
+        _has_data=0
+        [ -d "$DATA_DIR" ]     && _has_data=1
+        [ -d "$SEGMENTS_DIR" ] && _has_data=1
+        [ -n "$DB_PATH" ] && [ -f "$DB_PATH" ] && _has_data=1
+        if [ "$_has_data" = "1" ]; then
+            printf '  Dados mantidos:   gravações, segmentos HLS e banco\n'
+            printf '  Para remover:     %s-uninstall --remove-data\n' "$BINARY_NAME"
+        fi
+    fi
+    if [ "$remove_config" = "0" ] || [ "$remove_data" = "0" ]; then
+        printf '  Remover tudo:     %s-uninstall --remove-all\n' "$BINARY_NAME"
     fi
 }
 
@@ -320,6 +347,7 @@ for arg in "$@"; do
         --uninstall)     UNINSTALL=1 ;;
         --remove-config) ;;  # repassado para do_uninstall via $@
         --remove-data)   ;;  # idem
+        --remove-all)    ;;  # idem
         --install-dir=*)   INSTALL_DIR="${arg#--install-dir=}"   ;;
         --config-dir=*)    CONFIG_DIR="${arg#--config-dir=}"     ;;
         --data-dir=*)      DATA_DIR="${arg#--data-dir=}"         ;;
@@ -335,7 +363,11 @@ for arg in "$@"; do
             printf '  instalar:   curl -fsSL <url>/install.sh | sudo bash\n'
             printf '  opções:     --install-dir=DIR  --config-dir=DIR  --data-dir=DIR  --segments-dir=DIR  --service-name=NAME\n'
             printf '  desinstalar (local, sem internet):\n'
-            printf '              camera-uninstall [--remove-config] [--remove-data]\n'
+            printf '              camera-uninstall [--remove-config] [--remove-data] [--remove-all]\n'
+            printf '\n'
+            printf '  --remove-config  remove a configuração em /etc/camera\n'
+            printf '  --remove-data    remove gravações, segmentos HLS e banco de dados\n'
+            printf '  --remove-all     equivale a --remove-config + --remove-data\n'
             exit 0
             ;;
         *)

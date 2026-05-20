@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	osexec "os/exec"
@@ -266,6 +267,7 @@ func main() {
 				slog.Error("http server error", "error", err)
 			}
 		}()
+		printStartupURLs(cfg.Server.Port)
 	}
 
 	cleanInterval := time.Duration(cfg.Storage.IntervalMinutes) * time.Minute
@@ -310,6 +312,41 @@ func main() {
 		rec.Stop()
 	}
 	slog.Info("done")
+}
+
+func printStartupURLs(port int) {
+	urls := []string{fmt.Sprintf("http://localhost:%d", port)}
+	ifaces, err := net.InterfaceAddrs()
+	if err == nil {
+		seen := map[string]bool{}
+		for _, addr := range ifaces {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			if ip4 := ip.To4(); ip4 != nil {
+				u := fmt.Sprintf("http://%s:%d", ip4, port)
+				if !seen[u] {
+					seen[u] = true
+					urls = append(urls, u)
+				}
+			}
+		}
+	}
+	fmt.Println()
+	fmt.Println("┌─────────────────────────────────────────┐")
+	fmt.Println("│  Camera iniciado. Acesse pelo navegador:│")
+	for _, u := range urls {
+		fmt.Printf("│  %-39s│\n", u)
+	}
+	fmt.Println("└─────────────────────────────────────────┘")
+	fmt.Println()
 }
 
 func takeSnapshot(ctx context.Context, rtspURL string) ([]byte, error) {
