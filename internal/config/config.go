@@ -102,7 +102,23 @@ type CameraConfig struct {
 	DisplayOrder      int           `yaml:"display_order"`
 	HLSVideoMode      string        `yaml:"hls_video_mode"`
 	RecordVideoMode   string        `yaml:"record_video_mode"`
+	HLSSegmentSeconds *int          `yaml:"hls_segment_seconds"`
+	HLSListSize       *int          `yaml:"hls_list_size"`
 	Motion            *MotionConfig `yaml:"motion"`
+}
+
+func (c CameraConfig) HLSSegmentSecondsOrDefault() int {
+	if c.HLSSegmentSeconds != nil {
+		return *c.HLSSegmentSeconds
+	}
+	return 2
+}
+
+func (c CameraConfig) HLSListSizeOrDefault() int {
+	if c.HLSListSize != nil {
+		return *c.HLSListSize
+	}
+	return 5
 }
 
 func (c CameraConfig) EffectiveMotionConfig() MotionConfig {

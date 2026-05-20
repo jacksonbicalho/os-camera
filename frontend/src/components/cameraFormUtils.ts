@@ -20,6 +20,8 @@ export interface Camera {
   display_order: number
   hls_video_mode: string
   record_video_mode: string
+  hls_segment_seconds: number | null
+  hls_list_size: number | null
   motion: MotionConfig | null
 }
 
@@ -34,6 +36,10 @@ export interface CameraFormData {
   display_order: string
   hls_video_mode: string
   record_video_mode: string
+  hls_segment_seconds_default: boolean  // true = usar padrão (null no banco)
+  hls_segment_seconds: string
+  hls_list_size_default: boolean        // true = usar padrão (null no banco)
+  hls_list_size: string
   motion_enabled: boolean
   motion_threshold: string
   motion_fps: string
@@ -77,6 +83,8 @@ export function emptyForm(cam?: Camera): CameraFormData {
       video_codec: '', has_audio: '', resolution: '0x0', display_order: '0',
       hls_video_mode: 'auto',
       record_video_mode: 'auto',
+      hls_segment_seconds_default: true, hls_segment_seconds: '2',
+      hls_list_size_default: true, hls_list_size: '5',
       motion_enabled: false, motion_threshold: '0.02', motion_fps: '2', motion_cooldown: '30',
       motion_capture_auto: true, motion_capture_pct: 25, motion_playback_lead: '10',
     }
@@ -94,6 +102,10 @@ export function emptyForm(cam?: Camera): CameraFormData {
     display_order: String(cam.display_order ?? 0),
     hls_video_mode: cam.hls_video_mode || 'auto',
     record_video_mode: cam.record_video_mode || 'auto',
+    hls_segment_seconds_default: cam.hls_segment_seconds == null,
+    hls_segment_seconds: String(cam.hls_segment_seconds ?? 2),
+    hls_list_size_default: cam.hls_list_size == null,
+    hls_list_size: String(cam.hls_list_size ?? 5),
     motion_enabled: cam.motion?.enabled ?? false,
     motion_threshold: String(cam.motion?.threshold ?? 0.02),
     motion_fps: String(cam.motion?.fps ?? 2),
@@ -117,6 +129,8 @@ export function formToPayload(f: CameraFormData, includeID = true) {
     display_order: parseInt(f.display_order) || 0,
     hls_video_mode: f.hls_video_mode || 'auto',
     record_video_mode: f.record_video_mode || 'auto',
+    hls_segment_seconds: f.hls_segment_seconds_default ? null : (parseInt(f.hls_segment_seconds) || 2),
+    hls_list_size: f.hls_list_size_default ? null : (parseInt(f.hls_list_size) || 5),
     motion: {
       enabled: f.motion_enabled,
       threshold: parseFloat(f.motion_threshold) || 0.02,

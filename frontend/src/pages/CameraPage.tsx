@@ -596,7 +596,7 @@ export default function CameraPage() {
               </div>
 
               {isLive ? (
-                <HLSPlayer ref={hlsPlayerRef} src={liveUrl} className="w-full aspect-video bg-black" cameraId={id} muted={videoMuted} onGoToEvent={handleGoToEvent} />
+                <HLSPlayer ref={hlsPlayerRef} src={liveUrl} className="w-full aspect-video bg-black" cameraId={id} muted={videoMuted} segmentSeconds={cam?.hls_segment_seconds} onGoToEvent={handleGoToEvent} />
               ) : (
                 <div
                   ref={recPlayerRef}

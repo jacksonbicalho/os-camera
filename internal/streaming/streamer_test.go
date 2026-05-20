@@ -408,3 +408,58 @@ func TestHLSStreamerModeAutoUsesStreamCopyForH264(t *testing.T) {
 		t.Error("expected -c copy when mode=auto and codec is h264")
 	}
 }
+
+func intPtr(v int) *int { return &v }
+
+func TestHLSStreamerCustomSegmentSeconds(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream", HLSSegmentSeconds: intPtr(1)}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := cmd.calls[0]
+	if !containsSequence(args, "-hls_time", "1") {
+		t.Errorf("expected -hls_time 1, got args: %v", args)
+	}
+}
+
+func TestHLSStreamerCustomListSize(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream", HLSListSize: intPtr(3)}
+	server := config.ServerConfig{SegmentsPath: tmpDir, HLSDVRSeconds: 0}
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !containsSequence(cmd.calls[0], "-hls_list_size", "3") {
+		t.Errorf("expected -hls_list_size 3, got args: %v", cmd.calls[0])
+	}
+}
+
+func TestHLSStreamerNilFieldsUseDefaults(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream"} // nil *int fields
+	server := config.ServerConfig{SegmentsPath: tmpDir}
+
+	cmd := &fakeCommander{}
+	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())
+	if err := s.Start(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := cmd.calls[0]
+	if !containsSequence(args, "-hls_time", "2") {
+		t.Errorf("expected default -hls_time 2, got args: %v", args)
+	}
+	if !containsSequence(args, "-hls_list_size", "5") {
+		t.Errorf("expected default -hls_list_size 5, got args: %v", args)
+	}
+}

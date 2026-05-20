@@ -160,7 +160,10 @@ Ao iniciar uma nova história:
 2. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.
 3. Implementar o mínimo para o teste passar (**green**).
 4. Refatorar se necessário, mantendo os testes verdes (**refactor**).
-5. Executar `yarn lint` e `yarn test` (frontend) ou `go test ./...` (backend).
+5. Executar **obrigatoriamente antes de qualquer commit**:
+   - Backend: `go test ./...` + `go build ./...`
+   - Frontend: `yarn lint` + `yarn test --run` + `yarn build` (em `frontend/`)
+   - Nunca commitar se qualquer um desses falhar.
 6. Adicionar seção `## Revisão` na história e aguardar aprovação do navigator. **Só proceder com o item 7 após o navigator aprovar marcando `[x] Aprovado` na seção Revisão.**
 7. Commitar com mensagem semântica na branch, fazer `git push origin <branch>`, abrir PR para `master` com `gh pr create` e aguardar CI verde. O merge é feito pelo GitHub após aprovação — nunca localmente em `master`.
 
