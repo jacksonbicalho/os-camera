@@ -8,7 +8,6 @@ import { authHeaders, clearToken, getToken } from '../auth'
 import AppLayout from '../components/AppLayout'
 import ConfirmDialog from '../components/ConfirmDialog'
 import HLSPlayer, { type HLSPlayerHandle } from '../components/HLSPlayer'
-import ListPanel from '../components/ListPanel'
 import MotionScoreChart from '../components/MotionScoreChart'
 import { useScrollToPlayer } from '../hooks/useScrollToPlayer'
 import { useEventSource } from '../hooks/useEventSource'
@@ -16,7 +15,7 @@ import { useSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { mergeRecordings } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
-import RecordingTimeline from '../components/RecordingTimeline'
+import VerticalTimeline from '../components/VerticalTimeline'
 import { useNotifications } from '../contexts/NotificationContext'
 import type { HLSStats } from '../components/HLSPlayer'
 
@@ -91,10 +90,6 @@ export default function CameraPage() {
   const [activeRecording, setActiveRecording] = useState<Recording | null>(null)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [motionEvents, setMotionEvents] = useState<MotionEvent[]>([])
-  const [activeTab, setActiveTab] = useState<'recordings' | 'events'>(() => {
-    const state = location.state as { eventTime?: string } | null
-    return state?.eventTime ? 'events' : 'recordings'
-  })
   const [eventsPage, setEventsPage] = useState(1)
   const [eventsSortOrder, setEventsSortOrder] = useState<'asc' | 'desc'>('desc')
   const [activeEventTime, setActiveEventTime] = useState<string | null>(null)
@@ -113,7 +108,10 @@ export default function CameraPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const [showDebug, setShowDebug] = useState(false)
   const [debugStats, setDebugStats] = useState<{ fps: number; dropped: number; hlsStats: HLSStats | null; lagMs: number } | null>(null)
+  const [playerHeight, setPlayerHeight] = useState<number | undefined>(undefined)
+  const [openPanel, setOpenPanel] = useState<'calendar' | 'recordings' | 'events' | null>(null)
   const playerRef = useRef<HTMLDivElement>(null)
+  const headerRightRef = useRef<HTMLDivElement>(null)
   const pendingSeekRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const recPlayerRef = useRef<HTMLDivElement>(null)
@@ -146,6 +144,46 @@ export default function CameraPage() {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [snapshotEvent])
+
+  useEffect(() => {
+    const el = playerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setPlayerHeight(el.getBoundingClientRect().height))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!openPanel) return
+    function onClickOutside(e: MouseEvent) {
+      if (headerRightRef.current && !headerRightRef.current.contains(e.target as Node)) {
+        setOpenPanel(null)
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [openPanel])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!e.ctrlKey) return
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+      e.preventDefault()
+      const recs = recordingsRef.current
+      if (recs.length === 0) return
+      const sorted = [...recs].sort((a, b) => a.filename.localeCompare(b.filename))
+      const currentRec = recordingsRef.current.find(r => r === activeRecording) ?? activeRecording
+      const idx = currentRec ? sorted.findIndex(r => r.filename === currentRec.filename) : -1
+      const nextIdx = e.key === 'ArrowDown' ? idx + 1 : idx - 1
+      if (nextIdx < 0 || nextIdx >= sorted.length) return
+      setActiveRecording(sorted[nextIdx])
+      setActiveEventTime(null)
+      setActiveEventId(null)
+      setScrollNonce(n => n + 1)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [activeRecording])
 
   function handleRateChange(requested: number) {
     const options = [1, 2, 4, 8, 16, 32]
@@ -199,7 +237,6 @@ export default function CameraPage() {
     pendingEventRef.current = state.eventTime
     const t = new Date(state.eventTime)
     setSelectedDate(new Date(t.getFullYear(), t.getMonth(), t.getDate()))
-    setActiveTab('events')
   }, [location.state])
 
   useEffect(() => {
@@ -301,7 +338,6 @@ export default function CameraPage() {
   function handleTimelineSeek(recording: Recording, offsetSeconds: number) {
     setActiveEventTime(null)
     setActiveEventId(null)
-    setActiveTab('recordings')
     setScrollNonce(n => n + 1)
 
     if (activeRecording?.filename === recording.filename) {
@@ -372,7 +408,7 @@ export default function CameraPage() {
   function handleGoToEvent(eventTime: string) {
     const t = new Date(eventTime)
     const eventDate = new Date(t.getFullYear(), t.getMonth(), t.getDate())
-    setActiveTab('events')
+    setOpenPanel('events')
 
     // Se a data do evento difere da data selecionada, muda o calendário e usa o
     // fluxo de pendingEventRef (igual ao clique em notificação) para carregar os dados
@@ -494,40 +530,250 @@ export default function CameraPage() {
   recordingsDisplayPageRef.current = recordingsDisplayPage
 
   return (
-    <AppLayout mainClassName="max-w-6xl mx-auto w-full">
-        <div className="mb-4">
-          <Link to="/" className="text-sm text-blue-400 hover:text-blue-300">← Câmeras</Link>
-          <h2 className="text-lg font-semibold text-gray-200 mt-1">{id}</h2>
-        </div>
+    <AppLayout mainClassName="w-full">
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Player */}
-          <div className="lg:col-span-2 flex flex-col gap-4">
-            <div
-              ref={playerRef}
-              className={`bg-gray-900 border rounded-lg overflow-hidden transition-all duration-300 ${
-                !isLive ? 'border-blue-600 ring-1 ring-blue-600' : 'border-gray-800'
-              }`}
-            >
-              {/* Linha 1: status */}
-              <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700">
-                <div className="flex items-center gap-2">
+        <div className="flex gap-2 items-start">
+          <div
+            ref={playerRef}
+            className={`flex-1 min-w-0 bg-gray-900 border rounded-lg overflow-hidden transition-all duration-300 ${
+              !isLive ? 'border-blue-600 ring-1 ring-blue-600' : 'border-gray-800'
+            }`}
+          >
+              {/* Linha 1: nav + status + ações */}
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <Link to="/" className="text-xs text-blue-400 hover:text-blue-300 shrink-0">← Câmeras</Link>
+                  <span className="text-gray-600 shrink-0">/</span>
+                  <span className="text-sm font-medium text-gray-200 truncate">{id}</span>
                   {isLive ? (
-                    <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded font-medium">AO VIVO</span>
+                    <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded font-medium shrink-0">AO VIVO</span>
                   ) : (
-                    <span className="text-xs text-gray-300">
+                    <span className="text-xs text-gray-400 shrink-0">
                       {format(selectedDate, "d 'de' MMMM", { locale: ptBR })} · {formatRecordingTime(activeRecording.start, timezone)}
                     </span>
                   )}
                 </div>
-                {!isLive && (
+                <div className="flex items-center gap-1.5 shrink-0 relative" ref={headerRightRef}>
                   <button
-                    onClick={() => setActiveRecording(null)}
-                    className="text-xs text-blue-400 hover:text-blue-300"
+                    onClick={() => setOpenPanel(p => p === 'recordings' ? null : 'recordings')}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+                      openPanel === 'recordings'
+                        ? 'bg-gray-700 text-blue-300'
+                        : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
+                    }`}
                   >
-                    ← Ao vivo
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
+                    </svg>
+                    Gravações
+                    <span className="text-gray-600 ml-0.5">{recordingsTotal || recordings.length}</span>
                   </button>
-                )}
+                  <button
+                    onClick={() => setOpenPanel(p => p === 'events' ? null : 'events')}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+                      openPanel === 'events'
+                        ? 'bg-gray-700 text-orange-300'
+                        : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />
+                    Eventos
+                    <span className="text-gray-600 ml-0.5">{motionEvents.length}</span>
+                  </button>
+                  <div className="w-px h-4 bg-gray-700" />
+                  <button
+                    onClick={() => setOpenPanel(p => p === 'calendar' ? null : 'calendar')}
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+                      openPanel === 'calendar'
+                        ? 'bg-gray-700 text-blue-300'
+                        : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
+                    }`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    {format(selectedDate, "d 'de' MMMM", { locale: ptBR })}
+                    {isToday && <span className="text-green-400 ml-1">hoje</span>}
+                  </button>
+                  {!isLive && (
+                    <>
+                      <div className="w-px h-4 bg-gray-700" />
+                      <button
+                        onClick={() => setActiveRecording(null)}
+                        className="text-xs text-blue-400 hover:text-blue-300 px-1"
+                      >
+                        ← Ao vivo
+                      </button>
+                    </>
+                  )}
+                  {openPanel === 'calendar' && (
+                    <div className="absolute right-0 top-full mt-1 z-50 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-2">
+                      <DayPicker
+                        mode="single"
+                        selected={selectedDate}
+                        onSelect={d => { if (d) { setSelectedDate(d); setOpenPanel(null) } }}
+                        locale={ptBR}
+                        classNames={{
+                          root: 'text-gray-200 text-sm',
+                          month_caption: 'text-gray-200 font-medium',
+                          nav: 'text-gray-400',
+                          day: 'text-gray-300 hover:bg-gray-700 rounded',
+                          day_button: 'w-8 h-8 flex items-center justify-center rounded',
+                          selected: 'bg-blue-600 text-white rounded',
+                          today: 'text-blue-400 font-semibold',
+                          outside: 'text-gray-600',
+                          disabled: 'text-gray-700',
+                        }}
+                      />
+                    </div>
+                  )}
+                  {openPanel === 'recordings' && (
+                    <div className="absolute right-0 top-full mt-1 z-50 w-80 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl flex flex-col max-h-[32rem]">
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 shrink-0">
+                        <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                          Gravações <span className="text-gray-600 ml-1">{recordingsTotal || recordings.length}</span>
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => { setSortOrder(o => o === 'desc' ? 'asc' : 'desc'); setRecordingsDisplayPage(1) }}
+                            className="text-xs text-gray-500 hover:text-gray-300"
+                            title="Inverter ordem"
+                          >
+                            {sortOrder === 'desc' ? '↓ recentes' : '↑ antigas'}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="overflow-y-auto flex-1">
+                        {recordings.length === 0
+                          ? <p className="text-sm text-gray-500 text-center py-6">Sem gravações nesta data.</p>
+                          : (() => {
+                              const recordingsAsc = [...recordings].sort((a, b) => a.filename.localeCompare(b.filename))
+                              return displayedRecordings.map(rec => {
+                                const isActive = activeRecording?.filename === rec.filename
+                                const recStart = new Date(rec.start).getTime()
+                                const idx = recordingsAsc.findIndex(r => r.filename === rec.filename)
+                                const nextStart = idx + 1 < recordingsAsc.length
+                                  ? new Date(recordingsAsc[idx + 1].start).getTime()
+                                  : recStart + 5 * 60 * 1000
+                                const hasMotion = motionEvents.some(ev => {
+                                  const t = new Date(ev.time).getTime()
+                                  return t >= recStart && t < nextStart
+                                })
+                                return (
+                                  <div
+                                    key={rec.filename}
+                                    ref={isActive ? el => { activeRecordingItemRef.current = el } : null}
+                                    className={`group flex items-center justify-between px-3 py-2 transition-colors ${
+                                      rec.is_recording ? 'opacity-50'
+                                      : isActive ? 'bg-blue-900/40 border-l-2 border-blue-500'
+                                      : 'hover:bg-gray-800'
+                                    }`}
+                                  >
+                                    <button
+                                      disabled={rec.is_recording}
+                                      onClick={() => { if (!rec.is_recording) { setActiveRecording(rec); setOpenPanel(null) } }}
+                                      className="flex-1 flex items-center justify-between text-left disabled:cursor-not-allowed"
+                                    >
+                                      <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
+                                        {formatRecordingTime(rec.start, timezone)}
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        {hasMotion && <span className="w-2 h-2 rounded-full bg-orange-400" title="Movimento detectado" />}
+                                        {rec.is_recording
+                                          ? <span className="text-xs text-red-400 font-medium">● REC</span>
+                                          : <span className="text-xs text-gray-500">▶ MP4</span>
+                                        }
+                                      </div>
+                                    </button>
+                                    {!rec.is_recording && (
+                                      <button
+                                        onClick={() => setDeleteTarget({ rec, hasMotion })}
+                                        title="Excluir gravação"
+                                        className="ml-2 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                      </button>
+                                    )}
+                                  </div>
+                                )
+                              })
+                            })()
+                        }
+                        {hasMoreDisplayedRecordings && (
+                          <button
+                            onClick={() => setRecordingsDisplayPage(p => p + 1)}
+                            className="w-full py-2 text-xs text-blue-400 hover:text-blue-300 border-t border-gray-800"
+                          >
+                            Carregar mais
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {openPanel === 'events' && (
+                    <div className="absolute right-0 top-full mt-1 z-50 w-80 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl flex flex-col max-h-[32rem]">
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 shrink-0">
+                        <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                          Eventos <span className="text-gray-600 ml-1">{motionEvents.length}</span>
+                        </span>
+                        <button
+                          onClick={() => setEventsSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
+                          className="text-xs text-gray-500 hover:text-gray-300"
+                        >
+                          {eventsSortOrder === 'desc' ? '↓ recentes' : '↑ antigas'}
+                        </button>
+                      </div>
+                      <div className="overflow-y-auto flex-1">
+                        {visibleEvents.length === 0
+                          ? <p className="text-sm text-gray-500 text-center py-6">Sem eventos nesta data.</p>
+                          : visibleEvents.map((ev, i) => {
+                              const isActive = activeEventIdx === i
+                              const thumbURL = ev.frame ? snapshotURL(id!, ev.time, ev.frame) : null
+                              return (
+                                <button
+                                  key={ev.id ?? `${ev.time}-${i}`}
+                                  ref={isActive ? el => { activeEventItemRef.current = el } : null}
+                                  onClick={() => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1); setOpenPanel(null) }}
+                                  className={`w-full flex items-center justify-between px-3 py-2 transition-colors text-left ${
+                                    isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-gray-800'
+                                  }`}
+                                >
+                                  <span className={`text-sm ${isActive ? 'text-blue-300' : 'text-gray-300'}`}>
+                                    {formatRecordingTime(ev.time, timezone)}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    {thumbURL && (
+                                      <img
+                                        src={thumbURL}
+                                        alt="snapshot"
+                                        className="w-16 h-10 object-cover rounded cursor-zoom-in border border-gray-700"
+                                        onClick={e => { e.stopPropagation(); setSnapshotEvent(ev) }}
+                                      />
+                                    )}
+                                    {ev.label && (
+                                      <span className="text-xs font-medium" style={{ color: ev.color ?? '#f97316' }}>{ev.label}</span>
+                                    )}
+                                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ev.color ?? '#fb923c' }} />
+                                    <span className="text-xs text-gray-500">{(ev.score * 100).toFixed(1)}%</span>
+                                  </div>
+                                </button>
+                              )
+                            })
+                        }
+                        {hasMoreEvents && (
+                          <button
+                            onClick={() => setEventsPage(p => p + 1)}
+                            className="w-full py-2 text-xs text-blue-400 hover:text-blue-300 border-t border-gray-800"
+                          >
+                            Carregar mais
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               {/* Linha 2: controles + ações */}
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-800">
@@ -782,182 +1028,17 @@ export default function CameraPage() {
                 </div>
               )}
             </div>
-
-            <RecordingTimeline
-              recordings={recordings}
-              motionEvents={motionEvents}
-              activeRecording={activeRecording}
-              activeTime={activeEventTime ?? activeRecording?.start ?? null}
-              timezone={timezone}
-              onSeek={handleTimelineSeek}
-            />
-          </div>
-
-          {/* Painel direito */}
-          <div className="flex flex-col gap-4">
-            {/* Calendário */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
-              <p className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wider">Gravações</p>
-              <DayPicker
-                mode="single"
-                selected={selectedDate}
-                onSelect={d => d && setSelectedDate(d)}
-                locale={ptBR}
-                classNames={{
-                  root: 'text-gray-200 text-sm',
-                  month_caption: 'text-gray-200 font-medium',
-                  nav: 'text-gray-400',
-                  day: 'text-gray-300 hover:bg-gray-700 rounded',
-                  day_button: 'w-8 h-8 flex items-center justify-center rounded',
-                  selected: 'bg-blue-600 text-white rounded',
-                  today: 'text-blue-400 font-semibold',
-                  outside: 'text-gray-600',
-                  disabled: 'text-gray-700',
-                }}
-              />
-            </div>
-
-            {/* Lista de gravações / eventos */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-              <div>
-              {/* Abas */}
-              <div className="flex border-b border-gray-800">
-                {(['recordings', 'events'] as const).map(tab => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
-                      activeTab === tab
-                        ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
-                        : 'text-gray-500 hover:text-gray-300'
-                    }`}
-                  >
-                    {tab === 'recordings'
-                      ? <>Gravações <span className="ml-1 text-gray-500">{recordingsTotal || recordings.length}</span></>
-                      : <>Eventos <span className="ml-1 text-gray-500">{motionEvents.length}</span></>
-                    }
-                  </button>
-                ))}
-              </div>
-
-              {activeTab === 'recordings' ? (
-                <ListPanel
-                  key="recordings"
-                  sortOrder={sortOrder}
-                  onSortOrderChange={() => { setSortOrder(o => o === 'desc' ? 'asc' : 'desc'); setRecordingsDisplayPage(1) }}
-                  hasMore={hasMoreDisplayedRecordings}
-                  onLoadMore={() => setRecordingsDisplayPage(p => p + 1)}
-                  empty={recordings.length === 0}
-                  emptyMessage="Sem gravações nesta data."
-                >
-                  {(() => {
-                    const recordingsAsc = [...recordings].sort((a, b) => a.filename.localeCompare(b.filename))
-                    return displayedRecordings.map(rec => {
-                      const isActive = activeRecording?.filename === rec.filename
-                      const recStart = new Date(rec.start).getTime()
-                      const idx = recordingsAsc.findIndex(r => r.filename === rec.filename)
-                      const nextStart = idx + 1 < recordingsAsc.length
-                        ? new Date(recordingsAsc[idx + 1].start).getTime()
-                        : recStart + 5 * 60 * 1000
-                      const hasMotion = motionEvents.some(ev => {
-                        const t = new Date(ev.time).getTime()
-                        return t >= recStart && t < nextStart
-                      })
-                      return (
-                        <div
-                          key={rec.filename}
-                          ref={isActive ? el => { activeRecordingItemRef.current = el } : null}
-                          className={`group flex items-center justify-between px-3 py-2 transition-colors ${
-                            rec.is_recording
-                              ? 'opacity-50'
-                              : isActive
-                                ? 'bg-blue-900/40 border-l-2 border-blue-500'
-                                : 'hover:bg-gray-800'
-                          }`}
-                        >
-                          <button
-                            disabled={rec.is_recording}
-                            onClick={() => !rec.is_recording && setActiveRecording(rec)}
-                            className="flex-1 flex items-center justify-between text-left disabled:cursor-not-allowed"
-                          >
-                            <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
-                              {formatRecordingTime(rec.start, timezone)}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              {hasMotion && (
-                                <span className="w-2 h-2 rounded-full bg-orange-400" title="Movimento detectado" />
-                              )}
-                              {rec.is_recording
-                                ? <span className="text-xs text-red-400 font-medium">● REC</span>
-                                : <span className="text-xs text-gray-500">▶ MP4</span>
-                              }
-                            </div>
-                          </button>
-                          {!rec.is_recording && (
-                            <button
-                              onClick={() => setDeleteTarget({ rec, hasMotion })}
-                              title="Excluir gravação"
-                              className="ml-2 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                      )
-                    })
-                  })()}
-                </ListPanel>
-              ) : (
-                <ListPanel
-                  key="events"
-                  sortOrder={eventsSortOrder}
-                  onSortOrderChange={() => setEventsSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
-                  hasMore={hasMoreEvents}
-                  onLoadMore={() => setEventsPage(p => p + 1)}
-                  empty={visibleEvents.length === 0}
-                  emptyMessage="Sem eventos detectados nesta data."
-                >
-                  {visibleEvents.map((ev, i) => {
-                    const isActive = activeEventIdx === i
-                    const thumbURL = ev.frame ? snapshotURL(id!, ev.time, ev.frame) : null
-                    return (
-                      <button
-                        key={ev.id ?? `${ev.time}-${i}`}
-                        ref={isActive ? (el) => { activeEventItemRef.current = el } : null}
-                        onClick={() => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) }}
-                        className={`w-full flex items-center justify-between px-3 py-2 transition-colors text-left ${
-                          isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-gray-800'
-                        }`}
-                      >
-                        <span className={`text-sm ${isActive ? 'text-blue-300' : 'text-gray-300'}`}>
-                          {formatRecordingTime(ev.time, timezone)}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {thumbURL && (
-                            <img
-                              src={thumbURL}
-                              alt="snapshot"
-                              className="w-16 h-10 object-cover rounded cursor-zoom-in border border-gray-700"
-                              onClick={e => { e.stopPropagation(); setSnapshotEvent(ev) }}
-                            />
-                          )}
-                          {ev.label && (
-                            <span className="text-xs font-medium" style={{ color: ev.color ?? '#f97316' }}>{ev.label}</span>
-                          )}
-                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ev.color ?? '#fb923c' }} />
-                          <span className="text-xs text-gray-500">{(ev.score * 100).toFixed(1)}%</span>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </ListPanel>
-              )}
-              </div>
-            </div>
-          </div>
+          <VerticalTimeline
+            recordings={recordings}
+            motionEvents={motionEvents}
+            activeRecording={activeRecording}
+            activeTime={activeEventTime ?? activeRecording?.start ?? null}
+            timezone={timezone}
+            onSeek={handleTimelineSeek}
+            maxHeight={playerHeight}
+          />
         </div>
+
 
       {snapshotEvent && snapshotEvent.frame && (
         <div
@@ -997,6 +1078,6 @@ export default function CameraPage() {
         onCancel={() => setDeleteTarget(null)}
       />
 
-    </AppLayout>
+  </AppLayout>
   )
 }
