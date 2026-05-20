@@ -47,6 +47,7 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
     function setup(v: HTMLVideoElement) {
       setFatalError(false)
       setPlayBlocked(false)
+      v.muted = true
 
       import('hls.js').then(({ default: Hls }) => {
         if (cancelled) return
@@ -74,7 +75,12 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
         hls.loadSource(src)
         hls.attachMedia(v)
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          v.play().catch(() => setPlayBlocked(true))
+          v.muted = true
+          v.play()
+            .then(() => { if (!cancelled) setPlayBlocked(false) })
+            .catch((err: unknown) => {
+              if (!cancelled && (err as { name?: string })?.name !== 'AbortError') setPlayBlocked(true)
+            })
         })
         hls.on(Hls.Events.ERROR, (_e, data) => {
           if (data.fatal) {
@@ -148,6 +154,7 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
       <video
         ref={videoRef}
         className={className}
+        autoPlay
         muted
         playsInline
       />
