@@ -9,3 +9,4 @@ frontend/node_modules/
 stories/
 motion_zones.json
 amostras/
+.cache/

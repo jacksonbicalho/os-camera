@@ -20,10 +20,9 @@ services:
     build:
       context: .
       target: development
+    user: "${UID}:${GID}"
     volumes:
       - .:/app
-      - frontend_dist:/app/frontend/dist
-      - frontend_node_modules:/app/frontend/node_modules
       - ./storage:/app/storage
     ports:
       - 8080:8080
@@ -33,12 +32,10 @@ services:
 
     environment:
       - VERSION=${VERSION:-dev}
+      - GOCACHE=/app/.cache/go-build
+      - YARN_CACHE_FOLDER=/app/.cache/yarn
     command: sh -c "cd frontend && yarn install && yarn build && cd .. && go run -ldflags=\"-X main.version=$$VERSION\" ./cmd/camera --config /app/camera.yaml"
     restart: "no"
-
-volumes:
-  frontend_dist:
-  frontend_node_modules:
 
 networks:
   camera_net:
