@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate, NavLink, Link } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { clearToken } from "../auth";
 import { useNotifications } from "../contexts/NotificationContext";
 import { formatDistanceToNow } from "date-fns";
@@ -375,15 +375,6 @@ export default function Header({ username = "usuário" }: HeaderProps) {
           )}
         </div>
 
-        <NavLink
-          to="/settings/stats"
-          className={({ isActive }) =>
-            `text-sm transition-colors ${isActive || location.pathname.startsWith("/settings") ? "text-white" : "text-gray-400 hover:text-white"}`
-          }
-        >
-          Configurações
-        </NavLink>
-
         {/* Dropdown de usuário */}
         <div className="relative" ref={userRef}>
           <button
@@ -407,6 +398,14 @@ export default function Header({ username = "usuário" }: HeaderProps) {
           </button>
           {userOpen && (
             <div className="absolute right-0 mt-2 w-44 bg-gray-800 border border-gray-700 rounded shadow-lg z-10">
+              <Link
+                to="/settings/stats"
+                onClick={() => setUserOpen(false)}
+                className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+              >
+                Configurações
+              </Link>
+              <div className="border-t border-gray-700" />
               <Link
                 to="/change-password"
                 onClick={() => setUserOpen(false)}
