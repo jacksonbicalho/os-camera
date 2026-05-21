@@ -283,10 +283,17 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// If the client submitted the masked URL (password == "xxxxx" from Redacted()),
-	// restore the original URL so the real credentials are not overwritten.
+	// restore the real password from the existing record but keep everything else
+	// (host, path, query) from the submitted URL — so host changes are preserved.
 	if u, err := url.Parse(req.RTSPURL); err == nil && u.User != nil {
 		if pass, hasPass := u.User.Password(); hasPass && pass == "xxxxx" {
-			req.RTSPURL = existing.RTSPURL
+			if orig, err2 := url.Parse(existing.RTSPURL); err2 == nil && orig.User != nil {
+				origPass, _ := orig.User.Password()
+				u.User = url.UserPassword(orig.User.Username(), origPass)
+				req.RTSPURL = u.String()
+			} else {
+				req.RTSPURL = existing.RTSPURL
+			}
 		}
 	}
 	if req.Motion != nil {
