@@ -22,7 +22,6 @@ services:
       target: development
     volumes:
       - .:/app
-      - frontend_dist:/app/frontend/dist
       - frontend_node_modules:/app/frontend/node_modules
       - ./storage:/app/storage
     ports:
@@ -37,7 +36,6 @@ services:
     restart: "no"
 
 volumes:
-  frontend_dist:
   frontend_node_modules:
 
 networks:
