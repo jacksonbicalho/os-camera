@@ -38,7 +38,7 @@ frontend:
 	cd frontend && yarn install --frozen-lockfile && yarn build
 
 run:
-	VERSION=$(VERSION) docker compose --profile development up camera-dev --build
+	UID=$(shell id -u) GID=$(shell id -g) VERSION=$(VERSION) docker compose --profile development up camera-dev --build
 
 # ── Utilitários ─────────────────────────────────────────────────────────────
 
