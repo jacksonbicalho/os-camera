@@ -16,7 +16,7 @@ import { useSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { mergeRecordings } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
-import RecordingTimeline from '../components/RecordingTimeline'
+import VerticalTimeline from '../components/VerticalTimeline'
 import { useNotifications } from '../contexts/NotificationContext'
 import type { HLSStats } from '../components/HLSPlayer'
 
@@ -115,6 +115,7 @@ export default function CameraPage() {
   const [debugStats, setDebugStats] = useState<{ fps: number; dropped: number; hlsStats: HLSStats | null; lagMs: number } | null>(null)
   const [showDebugChart, setShowDebugChart] = useState(false)
   const [debugPos, setDebugPos] = useState({ x: 8, y: 48 })
+  const [playerHeight, setPlayerHeight] = useState<number | undefined>(undefined)
   const debugDragRef = useRef<{ startMouseX: number; startMouseY: number; startPosX: number; startPosY: number } | null>(null)
   const playerRef = useRef<HTMLDivElement>(null)
   const pendingSeekRef = useRef<number | null>(null)
@@ -149,6 +150,34 @@ export default function CameraPage() {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [snapshotEvent])
+
+  useEffect(() => {
+    const el = playerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setPlayerHeight(el.getBoundingClientRect().height))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!e.ctrlKey) return
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+      e.preventDefault()
+      const recs = recordingsRef.current
+      if (recs.length === 0) return
+      const sorted = [...recs].sort((a, b) => a.filename.localeCompare(b.filename))
+      const idx = activeRecording ? sorted.findIndex(r => r.filename === activeRecording.filename) : -1
+      const nextIdx = e.key === 'ArrowDown' ? idx + 1 : idx - 1
+      if (nextIdx < 0 || nextIdx >= sorted.length) return
+      setActiveRecording(sorted[nextIdx])
+      setActiveEventTime(null)
+      setActiveEventId(null)
+      setScrollNonce(n => n + 1)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [activeRecording])
 
   function handleRateChange(requested: number) {
     const options = [1, 2, 4, 8, 16, 32]
@@ -874,15 +903,17 @@ function toggleFullscreen() {
               </div>
             )}
 
-            <RecordingTimeline
-              recordings={recordings}
-              motionEvents={motionEvents}
-              activeRecording={activeRecording}
-              activeTime={activeEventTime ?? activeRecording?.start ?? null}
-              timezone={timezone}
-              onSeek={handleTimelineSeek}
-            />
           </div>
+
+          <VerticalTimeline
+            recordings={recordings}
+            motionEvents={motionEvents}
+            activeRecording={activeRecording}
+            activeTime={activeEventTime ?? activeRecording?.start ?? null}
+            timezone={timezone}
+            onSeek={handleTimelineSeek}
+            maxHeight={playerHeight}
+          />
 
           {/* Painel lateral condicional */}
           {activePanel && (
