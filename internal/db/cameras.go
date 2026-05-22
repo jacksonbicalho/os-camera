@@ -269,6 +269,23 @@ func DeleteCamera(db *DB, id string) error {
 	return err
 }
 
+// ReorderCameras sets display_order for each camera according to its position
+// in ids (0-based). IDs not present in the list are left unchanged.
+func ReorderCameras(database *DB, ids []string) error {
+	tx, err := database.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	for i, id := range ids {
+		if _, err := tx.Exec(`UPDATE cameras SET display_order=? WHERE id=?`, i, id); err != nil {
+			return fmt.Errorf("reorder camera %q: %w", id, err)
+		}
+	}
+	return tx.Commit()
+}
+
 // --- helpers ---
 
 type execer interface {

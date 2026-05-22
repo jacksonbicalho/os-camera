@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -19,6 +19,8 @@ export default function CamerasSettingsPage() {
   const [deleteData, setDeleteData] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [noDb, setNoDb] = useState(false)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const dragIdRef = useRef<string | null>(null)
 
   const reloadCameras = useCallback(async () => {
     const res = await fetch('/api/settings/cameras', { headers: authHeaders() })
@@ -66,6 +68,27 @@ export default function CamerasSettingsPage() {
       await fetch(url, { method: 'DELETE', headers: authHeaders() })
       await reloadCameras()
     } finally { setDeleteId(null); setDeleteData(false) }
+  }
+
+  const handleDrop = async (targetId: string) => {
+    const sourceId = dragIdRef.current
+    dragIdRef.current = null
+    setDragOverId(null)
+    if (!sourceId || sourceId === targetId) return
+
+    const reordered = [...cameras]
+    const fromIdx = reordered.findIndex(c => c.id === sourceId)
+    const toIdx = reordered.findIndex(c => c.id === targetId)
+    if (fromIdx < 0 || toIdx < 0) return
+
+    reordered.splice(toIdx, 0, reordered.splice(fromIdx, 1)[0])
+    setCameras(reordered)
+
+    await fetch('/api/settings/cameras/reorder', {
+      method: 'PUT',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: reordered.map(c => c.id) }),
+    })
   }
 
   const camToDelete = cameras.find(c => c.id === deleteId)
@@ -151,7 +174,19 @@ export default function CamerasSettingsPage() {
       ) : (
         <div className="flex flex-col gap-2">
           {cameras.map(cam => (
-            <div key={cam.id} className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 flex items-center gap-4">
+            <div
+              key={cam.id}
+              draggable
+              onDragStart={() => { dragIdRef.current = cam.id }}
+              onDragOver={e => { e.preventDefault(); setDragOverId(cam.id) }}
+              onDragLeave={() => setDragOverId(null)}
+              onDrop={() => handleDrop(cam.id)}
+              onDragEnd={() => { dragIdRef.current = null; setDragOverId(null) }}
+              className={`bg-gray-900 border rounded-lg px-4 py-3 flex items-center gap-4 transition-colors ${dragOverId === cam.id ? 'border-blue-500' : 'border-gray-800'}`}
+            >
+              <svg className="w-4 h-4 text-gray-600 shrink-0 cursor-grab active:cursor-grabbing" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M7 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm6 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM7 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm6 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-6 5a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm6 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" />
+              </svg>
               <div className="w-24 h-14 shrink-0 rounded overflow-hidden bg-gray-800">
                 <img
                   src={`/api/cameras/${cam.id}/snapshot?token=${getToken()}`}

@@ -18,7 +18,6 @@ export interface Camera {
   has_audio: boolean | null
   width: number
   height: number
-  display_order: number
   hls_video_mode: string
   record_video_mode: string
   hls_segment_seconds: number | null
@@ -34,7 +33,6 @@ export interface CameraFormData {
   video_codec: string
   has_audio: '' | 'true' | 'false'
   resolution: string
-  display_order: string
   hls_video_mode: string
   record_video_mode: string
   hls_segment_seconds_default: boolean  // true = usar padrão (null no banco)
@@ -82,7 +80,7 @@ export function emptyForm(cam?: Camera): CameraFormData {
     return {
       name: '',
       rtsp_url: '', chunk_duration: '5m', reconnect_interval: '30s',
-      video_codec: '', has_audio: '', resolution: '0x0', display_order: '0',
+      video_codec: '', has_audio: '', resolution: '0x0',
       hls_video_mode: 'auto',
       record_video_mode: 'auto',
       hls_segment_seconds_default: true, hls_segment_seconds: '2',
@@ -101,7 +99,6 @@ export function emptyForm(cam?: Camera): CameraFormData {
     video_codec: cam.video_codec ?? '',
     has_audio: cam.has_audio == null ? '' : cam.has_audio ? 'true' : 'false',
     resolution: encodeResolution(cam.width ?? 0, cam.height ?? 0),
-    display_order: String(cam.display_order ?? 0),
     hls_video_mode: cam.hls_video_mode || 'auto',
     record_video_mode: cam.record_video_mode || 'auto',
     hls_segment_seconds_default: cam.hls_segment_seconds == null,
@@ -129,7 +126,6 @@ export function formToPayload(f: CameraFormData) {
     has_audio: f.has_audio === '' ? null : f.has_audio === 'true',
     width,
     height,
-    display_order: parseInt(f.display_order) || 0,
     hls_video_mode: f.hls_video_mode || 'auto',
     record_video_mode: f.record_video_mode || 'auto',
     hls_segment_seconds: f.hls_segment_seconds_default ? null : (parseInt(f.hls_segment_seconds) || 2),

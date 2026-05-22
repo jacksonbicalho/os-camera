@@ -521,3 +521,53 @@ func TestUpdateCamera_CallsStopThenStart(t *testing.T) {
 		t.Errorf("expected [stop:%s, start:%s], got %v", cam.ID, cam.ID, calls)
 	}
 }
+
+// --- PUT /api/settings/cameras/reorder ---
+
+func TestReorderCameras_Success(t *testing.T) {
+	srv, adminToken, _, cam1ID, cam2ID := setupCamerasServer(t)
+
+	body := fmt.Sprintf(`{"ids":[%q,%q]}`, cam2ID, cam1ID)
+	req := httptest.NewRequest(http.MethodPut, "/api/settings/cameras/reorder", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify order via list endpoint.
+	req2 := httptest.NewRequest(http.MethodGet, "/api/settings/cameras", nil)
+	req2.Header.Set("Authorization", "Bearer "+adminToken)
+	w2 := httptest.NewRecorder()
+	srv.ServeHTTP(w2, req2)
+
+	var list []map[string]any
+	json.NewDecoder(w2.Body).Decode(&list)
+	if len(list) != 2 {
+		t.Fatalf("expected 2 cameras, got %d", len(list))
+	}
+	if list[0]["id"] != cam2ID {
+		t.Errorf("first camera: got %v, want %v", list[0]["id"], cam2ID)
+	}
+	if list[1]["id"] != cam1ID {
+		t.Errorf("second camera: got %v, want %v", list[1]["id"], cam1ID)
+	}
+}
+
+func TestReorderCameras_ForbiddenForViewer(t *testing.T) {
+	srv, _, viewerToken, cam1ID, cam2ID := setupCamerasServer(t)
+
+	body := fmt.Sprintf(`{"ids":[%q,%q]}`, cam1ID, cam2ID)
+	req := httptest.NewRequest(http.MethodPut, "/api/settings/cameras/reorder", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", w.Code)
+	}
+}

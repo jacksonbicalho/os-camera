@@ -296,3 +296,30 @@ func TestMotionConfig_PlaybackLeadSecondsDefault(t *testing.T) {
 		t.Errorf("playback_lead_seconds default: got %d, want 10", got.Motion.PlaybackLeadSeconds)
 	}
 }
+
+func TestReorderCameras(t *testing.T) {
+	database := openTestDB(t)
+
+	c1, _ := db.CreateCamera(database, makeCamera("c1"), nil)
+	c2, _ := db.CreateCamera(database, makeCamera("c2"), nil)
+	c3, _ := db.CreateCamera(database, makeCamera("c3"), nil)
+
+	// Reverse order: c3 first, then c1, then c2.
+	if err := db.ReorderCameras(database, []string{c3.ID, c1.ID, c2.ID}); err != nil {
+		t.Fatalf("ReorderCameras: %v", err)
+	}
+
+	cams, err := db.ListCameras(database)
+	if err != nil {
+		t.Fatalf("ListCameras: %v", err)
+	}
+	if len(cams) != 3 {
+		t.Fatalf("expected 3 cameras, got %d", len(cams))
+	}
+	want := []string{c3.ID, c1.ID, c2.ID}
+	for i, cam := range cams {
+		if cam.ID != want[i] {
+			t.Errorf("position %d: got %q, want %q", i, cam.ID, want[i])
+		}
+	}
+}
