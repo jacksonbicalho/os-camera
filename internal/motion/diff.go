@@ -211,9 +211,9 @@ func downsampleAvg(buf []byte, w, h int, scale float64) ([]byte, int, int) {
 	for y := 0; y < newH; y++ {
 		for x := 0; x < newW; x++ {
 			x0 := x * w / newW
-			x1 := (x+1) * w / newW
+			x1 := (x + 1) * w / newW
 			y0 := y * h / newH
-			y1 := (y+1) * h / newH
+			y1 := (y + 1) * h / newH
 			if x1 <= x0 {
 				x1 = x0 + 1
 			}

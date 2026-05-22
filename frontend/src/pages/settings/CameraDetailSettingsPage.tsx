@@ -65,7 +65,7 @@ export default function CameraDetailSettingsPage() {
       const res = await fetch(`/api/settings/cameras/${id}`, {
         method: 'PUT',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(formToPayload(data, false)),
+        body: JSON.stringify(formToPayload(data)),
       })
       if (!res.ok) { setError((await res.text()).trim() || 'Erro ao atualizar câmera'); return }
       setEditing(false)
@@ -80,8 +80,8 @@ export default function CameraDetailSettingsPage() {
         <span>/</span>
         <span className={editing ? 'hover:text-gray-300' : 'text-gray-300'}>
           {editing
-            ? <Link to={`/settings/cameras/${id}`} onClick={() => setEditing(false)} className="hover:text-gray-300 transition-colors">{id}</Link>
-            : id}
+            ? <Link to={`/settings/cameras/${id}`} onClick={() => setEditing(false)} className="hover:text-gray-300 transition-colors">{cam?.name || id}</Link>
+            : cam?.name || id}
         </span>
         {editing && (
           <>
@@ -92,9 +92,6 @@ export default function CameraDetailSettingsPage() {
       </nav>
 
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-gray-200">
-          {editing ? `${id} — editando` : id}
-        </h2>
         {!editing && (
           <button
             onClick={() => { setEditing(true); setError(null) }}
@@ -128,6 +125,7 @@ export default function CameraDetailSettingsPage() {
             title="Identificação"
             fields={[
               { label: 'ID', value: cam.id },
+              { label: 'Nome', value: cam.name },
               { label: 'URL RTSP', value: cam.rtsp_url },
             ]}
           />

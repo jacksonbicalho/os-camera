@@ -66,7 +66,7 @@ function NotificationItem({
       />
       <div className="flex-1 min-w-0 cursor-pointer" onClick={onClick}>
         <div className="text-xs text-gray-300 font-medium truncate">
-          {n.cameraId}
+          {n.cameraName || n.cameraId}
         </div>
         <div className="text-xs text-gray-400">
           {n.label && <span style={{ color: n.color ?? '#f97316' }}>{n.label} · </span>}

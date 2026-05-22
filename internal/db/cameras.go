@@ -1,6 +1,7 @@
 package db
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -9,21 +10,41 @@ import (
 	"camera/internal/config"
 )
 
+func generateUUID() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]), nil
+}
+
 // CreateCamera inserts a camera row and, if motion is non-nil, its
-// camera_motion row.
-func CreateCamera(db *DB, cam config.CameraConfig, motion *config.MotionConfig) error {
+// camera_motion row. The camera ID is a generated UUID v4.
+func CreateCamera(db *DB, cam config.CameraConfig, motion *config.MotionConfig) (config.CameraConfig, error) {
+	if cam.ID == "" {
+		id, err := generateUUID()
+		if err != nil {
+			return config.CameraConfig{}, fmt.Errorf("generate camera id: %w", err)
+		}
+		cam.ID = id
+	}
+
 	tx, err := db.Begin()
 	if err != nil {
-		return err
+		return config.CameraConfig{}, err
 	}
 	defer tx.Rollback() //nolint:errcheck
 
 	_, err = tx.Exec(
-		`INSERT INTO cameras(id, rtsp_url, chunk_duration, reconnect_interval,
+		`INSERT INTO cameras(id, name, rtsp_url, chunk_duration, reconnect_interval,
 		                     video_codec, has_audio, width, height, display_order,
 		                     hls_video_mode, record_video_mode, hls_segment_seconds, hls_list_size)
-		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		cam.ID,
+		cam.Name,
 		cam.RTSPURL,
 		durationToStr(cam.ChunkDuration, config.DefaultChunkDuration),
 		durationToStr(cam.ReconnectInterval, config.DefaultReconnectInterval),
@@ -38,16 +59,19 @@ func CreateCamera(db *DB, cam config.CameraConfig, motion *config.MotionConfig) 
 		nullIntPtr(cam.HLSListSize),
 	)
 	if err != nil {
-		return fmt.Errorf("insert camera: %w", err)
+		return config.CameraConfig{}, fmt.Errorf("insert camera: %w", err)
 	}
 
 	if motion != nil {
 		if err := insertMotion(tx, cam.ID, motion); err != nil {
-			return err
+			return config.CameraConfig{}, err
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return config.CameraConfig{}, err
+	}
+	return cam, nil
 }
 
 // GetCamera returns the camera with the given ID, including its motion config
@@ -61,12 +85,12 @@ func GetCamera(db *DB, id string) (config.CameraConfig, error) {
 
 	var segSec, listSize sql.NullInt64
 	err := db.QueryRow(
-		`SELECT id, rtsp_url, chunk_duration, reconnect_interval,
+		`SELECT id, name, rtsp_url, chunk_duration, reconnect_interval,
 		        video_codec, has_audio, width, height, display_order,
 		        hls_video_mode, record_video_mode, hls_segment_seconds, hls_list_size
 		 FROM cameras WHERE id=?`, id,
 	).Scan(
-		&cam.ID, &cam.RTSPURL, &chunk, &reconnect,
+		&cam.ID, &cam.Name, &cam.RTSPURL, &chunk, &reconnect,
 		&codec, &hasAudio, &width, &height, &cam.DisplayOrder,
 		&cam.HLSVideoMode, &cam.RecordVideoMode, &segSec, &listSize,
 	)
@@ -108,7 +132,7 @@ func GetCamera(db *DB, id string) (config.CameraConfig, error) {
 // Uses a LEFT JOIN to avoid nested queries (single-connection SQLite pool).
 func ListCameras(db *DB) ([]config.CameraConfig, error) {
 	rows, err := db.Query(`
-		SELECT c.id, c.rtsp_url, c.chunk_duration, c.reconnect_interval,
+		SELECT c.id, c.name, c.rtsp_url, c.chunk_duration, c.reconnect_interval,
 		       c.video_codec, c.has_audio, c.width, c.height, c.display_order,
 		       c.hls_video_mode, c.record_video_mode, c.hls_segment_seconds, c.hls_list_size,
 		       cm.enabled, cm.threshold, cm.fps, cm.cooldown_seconds,
@@ -133,7 +157,7 @@ func ListCameras(db *DB) ([]config.CameraConfig, error) {
 		var mFPS, mCooldown, mCaptureW, mCaptureH, mPlaybackLead sql.NullInt64
 
 		if err := rows.Scan(
-			&cam.ID, &cam.RTSPURL, &chunk, &reconnect,
+			&cam.ID, &cam.Name, &cam.RTSPURL, &chunk, &reconnect,
 			&codec, &hasAudio, &width, &height, &cam.DisplayOrder,
 			&cam.HLSVideoMode, &cam.RecordVideoMode, &segSec, &listSize,
 			&mEnabled, &mThreshold, &mFPS, &mCooldown, &mCaptureW, &mCaptureH, &mPlaybackLead,

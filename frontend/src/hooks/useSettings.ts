@@ -14,6 +14,7 @@ export interface MotionSettings {
 
 export interface CameraSettings {
   id: string
+  name: string
   rtsp_url: string
   chunk_duration: string
   reconnect_interval: string

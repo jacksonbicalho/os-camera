@@ -502,6 +502,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	type cameraDTO struct {
 		ID                string     `json:"id"`
+		Name              string     `json:"name"`
 		RTSPURL           string     `json:"rtsp_url"`
 		ChunkDuration     string     `json:"chunk_duration"`
 		ReconnectInterval string     `json:"reconnect_interval"`
@@ -553,6 +554,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		cameras[i] = cameraDTO{
 			ID:                c.ID,
+			Name:              c.Name,
 			RTSPURL:           maskRTSP(c.RTSPURL),
 			ChunkDuration:     formatDuration(c.EffectiveChunkDuration()),
 			ReconnectInterval: formatDuration(c.EffectiveReconnectInterval()),
@@ -626,6 +628,7 @@ func (s *Server) handleClientConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
 	type cameraInfo struct {
 		ID                  string  `json:"id"`
+		Name                string  `json:"name"`
 		MotionThreshold     float64 `json:"motion_threshold"`
 		PlaybackLeadSeconds int     `json:"playback_lead_seconds"`
 	}
@@ -667,6 +670,7 @@ func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
 		}
 		list[i] = cameraInfo{
 			ID:                  c.ID,
+			Name:                c.Name,
 			MotionThreshold:     threshold,
 			PlaybackLeadSeconds: lead,
 		}
@@ -1073,13 +1077,18 @@ func (s *Server) handleAllMotionLive(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	type entry struct {
-		id string
-		bc *broadcaster
+		id   string
+		name string
+		bc   *broadcaster
+	}
+	cameraNames := make(map[string]string, len(s.cameras))
+	for _, c := range s.cameras {
+		cameraNames[c.ID] = c.Name
 	}
 	var entries []entry
 	for id, bc := range s.motionBroadcasters {
 		if s.canAccessCamera(r, id) {
-			entries = append(entries, entry{id, bc})
+			entries = append(entries, entry{id, cameraNames[id], bc})
 		}
 	}
 	s.mu.Unlock()
@@ -1094,14 +1103,16 @@ func (s *Server) handleAllMotionLive(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type taggedEvent struct {
-		cameraID string
-		ev       motion.Event
+		cameraID   string
+		cameraName string
+		ev         motion.Event
 	}
 	merged := make(chan taggedEvent, 64)
 
 	var wg sync.WaitGroup
 	for _, e := range entries {
 		camID := e.id
+		camName := e.name
 		bc := e.bc
 		sub := bc.subscribe()
 		wg.Add(1)
@@ -1115,7 +1126,7 @@ func (s *Server) handleAllMotionLive(w http.ResponseWriter, r *http.Request) {
 						return
 					}
 					select {
-					case merged <- taggedEvent{cameraID: camID, ev: ev}:
+					case merged <- taggedEvent{cameraID: camID, cameraName: camName, ev: ev}:
 					case <-r.Context().Done():
 						return
 					}
@@ -1138,9 +1149,10 @@ func (s *Server) handleAllMotionLive(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			payload := map[string]any{
-				"camera_id": te.cameraID,
-				"time":      te.ev.Time.Format(time.RFC3339),
-				"score":     te.ev.Score,
+				"camera_id":   te.cameraID,
+				"camera_name": te.cameraName,
+				"time":        te.ev.Time.Format(time.RFC3339),
+				"score":       te.ev.Score,
 			}
 			if te.ev.Label != "" {
 				payload["label"] = te.ev.Label

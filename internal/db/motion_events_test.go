@@ -9,7 +9,9 @@ import (
 
 func ensureCamera(t *testing.T, database *db.DB, id string) {
 	t.Helper()
-	if err := db.CreateCamera(database, makeCamera(id), nil); err != nil {
+	c := makeCamera(id)
+	c.ID = id
+	if _, err := db.CreateCamera(database, c, nil); err != nil {
 		t.Fatalf("CreateCamera(%s): %v", id, err)
 	}
 }

@@ -11,6 +11,7 @@ export interface Notification {
   id: string
   type: 'motion'
   cameraId: string
+  cameraName?: string
   time: string
   score: number
   label?: string
@@ -93,6 +94,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           id: `${id}-${time}`,
           type: 'motion',
           cameraId: id,
+          cameraName: payload.camera_name || undefined,
           time,
           score,
           label,

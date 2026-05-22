@@ -522,7 +522,8 @@ func createTestCamera(t *testing.T, database *db.DB, id string) {
 		ChunkDuration:     dur5m,
 		ReconnectInterval: dur30s,
 	}
-	if err := db.CreateCamera(database, cam, nil); err != nil {
+	cam.ID = id
+	if _, err := db.CreateCamera(database, cam, nil); err != nil {
 		t.Fatalf("create camera %s: %v", id, err)
 	}
 }

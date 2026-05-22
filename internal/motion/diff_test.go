@@ -405,8 +405,8 @@ func TestComputeBBoxInZoneIgnoresPixelsOutsideZone(t *testing.T) {
 func TestComputeBBoxIgnoresMaskedPixels(t *testing.T) {
 	a := make([]byte, 4)
 	b := make([]byte, 4)
-	b[0] = 200 // mascarado
-	b[3] = 200 // não mascarado
+	b[0] = 200                                    // mascarado
+	b[3] = 200                                    // não mascarado
 	z := []zones.Zone{{X: 0, Y: 0, W: 0.5, H: 1}} // mascara pixels 0 e 1
 	got, _ := computeBBox(a, b, 4, 1, z)
 	want := BBox{X: 0.75, Y: 0, W: 0.25, H: 1}

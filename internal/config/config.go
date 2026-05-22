@@ -19,7 +19,7 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-const DefaultChunkDuration     = 5 * time.Minute
+const DefaultChunkDuration = 5 * time.Minute
 const DefaultReconnectInterval = 10 * time.Second
 
 // Config holds the minimal bootstrap configuration read from the YAML file.
@@ -92,6 +92,7 @@ type MotionConfig struct {
 // CameraConfig holds per-camera settings loaded from the database.
 type CameraConfig struct {
 	ID                string        `yaml:"id"`
+	Name              string        `yaml:"name"`
 	RTSPURL           string        `yaml:"rtsp_url"`
 	ChunkDuration     Duration      `yaml:"chunk_duration"`
 	ReconnectInterval Duration      `yaml:"reconnect_interval"`
