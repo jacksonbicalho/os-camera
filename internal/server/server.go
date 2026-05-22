@@ -107,7 +107,6 @@ type Server struct {
 	streamSeen         map[string]time.Time
 	motionBroadcasters map[string]*broadcaster
 	rawBroadcasters    map[string]*broadcaster
-	motionCfg          config.MotionConfig
 	peakMu             sync.RWMutex
 	dailyPeakRaw       map[string]float64
 	dailyPeakDate      map[string]string
@@ -200,10 +199,6 @@ func (s *Server) WithMotionFeed(cameraID string, events <-chan motion.Event) *Se
 	return s
 }
 
-func (s *Server) WithMotionConfig(cfg config.MotionConfig) *Server {
-	s.motionCfg = cfg
-	return s
-}
 
 func (s *Server) WithSnapshotter(fn func(ctx context.Context, rtspURL string) ([]byte, error)) *Server {
 	s.snapFn = fn
@@ -593,12 +588,6 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 				"warn_percent":           s.storageCfg.WarnPercent,
 			}
 		}(),
-		"motion": motionDTO{
-			Enabled:         s.motionCfg.Enabled,
-			Threshold:       s.motionCfg.Threshold,
-			FPS:             s.motionCfg.FPS,
-			CooldownSeconds: s.motionCfg.CooldownSeconds,
-		},
 		"defaults": map[string]any{
 			"chunk_duration":     formatDuration(config.DefaultChunkDuration),
 			"reconnect_interval": formatDuration(config.DefaultReconnectInterval),
@@ -660,10 +649,7 @@ func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
 
 	list := make([]cameraInfo, len(cameras))
 	for i, c := range cameras {
-		threshold := s.motionCfg.Threshold
-		if mc := c.EffectiveMotionConfig(); mc.Threshold != 0 {
-			threshold = mc.Threshold
-		}
+		threshold := c.EffectiveMotionConfig().Threshold
 		lead := 10
 		if mc := c.EffectiveMotionConfig(); mc.PlaybackLeadSeconds > 0 {
 			lead = mc.PlaybackLeadSeconds

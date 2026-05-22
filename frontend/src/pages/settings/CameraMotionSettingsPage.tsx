@@ -110,7 +110,7 @@ export default function CameraMotionSettingsPage() {
   const peak = useMotionPeak(id, `/settings/cameras/${id}/motion`)
   const cam = settings?.cameras.find(c => c.id === id)
 
-  const effectiveMotion = cam?.motion ?? settings?.motion ?? null
+  const effectiveMotion = cam?.motion ?? null
   const effectiveThreshold = effectiveMotion?.threshold ?? 0
 
   return (
@@ -161,7 +161,7 @@ export default function CameraMotionSettingsPage() {
           )}
 
           <SettingsSection
-            title={cam.motion ? 'Configuração (override)' : 'Configuração (global)'}
+            title="Configuração"
             fields={[
               { label: 'Ativado', value: effectiveMotion?.enabled ? 'sim' : 'não' },
               { label: 'Limiar', value: effectiveThreshold },

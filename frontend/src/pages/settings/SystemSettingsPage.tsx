@@ -41,15 +41,6 @@ export default function SystemSettingsPage() {
               { label: 'Intervalo de reconexão', value: settings.defaults.reconnect_interval },
             ]}
           />
-          <SettingsSection
-            title="Detecção de movimento (global)"
-            fields={[
-              { label: 'Ativado', value: settings.motion.enabled ? 'sim' : 'não' },
-              { label: 'Limiar', value: settings.motion.threshold },
-              { label: 'FPS de amostragem', value: settings.motion.fps },
-              { label: 'Cooldown (segundos)', value: settings.motion.cooldown_seconds === 0 ? 'desativado' : settings.motion.cooldown_seconds },
-            ]}
-          />
         </div>
       )}
     </SettingsLayout>
