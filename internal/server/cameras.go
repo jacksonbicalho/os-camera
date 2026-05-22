@@ -148,7 +148,6 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		HasAudio          *bool            `json:"has_audio"`
 		Width             int              `json:"width"`
 		Height            int              `json:"height"`
-		DisplayOrder      int              `json:"display_order"`
 		HLSVideoMode      string           `json:"hls_video_mode"`
 		RecordVideoMode   string           `json:"record_video_mode"`
 		HLSSegmentSeconds *int             `json:"hls_segment_seconds"`
@@ -177,7 +176,6 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		HasAudio:          req.HasAudio,
 		Width:             req.Width,
 		Height:            req.Height,
-		DisplayOrder:      req.DisplayOrder,
 		HLSVideoMode:      req.HLSVideoMode,
 		RecordVideoMode:   req.RecordVideoMode,
 		HLSSegmentSeconds: req.HLSSegmentSeconds,
@@ -260,7 +258,6 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		HasAudio          *bool            `json:"has_audio"`
 		Width             int              `json:"width"`
 		Height            int              `json:"height"`
-		DisplayOrder      int              `json:"display_order"`
 		HLSVideoMode      string           `json:"hls_video_mode"`
 		RecordVideoMode   string           `json:"record_video_mode"`
 		HLSSegmentSeconds *int             `json:"hls_segment_seconds"`
@@ -303,7 +300,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		HasAudio:          req.HasAudio,
 		Width:             req.Width,
 		Height:            req.Height,
-		DisplayOrder:      req.DisplayOrder,
+		DisplayOrder:      existing.DisplayOrder,
 		HLSVideoMode:      req.HLSVideoMode,
 		RecordVideoMode:   req.RecordVideoMode,
 		HLSSegmentSeconds: req.HLSSegmentSeconds,
