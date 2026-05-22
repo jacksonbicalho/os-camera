@@ -17,6 +17,7 @@ export interface HLSPlayerHandle {
 interface HLSPlayerProps {
   src: string
   className?: string
+  containerClassName?: string
   cameraId?: string
   muted?: boolean
   segmentSeconds?: number | null
@@ -28,7 +29,7 @@ interface MotionAlert {
   time: string
 }
 
-const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer({ src, className, cameraId, muted = true, segmentSeconds, onGoToEvent }, ref) {
+const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer({ src, className, containerClassName, cameraId, muted = true, segmentSeconds, onGoToEvent }, ref) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<HlsType | null>(null)
   const [motionAlert, setMotionAlert] = useState<MotionAlert | null>(null)
@@ -150,7 +151,7 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
   )
 
   return (
-    <div className="relative">
+    <div className={`relative${containerClassName ? ` ${containerClassName}` : ''}`}>
       <video
         ref={videoRef}
         className={className}

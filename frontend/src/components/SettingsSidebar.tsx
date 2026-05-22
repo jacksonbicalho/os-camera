@@ -46,7 +46,7 @@ export function SettingsSidebar({ NAV_LINKS }: SettingsSidebarProps) {
     transition-all duration-300
     active:scale-95
 
-    ${openSidebar ? "left-72" : "left-0"}
+    ${openSidebar ? "left-[calc(18rem+3.5rem)]" : "left-14"}
   `}
       >
         <ChevronRight
@@ -62,7 +62,7 @@ export function SettingsSidebar({ NAV_LINKS }: SettingsSidebarProps) {
       {/* Sidebar */}
       <aside
         className={`
-    fixed top-0 left-0 z-50
+    fixed top-0 left-14 z-50
     h-screen w-72
     bg-black
     border-r border-gray-800
