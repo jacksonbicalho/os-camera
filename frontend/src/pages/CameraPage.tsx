@@ -426,7 +426,7 @@ export default function CameraPage() {
   const motionPeak = useMotionPeak(id, `/cameras/${id}`)
   const { markRead } = useNotifications()
   const cam = settings?.cameras.find(c => c.id === id)
-  const effectiveThreshold = (cam?.motion ?? settings?.motion)?.threshold ?? 0
+  const effectiveThreshold = cam?.motion?.threshold ?? 0
 
   // Score contextual para o painel de debug: evento ativo > pico da gravação > pico diário
   const debugMotionValue = (() => {
@@ -567,24 +567,20 @@ function toggleFullscreen() {
   recordingsDisplayPageRef.current = recordingsDisplayPage
 
   return (
-    <AppLayout mainClassName="w-full">
-        <div className="flex">
+    <AppLayout fill mainClassName="w-full p-3">
+        <div className="flex h-full gap-0">
           {/* Coluna do player */}
-          <div className={`relative flex flex-col min-w-0 ${activePanel ? 'flex-1' : 'w-full'}`}>
+          <div className={`relative flex flex-col min-w-0 h-full ${activePanel ? 'flex-1' : 'w-full'}`}>
             <div
               ref={playerRef}
-              className={`bg-gray-900 border rounded-lg overflow-hidden transition-all duration-300 ${
+              className={`flex flex-col h-full bg-gray-900 border rounded-lg overflow-hidden transition-all duration-300 ${
                 !isLive ? 'border-blue-600 ring-1 ring-blue-600' : 'border-gray-800'
               }`}
             >
-              <div className="flex flex-col gap-2 px-4 py-2 border-b border-gray-700">
+              <div className="flex-none flex flex-col gap-2 px-4 py-2 border-b border-gray-700">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                      <Link to="/" className="text-blue-400 hover:text-blue-300 transition-colors">← Câmeras</Link>
-                      <span className="text-gray-600">/</span>
-                      <span className="font-medium text-gray-200 truncate">{cam?.name ?? id}</span>
-                    </div>
+                    <span className="font-medium text-sm text-gray-200 truncate">{cam?.name ?? id}</span>
                   </div>
                 </div>
 
@@ -693,11 +689,11 @@ function toggleFullscreen() {
               </div>
 
               {isLive ? (
-                <HLSPlayer ref={hlsPlayerRef} src={liveUrl} className="w-full aspect-video bg-black" cameraId={id} muted={videoMuted} segmentSeconds={cam?.hls_segment_seconds} onGoToEvent={handleGoToEvent} />
+                <HLSPlayer ref={hlsPlayerRef} src={liveUrl} containerClassName="flex-1 min-h-0" className="w-full h-full bg-black" cameraId={id} muted={videoMuted} segmentSeconds={cam?.hls_segment_seconds} onGoToEvent={handleGoToEvent} />
               ) : (
                 <div
                   ref={recPlayerRef}
-                  className="relative"
+                  className="flex-1 min-h-0 relative"
                   onMouseMove={showRecControls}
                   onMouseLeave={() => { if (recPlaying) setRecControlsVisible(false) }}
                 >
@@ -705,7 +701,7 @@ function toggleFullscreen() {
                     ref={videoRef}
                     key={activeRecording.url}
                     src={`${activeRecording.url}?token=${getToken()}`}
-                    className="w-full aspect-video bg-black cursor-pointer"
+                    className="w-full h-full bg-black cursor-pointer"
                     autoPlay
                     playsInline
                     onClick={togglePlayRecording}
@@ -922,7 +918,7 @@ function toggleFullscreen() {
 
           {/* Painel lateral condicional */}
           {activePanel && (
-            <div className="w-72 shrink-0 border-l border-gray-800 bg-gray-900 flex flex-col overflow-y-auto">
+            <div className="w-72 shrink-0 border-l border-gray-800 bg-gray-900 flex flex-col overflow-y-auto h-full">
               {activePanel === 'calendar' && (
                 <div className="p-3">
                   <DayPicker

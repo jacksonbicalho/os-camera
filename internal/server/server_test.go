@@ -1065,10 +1065,13 @@ func TestMotionScoresStreamsSSEEvents(t *testing.T) {
 
 func TestCamerasIncludesMotionThreshold(t *testing.T) {
 	cfg := config.ServerConfig{}
-	cameras := []config.CameraConfig{{ID: "cam1"}}
-	motionCfg := config.MotionConfig{Enabled: true, Threshold: 0.03, FPS: 2}
-	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).
-		WithMotionConfig(motionCfg)
+	threshold03 := 0.03
+	motionFPS := 2
+	cameras := []config.CameraConfig{{
+		ID: "cam1",
+		Motion: &config.MotionConfig{Enabled: true, Threshold: threshold03, FPS: motionFPS},
+	}}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil)
 	srv = withTestUsersAndCameras(t, srv, cameras)
 
 	token := loginAndGetToken(t, srv, "u", "p")
@@ -1087,12 +1090,12 @@ func TestCamerasIncludesMotionThreshold(t *testing.T) {
 	if len(list) != 1 {
 		t.Fatalf("expected 1 camera, got %d", len(list))
 	}
-	threshold, ok := list[0]["motion_threshold"].(float64)
+	got, ok := list[0]["motion_threshold"].(float64)
 	if !ok {
 		t.Fatalf("expected motion_threshold field, got %v", list[0])
 	}
-	if threshold != 0.03 {
-		t.Errorf("expected threshold 0.03, got %v", threshold)
+	if got != threshold03 {
+		t.Errorf("expected threshold 0.03, got %v", got)
 	}
 }
 
@@ -1113,10 +1116,8 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 	}
 	serverCfg := config.ServerConfig{Port: 8080, HLSDVRSeconds: 30}
 	storageCfg := config.StorageConfig{Path: "/data", Retention: config.RetentionConfig{WithMotionMinutes: 10080, WithoutMotionMinutes: 1440}, MaxSizeGB: 10, WarnPercent: 80}
-	motionCfg := config.MotionConfig{Enabled: true, Threshold: 0.02, FPS: 2, CooldownSeconds: 30}
 	srv := server.NewServer(serverCfg, "America/Sao_Paulo", cameras, discardLogger(), nil).
-		WithStorageConfig(storageCfg).
-		WithMotionConfig(motionCfg)
+		WithStorageConfig(storageCfg)
 	srv = withTestUsersAndCameras(t, srv, cameras)
 
 	token := loginAndGetToken(t, srv, "admin", "pw")
@@ -1142,12 +1143,6 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 			MaxSizeGB            float64 `json:"max_size_gb"`
 			WarnPercent          float64 `json:"warn_percent"`
 		} `json:"storage"`
-		Motion struct {
-			Enabled         bool    `json:"enabled"`
-			Threshold       float64 `json:"threshold"`
-			FPS             int     `json:"fps"`
-			CooldownSeconds int     `json:"cooldown_seconds"`
-		} `json:"motion"`
 		Defaults struct {
 			ChunkDuration     string `json:"chunk_duration"`
 			ReconnectInterval string `json:"reconnect_interval"`
@@ -1177,9 +1172,6 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 	}
 	if resp.Storage.WithoutMotionMinutes != 1440 {
 		t.Errorf("expected without_motion_minutes 1440, got %d", resp.Storage.WithoutMotionMinutes)
-	}
-	if resp.Motion.Threshold != 0.02 {
-		t.Errorf("expected threshold 0.02, got %f", resp.Motion.Threshold)
 	}
 	if resp.Defaults.ChunkDuration != "5m" {
 		t.Errorf("expected chunk_duration 5m, got %q", resp.Defaults.ChunkDuration)

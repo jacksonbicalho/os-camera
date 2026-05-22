@@ -51,7 +51,6 @@ export interface Settings {
     max_size_gb: number
     warn_percent: number
   }
-  motion: MotionSettings
   defaults: {
     chunk_duration: string
     reconnect_interval: string

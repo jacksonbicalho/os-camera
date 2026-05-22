@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { getUsername, authHeaders } from '../auth'
-import Header from './Header'
+import Sidebar from './Sidebar'
 
 interface AppLayoutProps {
   children: ReactNode
   mainClassName?: string
+  fill?: boolean
 }
 
 interface AboutInfo {
@@ -35,7 +36,7 @@ function formatBuiltAt(builtAt: string): string {
   }
 }
 
-export default function AppLayout({ children, mainClassName = '' }: AppLayoutProps) {
+export default function AppLayout({ children, mainClassName = '', fill = false }: AppLayoutProps) {
   const [about, setAbout] = useState<AboutInfo | null>(null)
 
   useEffect(() => {
@@ -46,14 +47,16 @@ export default function AppLayout({ children, mainClassName = '' }: AppLayoutPro
   }, [])
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-950">
-      <Header username={getUsername() ?? undefined} />
-      <main className={`flex-1 p-6 ${mainClassName}`.trim()}>{children}</main>
-      {about && (
-        <footer className="py-3 text-center text-xs text-gray-500 border-t border-gray-800/50">
-          {about.version} · build: {formatBuiltAt(about.built_at)} · online {formatUptime(about.uptime_seconds)} · {about.go_version}
-        </footer>
-      )}
+    <div className="flex h-screen overflow-hidden bg-gray-950">
+      <Sidebar username={getUsername() ?? undefined} />
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <main className={`${fill ? 'flex-1 min-h-0 overflow-hidden' : 'flex-1 overflow-y-auto p-6'} ${mainClassName}`.trim()}>{children}</main>
+        {about && (
+          <footer className="flex-none py-2 px-4 text-xs text-gray-500 border-t border-gray-800/50">
+            {about.version} · build: {formatBuiltAt(about.built_at)} · online {formatUptime(about.uptime_seconds)} · {about.go_version}
+          </footer>
+        )}
+      </div>
     </div>
   )
 }
