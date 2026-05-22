@@ -203,7 +203,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
     navigate("/login")
   }
 
-  const { items } = useSidebarItems()
+  const items = useSidebarItems()
 
   return (
     <aside className="w-14 flex-none flex flex-col bg-gray-900 border-r border-gray-800">

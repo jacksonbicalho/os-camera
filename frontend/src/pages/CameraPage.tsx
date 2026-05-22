@@ -18,7 +18,7 @@ import { mergeRecordings } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import { useNotifications } from '../contexts/NotificationContext'
-import { useSidebarItems } from '../contexts/SidebarContext'
+import { useSetSidebarItems } from '../contexts/SidebarContext'
 import type { HLSStats } from '../components/HLSPlayer'
 
 interface RecordingsResponse {
@@ -426,7 +426,7 @@ export default function CameraPage() {
   const { settings } = useSettings(`/cameras/${id}`)
   const motionPeak = useMotionPeak(id, `/cameras/${id}`)
   const { markRead } = useNotifications()
-  const { setItems } = useSidebarItems()
+  const setItems = useSetSidebarItems()
   const cam = settings?.cameras.find(c => c.id === id)
   const effectiveThreshold = cam?.motion?.threshold ?? 0
 
@@ -589,9 +589,10 @@ export default function CameraPage() {
       },
     ])
     return () => setItems([])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setItems, isLive, videoMuted, playbackRate, continuousPlay, browserMaxRate, activePanel,
       recordings.length, recordingsTotal, motionEvents.length, isToday, selectedDate,
-      showDebug, id, handleRateChange, toggleFullscreen])
+      showDebug, id])
 
   function formatRecTime(s: number): string {
     if (!isFinite(s) || isNaN(s)) return '0:00'
@@ -938,16 +939,6 @@ function toggleFullscreen() {
 
           </div>
 
-          <VerticalTimeline
-            recordings={recordings}
-            motionEvents={motionEvents}
-            activeRecording={activeRecording}
-            activeTime={activeEventTime ?? activeRecording?.start ?? null}
-            timezone={timezone}
-            onSeek={handleTimelineSeek}
-            maxHeight={playerHeight}
-          />
-
           {/* Painel lateral condicional */}
           {activePanel && (
             <div className="w-72 shrink-0 border-l border-gray-800 bg-gray-900 flex flex-col overflow-y-auto h-full">
@@ -1114,6 +1105,16 @@ function toggleFullscreen() {
               )}
             </div>
           )}
+
+          <VerticalTimeline
+            recordings={recordings}
+            motionEvents={motionEvents}
+            activeRecording={activeRecording}
+            activeTime={activeEventTime ?? activeRecording?.start ?? null}
+            timezone={timezone}
+            onSeek={handleTimelineSeek}
+            maxHeight={playerHeight}
+          />
         </div>
 
       {snapshotEvent && snapshotEvent.frame && (

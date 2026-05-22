@@ -6,24 +6,26 @@ export type SidebarItem =
   | { type: 'link';   id: string; icon: React.ReactNode; title: string; to: string; state?: object }
   | { type: 'separator'; id: string }
 
-interface SidebarContextValue {
-  items: SidebarItem[]
-  setItems: (items: SidebarItem[]) => void
-}
-
-const SidebarContext = createContext<SidebarContextValue | null>(null)
+const SidebarItemsContext = createContext<SidebarItem[]>([])
+const SetSidebarItemsContext = createContext<(items: SidebarItem[]) => void>(() => {})
 
 export function SidebarItemsProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<SidebarItem[]>([])
   return (
-    <SidebarContext.Provider value={{ items, setItems }}>
-      {children}
-    </SidebarContext.Provider>
+    <SetSidebarItemsContext.Provider value={setItems}>
+      <SidebarItemsContext.Provider value={items}>
+        {children}
+      </SidebarItemsContext.Provider>
+    </SetSidebarItemsContext.Provider>
   )
 }
 
-export function useSidebarItems(): SidebarContextValue {
-  const ctx = useContext(SidebarContext)
-  if (!ctx) throw new Error('useSidebarItems must be used inside SidebarItemsProvider')
-  return ctx
+/** Read sidebar items — use in Sidebar only (re-renders on every items change). */
+export function useSidebarItems(): SidebarItem[] {
+  return useContext(SidebarItemsContext)
+}
+
+/** Set sidebar items — stable reference, never causes re-renders in the caller. */
+export function useSetSidebarItems(): (items: SidebarItem[]) => void {
+  return useContext(SetSidebarItemsContext)
 }
