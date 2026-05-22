@@ -1113,17 +1113,15 @@ function toggleFullscreen() {
             </div>
           )}
 
-          {!activePanel && (
-            <VerticalTimeline
-              recordings={recordings}
-              motionEvents={motionEvents}
-              activeRecording={activeRecording}
-              activeTime={activeEventTime ?? activeRecording?.start ?? null}
-              timezone={timezone}
-              onSeek={handleTimelineSeek}
-              maxHeight={playerHeight}
-            />
-          )}
+          <VerticalTimeline
+            recordings={recordings}
+            motionEvents={motionEvents}
+            activeRecording={activeRecording}
+            activeTime={activeEventTime ?? activeRecording?.start ?? null}
+            timezone={timezone}
+            onSeek={handleTimelineSeek}
+            maxHeight={playerHeight}
+          />
         </div>
 
       {snapshotEvent && snapshotEvent.frame && (
