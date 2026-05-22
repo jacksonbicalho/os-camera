@@ -4,7 +4,7 @@ import SettingsLayout from '../../components/SettingsLayout'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import CameraForm from '../../components/CameraForm'
 import { type Camera, type CameraFormData, formToPayload } from '../../components/cameraFormUtils'
-import { authHeaders, clearToken, getRole } from '../../auth'
+import { authHeaders, clearToken, getRole, getToken } from '../../auth'
 
 export default function CamerasSettingsPage() {
   const navigate = useNavigate()
@@ -84,10 +84,18 @@ export default function CamerasSettingsPage() {
               <Link
                 key={cam.id}
                 to={`/settings/cameras/${cam.id}`}
-                className="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-lg px-5 py-4 hover:border-blue-600 transition-colors"
+                className="flex items-center gap-4 bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 hover:border-blue-600 transition-colors"
               >
-                <span className="text-sm font-mono text-gray-200">{cam.id}</span>
-                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-24 h-14 shrink-0 rounded overflow-hidden bg-gray-800">
+                  <img
+                    src={`/api/cameras/${cam.id}/snapshot?token=${getToken()}`}
+                    alt={cam.name || cam.id}
+                    className="w-full h-full object-cover"
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                  />
+                </div>
+                <span className="flex-1 text-sm font-mono text-gray-200 truncate">{cam.name || cam.id}</span>
+                <svg className="w-4 h-4 text-gray-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </Link>
@@ -143,8 +151,16 @@ export default function CamerasSettingsPage() {
       ) : (
         <div className="flex flex-col gap-2">
           {cameras.map(cam => (
-            <div key={cam.id} className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
-              <div className="flex items-center justify-between gap-3">
+            <div key={cam.id} className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 flex items-center gap-4">
+              <div className="w-24 h-14 shrink-0 rounded overflow-hidden bg-gray-800">
+                <img
+                  src={`/api/cameras/${cam.id}/snapshot?token=${getToken()}`}
+                  alt={cam.name || cam.id}
+                  className="w-full h-full object-cover"
+                  onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                />
+              </div>
+              <div className="flex-1 flex items-center justify-between gap-3 min-w-0">
                 <div className="flex items-center gap-3 min-w-0">
                   <Link
                     to={`/settings/cameras/${cam.id}`}
