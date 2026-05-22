@@ -1,11 +1,14 @@
 package streaming_test
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"camera/internal/config"
 	"camera/internal/exec"
@@ -30,6 +33,18 @@ type trackingProcess struct {
 func (p *trackingProcess) Terminate() error { p.terminated = true; return nil }
 func (p *trackingProcess) Wait() error      { p.waited = true; return nil }
 
+type blockingProcess struct {
+	done sync.Once
+	ch   chan struct{}
+}
+
+func newBlockingProcess() *blockingProcess { return &blockingProcess{ch: make(chan struct{})} }
+func (p *blockingProcess) Terminate() error {
+	p.done.Do(func() { close(p.ch) })
+	return nil
+}
+func (p *blockingProcess) Wait() error { <-p.ch; return nil }
+
 type fakeCommander struct {
 	calls   [][]string
 	process exec.Process
@@ -41,6 +56,33 @@ func (f *fakeCommander) Start(name string, args ...string) (exec.Process, error)
 		return f.process, nil
 	}
 	return &fakeProcess{}, nil
+}
+
+type countingCommander struct {
+	mu        sync.Mutex
+	count     int
+	threshold int
+	reached   chan struct{}
+	onStart   func(n int) exec.Process
+}
+
+func newCountingCommander(threshold int, onStart func(n int) exec.Process) *countingCommander {
+	return &countingCommander{threshold: threshold, reached: make(chan struct{}), onStart: onStart}
+}
+
+func (c *countingCommander) Start(name string, args ...string) (exec.Process, error) {
+	c.mu.Lock()
+	c.count++
+	n := c.count
+	if n >= c.threshold {
+		select {
+		case <-c.reached:
+		default:
+			close(c.reached)
+		}
+	}
+	c.mu.Unlock()
+	return c.onStart(n), nil
 }
 
 func containsSequence(haystack []string, key, value string) bool {
@@ -461,5 +503,56 @@ func TestHLSStreamerNilFieldsUseDefaults(t *testing.T) {
 	}
 	if !containsSequence(args, "-hls_list_size", "5") {
 		t.Errorf("expected default -hls_list_size 5, got args: %v", args)
+	}
+}
+
+func TestHLSStreamerRunRestartsAfterUnexpectedExit(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://192.168.1.10:554/stream"}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
+
+	// fakeProcess.Wait() returns immediately — simulates ffmpeg dying right away.
+	cmd := newCountingCommander(3, func(n int) exec.Process { return &fakeProcess{} })
+
+	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.Run(ctx, time.Millisecond)
+	}()
+
+	select {
+	case <-cmd.reached:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected HLS streamer to restart at least 3 times within 2s")
+	}
+	cancel()
+	<-done
+}
+
+func TestHLSStreamerRunStopsOnContextCancel(t *testing.T) {
+	tmpDir := t.TempDir()
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://192.168.1.10:554/stream"}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
+
+	proc := newBlockingProcess()
+	cmd := &fakeCommander{process: proc}
+
+	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.Run(ctx, time.Second)
+	}()
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after context cancel")
 	}
 }

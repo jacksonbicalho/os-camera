@@ -8,7 +8,7 @@ OUTDIR  := dist
 .PHONY: all frontend build \
         linux-amd64 linux-arm64 linux-arm windows-amd64 \
         rpi \
-        run clean
+        run test build-check clean
 
 # ── Releases ────────────────────────────────────────────────────────────────
 
@@ -38,7 +38,14 @@ frontend:
 	cd frontend && yarn install --frozen-lockfile && yarn build
 
 run:
+	mkdir -p storage
 	UID=$(shell id -u) GID=$(shell id -g) VERSION=$(VERSION) docker compose --profile development up camera-dev --build
+
+test:
+	UID=$(shell id -u) GID=$(shell id -g) docker compose --profile development run --rm camera-dev go test ./...
+
+build-check:
+	UID=$(shell id -u) GID=$(shell id -g) docker compose --profile development run --rm camera-dev go build ./...
 
 # ── Utilitários ─────────────────────────────────────────────────────────────
 
