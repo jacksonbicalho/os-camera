@@ -426,14 +426,6 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             <div className="absolute left-full bottom-0 ml-2 w-44 bg-gray-800 border border-gray-700 rounded shadow-lg z-50">
               <div className="px-4 py-2 text-xs text-gray-500 border-b border-gray-700 truncate">{username}</div>
               <Link
-                to="/settings/stats"
-                onClick={() => setUserOpen(false)}
-                className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
-              >
-                Configurações
-              </Link>
-              <div className="border-t border-gray-700" />
-              <Link
                 to="/change-password"
                 onClick={() => setUserOpen(false)}
                 className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
