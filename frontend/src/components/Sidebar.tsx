@@ -92,10 +92,11 @@ function SidebarInjectedItem({ item }: { item: SidebarItem }) {
     return <div className="w-8 border-t border-gray-700 my-1" />
   }
   const base = `relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors`
-  const activeClass = item.active ? "bg-gray-800 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"
+  const isActive = item.type === 'button' && item.active
+  const activeClass = isActive ? "bg-gray-800 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"
   const disabledClass = (item.type === 'button' && item.disabled) ? "opacity-40 cursor-not-allowed" : ""
 
-  const badge = item.type !== 'separator' && 'badge' in item && item.badge != null ? (
+  const badge = 'badge' in item && item.badge != null ? (
     <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
       {item.badge}
     </span>

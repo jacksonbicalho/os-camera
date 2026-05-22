@@ -458,6 +458,8 @@ export default function CameraPage() {
   })()
 
 
+  const isLive = activeRecording === null
+
   // Inject camera controls into the left sidebar
   useEffect(() => {
     const speeds = [1, 2, 4, 8, 16, 32].filter(v => browserMaxRate === null || v <= browserMaxRate)
@@ -636,7 +638,6 @@ function toggleFullscreen() {
   }
 
   const liveUrl = `/stream/${id}/index.m3u8`
-  const isLive = activeRecording === null
 
   // Aplica seek pendente no HLS quando o player monta (troca de MP4 → live)
   useEffect(() => {
