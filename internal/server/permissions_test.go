@@ -35,7 +35,7 @@ func setupRolesServer(t *testing.T) (http.Handler, string, string) {
 		{ID: "cam2", RTSPURL: "rtsp://fake2"},
 	}
 	for _, cam := range cameras {
-		if err := db.CreateCamera(database, cam, nil); err != nil {
+		if _, err := db.CreateCamera(database, cam, nil); err != nil {
 			t.Fatalf("seed camera %q: %v", cam.ID, err)
 		}
 	}

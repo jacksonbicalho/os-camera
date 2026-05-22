@@ -9,6 +9,7 @@ export interface MotionConfig {
 }
 
 export interface Camera {
+  name: string
   id: string
   rtsp_url: string
   chunk_duration: string
@@ -26,7 +27,7 @@ export interface Camera {
 }
 
 export interface CameraFormData {
-  id: string
+  name: string
   rtsp_url: string
   chunk_duration: string
   reconnect_interval: string
@@ -79,7 +80,8 @@ function capturePct(capW: number, streamW: number): number {
 export function emptyForm(cam?: Camera): CameraFormData {
   if (!cam) {
     return {
-      id: '', rtsp_url: '', chunk_duration: '5m', reconnect_interval: '30s',
+      name: '',
+      rtsp_url: '', chunk_duration: '5m', reconnect_interval: '30s',
       video_codec: '', has_audio: '', resolution: '0x0', display_order: '0',
       hls_video_mode: 'auto',
       record_video_mode: 'auto',
@@ -92,7 +94,7 @@ export function emptyForm(cam?: Camera): CameraFormData {
   const capW = cam.motion?.capture_width ?? 0
   const auto = capW === 0
   return {
-    id: cam.id,
+    name: cam.name ?? '',
     rtsp_url: cam.rtsp_url,
     chunk_duration: cam.chunk_duration,
     reconnect_interval: cam.reconnect_interval,
@@ -116,9 +118,10 @@ export function emptyForm(cam?: Camera): CameraFormData {
   }
 }
 
-export function formToPayload(f: CameraFormData, includeID = true) {
+export function formToPayload(f: CameraFormData) {
   const { width, height } = decodeResolution(f.resolution)
   const payload: Record<string, unknown> = {
+    name: f.name,
     rtsp_url: f.rtsp_url,
     chunk_duration: f.chunk_duration || '5m',
     reconnect_interval: f.reconnect_interval || '30s',
@@ -141,6 +144,5 @@ export function formToPayload(f: CameraFormData, includeID = true) {
       playback_lead_seconds: parseInt(f.motion_playback_lead) || 10,
     },
   }
-  if (includeID) payload.id = f.id
   return payload
 }

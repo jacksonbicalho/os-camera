@@ -45,7 +45,7 @@ export default function CamerasSettingsPage() {
       const res = await fetch('/api/settings/cameras', {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(formToPayload(data, true)),
+        body: JSON.stringify(formToPayload(data)),
       })
       if (!res.ok) { setError((await res.text()).trim() || 'Erro ao criar câmera'); return }
       if (isNewRoute) {
@@ -150,11 +150,8 @@ export default function CamerasSettingsPage() {
                     to={`/settings/cameras/${cam.id}`}
                     className="text-sm font-mono text-gray-200 hover:text-blue-400 transition-colors truncate"
                   >
-                    {cam.id}
+                    {cam.name || cam.id}
                   </Link>
-                  <span className="text-xs text-gray-600 truncate hidden sm:block">
-                    {cam.rtsp_url.replace(/:[^:@]+@/, ':***@')}
-                  </span>
                   {cam.motion?.enabled && (
                     <span className="px-2 py-0.5 text-xs rounded-full bg-green-900/40 text-green-400 border border-green-700/40 shrink-0">
                       motion
@@ -164,6 +161,7 @@ export default function CamerasSettingsPage() {
                 <div className="flex items-center gap-1 shrink-0">
                   <Link
                     to={`/settings/cameras/${cam.id}`}
+                    state={{ editing: true }}
                     className="px-3 py-1 text-xs text-gray-400 hover:text-white border border-gray-700 rounded transition-colors"
                   >
                     Editar

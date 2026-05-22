@@ -9,7 +9,9 @@ import (
 
 func TestGetZonesEmptyByDefault(t *testing.T) {
 	database := openTestDB(t)
-	if err := db.CreateCamera(database, makeCamera("cam1"), nil); err != nil {
+	c := makeCamera("cam1")
+	c.ID = "cam1"
+	if _, err := db.CreateCamera(database, c, nil); err != nil {
 		t.Fatal(err)
 	}
 	got, err := db.GetZones(database, "cam1")
@@ -23,7 +25,9 @@ func TestGetZonesEmptyByDefault(t *testing.T) {
 
 func TestSetAndGetZones(t *testing.T) {
 	database := openTestDB(t)
-	if err := db.CreateCamera(database, makeCamera("cam1"), nil); err != nil {
+	c := makeCamera("cam1")
+	c.ID = "cam1"
+	if _, err := db.CreateCamera(database, c, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -52,7 +56,9 @@ func TestSetAndGetZones(t *testing.T) {
 
 func TestSetZonesReplacesExisting(t *testing.T) {
 	database := openTestDB(t)
-	if err := db.CreateCamera(database, makeCamera("cam1"), nil); err != nil {
+	c := makeCamera("cam1")
+	c.ID = "cam1"
+	if _, err := db.CreateCamera(database, c, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -69,7 +75,9 @@ func TestSetZonesReplacesExisting(t *testing.T) {
 
 func TestSetZonesNormalizesEmptyType(t *testing.T) {
 	database := openTestDB(t)
-	if err := db.CreateCamera(database, makeCamera("cam1"), nil); err != nil {
+	c := makeCamera("cam1")
+	c.ID = "cam1"
+	if _, err := db.CreateCamera(database, c, nil); err != nil {
 		t.Fatal(err)
 	}
 

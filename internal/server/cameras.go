@@ -63,6 +63,7 @@ type motionConfigDTO struct {
 
 type cameraConfigDTO struct {
 	ID                string           `json:"id"`
+	Name              string           `json:"name"`
 	RTSPURL           string           `json:"rtsp_url"`
 	ChunkDuration     string           `json:"chunk_duration"`
 	ReconnectInterval string           `json:"reconnect_interval"`
@@ -81,6 +82,7 @@ type cameraConfigDTO struct {
 func cameraToDTO(cam config.CameraConfig) cameraConfigDTO {
 	dto := cameraConfigDTO{
 		ID:                cam.ID,
+		Name:              cam.Name,
 		RTSPURL:           cam.RTSPURL,
 		ChunkDuration:     formatDuration(cam.EffectiveChunkDuration()),
 		ReconnectInterval: formatDuration(cam.EffectiveReconnectInterval()),
@@ -138,7 +140,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		ID                string           `json:"id"`
+		Name              string           `json:"name"`
 		RTSPURL           string           `json:"rtsp_url"`
 		ChunkDuration     string           `json:"chunk_duration"`
 		ReconnectInterval string           `json:"reconnect_interval"`
@@ -157,8 +159,8 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	if req.ID == "" || req.RTSPURL == "" {
-		http.Error(w, "id and rtsp_url are required", http.StatusBadRequest)
+	if req.Name == "" || req.RTSPURL == "" {
+		http.Error(w, "name and rtsp_url are required", http.StatusBadRequest)
 		return
 	}
 	if req.Motion != nil {
@@ -169,7 +171,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cam := config.CameraConfig{
-		ID:                req.ID,
+		Name:              req.Name,
 		RTSPURL:           req.RTSPURL,
 		VideoCodec:        req.VideoCodec,
 		HasAudio:          req.HasAudio,
@@ -221,22 +223,13 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := db.CreateCamera(s.db, cam, motion); err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-			http.Error(w, "camera id already exists", http.StatusConflict)
-			return
-		}
+	created, err := db.CreateCamera(s.db, cam, motion)
+	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
 	s.reloadCamerasFromDB()
-
-	created, err := db.GetCamera(s.db, req.ID)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
 
 	if s.onCameraStart != nil {
 		go s.onCameraStart(created)
@@ -456,9 +449,9 @@ func (s *Server) handleCameraStats(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"total_bytes":          totalBytes,
-		"total_chunks":         totalChunks,
-		"total_seconds":        totalSeconds,
-		"total_motion_events":  motionCount,
+		"total_bytes":         totalBytes,
+		"total_chunks":        totalChunks,
+		"total_seconds":       totalSeconds,
+		"total_motion_events": motionCount,
 	})
 }

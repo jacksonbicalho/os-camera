@@ -6,6 +6,7 @@ import HLSPlayer from '../components/HLSPlayer'
 
 interface Camera {
   id: string
+  name: string
 }
 
 export default function DashboardPage() {
@@ -52,7 +53,7 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <div className="px-3 py-2">
-                  <p className="text-sm font-medium text-gray-200 group-hover:text-white">{cam.id}</p>
+                  <p className="text-sm font-medium text-gray-200 group-hover:text-white">{cam.name}</p>
                 </div>
               </button>
             ))}

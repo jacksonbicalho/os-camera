@@ -58,18 +58,18 @@ func TestInitWizardDefaultInputs(t *testing.T) {
 
 func TestInitWizardCustomValues(t *testing.T) {
 	lines := []string{
-		"9000",          // port
+		"9000",           // port
 		"/var/camera.db", // db_path
-		"/var/hls",      // segments_path
-		"1200",          // hls_dvr
-		"/mnt/cams",     // storage path
-		"10080",         // with_motion_minutes
-		"2880",          // without_motion_minutes
-		"50",            // max_size_gb
-		"80",            // warn_percent
+		"/var/hls",       // segments_path
+		"1200",           // hls_dvr
+		"/mnt/cams",      // storage path
+		"10080",          // with_motion_minutes
+		"2880",           // without_motion_minutes
+		"50",             // max_size_gb
+		"80",             // warn_percent
 		"America/Recife", // timezone
-		"master",        // admin username
-		"s3cr3t!",       // admin password (has special char)
+		"master",         // admin username
+		"s3cr3t!",        // admin password (has special char)
 	}
 	input := strings.Join(lines, "\n") + "\n"
 

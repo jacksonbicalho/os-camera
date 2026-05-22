@@ -8,6 +8,7 @@ import (
 	"camera/internal/config"
 	"camera/internal/db"
 	"camera/internal/server"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -55,7 +56,7 @@ func withTestUsersAndCameras(t *testing.T, srv *server.Server, cameras []config.
 		}
 	}
 	for _, cam := range cameras {
-		if err := db.CreateCamera(database, cam, cam.Motion); err != nil {
+		if _, err := db.CreateCamera(database, cam, cam.Motion); err != nil {
 			t.Fatalf("seed test camera %q: %v", cam.ID, err)
 		}
 	}

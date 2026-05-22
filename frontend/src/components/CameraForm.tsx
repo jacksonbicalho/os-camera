@@ -10,7 +10,7 @@ interface CameraFormProps {
 
 export default function CameraForm({ initial, onSave, onCancel, saving }: CameraFormProps) {
   const [form, setForm] = useState<CameraFormData>(() => emptyForm(initial))
-  const isEdit = !!initial
+  // editing mode when `initial` is provided
 
   const set = (field: keyof CameraFormData, value: string | boolean | number) =>
     setForm(prev => ({ ...prev, [field]: value }))
@@ -35,13 +35,13 @@ export default function CameraForm({ initial, onSave, onCancel, saving }: Camera
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className={labelClass}>ID</label>
+          <label className={labelClass}>Nome</label>
           <input
-            value={form.id}
-            onChange={e => set('id', e.target.value)}
-            disabled={isEdit}
+            value={form.name}
+            onChange={e => set('name', e.target.value)}
             required
-            className={`${inputClass} ${isEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={inputClass}
+            placeholder="Sala, Garagem, Entrada"
           />
         </div>
         <div className="sm:col-span-1">

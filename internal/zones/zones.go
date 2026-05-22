@@ -5,7 +5,7 @@ type Zone struct {
 	Y               float64 `json:"y"`
 	W               float64 `json:"w"`
 	H               float64 `json:"h"`
-	Type            string  `json:"type,omitempty"`             // "exclude" | "detect"; "" → "exclude"
+	Type            string  `json:"type,omitempty"` // "exclude" | "detect"; "" → "exclude"
 	Label           string  `json:"label,omitempty"`
 	Threshold       float64 `json:"threshold,omitempty"`        // 0 = herdado da câmera
 	CooldownSeconds int     `json:"cooldown_seconds,omitempty"` // 0 = herdado
@@ -19,4 +19,3 @@ type Zone struct {
 func (z Zone) IsExclude() bool {
 	return z.Type == "" || z.Type == "exclude"
 }
-

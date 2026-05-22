@@ -8,32 +8,64 @@ import (
 	"camera/internal/db"
 )
 
-func makeCamera(id string) config.CameraConfig {
+func makeCamera(name string) config.CameraConfig {
 	dur5m := config.Duration(5 * time.Minute)
 	dur30s := config.Duration(30 * time.Second)
 	return config.CameraConfig{
-		ID:                id,
-		RTSPURL:           "rtsp://localhost/" + id,
+		Name:              name,
+		RTSPURL:           "rtsp://localhost/" + name,
 		ChunkDuration:     dur5m,
 		ReconnectInterval: dur30s,
 		DisplayOrder:      0,
 	}
 }
 
+func TestCreateCamera_GeneratesUUID(t *testing.T) {
+	database := openTestDB(t)
+	created, err := db.CreateCamera(database, makeCamera("portão"), nil)
+	if err != nil {
+		t.Fatalf("CreateCamera: %v", err)
+	}
+	if created.ID == "" {
+		t.Error("expected non-empty ID")
+	}
+	if created.ID == "portão" {
+		t.Error("ID should not equal Name")
+	}
+	if created.Name != "portão" {
+		t.Errorf("Name: got %q, want %q", created.Name, "portão")
+	}
+}
+
+func TestCreateCamera_SameNameDifferentIDs(t *testing.T) {
+	database := openTestDB(t)
+	c1, err := db.CreateCamera(database, config.CameraConfig{Name: "portão", RTSPURL: "rtsp://host/1"}, nil)
+	if err != nil {
+		t.Fatalf("CreateCamera 1: %v", err)
+	}
+	c2, err := db.CreateCamera(database, config.CameraConfig{Name: "portão", RTSPURL: "rtsp://host/2"}, nil)
+	if err != nil {
+		t.Fatalf("CreateCamera 2: %v", err)
+	}
+	if c1.ID == c2.ID {
+		t.Error("expected different IDs for cameras with same name")
+	}
+}
+
 func TestCreateAndGetCamera(t *testing.T) {
 	database := openTestDB(t)
 
-	cam := makeCamera("entrada")
-	if err := db.CreateCamera(database, cam, nil); err != nil {
+	cam, err := db.CreateCamera(database, makeCamera("entrada"), nil)
+	if err != nil {
 		t.Fatalf("CreateCamera: %v", err)
 	}
 
-	got, err := db.GetCamera(database, "entrada")
+	got, err := db.GetCamera(database, cam.ID)
 	if err != nil {
 		t.Fatalf("GetCamera: %v", err)
 	}
-	if got.ID != "entrada" {
-		t.Errorf("id: got %q, want %q", got.ID, "entrada")
+	if got.Name != "entrada" {
+		t.Errorf("name: got %q, want %q", got.Name, "entrada")
 	}
 	if got.RTSPURL != "rtsp://localhost/entrada" {
 		t.Errorf("rtsp_url: got %q, want %q", got.RTSPURL, "rtsp://localhost/entrada")
@@ -43,9 +75,9 @@ func TestCreateAndGetCamera(t *testing.T) {
 func TestListCameras(t *testing.T) {
 	database := openTestDB(t)
 
-	for _, id := range []string{"cam1", "cam2", "cam3"} {
-		if err := db.CreateCamera(database, makeCamera(id), nil); err != nil {
-			t.Fatalf("CreateCamera %s: %v", id, err)
+	for _, name := range []string{"cam1", "cam2", "cam3"} {
+		if _, err := db.CreateCamera(database, makeCamera(name), nil); err != nil {
+			t.Fatalf("CreateCamera %s: %v", name, err)
 		}
 	}
 
@@ -61,11 +93,12 @@ func TestListCameras(t *testing.T) {
 func TestUpdateCamera(t *testing.T) {
 	database := openTestDB(t)
 
-	if err := db.CreateCamera(database, makeCamera("cam"), nil); err != nil {
+	cam, err := db.CreateCamera(database, makeCamera("cam"), nil)
+	if err != nil {
 		t.Fatalf("CreateCamera: %v", err)
 	}
 
-	updated := makeCamera("cam")
+	updated := cam
 	updated.RTSPURL = "rtsp://novo/cam"
 	updated.DisplayOrder = 5
 
@@ -73,7 +106,7 @@ func TestUpdateCamera(t *testing.T) {
 		t.Fatalf("UpdateCamera: %v", err)
 	}
 
-	got, _ := db.GetCamera(database, "cam")
+	got, _ := db.GetCamera(database, cam.ID)
 	if got.RTSPURL != "rtsp://novo/cam" {
 		t.Errorf("rtsp_url: got %q, want %q", got.RTSPURL, "rtsp://novo/cam")
 	}
@@ -85,15 +118,16 @@ func TestUpdateCamera(t *testing.T) {
 func TestDeleteCamera(t *testing.T) {
 	database := openTestDB(t)
 
-	if err := db.CreateCamera(database, makeCamera("cam"), nil); err != nil {
+	cam, err := db.CreateCamera(database, makeCamera("cam"), nil)
+	if err != nil {
 		t.Fatalf("CreateCamera: %v", err)
 	}
 
-	if err := db.DeleteCamera(database, "cam"); err != nil {
+	if err := db.DeleteCamera(database, cam.ID); err != nil {
 		t.Fatalf("DeleteCamera: %v", err)
 	}
 
-	_, err := db.GetCamera(database, "cam")
+	_, err = db.GetCamera(database, cam.ID)
 	if err == nil {
 		t.Error("esperava erro ao buscar câmera deletada")
 	}
@@ -102,17 +136,17 @@ func TestDeleteCamera(t *testing.T) {
 func TestUpdateCameraStreamInfo(t *testing.T) {
 	database := openTestDB(t)
 
-	// Camera criada sem valores de stream (tudo "auto")
-	if err := db.CreateCamera(database, makeCamera("cam"), nil); err != nil {
+	cam, err := db.CreateCamera(database, makeCamera("cam"), nil)
+	if err != nil {
 		t.Fatalf("CreateCamera: %v", err)
 	}
 
 	hasAudio := true
-	if err := db.UpdateCameraStreamInfo(database, "cam", "h264", &hasAudio, 1920, 1080); err != nil {
+	if err := db.UpdateCameraStreamInfo(database, cam.ID, "h264", &hasAudio, 1920, 1080); err != nil {
 		t.Fatalf("UpdateCameraStreamInfo: %v", err)
 	}
 
-	got, err := db.GetCamera(database, "cam")
+	got, err := db.GetCamera(database, cam.ID)
 	if err != nil {
 		t.Fatalf("GetCamera: %v", err)
 	}
@@ -133,23 +167,23 @@ func TestUpdateCameraStreamInfo(t *testing.T) {
 func TestUpdateCameraStreamInfo_SkipsZeroValues(t *testing.T) {
 	database := openTestDB(t)
 
-	// Camera criada com codec e resolução explícitos
-	cam := makeCamera("cam")
-	cam.VideoCodec = "hevc"
-	cam.Width = 2560
-	cam.Height = 1440
+	baseCam := makeCamera("cam")
+	baseCam.VideoCodec = "hevc"
+	baseCam.Width = 2560
+	baseCam.Height = 1440
 	hasAudio := false
-	cam.HasAudio = &hasAudio
-	if err := db.CreateCamera(database, cam, nil); err != nil {
+	baseCam.HasAudio = &hasAudio
+
+	cam, err := db.CreateCamera(database, baseCam, nil)
+	if err != nil {
 		t.Fatalf("CreateCamera: %v", err)
 	}
 
-	// Probe retornou valores zerados (falhou) — não deve sobrescrever
-	if err := db.UpdateCameraStreamInfo(database, "cam", "", nil, 0, 0); err != nil {
+	if err := db.UpdateCameraStreamInfo(database, cam.ID, "", nil, 0, 0); err != nil {
 		t.Fatalf("UpdateCameraStreamInfo: %v", err)
 	}
 
-	got, err := db.GetCamera(database, "cam")
+	got, err := db.GetCamera(database, cam.ID)
 	if err != nil {
 		t.Fatalf("GetCamera: %v", err)
 	}
@@ -171,7 +205,7 @@ func TestListCameras_IncludesCaptureResolution(t *testing.T) {
 		CaptureWidth:  960,
 		CaptureHeight: 540,
 	}
-	if err := db.CreateCamera(database, makeCamera("cam"), motion); err != nil {
+	if _, err := db.CreateCamera(database, makeCamera("cam"), motion); err != nil {
 		t.Fatalf("CreateCamera: %v", err)
 	}
 
@@ -200,11 +234,12 @@ func TestCreateCamera_WithMotion(t *testing.T) {
 		CooldownSeconds: 60,
 	}
 
-	if err := db.CreateCamera(database, makeCamera("cam-m"), motion); err != nil {
+	cam, err := db.CreateCamera(database, makeCamera("cam-m"), motion)
+	if err != nil {
 		t.Fatalf("CreateCamera com motion: %v", err)
 	}
 
-	got, err := db.GetCamera(database, "cam-m")
+	got, err := db.GetCamera(database, cam.ID)
 	if err != nil {
 		t.Fatalf("GetCamera: %v", err)
 	}
@@ -223,15 +258,16 @@ func TestMotionConfig_PlaybackLeadSeconds(t *testing.T) {
 	database := openTestDB(t)
 
 	motion := &config.MotionConfig{
-		Enabled:              true,
-		Threshold:            0.05,
-		PlaybackLeadSeconds:  20,
+		Enabled:             true,
+		Threshold:           0.05,
+		PlaybackLeadSeconds: 20,
 	}
-	if err := db.CreateCamera(database, makeCamera("cam-lead"), motion); err != nil {
+	cam, err := db.CreateCamera(database, makeCamera("cam-lead"), motion)
+	if err != nil {
 		t.Fatalf("CreateCamera: %v", err)
 	}
 
-	got, err := db.GetCamera(database, "cam-lead")
+	got, err := db.GetCamera(database, cam.ID)
 	if err != nil {
 		t.Fatalf("GetCamera: %v", err)
 	}
@@ -247,11 +283,12 @@ func TestMotionConfig_PlaybackLeadSecondsDefault(t *testing.T) {
 	database := openTestDB(t)
 
 	motion := &config.MotionConfig{Enabled: true, Threshold: 0.05}
-	if err := db.CreateCamera(database, makeCamera("cam-default"), motion); err != nil {
+	cam, err := db.CreateCamera(database, makeCamera("cam-default"), motion)
+	if err != nil {
 		t.Fatalf("CreateCamera: %v", err)
 	}
 
-	got, err := db.GetCamera(database, "cam-default")
+	got, err := db.GetCamera(database, cam.ID)
 	if err != nil {
 		t.Fatalf("GetCamera: %v", err)
 	}

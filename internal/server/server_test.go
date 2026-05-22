@@ -467,7 +467,7 @@ func TestGetStatsReturnsStorageInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, cam := range cameras {
-		if err := db.CreateCamera(database, cam, nil); err != nil {
+		if _, err := db.CreateCamera(database, cam, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -538,7 +538,7 @@ func TestGetStatsIncludesRecordingsDurationAndForecast(t *testing.T) {
 	if _, err := db.CreateUser(database, "u", "p", "admin", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.CreateCamera(database, cameras[0], nil); err != nil {
+	if _, err := db.CreateCamera(database, cameras[0], nil); err != nil {
 		t.Fatal(err)
 	}
 	for i, name := range []string{"20260501100000", "20260501100500"} {
@@ -671,7 +671,7 @@ func TestGetStatsIncludesTopMotionScorePerCamera(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, cam := range cameras {
-		if err := db.CreateCamera(database, cam, nil); err != nil {
+		if _, err := db.CreateCamera(database, cam, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -737,7 +737,7 @@ func TestMotionEventsReturnsEventsForDate(t *testing.T) {
 	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
 		t.Fatal(err)
 	}
 	t1 := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
@@ -802,7 +802,7 @@ func TestMotionEventsReturnsEmptyWhenNoEvents(t *testing.T) {
 	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.CreateCamera(database, cameras[0], nil); err != nil {
+	if _, err := db.CreateCamera(database, cameras[0], nil); err != nil {
 		t.Fatal(err)
 	}
 	cfg := config.ServerConfig{}
@@ -833,7 +833,7 @@ func TestMotionEventsSpansMidnightUTCWhenTimezoneOffset(t *testing.T) {
 	if _, err := db.CreateUser(database, "u", "p", "admin", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1793,7 +1793,7 @@ func TestDeleteRecordingCleansMotionEvents(t *testing.T) {
 	}
 
 	database := openServerTestDB(t)
-	if err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
 		t.Fatal(err)
 	}
 	chunkStart := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
