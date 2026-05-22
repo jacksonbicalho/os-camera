@@ -476,7 +476,7 @@ export default function CameraPage() {
           </span>
         ),
         title: isLive ? 'Ao vivo' : 'Reprodução',
-        onClick: () => { if (!isLive) setActiveRecording(null) },
+        onClick: () => { if (!isLive) { setActiveRecording(null); setActivePanel(null) } },
         active: isLive,
       },
       { type: 'separator', id: 'sep1' },
@@ -525,7 +525,10 @@ export default function CameraPage() {
           </svg>
         ),
         title: 'Gravações',
-        onClick: () => setActivePanel(p => p === 'recordings' ? null : 'recordings'),
+        onClick: () => {
+          setActivePanel(p => p === 'recordings' ? null : 'recordings')
+          if (isLive && recordings.length > 0) setActiveRecording(recordings[0])
+        },
         active: activePanel === 'recordings',
         badge: recordingsTotal || recordings.length || undefined,
       },
@@ -537,7 +540,10 @@ export default function CameraPage() {
           </svg>
         ),
         title: 'Eventos de movimento',
-        onClick: () => setActivePanel(p => p === 'events' ? null : 'events'),
+        onClick: () => {
+          setActivePanel(p => p === 'events' ? null : 'events')
+          if (isLive && motionEvents.length > 0) playEventAt(motionEvents[0])
+        },
         active: activePanel === 'events',
         badge: motionEvents.length || undefined,
       },
