@@ -93,7 +93,7 @@ function SidebarInjectedItem({ item }: { item: SidebarItem }) {
   }
   const base = `relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors`
   const isActive = item.type === 'button' && item.active
-  const activeClass = isActive ? "bg-gray-800 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"
+  const activeClass = isActive ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"
   const disabledClass = (item.type === 'button' && item.disabled) ? "opacity-40 cursor-not-allowed" : ""
 
   const badge = 'badge' in item && item.badge != null ? (
@@ -104,7 +104,11 @@ function SidebarInjectedItem({ item }: { item: SidebarItem }) {
 
   if (item.type === 'link') {
     return (
-      <NavLink to={item.to} state={item.state} title={item.title} className={`${base} ${activeClass}`}>
+      <NavLink to={item.to} state={item.state} title={item.title}
+        className={({ isActive: linkActive }) =>
+          `${base} ${linkActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`
+        }
+      >
         {item.icon}
         {badge}
       </NavLink>
@@ -131,7 +135,7 @@ function NavIcon({ to, title, children, end }: { to: string; title: string; chil
       title={title}
       className={({ isActive }) =>
         `flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
-          isActive ? "bg-gray-800 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"
+          isActive ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"
         }`
       }
     >
