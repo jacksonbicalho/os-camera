@@ -4,6 +4,7 @@ import { getToken, mustChangePassword } from './auth'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import ChangePasswordPage from './pages/ChangePasswordPage'
+import { SidebarItemsProvider } from './contexts/SidebarContext'
 
 const CameraPage = lazy(() => import('./pages/CameraPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
@@ -35,6 +36,7 @@ function Lazy({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <SidebarItemsProvider>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/change-password" element={<ChangePasswordPage />} />
@@ -54,5 +56,6 @@ export default function App() {
       <Route path="/settings/users" element={<Lazy><UsersSettingsPage /></Lazy>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </SidebarItemsProvider>
   )
 }

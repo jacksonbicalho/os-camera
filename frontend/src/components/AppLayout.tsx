@@ -4,7 +4,6 @@ import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { getUsername, authHeaders } from '../auth'
 import Sidebar from './Sidebar'
-import { SidebarItemsProvider } from '../contexts/SidebarContext'
 
 interface AppLayoutProps {
   children: ReactNode
@@ -48,18 +47,16 @@ export default function AppLayout({ children, mainClassName = '', fill = false }
   }, [])
 
   return (
-    <SidebarItemsProvider>
-      <div className="flex h-screen overflow-hidden bg-gray-950">
-        <Sidebar username={getUsername() ?? undefined} />
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          <main className={`${fill ? 'flex-1 min-h-0 overflow-hidden' : 'flex-1 overflow-y-auto p-6'} ${mainClassName}`.trim()}>{children}</main>
-          {about && (
-            <footer className="flex-none py-2 px-4 text-xs text-gray-500 border-t border-gray-800/50">
-              {about.version} · build: {formatBuiltAt(about.built_at)} · online {formatUptime(about.uptime_seconds)} · {about.go_version}
-            </footer>
-          )}
-        </div>
+    <div className="flex h-screen overflow-hidden bg-gray-950">
+      <Sidebar username={getUsername() ?? undefined} />
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <main className={`${fill ? 'flex-1 min-h-0 overflow-hidden' : 'flex-1 overflow-y-auto p-6'} ${mainClassName}`.trim()}>{children}</main>
+        {about && (
+          <footer className="flex-none py-2 px-4 text-xs text-gray-500 border-t border-gray-800/50">
+            {about.version} · build: {formatBuiltAt(about.built_at)} · online {formatUptime(about.uptime_seconds)} · {about.go_version}
+          </footer>
+        )}
       </div>
-    </SidebarItemsProvider>
+    </div>
   )
 }
