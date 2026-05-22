@@ -44,17 +44,26 @@ func runInit(args []string) {
 }
 
 type wizardReader struct {
-	r *bufio.Reader
-	w io.Writer
+	r   *bufio.Reader
+	w   io.Writer
+	eof bool // stdin fechou; usar padrões silenciosamente
 }
 
 func (wi *wizardReader) ask(prompt, def string) string {
+	if wi.eof {
+		return def
+	}
 	if def != "" {
 		fmt.Fprintf(wi.w, "%s [%s]: ", prompt, def)
 	} else {
 		fmt.Fprintf(wi.w, "%s: ", prompt)
 	}
-	line, _ := wi.r.ReadString('\n')
+	line, err := wi.r.ReadString('\n')
+	if err != nil {
+		fmt.Fprintln(wi.w) // newline para não deixar o cursor no meio da linha
+		wi.eof = true
+		return def
+	}
 	line = strings.TrimSpace(line)
 	if line == "" {
 		return def

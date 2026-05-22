@@ -98,11 +98,12 @@ do_install() {
         info "Iniciando assistente de configuração..."
         printf '\n'
         # Tenta rodar o wizard interativamente.
-        # curl | bash não tem stdin TTY, mas /dev/tty permite leitura do terminal mesmo assim.
+        # curl | bash não tem stdin TTY; redireciona stdin E stdout para /dev/tty para garantir
+        # que tanto a leitura quanto a exibição das perguntas passem pelo terminal real.
         if [ -t 0 ]; then
             "${INSTALL_DIR}/${BINARY_NAME}" init --output "${CONFIG_FILE}" && config_ready=1 || true
         elif [ -e /dev/tty ]; then
-            "${INSTALL_DIR}/${BINARY_NAME}" init --output "${CONFIG_FILE}" </dev/tty && config_ready=1 || true
+            "${INSTALL_DIR}/${BINARY_NAME}" init --output "${CONFIG_FILE}" </dev/tty >/dev/tty && config_ready=1 || true
         fi
         [ "$config_ready" = "0" ] && warn "Wizard cancelado ou indisponível. Gerando config mínimo em ${CONFIG_FILE}."
     fi
