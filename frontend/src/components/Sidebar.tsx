@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react"
 import { useNavigate, Link, NavLink } from "react-router-dom"
 import { clearToken } from "../auth"
 import { useNotifications } from "../contexts/NotificationContext"
+import { useSidebarItems, type SidebarItem } from "../contexts/SidebarContext"
 import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import type { Notification } from "../contexts/NotificationContext"
@@ -86,6 +87,41 @@ function NotificationItem({
   )
 }
 
+function SidebarInjectedItem({ item }: { item: SidebarItem }) {
+  if (item.type === 'separator') {
+    return <div className="w-8 border-t border-gray-700 my-1" />
+  }
+  const base = `relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors`
+  const activeClass = item.active ? "bg-gray-800 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"
+  const disabledClass = (item.type === 'button' && item.disabled) ? "opacity-40 cursor-not-allowed" : ""
+
+  const badge = item.type !== 'separator' && 'badge' in item && item.badge != null ? (
+    <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+      {item.badge}
+    </span>
+  ) : null
+
+  if (item.type === 'link') {
+    return (
+      <NavLink to={item.to} state={item.state} title={item.title} className={`${base} ${activeClass}`}>
+        {item.icon}
+        {badge}
+      </NavLink>
+    )
+  }
+  return (
+    <button
+      onClick={item.onClick}
+      disabled={item.disabled}
+      title={item.title}
+      className={`${base} ${activeClass} ${disabledClass}`}
+    >
+      {item.icon}
+      {badge}
+    </button>
+  )
+}
+
 function NavIcon({ to, title, children, end }: { to: string; title: string; children: React.ReactNode; end?: boolean }) {
   return (
     <NavLink
@@ -166,6 +202,8 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
     navigate("/login")
   }
 
+  const { items } = useSidebarItems()
+
   return (
     <aside className="w-14 flex-none flex flex-col bg-gray-900 border-r border-gray-800">
       {/* Logo */}
@@ -192,6 +230,13 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
           </svg>
         </NavIcon>
       </nav>
+
+      {/* Injected camera items */}
+      {items.length > 0 && (
+        <div className="flex flex-col items-center gap-0.5 py-2 border-t border-gray-800 flex-none overflow-y-auto">
+          {items.map(item => <SidebarInjectedItem key={item.id} item={item} />)}
+        </div>
+      )}
 
       {/* Spacer */}
       <div className="flex-1" />
