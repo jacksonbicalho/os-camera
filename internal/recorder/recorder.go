@@ -1,6 +1,7 @@
 package recorder
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -81,6 +82,31 @@ func (r *Recorder) needsTranscode() bool {
 		return false
 	default: // "auto" or empty
 		return r.stream.VideoCodec != "" && r.stream.VideoCodec != "h264"
+	}
+}
+
+func (r *Recorder) Run(ctx context.Context, reconnect time.Duration) {
+	for {
+		if err := r.Start(time.Now().UTC()); err != nil {
+			r.log.Error("recorder: failed to start", "camera", r.camera.ID, "error", err)
+		} else {
+			exited := make(chan struct{})
+			go func() { r.process.Wait(); close(exited) }()
+			select {
+			case <-ctx.Done():
+				r.Stop()
+				<-exited
+				return
+			case <-exited:
+				r.log.Warn("recorder: process exited unexpectedly", "camera", r.camera.ID)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(reconnect):
+			r.log.Info("recorder: reconnecting", "camera", r.camera.ID)
+		}
 	}
 }
 

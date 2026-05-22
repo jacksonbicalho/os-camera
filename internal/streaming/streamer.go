@@ -1,12 +1,14 @@
 package streaming
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"camera/internal/config"
 	"camera/internal/exec"
@@ -74,6 +76,31 @@ func (s *HLSStreamer) Start() error {
 	s.process = proc
 	s.log.Info("hls streaming started", "camera", s.camera.ID, "playlist", playlist)
 	return nil
+}
+
+func (s *HLSStreamer) Run(ctx context.Context, reconnect time.Duration) {
+	for {
+		if err := s.Start(); err != nil {
+			s.log.Error("hls: failed to start", "camera", s.camera.ID, "error", err)
+		} else {
+			exited := make(chan struct{})
+			go func() { s.process.Wait(); close(exited) }()
+			select {
+			case <-ctx.Done():
+				s.Stop()
+				<-exited
+				return
+			case <-exited:
+				s.log.Warn("hls: process exited unexpectedly", "camera", s.camera.ID)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(reconnect):
+			s.log.Info("hls: reconnecting", "camera", s.camera.ID)
+		}
+	}
 }
 
 func (s *HLSStreamer) Stop() {
