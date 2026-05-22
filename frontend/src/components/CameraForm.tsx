@@ -94,10 +94,6 @@ export default function CameraForm({ initial, onSave, onCancel, saving }: Camera
           </select>
         </div>
         <div>
-          <label className={labelClass}>Ordem de exibição</label>
-          <input type="number" value={form.display_order} onChange={e => set('display_order', e.target.value)} className={inputClass} />
-        </div>
-        <div>
           <label className={labelClass}>Modo de vídeo HLS</label>
           <select value={form.hls_video_mode} onChange={e => set('hls_video_mode', e.target.value)} className={inputClass}>
             <option value="auto">Auto (detecta via ffprobe)</option>

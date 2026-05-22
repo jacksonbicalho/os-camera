@@ -368,6 +368,25 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(cameraToDTO(updated))
 }
 
+func (s *Server) handleReorderCameras(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := db.ReorderCameras(s.db, req.IDs); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	s.reloadCamerasFromDB()
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleDeleteCamera(w http.ResponseWriter, r *http.Request) {
 	if !s.requireDB(w) {
 		return
