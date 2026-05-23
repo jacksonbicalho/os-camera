@@ -66,14 +66,14 @@ export default function AboutPage() {
               window.location.reload()
             }
           }
-        } catch {}
+        } catch { /* server not yet up after restart */ }
         if (attempts >= 15) {
           clearInterval(poll)
           setApplyMsg('Reinício demorou mais que o esperado. Recarregue a página manualmente.')
           setApplying(false)
         }
       }, 2000)
-    } catch (_err) {
+    } catch {
       setApplyMsg('Erro ao aplicar atualização.')
       setApplying(false)
     }
