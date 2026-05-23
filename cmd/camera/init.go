@@ -20,18 +20,21 @@ func runInit(args []string) {
 		}
 	}
 
-	yaml, err := initWizard(os.Stdin, os.Stdout)
+	in, out, closeIO := openWizardIO()
+	defer closeIO()
+
+	yaml, err := initWizard(in, out)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "erro: %v\n", err)
 		os.Exit(1)
 	}
 
 	if _, statErr := os.Stat(outPath); statErr == nil {
-		fmt.Printf("%s já existe. Sobrescrever? (s/n) [n]: ", outPath)
+		fmt.Fprintf(out, "%s já existe. Sobrescrever? (s/n) [n]: ", outPath)
 		var answer string
-		fmt.Scanln(&answer)
+		fmt.Fscanln(in, &answer)
 		if strings.ToLower(strings.TrimSpace(answer)) != "s" {
-			fmt.Println("Cancelado.")
+			fmt.Fprintln(out, "Cancelado.")
 			os.Exit(0)
 		}
 	}
@@ -40,7 +43,24 @@ func runInit(args []string) {
 		fmt.Fprintf(os.Stderr, "erro ao escrever %s: %v\n", outPath, err)
 		os.Exit(1)
 	}
-	fmt.Printf("\nArquivo gerado: %s\n", outPath)
+	fmt.Fprintf(out, "\nArquivo gerado: %s\n", outPath)
+}
+
+// openWizardIO returns reader, writer, and closer for the init wizard.
+// When stdin is not a terminal (e.g. curl | bash), it opens /dev/tty with
+// O_RDWR so prompts and input share a single fd. This avoids the invisible-
+// prompt bug that occurs when the shell redirects </dev/tty >/dev/tty as two
+// separate file descriptors.
+func openWizardIO() (io.Reader, io.Writer, func()) {
+	fi, err := os.Stdin.Stat()
+	if err == nil && fi.Mode()&(os.ModeDevice|os.ModeCharDevice) == os.ModeDevice|os.ModeCharDevice {
+		return os.Stdin, os.Stdout, func() {}
+	}
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return os.Stdin, os.Stdout, func() {}
+	}
+	return tty, tty, func() { tty.Close() }
 }
 
 type wizardReader struct {
