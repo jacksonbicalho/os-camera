@@ -13,19 +13,19 @@ log:
 
 server:
   port: 8080
-  segments_path: /var/camera/data/hls      # diretório para segmentos HLS do streaming ao vivo
+  segments_path: /var/camera/data/hls  # diretório para segmentos HLS do streaming ao vivo
   hls_dvr_seconds: 0               # 0 = DVR desabilitado; >0 = janela DVR em segundos
   # Latência HLS é configurável por câmera via UI (hls_segment_seconds, hls_list_size).
   # Padrões: 2 s por segmento, janela de 5 segmentos (~10 s de latência).
   jwt_secret: ""                   # env: CAMERA_SERVER_JWT_SECRET — vazio = gerado aleatoriamente a cada boot
 
 storage:
-  path: /var/camera/data/recordings        # env: CAMERA_STORAGE_PATH — diretório de gravações
+  path: /var/camera/data/recordings   # diretório de gravações
   retention:
     with_motion_minutes: 10080     # 7 dias — 0 = nunca apaga gravações com movimento
     without_motion_minutes: 1440   # 1 dia  — 0 = desabilitado
   interval_minutes: 60             # intervalo entre limpezas (0 = 60 min)
-  max_size_gb: 0                   # tamanho máximo em GB (0 = desabilitado)
+  max_size_gb: 20                  # tamanho máximo em GB (0 = desabilitado)
   warn_percent: 90                 # % do max_size_gb para emitir aviso
 
 admin:

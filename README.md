@@ -64,13 +64,13 @@ sudo systemctl status camera       # status do serviço
 ### Desinstalar
 
 ```bash
-# Remove binário e serviço (mantém config e gravações)
+# Remove binário e serviço (mantém config e dados)
 sudo camera-uninstall
 
-# Remove também a configuração
+# Remove também a configuração (/etc/camera/)
 sudo camera-uninstall --remove-config
 
-# Remove também as gravações
+# Remove também gravações, banco de dados e segmentos HLS
 sudo camera-uninstall --remove-data
 
 # Remove tudo
@@ -143,15 +143,15 @@ cp camera.yaml.example camera.yaml
 debug: false
 timezone: America/Sao_Paulo
 
-db_path: /data/camera.db
+db_path: /var/camera/data/camera.db
 
 server:
   port: 8080
-  segments_path: /tmp/hls
+  segments_path: /var/camera/data/hls
   hls_dvr_seconds: 0
 
 storage:
-  path: /data/recordings
+  path: /var/camera/data/recordings
   retention:
     with_motion_minutes: 10080   # 7 dias — gravações com movimento
     without_motion_minutes: 1440 # 1 dia  — cenas paradas
@@ -181,7 +181,6 @@ Variáveis de ambiente sobrescrevem campos específicos:
 
 | Variável | Campo |
 |---|---|
-| `CAMERA_STORAGE_PATH` | `storage.path` |
 | `CAMERA_TIMEZONE` | `timezone` |
 | `CAMERA_SERVER_JWT_SECRET` | segredo JWT fixo (vazio = gerado aleatoriamente a cada boot) |
 
