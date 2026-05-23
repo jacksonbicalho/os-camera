@@ -1,7 +1,8 @@
-import { useParams, Link } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import MotionScoreChart from '../../components/MotionScoreChart'
+import CameraSettingsTabs from '../../components/CameraSettingsTabs'
 import { useSettings } from '../../hooks/useSettings'
 import { useMotionPeak } from '../../hooks/useMotionPeak'
 
@@ -115,23 +116,7 @@ export default function CameraMotionSettingsPage() {
 
   return (
     <SettingsLayout>
-      <nav className="flex items-center gap-1.5 text-xs text-gray-500 mb-5">
-        <Link to="/settings/cameras" className="hover:text-gray-300 transition-colors">Câmeras</Link>
-        <span>/</span>
-        <Link to={`/settings/cameras/${id}`} className="hover:text-gray-300 transition-colors">{id}</Link>
-        <span>/</span>
-        <span className="text-gray-300">Detecção de movimento</span>
-      </nav>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-gray-200">{id} — detecção de movimento</h2>
-        <Link
-          to={`/settings/cameras/${id}`}
-          state={{ editing: true }}
-          className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded transition-colors"
-        >
-          Editar
-        </Link>
-      </div>
+      <CameraSettingsTabs id={id!} active="motion" camName={cam?.name} />
       {!settings ? (
         <p className="text-gray-500 text-sm">Carregando...</p>
       ) : !cam ? (
@@ -176,18 +161,6 @@ export default function CameraMotionSettingsPage() {
               },
             ]}
           />
-          <Link
-            to={`/settings/cameras/${id}/motion/zones`}
-            className="bg-gray-900 border border-gray-800 rounded-lg px-5 py-4 flex items-center justify-between hover:border-gray-700 hover:bg-gray-800/50 transition-colors group"
-          >
-            <div>
-              <p className="text-sm font-medium text-gray-300">Zonas</p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Exclusão e detecção independente por região
-              </p>
-            </div>
-            <span className="text-sm text-blue-400 group-hover:text-blue-300 transition-colors">Editar →</span>
-          </Link>
         </div>
       )}
     </SettingsLayout>
