@@ -80,8 +80,15 @@ func main() {
 		dbPath = filepath.Join(dbDir, "camera.db")
 	}
 
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
-		log.Fatalf("failed to create database directory: %v", err)
+	dbDir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		log.Fatalf("failed to create database directory %q: %v\n\nHint: run as root, or set db_path in camera.yaml to a user-writable path (e.g. db_path: ./camera.db)", dbDir, err)
+	}
+	if tmp, err := os.CreateTemp(dbDir, ".camera_write_check_*"); err != nil {
+		log.Fatalf("database directory %q is not writable: %v\n\nHint: run as root, or set db_path in camera.yaml to a user-writable path (e.g. db_path: ./camera.db)", dbDir, err)
+	} else {
+		tmp.Close()
+		os.Remove(tmp.Name())
 	}
 
 	database, err := db.Open(dbPath)
