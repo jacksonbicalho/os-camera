@@ -6,6 +6,7 @@ export function getToken(): string | null {
 
 export function setToken(token: string): void {
   localStorage.setItem(TOKEN_KEY, token)
+  window.dispatchEvent(new Event('camera:token-changed'))
 }
 
 export function clearToken(): void {
