@@ -24,26 +24,26 @@ Sistema de monitoramento residencial via RTSP. Um único binário estático grav
 ## Instalação rápida (Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh | sudo bash
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh)
 ```
 
-O script detecta a arquitetura (`amd64`, `arm64`, `arm`), baixa o binário da última release e registra um serviço systemd.
+O script detecta a arquitetura (`amd64`, `arm64`, `arm`), baixa o binário da última release, executa o wizard de configuração interativo e registra um serviço systemd.
 
-- **Instalação interativa** (terminal direto): o wizard (`camera init`) gera o arquivo de bootstrap com porta, banco, storage e credenciais do admin; o serviço sobe ao final. Câmeras são adicionadas depois via interface web.
-- **Instalação via pipe** (`curl | bash`): um arquivo de bootstrap mínimo é criado em `/etc/camera/camera.yaml`; o serviço é habilitado mas **não iniciado** até que a configuração seja concluída.
+> **Por que `sudo bash <(...)` e não `curl | sudo bash`?**
+> A sintaxe de process substitution mantém o `stdin` do bash conectado ao terminal real, permitindo que o wizard de configuração funcione de forma interativa. Com `curl | bash`, o `stdin` do bash é o pipe do curl e o teclado não chega ao processo.
 
-**Gerar o bootstrap após instalação via pipe:**
+**Alternativa via git clone** (não requer `bash` com suporte a process substitution — ex: `sh`):
 
 ```bash
-sudo camera init --output /etc/camera/camera.yaml
-sudo systemctl start camera
+git clone --depth 1 https://github.com/jacksonbicalho/camera.git /tmp/camera-install
+sudo bash /tmp/camera-install/scripts/install.sh
+rm -rf /tmp/camera-install
 ```
 
 **Caminhos customizáveis:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh \
-  | sudo bash -s -- \
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh) \
       --install-dir /usr/local/bin \
       --config-dir  /etc/camera \
       --data-dir    /data/recordings \
