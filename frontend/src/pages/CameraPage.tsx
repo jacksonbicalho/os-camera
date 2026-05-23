@@ -538,8 +538,8 @@ export default function CameraPage() {
         active: continuousPlay,
       },
       { type: 'separator', id: 'sep2' },
-      {
-        type: 'button', id: 'recordings',
+      ...((cam?.recording_enabled !== false) && (recordingsTotal > 0 || recordings.length > 0) ? [{
+        type: 'button' as const, id: 'recordings',
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
@@ -552,7 +552,7 @@ export default function CameraPage() {
         },
         active: activePanel === 'recordings',
         badge: recordingsTotal || recordings.length || undefined,
-      },
+      }] : []),
       {
         type: 'button', id: 'events',
         icon: (
@@ -1039,7 +1039,7 @@ function toggleFullscreen() {
                       hasMore={hasMoreDisplayedRecordings}
                       onLoadMore={() => setRecordingsDisplayPage(p => p + 1)}
                       empty={recordings.length === 0}
-                      emptyMessage="Sem gravações nesta data."
+                      emptyMessage={cam?.recording_enabled === false ? "Gravação desabilitada. Câmera disponível apenas ao vivo." : "Sem gravações nesta data."}
                     >
                       {(() => {
                         const recordingsAsc = [...recordings].sort((a, b) => a.filename.localeCompare(b.filename))

@@ -208,6 +208,11 @@ export default function CamerasSettingsPage() {
                       motion
                     </span>
                   )}
+                  {!cam.recording_enabled && (
+                    <span className="px-2 py-0.5 text-xs rounded-full bg-gray-800 text-gray-500 border border-gray-700 shrink-0">
+                      rec off
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <Link
