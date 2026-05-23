@@ -281,7 +281,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
       {/* Injected camera items */}
       {items.length > 0 && (
-        <div className="flex flex-col items-center gap-0.5 py-2 border-t border-gray-800 flex-none overflow-y-auto">
+        <div className="flex flex-col items-center gap-0.5 py-2 border-t border-gray-800 flex-none">
           {items.map(item => <SidebarInjectedItem key={item.id} item={item} />)}
         </div>
       )}
