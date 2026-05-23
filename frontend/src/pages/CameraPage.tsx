@@ -72,6 +72,13 @@ function formatRecordingTime(isoString: string, timezone: string): string {
   })
 }
 
+function formatRecordingDateTime(isoString: string, timezone: string): string {
+  const d = new Date(isoString)
+  const date = d.toLocaleDateString('pt-BR', { timeZone: timezone, day: '2-digit', month: '2-digit' })
+  const time = d.toLocaleTimeString('pt-BR', { timeZone: timezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  return `${date} ${time}`
+}
+
 export default function CameraPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -721,11 +728,27 @@ function toggleFullscreen() {
                 !isLive ? 'border-blue-600 ring-1 ring-blue-600' : 'border-gray-800'
               }`}
             >
-              <div className="flex-none flex items-center gap-3 px-4 py-2 border-b border-gray-700">
-                <span className="font-medium text-sm text-gray-200 truncate">{cam?.name ?? id}</span>
-                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${isLive ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-300'}`}>
+              <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-gray-700 min-w-0">
+                <span className="font-medium text-sm text-gray-200 truncate shrink-0 max-w-[40%]">{cam?.name ?? id}</span>
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold shrink-0 ${isLive ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-300'}`}>
                   {isLive ? 'AO VIVO' : 'Reprodução'}
                 </span>
+                {!isLive && activeRecording && (() => {
+                  const ev = activeEventIdx >= 0 ? visibleEvents[activeEventIdx] : null
+                  return (
+                    <span className="flex items-center gap-2 text-xs text-gray-400 min-w-0 truncate">
+                      <span className="text-gray-600">·</span>
+                      <span className="tabular-nums shrink-0">{formatRecordingDateTime(activeRecording.start, timezone)}</span>
+                      {recDuration > 0 && <span className="text-gray-600 shrink-0">· {formatRecTime(recDuration)}</span>}
+                      {ev?.label && (
+                        <span className="shrink-0 font-medium" style={{ color: ev.color ?? '#f97316' }}>· {ev.label}</span>
+                      )}
+                      {ev && (
+                        <span className="text-gray-500 shrink-0">· {(ev.score * 100).toFixed(1)}%</span>
+                      )}
+                    </span>
+                  )
+                })()}
               </div>
 
               {isLive ? (

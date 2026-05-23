@@ -24,7 +24,7 @@ export default function ListPanel({
   children,
 }: ListPanelProps) {
   return (
-    <>
+    <div className="flex flex-col flex-1 min-h-0">
       <div className="px-3 py-1.5 border-b border-gray-800 flex justify-end shrink-0">
         <button
           onClick={onSortOrderChange}
@@ -40,7 +40,7 @@ export default function ListPanel({
         }
       </div>
       {hasMore && (
-        <div className="px-3 py-2 border-t border-gray-800">
+        <div className="px-3 py-2 border-t border-gray-800 shrink-0">
           <button
             onClick={onLoadMore}
             disabled={loadingMore}
@@ -50,6 +50,6 @@ export default function ListPanel({
           </button>
         </div>
       )}
-    </>
+    </div>
   )
 }
