@@ -22,17 +22,18 @@ interface ConfirmState {
   action: () => void
 }
 
-function useDropdown() {
+function useDropdown(extraRef?: React.RefObject<HTMLElement | null>) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node))
-        setOpen(false)
+      const t = e.target as Node
+      const inside = (ref.current?.contains(t) ?? false) || (extraRef?.current?.contains(t) ?? false)
+      if (!inside) setOpen(false)
     }
     document.addEventListener("mousedown", handleClick)
     return () => document.removeEventListener("mousedown", handleClick)
-  }, [])
+  }, [extraRef])
   return { open, setOpen, ref }
 }
 
@@ -201,8 +202,9 @@ function NavIcon({ to, title, children, end }: { to: string; title: string; chil
 }
 
 export default function Sidebar({ username = "usuário" }: SidebarProps) {
+  const bellPanelRef = useRef<HTMLDivElement>(null)
   const { open: userOpen, setOpen: setUserOpen, ref: userRef } = useDropdown()
-  const { open: bellOpen, setOpen: setBellOpen, ref: bellRef } = useDropdown()
+  const { open: bellOpen, setOpen: setBellOpen, ref: bellRef } = useDropdown(bellPanelRef)
   const { open: kebabOpen, setOpen: setKebabOpen, ref: kebabRef } = useDropdown()
 
   const {
@@ -317,6 +319,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
           {bellOpen && createPortal(
             <div
+              ref={bellPanelRef}
               style={{ position: 'fixed', top: bellPos.top, left: bellPos.left, zIndex: 9999 }}
               className="w-72 bg-gray-800 border border-gray-700 rounded shadow-lg flex flex-col max-h-[80vh]">
               <div className="px-3 pt-2.5 pb-0">
