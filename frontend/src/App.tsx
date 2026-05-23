@@ -8,7 +8,6 @@ import { SidebarItemsProvider } from './contexts/SidebarContext'
 
 const CameraPage = lazy(() => import('./pages/CameraPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
-const StatsSettingsPage = lazy(() => import('./pages/settings/StatsSettingsPage'))
 const CamerasSettingsPage = lazy(() => import('./pages/settings/CamerasSettingsPage'))
 const CameraDetailSettingsPage = lazy(() => import('./pages/settings/CameraDetailSettingsPage'))
 const CameraMotionSettingsPage = lazy(() => import('./pages/settings/CameraMotionSettingsPage'))
@@ -43,7 +42,6 @@ export default function App() {
       <Route path="/" element={<RequireAuth><DashboardPage /></RequireAuth>} />
       <Route path="/cameras/:id" element={<Lazy><CameraPage /></Lazy>} />
       <Route path="/stats" element={<Lazy><StatsPage /></Lazy>} />
-      <Route path="/settings/stats" element={<Lazy><StatsSettingsPage /></Lazy>} />
       <Route path="/settings/cameras" element={<Lazy><CamerasSettingsPage /></Lazy>} />
       <Route path="/settings/cameras/new" element={<Lazy><CamerasSettingsPage /></Lazy>} />
       <Route path="/settings/cameras/:id" element={<Lazy><CameraDetailSettingsPage /></Lazy>} />

@@ -117,6 +117,7 @@ type Server struct {
 	onCameraStart      func(config.CameraConfig)
 	onCameraStop       func(string)
 	monitors           map[string]*motion.Monitor
+	cpu                cpuTracker
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
@@ -888,17 +889,41 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type cameraStats struct {
-		ID             string  `json:"id"`
-		TopMotionScore float64 `json:"top_motion_score"`
-		MinMotionScore float64 `json:"min_motion_score"`
+		ID              string     `json:"id"`
+		TopMotionScore  float64    `json:"top_motion_score"`
+		MinMotionScore  float64    `json:"min_motion_score"`
+		Online          bool       `json:"online"`
+		LastRecordingAt *time.Time `json:"last_recording_at"`
+		MotionEnabled   bool       `json:"motion_enabled"`
 	}
 	todayStart := time.Now().UTC().Truncate(24 * time.Hour)
 	todayEnd := todayStart.Add(24 * time.Hour)
+
+	var lastRec map[string]time.Time
+	if s.db != nil {
+		lastRec, _ = db.LastRecordingPerCamera(s.db)
+	}
+
 	cameras := make([]cameraStats, len(allCameras))
+	onlineThreshold := 5 * time.Minute
 	for i, cam := range allCameras {
 		mn, mx := motionScoreRange(s.db, s.cfg.RecordingsPath, cam.ID, todayStart, todayEnd)
-		cameras[i] = cameraStats{ID: cam.ID, TopMotionScore: mx, MinMotionScore: mn}
+		cs := cameraStats{
+			ID:            cam.ID,
+			TopMotionScore: mx,
+			MinMotionScore: mn,
+			MotionEnabled: cam.EffectiveMotionConfig().Enabled,
+		}
+		if t, ok := lastRec[cam.ID]; ok {
+			ts := t
+			cs.LastRecordingAt = &ts
+			cs.Online = time.Since(t) <= onlineThreshold
+		}
+		cameras[i] = cs
 	}
+
+	sysMemTotal, sysMemFree := systemMemInfo()
+	cpuPct := s.cpu.percent()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
@@ -913,6 +938,13 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		"max_size_bytes":              maxSizeBytes,
 		"warn_percent":                s.storageCfg.WarnPercent,
 		"cameras":                     cameras,
+		"os":                          osName(),
+		"pid":                         os.Getpid(),
+		"cpu_percent":                 cpuPct,
+		"mem_rss_bytes":               processMemRSS(),
+		"sys_mem_total_bytes":         sysMemTotal,
+		"sys_mem_free_bytes":          sysMemFree,
+		"goroutines":                  runtime.NumGoroutine(),
 	})
 }
 

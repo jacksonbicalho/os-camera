@@ -118,6 +118,29 @@ func UpdateRecordingEndedAt(database *DB, path string, endedAt time.Time) error 
 	return err
 }
 
+// LastRecordingPerCamera returns the most recent started_at per camera_id.
+func LastRecordingPerCamera(db *DB) (map[string]time.Time, error) {
+	rows, err := db.Query(`SELECT camera_id, MAX(started_at) FROM recordings GROUP BY camera_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]time.Time)
+	for rows.Next() {
+		var cam string
+		var ts string
+		if err := rows.Scan(&cam, &ts); err != nil {
+			return nil, err
+		}
+		t, err := time.Parse(time.RFC3339, ts)
+		if err != nil {
+			continue
+		}
+		result[cam] = t
+	}
+	return result, rows.Err()
+}
+
 func nullTime(t time.Time) sql.NullString {
 	if t.IsZero() {
 		return sql.NullString{}

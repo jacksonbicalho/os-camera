@@ -2,6 +2,15 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authHeaders, clearToken } from '../auth'
 
+export interface CameraHealth {
+  id: string
+  top_motion_score: number
+  min_motion_score: number
+  online: boolean
+  last_recording_at: string | null
+  motion_enabled: boolean
+}
+
 export interface Stats {
   recordings_bytes: number
   recordings_count: number
@@ -13,6 +22,14 @@ export interface Stats {
   connected_clients: number
   max_size_bytes: number
   warn_percent: number
+  cameras: CameraHealth[]
+  os: string
+  pid: number
+  cpu_percent: number
+  mem_rss_bytes: number
+  sys_mem_total_bytes: number
+  sys_mem_free_bytes: number
+  goroutines: number
 }
 
 export function useStats(redirectTo: string) {

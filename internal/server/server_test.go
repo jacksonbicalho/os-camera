@@ -1868,3 +1868,102 @@ func TestRandomSecretWhenJWTSecretNotConfigured(t *testing.T) {
 		t.Errorf("expected 401 when no jwt_secret (random per boot), got %d", w.Code)
 	}
 }
+
+func TestGetStatsIncludesSysInfo(t *testing.T) {
+	cfg := config.ServerConfig{}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		OS            string  `json:"os"`
+		PID           int     `json:"pid"`
+		CPUPercent    float64 `json:"cpu_percent"`
+		MemRSSBytes   int64   `json:"mem_rss_bytes"`
+		SysMemTotal   int64   `json:"sys_mem_total_bytes"`
+		SysMemFree    int64   `json:"sys_mem_free_bytes"`
+		Goroutines    int     `json:"goroutines"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.OS == "" {
+		t.Error("expected os to be non-empty")
+	}
+	if resp.PID <= 0 {
+		t.Errorf("expected pid > 0, got %d", resp.PID)
+	}
+	if resp.Goroutines <= 0 {
+		t.Errorf("expected goroutines > 0, got %d", resp.Goroutines)
+	}
+}
+
+func TestGetStatsIncludesCameraHealth(t *testing.T) {
+	cameras := []config.CameraConfig{
+		{ID: "cam1"},
+		{ID: "cam2"},
+	}
+	cfg := config.ServerConfig{}
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "u", "p", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	for _, cam := range cameras {
+		if _, err := db.CreateCamera(database, cam, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	recent := time.Now().UTC().Add(-2 * time.Minute)
+	db.InsertRecording(database, db.Recording{CameraID: "cam1", StartedAt: recent, Path: "r1.mp4"})
+
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "u", "p")
+	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Cameras []struct {
+			ID              string     `json:"id"`
+			Online          bool       `json:"online"`
+			LastRecordingAt *time.Time `json:"last_recording_at"`
+			MotionEnabled   bool       `json:"motion_enabled"`
+		} `json:"cameras"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Cameras) != 2 {
+		t.Fatalf("expected 2 cameras, got %d", len(resp.Cameras))
+	}
+	for _, c := range resp.Cameras {
+		switch c.ID {
+		case "cam1":
+			if !c.Online {
+				t.Error("cam1: expected online=true")
+			}
+			if c.LastRecordingAt == nil {
+				t.Error("cam1: expected last_recording_at to be set")
+			}
+		case "cam2":
+			if c.Online {
+				t.Error("cam2: expected online=false")
+			}
+			if c.LastRecordingAt != nil {
+				t.Error("cam2: expected last_recording_at to be nil")
+			}
+		}
+	}
+}
