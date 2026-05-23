@@ -47,20 +47,22 @@ func runInit(args []string) {
 }
 
 // openWizardIO returns reader, writer, and closer for the init wizard.
-// When stdin is not a terminal (e.g. curl | bash), it opens /dev/tty with
-// O_RDWR so prompts and input share a single fd. This avoids the invisible-
-// prompt bug that occurs when the shell redirects </dev/tty >/dev/tty as two
-// separate file descriptors.
+// When stdin is not a terminal (e.g. curl | bash), stdin is a pipe and
+// cannot receive keyboard input. We open /dev/tty read-only for keyboard
+// input, but keep os.Stdout for output: os.Stdout is the same fd that
+// the install script already uses (install.sh printf/info calls), so it
+// is guaranteed to reach the user's terminal regardless of how sudo or
+// any PTY relay is wired up.
 func openWizardIO() (io.Reader, io.Writer, func()) {
 	fi, err := os.Stdin.Stat()
 	if err == nil && fi.Mode()&(os.ModeDevice|os.ModeCharDevice) == os.ModeDevice|os.ModeCharDevice {
 		return os.Stdin, os.Stdout, func() {}
 	}
-	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	tty, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
 	if err != nil {
 		return os.Stdin, os.Stdout, func() {}
 	}
-	return tty, tty, func() { tty.Close() }
+	return tty, os.Stdout, func() { tty.Close() }
 }
 
 type wizardReader struct {
