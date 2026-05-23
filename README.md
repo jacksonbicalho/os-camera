@@ -258,9 +258,10 @@ Armazenamento:
   {storage}/
   └── {camera_id}/
       └── {YYYY}/{MM}/{DD}/
-          ├── {HHmmss}.mp4              ← chunk gravado
-          ├── {YYYYMMDDHHmmss}_motion.jpg ← snapshot anotado do evento
-          └── motion.ndjson             ← eventos de movimento (JSON Lines)
+          ├── {HHmmss}.mp4                ← chunk gravado
+          └── {YYYYMMDDHHmmss}_motion.jpg ← snapshot anotado do evento
+
+Eventos de movimento são persistidos no banco SQLite (tabela `motion_events`).
 ```
 
 O servidor emite dois endpoints SSE por câmera:
