@@ -225,24 +225,6 @@ storage:
 	}
 }
 
-func TestLoadEnvVarOverridesStoragePath(t *testing.T) {
-	t.Setenv("CAMERA_STORAGE_PATH", "/tmp/from-env")
-
-	path := writeTempYAML(t, `
-storage:
-  path: /tmp/from-file
-`)
-
-	cfg, err := config.Load(path)
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if cfg.Storage.Path != "/tmp/from-env" {
-		t.Errorf("expected /tmp/from-env, got %q", cfg.Storage.Path)
-	}
-}
-
 func TestEffectiveRetentionBothSet(t *testing.T) {
 	s := config.StorageConfig{
 		Retention: config.RetentionConfig{

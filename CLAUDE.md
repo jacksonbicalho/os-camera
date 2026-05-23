@@ -134,7 +134,6 @@ Fluxo de primeiro acesso: o admin inicial é criado com `must_change_password = 
 
 | Variável | Campo sobrescrito |
 |---|---|
-| `CAMERA_STORAGE_PATH` | `storage.path` |
 | `CAMERA_TIMEZONE` | `timezone` (fuso da instalação; usado pelo servidor para interpretar datas locais) |
 | `CAMERA_SERVER_JWT_SECRET` | `server.jwt_secret` (segredo JWT fixo; vazio = gerado aleatoriamente a cada boot) |
 

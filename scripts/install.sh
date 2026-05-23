@@ -54,6 +54,7 @@ derived_paths() {
     CONFIG_FILE="${CONFIG_DIR}/${BINARY_NAME}.yaml"
     SHARE_DIR="${INSTALL_DIR%/bin}/share/${BINARY_NAME}"
     UNINSTALL_BIN="${INSTALL_DIR}/${BINARY_NAME}-uninstall"
+    DB_PATH="${STATE_DIR}/data/camera.db"
 }
 
 # --- install ---
@@ -182,6 +183,7 @@ INSTALL_DIR=${INSTALL_DIR}
 CONFIG_DIR=${CONFIG_DIR}
 DATA_DIR=${DATA_DIR}
 SEGMENTS_DIR=${SEGMENTS_DIR}
+DB_PATH=${DB_PATH}
 SERVICE_NAME=${SERVICE_NAME}
 SERVICE_FILE=${SERVICE_FILE}
 CONFIG_FILE=${CONFIG_FILE}
@@ -291,21 +293,39 @@ do_uninstall() {
         ok "Configuração removida"
     fi
 
-    if [ "$remove_data" = "1" ] && [ -d "$DATA_DIR" ]; then
-        info "Removendo ${DATA_DIR} ..."
-        rm -rf "$DATA_DIR"
-        ok "Dados removidos"
+    if [ "$remove_data" = "1" ]; then
+        if [ -d "$DATA_DIR" ]; then
+            info "Removendo gravações ${DATA_DIR} ..."
+            rm -rf "$DATA_DIR"
+            ok "Gravações removidas"
+        fi
+        if [ -d "$SEGMENTS_DIR" ]; then
+            info "Removendo segmentos HLS ${SEGMENTS_DIR} ..."
+            rm -rf "$SEGMENTS_DIR"
+            ok "Segmentos HLS removidos"
+        fi
+        if [ -f "$DB_PATH" ]; then
+            info "Removendo banco de dados ${DB_PATH} ..."
+            rm -f "$DB_PATH"
+            ok "Banco de dados removido"
+        fi
     fi
 
     printf '\n'
     ok "Desinstalação concluída."
     if [ "$remove_config" = "0" ] && [ -d "$CONFIG_DIR" ]; then
-        printf '  Config mantido: %s\n' "$CONFIG_DIR"
-        printf '  Para remover:   %s-uninstall --remove-config\n' "$BINARY_NAME"
+        printf '  Config mantido:  %s\n' "$CONFIG_DIR"
+        printf '  Para remover:    %s-uninstall --remove-config\n' "$BINARY_NAME"
     fi
-    if [ "$remove_data" = "0" ] && [ -d "$DATA_DIR" ]; then
-        printf '  Dados mantidos: %s\n' "$DATA_DIR"
-        printf '  Para remover:   %s-uninstall --remove-data\n' "$BINARY_NAME"
+    if [ "$remove_data" = "0" ]; then
+        data_kept=0
+        [ -d "$DATA_DIR" ]    && data_kept=1
+        [ -d "$SEGMENTS_DIR" ] && data_kept=1
+        [ -f "$DB_PATH" ]     && data_kept=1
+        if [ "$data_kept" = "1" ]; then
+            printf '  Dados mantidos:  gravações, segmentos HLS e banco de dados\n'
+            printf '  Para remover:    %s-uninstall --remove-data\n' "$BINARY_NAME"
+        fi
     fi
 }
 

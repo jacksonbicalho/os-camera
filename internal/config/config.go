@@ -152,9 +152,6 @@ func Load(path string) (Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, err
 	}
-	if v := os.Getenv("CAMERA_STORAGE_PATH"); v != "" {
-		cfg.Storage.Path = v
-	}
 	if v := os.Getenv("CAMERA_TIMEZONE"); v != "" {
 		cfg.Timezone = v
 	}
