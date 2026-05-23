@@ -10,8 +10,6 @@ services:
     volumes:
       - ./camera.yaml:/app/camera.yaml:ro
       - ./storage:/data
-    environment:
-      - CAMERA_STORAGE_PATH=/data/recordings
     restart: unless-stopped
 
   camera-dev:

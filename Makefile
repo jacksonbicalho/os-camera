@@ -35,7 +35,13 @@ build: frontend | $(OUTDIR)
 	$(BUILD) -o $(OUTDIR)/camera ./cmd/camera
 
 frontend:
-	cd frontend && yarn install --frozen-lockfile && yarn build
+	docker run --rm \
+		-v "$(PWD)/frontend":/app \
+		-v camera-yarn-cache:/yarn-cache \
+		-w /app \
+		-e YARN_CACHE_FOLDER=/yarn-cache \
+		node:20-alpine \
+		sh -c "yarn install --frozen-lockfile && yarn build"
 
 run:
 	mkdir -p storage

@@ -188,7 +188,7 @@ Variáveis de ambiente sobrescrevem campos específicos:
 
 ## Compilar a partir do código
 
-**Requisitos:** Go 1.25+, Node 20+, Yarn, ffmpeg
+**Requisitos:** Go 1.25+, Docker, ffmpeg
 
 ```bash
 git clone https://github.com/jacksonbicalho/camera.git

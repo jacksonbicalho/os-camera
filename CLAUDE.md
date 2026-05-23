@@ -77,9 +77,9 @@ Componentes reutilizáveis: `AppLayout` (layout base; exibe footer com versão, 
 Hooks customizados: `useEventSource(path, onMessage)` — abre um `EventSource` autenticado via `?token=` e chama `onMessage` a cada evento; `path = null` fecha sem abrir. `useScrollToPlayer(ref, key)` — faz scroll suave até o elemento quando `key` muda. `useStats(redirectTo)` — busca `/api/stats` com polling de 30 s. `useSettings(redirectTo)` / `useAbout(redirectTo)` — buscam `/api/settings` e `/api/about`.
 
 ```bash
+make frontend # builda o frontend via Docker (node:20-alpine) — gera frontend/dist
 cd frontend
-yarn install
-yarn build    # gera frontend/dist (necessário antes do go build)
+yarn install  # apenas para desenvolvimento local do frontend
 yarn dev      # Vite dev server na porta 5173 (proxy /api e /stream para :8080)
 ```
 
