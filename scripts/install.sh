@@ -62,6 +62,8 @@ derived_paths() {
 do_install() {
     require_cmd curl
     require_cmd systemctl
+    require_cmd ffmpeg
+    require_cmd ffprobe
 
     derived_paths
 
