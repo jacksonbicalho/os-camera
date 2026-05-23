@@ -43,10 +43,7 @@ func main() {
 		case "version", "--version", "-v":
 			fmt.Printf("camera %s (commit %s, built %s)\n", version, commit, builtAt)
 			return
-		case "update":
-			runUpdate(version)
-			return
-		}
+}
 	}
 
 	configPath := flag.String("config", "camera.yaml", "path to config file")

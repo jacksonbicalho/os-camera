@@ -3,7 +3,6 @@ import { createPortal } from "react-dom"
 import { useNavigate, Link, NavLink } from "react-router-dom"
 import { clearToken } from "../auth"
 import { useNotifications } from "../contexts/NotificationContext"
-import { useUpdateAvailable } from "../contexts/UpdateContext"
 import { useSidebarItems, type SidebarItem, type SidebarDropdownOption } from "../contexts/SidebarContext"
 import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
@@ -276,8 +275,6 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
   }
 
   const items = useSidebarItems()
-  const { updateAvailable } = useUpdateAvailable()
-
   return (
     <aside className="w-14 flex-none flex flex-col bg-gray-900 border-r border-gray-800">
       {/* Logo */}
@@ -489,7 +486,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
         {/* Settings */}
         <NavLink
           to="/settings/cameras"
-          title={updateAvailable ? 'Configurações — atualização disponível' : 'Configurações'}
+          title="Configurações"
           className={({ isActive }) =>
             `relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
               isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
@@ -502,9 +499,6 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
-          {updateAvailable && (
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-orange-500 rounded-full" />
-          )}
         </NavLink>
 
         {/* User */}
