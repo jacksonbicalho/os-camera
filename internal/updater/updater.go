@@ -11,7 +11,10 @@ import (
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 
-const DefaultAPIURL = "https://api.github.com/repos/jacksonbicalho/camera/releases/latest"
+// DefaultAPIURL lists releases sorted by creation date; the first item is the most recent
+// regardless of whether it is a pre-release (unlike the /releases/latest endpoint, which
+// returns 404 when all releases are pre-releases).
+const DefaultAPIURL = "https://api.github.com/repos/jacksonbicalho/camera/releases?per_page=1"
 
 type UpdateInfo struct {
 	Current         string            `json:"current"`
@@ -49,10 +52,14 @@ func CheckLatest(current, apiURL string) (UpdateInfo, error) {
 		return info, fmt.Errorf("updater: GitHub API returned %d", resp.StatusCode)
 	}
 
-	var rel githubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+	var releases []githubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		return info, fmt.Errorf("updater: decode response: %w", err)
 	}
+	if len(releases) == 0 {
+		return info, nil
+	}
+	rel := releases[0]
 
 	info.Latest = rel.TagName
 	info.ChangelogURL = rel.HTMLURL
