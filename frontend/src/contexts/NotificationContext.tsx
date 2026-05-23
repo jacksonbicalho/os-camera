@@ -74,47 +74,56 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     save(next)
   }
 
-  // Single SSE connection that receives events from all accessible cameras
+  // Single SSE connection that receives events from all accessible cameras.
+  // Re-opens on auth changes so notifications work immediately after login.
   useEffect(() => {
-    const token = getToken()
-    if (!token) return
+    let es: EventSource | null = null
 
-    const url = `/api/motion/live?token=${encodeURIComponent(token)}`
-    const es = new EventSource(url)
-
-    es.onmessage = (e) => {
-      try {
-        const payload = JSON.parse(e.data)
-        const id: string = payload.camera_id ?? 'unknown'
-        const time: string = payload.time ?? new Date().toISOString()
-        const score: number = payload.score ?? 0
-        const label: string | undefined = payload.label || undefined
-        const color: string | undefined = payload.color || undefined
-        const notification: Notification = {
-          id: `${id}-${time}`,
-          type: 'motion',
-          cameraId: id,
-          cameraName: payload.camera_name || undefined,
-          time,
-          score,
-          label,
-          color,
-          read: false,
+    function connect() {
+      if (es) { es.close(); es = null }
+      const token = getToken()
+      if (!token) return
+      const url = `/api/motion/live?token=${encodeURIComponent(token)}`
+      es = new EventSource(url)
+      es.onmessage = (e) => {
+        try {
+          const payload = JSON.parse(e.data)
+          const id: string = payload.camera_id ?? 'unknown'
+          const time: string = payload.time ?? new Date().toISOString()
+          const score: number = payload.score ?? 0
+          const label: string | undefined = payload.label || undefined
+          const color: string | undefined = payload.color || undefined
+          const notification: Notification = {
+            id: `${id}-${time}`,
+            type: 'motion',
+            cameraId: id,
+            cameraName: payload.camera_name || undefined,
+            time,
+            score,
+            label,
+            color,
+            read: false,
+          }
+          setNotifications((current) => {
+            const next = [notification, ...current].slice(0, MAX_NOTIFICATIONS)
+            save(next)
+            return next
+          })
+          browserNotifyRef.current(id, score, label, () => {
+            navigate(`/cameras/${id}`, { state: { eventTime: time } })
+          })
+        } catch {
+          // ignore malformed events
         }
-        setNotifications((current) => {
-          const next = [notification, ...current].slice(0, MAX_NOTIFICATIONS)
-          save(next)
-          return next
-        })
-        browserNotifyRef.current(id, score, label, () => {
-          navigate(`/cameras/${id}`, { state: { eventTime: time } })
-        })
-      } catch {
-        // ignore malformed events
       }
     }
 
-    return () => es.close()
+    connect()
+    window.addEventListener('camera:token-changed', connect)
+    return () => {
+      window.removeEventListener('camera:token-changed', connect)
+      if (es) es.close()
+    }
   }, [navigate])
 
   function markRead(id: string) {
