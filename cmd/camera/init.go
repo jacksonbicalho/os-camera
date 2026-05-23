@@ -20,21 +20,18 @@ func runInit(args []string) {
 		}
 	}
 
-	in, out, closeIO := openWizardIO()
-	defer closeIO()
-
-	yaml, err := initWizard(in, out)
+	yaml, err := initWizard(os.Stdin, os.Stdout)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "erro: %v\n", err)
 		os.Exit(1)
 	}
 
 	if _, statErr := os.Stat(outPath); statErr == nil {
-		fmt.Fprintf(out, "%s já existe. Sobrescrever? (s/n) [n]: ", outPath)
+		fmt.Printf("%s já existe. Sobrescrever? (s/n) [n]: ", outPath)
 		var answer string
-		fmt.Fscanln(in, &answer)
+		fmt.Scanln(&answer)
 		if strings.ToLower(strings.TrimSpace(answer)) != "s" {
-			fmt.Fprintln(out, "Cancelado.")
+			fmt.Println("Cancelado.")
 			os.Exit(0)
 		}
 	}
@@ -43,49 +40,21 @@ func runInit(args []string) {
 		fmt.Fprintf(os.Stderr, "erro ao escrever %s: %v\n", outPath, err)
 		os.Exit(1)
 	}
-	fmt.Fprintf(out, "\nArquivo gerado: %s\n", outPath)
-}
-
-// openWizardIO returns reader, writer, and closer for the init wizard.
-// When stdin is not a terminal (e.g. curl | bash), stdin is a pipe and
-// cannot receive keyboard input. We open /dev/tty read-only for keyboard
-// input, but keep os.Stdout for output: os.Stdout is the same fd that
-// the install script already uses (install.sh printf/info calls), so it
-// is guaranteed to reach the user's terminal regardless of how sudo or
-// any PTY relay is wired up.
-func openWizardIO() (io.Reader, io.Writer, func()) {
-	fi, err := os.Stdin.Stat()
-	if err == nil && fi.Mode()&(os.ModeDevice|os.ModeCharDevice) == os.ModeDevice|os.ModeCharDevice {
-		return os.Stdin, os.Stdout, func() {}
-	}
-	tty, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
-	if err != nil {
-		return os.Stdin, os.Stdout, func() {}
-	}
-	return tty, os.Stdout, func() { tty.Close() }
+	fmt.Printf("\nArquivo gerado: %s\n", outPath)
 }
 
 type wizardReader struct {
-	r   *bufio.Reader
-	w   io.Writer
-	eof bool // stdin fechou; usar padrões silenciosamente
+	r *bufio.Reader
+	w io.Writer
 }
 
 func (wi *wizardReader) ask(prompt, def string) string {
-	if wi.eof {
-		return def
-	}
 	if def != "" {
 		fmt.Fprintf(wi.w, "%s [%s]: ", prompt, def)
 	} else {
 		fmt.Fprintf(wi.w, "%s: ", prompt)
 	}
-	line, err := wi.r.ReadString('\n')
-	if err != nil {
-		fmt.Fprintln(wi.w) // newline para não deixar o cursor no meio da linha
-		wi.eof = true
-		return def
-	}
+	line, _ := wi.r.ReadString('\n')
 	line = strings.TrimSpace(line)
 	if line == "" {
 		return def
