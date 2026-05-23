@@ -332,7 +332,7 @@ for arg in "$@"; do
         --service-name)    REST="service-name"  ;;
         --help|-h)
             printf 'Uso:\n'
-            printf '  instalar:   sudo bash <(curl -fsSL <url>/install.sh)\n'
+            printf '  instalar:   curl -fsSL <url>/install.sh -o /tmp/install.sh && sudo bash /tmp/install.sh\n'
             printf '  alternativa: git clone --depth 1 <repo> /tmp/cam && sudo bash /tmp/cam/scripts/install.sh\n'
             printf '  opções:     --install-dir=DIR  --config-dir=DIR  --data-dir=DIR  --segments-dir=DIR  --service-name=NAME\n'
             printf '  desinstalar (local, sem internet):\n'
