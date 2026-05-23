@@ -13,11 +13,17 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
   const [updateAvailable, setUpdateAvailable] = useState(false)
 
   useEffect(() => {
-    if (getRole() !== 'admin') return
-    fetch('/api/update/check', { headers: authHeaders() })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.update_available) setUpdateAvailable(true) })
-      .catch(() => {})
+    function tryFetch() {
+      if (getRole() !== 'admin') return
+      fetch('/api/update/check', { headers: authHeaders() })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.update_available) setUpdateAvailable(true) })
+        .catch(() => {})
+    }
+
+    tryFetch()
+    window.addEventListener('camera:token-changed', tryFetch)
+    return () => window.removeEventListener('camera:token-changed', tryFetch)
   }, [])
 
   const clearUpdate = useCallback(() => setUpdateAvailable(false), [])
