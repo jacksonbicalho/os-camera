@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import { useAbout } from '../../hooks/useSettings'
-import { authHeaders } from '../../auth'
-import { getRole } from '../../auth'
+import { authHeaders, getRole } from '../../auth'
+import { useUpdateAvailable } from '../../contexts/UpdateContext'
 
 interface UpdateInfo {
   current: string
@@ -26,10 +26,15 @@ function fmtUptime(seconds: number): string {
 export default function AboutPage() {
   const about = useAbout('/settings/about')
   const isAdmin = getRole() === 'admin'
+  const { clearUpdate } = useUpdateAvailable()
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [checking, setChecking] = useState(isAdmin)
   const [applying, setApplying] = useState(false)
   const [applyMsg, setApplyMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    clearUpdate()
+  }, [clearUpdate])
 
   useEffect(() => {
     if (!isAdmin) return
