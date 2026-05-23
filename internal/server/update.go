@@ -31,7 +31,8 @@ func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 
 	info, err := updater.CheckLatest(s.version, updater.DefaultAPIURL)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(updater.UpdateInfo{Current: s.version, Assets: map[string]string{}})
 		return
 	}
 
