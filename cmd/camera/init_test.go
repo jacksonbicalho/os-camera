@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"os"
 	"strings"
 	"testing"
 )
@@ -9,10 +10,10 @@ import (
 func TestInitWizardDefaultInputs(t *testing.T) {
 	lines := []string{
 		"",         // port: 8080
-		"",         // db_path: /var/camera/data/camera.db
-		"",         // segments_path: /var/camera/data/hls
+		"",         // db_path
+		"",         // segments_path
 		"",         // hls_dvr: 0
-		"",         // storage path: /var/camera/data/recordings
+		"",         // storage path
 		"",         // with_motion_minutes: 10080
 		"",         // without_motion_minutes: 1440
 		"",         // max_size: 10
@@ -28,12 +29,23 @@ func TestInitWizardDefaultInputs(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	var dbPath, segPath, storagePath string
+	if os.Getuid() == 0 {
+		dbPath = "db_path: /var/camera/data/camera.db"
+		segPath = "segments_path: /var/camera/data/hls"
+		storagePath = "path: /var/camera/data/recordings"
+	} else {
+		dbPath = "db_path: ./camera.db"
+		segPath = "segments_path: ./hls"
+		storagePath = "path: ./recordings"
+	}
+
 	wants := []string{
 		"port: 8080",
-		"db_path: /var/camera/data/camera.db",
-		"segments_path: /var/camera/data/hls",
+		dbPath,
+		segPath,
 		"hls_dvr_seconds: 0",
-		"path: /var/camera/data/recordings",
+		storagePath,
 		"with_motion_minutes: 10080",
 		"without_motion_minutes: 1440",
 		"max_size_gb: 10.0",
