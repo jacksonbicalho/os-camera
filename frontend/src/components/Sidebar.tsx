@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react"
 import { useNavigate, Link, NavLink } from "react-router-dom"
 import { clearToken } from "../auth"
 import { useNotifications } from "../contexts/NotificationContext"
-import { useSidebarItems, type SidebarItem } from "../contexts/SidebarContext"
+import { useSidebarItems, type SidebarItem, type SidebarDropdownOption } from "../contexts/SidebarContext"
 import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import type { Notification } from "../contexts/NotificationContext"
@@ -88,10 +88,64 @@ function NotificationItem({
 }
 
 function SidebarInjectedItem({ item }: { item: SidebarItem }) {
+  const [dropOpen, setDropOpen] = useState(false)
+  const dropRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (item.type !== 'dropdown') return
+    function handleClick(e: MouseEvent) {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node))
+        setDropOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [item.type])
+
   if (item.type === 'separator') {
     return <div className="w-8 border-t border-gray-700 my-1" />
   }
+
   const base = `relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors`
+
+  if (item.type === 'dropdown') {
+    const isActive = item.active || dropOpen
+    return (
+      <div className="relative" ref={dropRef}>
+        <button
+          onClick={() => { if (!item.disabled) setDropOpen(v => !v) }}
+          disabled={item.disabled}
+          title={item.title}
+          className={`${base} ${isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'} ${item.disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+        >
+          {item.icon}
+        </button>
+        {dropOpen && (
+          <div className="absolute left-full top-0 ml-2 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 py-1 min-w-[72px]">
+            {item.options.map((opt: SidebarDropdownOption, i: number) => (
+              <button
+                key={i}
+                onClick={() => { opt.onClick(); setDropOpen(false) }}
+                disabled={opt.disabled}
+                className={`flex items-center justify-between gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${
+                  opt.active
+                    ? 'text-blue-400 font-semibold'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                } ${opt.disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+              >
+                <span>{opt.label}</span>
+                {opt.active && (
+                  <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const isActive = item.type === 'button' && item.active
   const activeClass = isActive ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"
   const disabledClass = (item.type === 'button' && item.disabled) ? "opacity-40 cursor-not-allowed" : ""

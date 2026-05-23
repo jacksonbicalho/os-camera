@@ -1,10 +1,18 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState } from 'react'
 
+export type SidebarDropdownOption = {
+  label: string
+  active?: boolean
+  disabled?: boolean
+  onClick: () => void
+}
+
 export type SidebarItem =
   | { type: 'button'; id: string; icon: React.ReactNode; title: string; onClick: () => void; active?: boolean; badge?: string | number; disabled?: boolean }
   | { type: 'link';   id: string; icon: React.ReactNode; title: string; to: string; state?: object }
   | { type: 'separator'; id: string }
+  | { type: 'dropdown'; id: string; icon: React.ReactNode; title: string; options: SidebarDropdownOption[]; disabled?: boolean; active?: boolean }
 
 const SidebarItemsContext = createContext<SidebarItem[]>([])
 const SetSidebarItemsContext = createContext<(items: SidebarItem[]) => void>(() => {})

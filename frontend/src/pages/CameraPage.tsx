@@ -469,11 +469,6 @@ export default function CameraPage() {
 
   // Inject camera controls into the left sidebar
   useEffect(() => {
-    const speeds = [1, 2, 4, 8, 16, 32].filter(v => browserMaxRate === null || v <= browserMaxRate)
-    const nextSpeed = () => {
-      const idx = speeds.indexOf(playbackRate)
-      return speeds[(idx + 1) % speeds.length]
-    }
     setItems([
       {
         type: 'button', id: 'live-status',
@@ -504,12 +499,18 @@ export default function CameraPage() {
         active: !videoMuted,
       },
       {
-        type: 'button', id: 'speed',
+        type: 'dropdown', id: 'speed',
         icon: <span className="text-xs font-bold">{playbackRate}×</span>,
-        title: `Velocidade ${playbackRate}× (clique para avançar)`,
-        onClick: () => handleRateChange(nextSpeed()),
+        title: `Velocidade ${playbackRate}×`,
         disabled: isLive,
         active: playbackRate > 1,
+        options: [1, 2, 4, 8, 16, 32]
+          .filter(v => browserMaxRate === null || v <= browserMaxRate)
+          .map(v => ({
+            label: `${v}×`,
+            active: v === playbackRate,
+            onClick: () => handleRateChange(v),
+          })),
       },
       {
         type: 'button', id: 'continuous',
