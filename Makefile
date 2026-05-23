@@ -36,10 +36,12 @@ build: frontend | $(OUTDIR)
 
 frontend:
 	docker run --rm \
+		--user "$(shell id -u):$(shell id -g)" \
 		-v "$(PWD)/frontend":/app \
 		-v camera-yarn-cache:/yarn-cache \
 		-w /app \
 		-e YARN_CACHE_FOLDER=/yarn-cache \
+		-e HOME=/tmp \
 		node:20-alpine \
 		sh -c "yarn install --frozen-lockfile && yarn build"
 
