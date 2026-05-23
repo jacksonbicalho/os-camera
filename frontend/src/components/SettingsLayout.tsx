@@ -3,7 +3,6 @@ import { SettingsSidebar } from "./SettingsSidebar";
 import { getRole } from "../auth";
 
 const BASE_NAV_LINKS = [
-  { to: "/settings/stats", label: "Estatísticas" },
   { to: "/settings/cameras", label: "Câmeras" },
   { to: "/settings/users", label: "Usuários" },
   { to: "/settings/server", label: "Servidor" },
