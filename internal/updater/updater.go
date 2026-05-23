@@ -6,7 +6,10 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
+
+var httpClient = &http.Client{Timeout: 10 * time.Second}
 
 const DefaultAPIURL = "https://api.github.com/repos/jacksonbicalho/camera/releases/latest"
 
@@ -36,7 +39,7 @@ func CheckLatest(current, apiURL string) (UpdateInfo, error) {
 		Assets:  map[string]string{},
 	}
 
-	resp, err := http.Get(apiURL) //nolint:noctx
+	resp, err := httpClient.Get(apiURL) //nolint:noctx
 	if err != nil {
 		return info, fmt.Errorf("updater: fetch releases: %w", err)
 	}
