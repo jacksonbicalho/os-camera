@@ -25,7 +25,7 @@ export default function ListPanel({
 }: ListPanelProps) {
   return (
     <>
-      <div className="px-3 py-1.5 border-b border-gray-800 flex justify-end">
+      <div className="px-3 py-1.5 border-b border-gray-800 flex justify-end shrink-0">
         <button
           onClick={onSortOrderChange}
           className="text-xs text-blue-400 hover:text-blue-300"
@@ -33,7 +33,7 @@ export default function ListPanel({
           {sortOrder === 'desc' ? '↓ Recente' : '↑ Antigo'}
         </button>
       </div>
-      <div className={`divide-y divide-gray-800 ${scroll ? 'max-h-90 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-700 [&::-webkit-scrollbar-thumb]:rounded-full' : ''}`}>
+      <div className={`divide-y divide-gray-800 ${scroll ? 'flex-1 min-h-0 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-700 [&::-webkit-scrollbar-thumb]:rounded-full' : ''}`}>
         {empty
           ? <p className="px-3 py-4 text-sm text-gray-500">{emptyMessage}</p>
           : children

@@ -948,9 +948,9 @@ function toggleFullscreen() {
 
           {/* Painel lateral condicional */}
           {activePanel && (
-            <div className="w-72 shrink-0 border-l border-gray-800 bg-gray-900 flex flex-col overflow-y-auto h-full">
+            <div className="w-72 shrink-0 border-l border-gray-800 bg-gray-900 flex flex-col h-full">
               {activePanel === 'calendar' && (
-                <div className="p-3">
+                <div className="p-3 overflow-y-auto">
                   <DayPicker
                     mode="single"
                     selected={selectedDate}
