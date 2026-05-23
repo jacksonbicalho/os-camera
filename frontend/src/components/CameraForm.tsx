@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { type Camera, type CameraFormData, RESOLUTIONS, emptyForm, decodeResolution } from './cameraFormUtils'
+import { type Camera, type CameraFormData, RESOLUTIONS, emptyForm } from './cameraFormUtils'
 
 interface CameraFormProps {
   initial?: Camera
@@ -14,14 +14,6 @@ export default function CameraForm({ initial, onSave, onCancel, saving }: Camera
 
   const set = (field: keyof CameraFormData, value: string | boolean | number) =>
     setForm(prev => ({ ...prev, [field]: value }))
-
-  const { width: streamW, height: streamH } = decodeResolution(form.resolution)
-  const previewW = form.motion_capture_auto
-    ? (streamW > 0 ? Math.round(streamW / 4) : null)
-    : (streamW > 0 ? Math.round(streamW * form.motion_capture_pct / 100) : null)
-  const previewH = form.motion_capture_auto
-    ? (streamH > 0 ? Math.round(streamH / 4) : null)
-    : (streamH > 0 ? Math.round(streamH * form.motion_capture_pct / 100) : null)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -174,79 +166,6 @@ export default function CameraForm({ initial, onSave, onCancel, saving }: Camera
         {!form.recording_enabled && (
           <p className="text-xs text-gray-600 mt-1">HLS e detecção de movimento continuam funcionando</p>
         )}
-      </div>
-
-      <div className="border-t border-gray-800 pt-3">
-        <p className="text-xs font-medium text-gray-400 mb-3">Detecção de movimento</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="flex items-center gap-2 sm:col-span-2">
-            <input
-              type="checkbox"
-              id="motion_enabled"
-              checked={form.motion_enabled}
-              onChange={e => set('motion_enabled', e.target.checked)}
-              className="accent-blue-500"
-            />
-            <label htmlFor="motion_enabled" className="text-xs text-gray-400 cursor-pointer">Habilitado</label>
-          </div>
-          {form.motion_enabled && (
-            <>
-              <div>
-                <label className={labelClass}>Limiar</label>
-                <input type="number" step="0.001" min="0.001" max="1" value={form.motion_threshold} onChange={e => set('motion_threshold', e.target.value)} className={inputClass} />
-                <p className="text-xs text-gray-600 mt-0.5">0.001 – 1.0 · quanto menor, mais sensível</p>
-              </div>
-              <div>
-                <label className={labelClass}>FPS de análise</label>
-                <input type="number" min="1" max="30" value={form.motion_fps} onChange={e => set('motion_fps', e.target.value)} className={inputClass} />
-                <p className="text-xs text-gray-600 mt-0.5">1 – 30 fps · padrão: 2</p>
-              </div>
-              <div>
-                <label className={labelClass}>Cooldown (segundos)</label>
-                <input type="number" min="0" value={form.motion_cooldown} onChange={e => set('motion_cooldown', e.target.value)} className={inputClass} />
-                <p className="text-xs text-gray-600 mt-0.5">Tempo mínimo entre eventos · 0 = sem cooldown</p>
-              </div>
-              <div>
-                <label className={labelClass}>Segundos antes do evento</label>
-                <input type="number" min="0" max="300" value={form.motion_playback_lead} onChange={e => set('motion_playback_lead', e.target.value)} className={inputClass} />
-                <p className="text-xs text-gray-600 mt-0.5">0 – 300 s · recua o player antes do instante detectado</p>
-              </div>
-              <div className="sm:col-span-2">
-                <label className={labelClass}>Resolução de análise</label>
-                <div className="flex items-center gap-2 mb-2">
-                  <input
-                    type="checkbox"
-                    id="motion_capture_auto"
-                    checked={form.motion_capture_auto}
-                    onChange={e => set('motion_capture_auto', e.target.checked)}
-                    className="accent-blue-500"
-                  />
-                  <label htmlFor="motion_capture_auto" className="text-xs text-gray-400 cursor-pointer">
-                    Automático (stream ÷ 4{previewW !== null ? ` → ${previewW} × ${previewH} px` : ''})
-                  </label>
-                </div>
-                {!form.motion_capture_auto && (
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="range"
-                        min={5} max={100} step={5}
-                        value={form.motion_capture_pct}
-                        onChange={e => set('motion_capture_pct', parseInt(e.target.value))}
-                        className="flex-1 accent-blue-500"
-                      />
-                      <span className="text-xs text-gray-300 font-mono w-10 text-right">{form.motion_capture_pct}%</span>
-                    </div>
-                    {previewW !== null
-                      ? <p className="text-xs text-gray-500">→ {previewW} × {previewH} px</p>
-                      : <p className="text-xs text-gray-600">Configure largura e altura do stream para ver a resolução em pixels</p>
-                    }
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
       </div>
 
       <div className="flex gap-2">
