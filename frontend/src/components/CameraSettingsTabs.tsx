@@ -10,7 +10,7 @@ interface Props {
 
 const TABS: { key: Tab; label: string; path: (id: string) => string }[] = [
   { key: 'detail', label: 'Câmera', path: id => `/settings/cameras/${id}` },
-  { key: 'motion', label: 'Movimento', path: id => `/settings/cameras/${id}/motion` },
+  { key: 'motion', label: 'Detecção de movimento', path: id => `/settings/cameras/${id}/motion` },
   { key: 'zones', label: 'Zonas', path: id => `/settings/cameras/${id}/motion/zones` },
 ]
 
