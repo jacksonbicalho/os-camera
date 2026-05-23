@@ -68,7 +68,7 @@ export default function AppLayout({ children, mainClassName = '', fill = false }
   // modo padrão: sidebar sticky, página rola naturalmente pelo browser
   return (
     <div className="flex min-h-screen bg-gray-950">
-      <div className="sticky top-0 h-screen shrink-0 overflow-hidden flex">
+      <div className="sticky top-0 h-screen shrink-0 flex">
         <Sidebar username={getUsername() ?? undefined} />
       </div>
       <div className="flex-1 flex flex-col min-w-0">
