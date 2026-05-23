@@ -281,50 +281,8 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
       </Link>
 
 
-      {/* Injected camera items */}
-      {items.length > 0 && (
-        <div className="flex flex-col items-center gap-0.5 py-2 border-t border-gray-800 flex-none">
-          {items.map(item => <SidebarInjectedItem key={item.id} item={item} />)}
-        </div>
-      )}
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Bottom: Bell + User */}
-      <div className="flex flex-col items-center gap-1 pb-3 flex-none">
-
-        {/* Stats */}
-        <NavIcon to="/stats" title="Estatísticas">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-            />
-          </svg>
-        </NavIcon>
-
-        {/* Settings */}
-        <NavLink
-          to="/settings/cameras"
-          title={updateAvailable ? 'Configurações — atualização disponível' : 'Configurações'}
-          className={({ isActive }) =>
-            `relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
-              isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-            }`
-          }
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-            />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-          {updateAvailable && (
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-orange-500 rounded-full" />
-          )}
-        </NavLink>
-
-        {/* Bell */}
+      {/* Bell — logo abaixo da logo */}
+      <div className="flex flex-col items-center py-1 border-b border-gray-800 flex-none">
         <div className="relative" ref={bellRef}>
           <button
             onClick={() => setBellOpen((v) => !v)}
@@ -346,7 +304,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
           </button>
 
           {bellOpen && (
-            <div className="absolute left-full bottom-0 ml-2 w-72 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 flex flex-col max-h-[80vh]">
+            <div className="absolute left-full top-0 ml-2 w-72 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 flex flex-col max-h-[80vh]">
               <div className="px-3 pt-2.5 pb-0">
                 <span className="text-xs font-semibold text-gray-300">Notificações</span>
               </div>
@@ -487,6 +445,50 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Injected camera items */}
+      {items.length > 0 && (
+        <div className="flex flex-col items-center gap-0.5 py-2 border-b border-gray-800 flex-none">
+          {items.map(item => <SidebarInjectedItem key={item.id} item={item} />)}
+        </div>
+      )}
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Bottom: Stats + Settings + User */}
+      <div className="flex flex-col items-center gap-1 pb-3 flex-none">
+
+        {/* Stats */}
+        <NavIcon to="/stats" title="Estatísticas">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+            />
+          </svg>
+        </NavIcon>
+
+        {/* Settings */}
+        <NavLink
+          to="/settings/cameras"
+          title={updateAvailable ? 'Configurações — atualização disponível' : 'Configurações'}
+          className={({ isActive }) =>
+            `relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
+              isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+            }`
+          }
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+            />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          {updateAvailable && (
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-orange-500 rounded-full" />
+          )}
+        </NavLink>
 
         {/* User */}
         <div className="relative" ref={userRef}>
