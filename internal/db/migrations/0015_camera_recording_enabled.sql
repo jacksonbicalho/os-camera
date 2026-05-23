@@ -1,0 +1,1 @@
+ALTER TABLE cameras ADD COLUMN recording_enabled INTEGER NOT NULL DEFAULT 1;

@@ -76,6 +76,7 @@ type cameraConfigDTO struct {
 	RecordVideoMode   string           `json:"record_video_mode"`
 	HLSSegmentSeconds *int             `json:"hls_segment_seconds"`
 	HLSListSize       *int             `json:"hls_list_size"`
+	RecordingEnabled  bool             `json:"recording_enabled"`
 	Motion            *motionConfigDTO `json:"motion"`
 }
 
@@ -95,6 +96,7 @@ func cameraToDTO(cam config.CameraConfig) cameraConfigDTO {
 		RecordVideoMode:   cam.RecordVideoMode,
 		HLSSegmentSeconds: cam.HLSSegmentSeconds,
 		HLSListSize:       cam.HLSListSize,
+		RecordingEnabled:  cam.RecordingEnabled,
 	}
 	if cam.Motion != nil {
 		dto.Motion = &motionConfigDTO{
@@ -152,6 +154,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		RecordVideoMode   string           `json:"record_video_mode"`
 		HLSSegmentSeconds *int             `json:"hls_segment_seconds"`
 		HLSListSize       *int             `json:"hls_list_size"`
+		RecordingEnabled  *bool            `json:"recording_enabled"`
 		Motion            *motionConfigDTO `json:"motion"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -169,6 +172,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	recEnabled := req.RecordingEnabled == nil || *req.RecordingEnabled
 	cam := config.CameraConfig{
 		Name:              req.Name,
 		RTSPURL:           req.RTSPURL,
@@ -180,6 +184,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		RecordVideoMode:   req.RecordVideoMode,
 		HLSSegmentSeconds: req.HLSSegmentSeconds,
 		HLSListSize:       req.HLSListSize,
+		RecordingEnabled:  recEnabled,
 	}
 	if req.ChunkDuration != "" {
 		d, err := time.ParseDuration(req.ChunkDuration)
@@ -262,6 +267,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		RecordVideoMode   string           `json:"record_video_mode"`
 		HLSSegmentSeconds *int             `json:"hls_segment_seconds"`
 		HLSListSize       *int             `json:"hls_list_size"`
+		RecordingEnabled  *bool            `json:"recording_enabled"`
 		Motion            *motionConfigDTO `json:"motion"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -293,6 +299,10 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	recEnabled := existing.RecordingEnabled
+	if req.RecordingEnabled != nil {
+		recEnabled = *req.RecordingEnabled
+	}
 	cam := config.CameraConfig{
 		ID:                id,
 		RTSPURL:           req.RTSPURL,
@@ -305,6 +315,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		RecordVideoMode:   req.RecordVideoMode,
 		HLSSegmentSeconds: req.HLSSegmentSeconds,
 		HLSListSize:       req.HLSListSize,
+		RecordingEnabled:  recEnabled,
 	}
 	if req.ChunkDuration != "" {
 		d, err := time.ParseDuration(req.ChunkDuration)

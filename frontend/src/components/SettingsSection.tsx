@@ -6,11 +6,13 @@ interface FieldRow {
 interface SettingsSectionProps {
   title: string;
   fields: FieldRow[];
+  children?: React.ReactNode;
 }
 
 export default function SettingsSection({
   title,
   fields,
+  children,
 }: SettingsSectionProps) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
@@ -21,13 +23,13 @@ export default function SettingsSection({
         {fields.map(({ label, value }) => (
           <div key={label} className="px-5 py-3">
             <dt className="mb-1 text-xs text-gray-500">{label}</dt>
-
             <dd className="break-all font-mono text-sm text-gray-200">
               {value ?? "—"}
             </dd>
           </div>
         ))}
       </dl>
+      {children}
     </div>
   );
 }
