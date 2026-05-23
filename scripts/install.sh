@@ -94,13 +94,15 @@ do_install() {
     if [ -f "$CONFIG_FILE" ]; then
         warn "Config já existe — não foi sobrescrito: ${CONFIG_FILE}"
         config_ready=1
-    else
+    elif [ -t 0 ]; then
+        # stdin é um terminal real: rodar wizard interativo
         info "Iniciando assistente de configuração..."
         printf '\n'
-        # O binário detecta se stdin é terminal e, caso contrário, abre /dev/tty
-        # com O_RDWR internamente — não é necessário redirecionar aqui.
         "${INSTALL_DIR}/${BINARY_NAME}" init --output "${CONFIG_FILE}" && config_ready=1 || true
-        [ "$config_ready" = "0" ] && warn "Wizard cancelado ou indisponível. Gerando config mínimo em ${CONFIG_FILE}."
+        [ "$config_ready" = "0" ] && warn "Wizard cancelado. Gerando config mínimo em ${CONFIG_FILE}."
+    else
+        # stdin é pipe (ex: curl | bash): wizard não funciona nesse contexto
+        warn "Instalação não interativa — gerando config mínimo em ${CONFIG_FILE}."
     fi
 
     if [ "$config_ready" = "0" ]; then
