@@ -24,15 +24,16 @@ Sistema de monitoramento residencial via RTSP. Um único binário estático grav
 ## Instalação rápida (Linux)
 
 ```bash
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh)
+curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh -o /tmp/camera-install.sh
+sudo bash /tmp/camera-install.sh
 ```
 
 O script detecta a arquitetura (`amd64`, `arm64`, `arm`), baixa o binário da última release, executa o wizard de configuração interativo e registra um serviço systemd.
 
-> **Por que `sudo bash <(...)` e não `curl | sudo bash`?**
-> A sintaxe de process substitution mantém o `stdin` do bash conectado ao terminal real, permitindo que o wizard de configuração funcione de forma interativa. Com `curl | bash`, o `stdin` do bash é o pipe do curl e o teclado não chega ao processo.
+> **Por que baixar antes de executar?**
+> Com `curl | sudo bash` o `stdin` do bash fica ocupado com o pipe do curl — o wizard não consegue ler o teclado. Salvar o script em um arquivo e executar separadamente mantém o `stdin` conectado ao terminal real.
 
-**Alternativa via git clone** (não requer `bash` com suporte a process substitution — ex: `sh`):
+**Alternativa via git clone:**
 
 ```bash
 git clone --depth 1 https://github.com/jacksonbicalho/camera.git /tmp/camera-install
@@ -43,7 +44,8 @@ rm -rf /tmp/camera-install
 **Caminhos customizáveis:**
 
 ```bash
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh) \
+curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh -o /tmp/camera-install.sh
+sudo bash /tmp/camera-install.sh \
       --install-dir /usr/local/bin \
       --config-dir  /etc/camera \
       --data-dir    /data/recordings \
