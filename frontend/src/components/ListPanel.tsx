@@ -38,18 +38,18 @@ export default function ListPanel({
           ? <p className="px-3 py-4 text-sm text-gray-500">{emptyMessage}</p>
           : children
         }
+        {hasMore && (
+          <div className="px-3 py-2">
+            <button
+              onClick={onLoadMore}
+              disabled={loadingMore}
+              className="text-sm text-blue-400 hover:text-blue-300 disabled:opacity-50"
+            >
+              {loadingMore ? 'Carregando...' : 'Carregar mais'}
+            </button>
+          </div>
+        )}
       </div>
-      {hasMore && (
-        <div className="px-3 py-2 border-t border-gray-800 shrink-0">
-          <button
-            onClick={onLoadMore}
-            disabled={loadingMore}
-            className="text-sm text-blue-400 hover:text-blue-300 disabled:opacity-50"
-          >
-            {loadingMore ? 'Carregando...' : 'Carregar mais'}
-          </button>
-        </div>
-      )}
     </div>
   )
 }

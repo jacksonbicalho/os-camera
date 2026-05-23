@@ -469,11 +469,6 @@ export default function CameraPage() {
 
   // Inject camera controls into the left sidebar
   useEffect(() => {
-    const speeds = [1, 2, 4, 8, 16, 32].filter(v => browserMaxRate === null || v <= browserMaxRate)
-    const nextSpeed = () => {
-      const idx = speeds.indexOf(playbackRate)
-      return speeds[(idx + 1) % speeds.length]
-    }
     setItems([
       {
         type: 'button', id: 'live-status',
@@ -504,12 +499,31 @@ export default function CameraPage() {
         active: !videoMuted,
       },
       {
-        type: 'button', id: 'speed',
-        icon: <span className="text-xs font-bold">{playbackRate}×</span>,
-        title: `Velocidade ${playbackRate}× (clique para avançar)`,
-        onClick: () => handleRateChange(nextSpeed()),
+        type: 'dropdown', id: 'speed',
+        icon: (
+          <span className="relative flex items-center justify-center">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6C7.58 6 4 9.58 4 14c0 1.38.36 2.67.98 3.8L6.41 16.38A6.96 6.96 0 015 14a7 7 0 1114 0c0 .85-.15 1.66-.42 2.42l1.49 1.49c.6-1.19.93-2.53.93-3.91 0-4.42-3.58-8-8-8z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l2.5-4" />
+              <circle cx="12" cy="14" r="1" fill="currentColor" stroke="none" />
+            </svg>
+            {playbackRate > 1 && (
+              <span className="absolute -bottom-1 -right-1 text-[9px] font-bold leading-none bg-blue-600 text-white rounded-full px-0.5 py-px">
+                {playbackRate}×
+              </span>
+            )}
+          </span>
+        ),
+        title: `Velocidade ${playbackRate}×`,
         disabled: isLive,
         active: playbackRate > 1,
+        options: [1, 2, 4, 8, 16, 32]
+          .filter(v => browserMaxRate === null || v <= browserMaxRate)
+          .map(v => ({
+            label: `${v}×`,
+            active: v === playbackRate,
+            onClick: () => handleRateChange(v),
+          })),
       },
       {
         type: 'button', id: 'continuous',
