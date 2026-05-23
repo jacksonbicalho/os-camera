@@ -158,12 +158,14 @@ func main() {
 		camCtx, camCancel := context.WithCancel(ctx)
 		reconnect := cam.EffectiveReconnectInterval()
 
-		rec := recorder.NewRecorder(cam, cfg.Storage, stream, commander, slog)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			rec.Run(camCtx, reconnect)
-		}()
+		if cam.RecordingEnabled {
+			rec := recorder.NewRecorder(cam, cfg.Storage, stream, commander, slog)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				rec.Run(camCtx, reconnect)
+			}()
+		}
 
 		if cfg.Server.SegmentsPath != "" {
 			str := streaming.NewHLSStreamer(cam, cfg.Server, stream, commander, slog)

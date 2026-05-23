@@ -106,6 +106,7 @@ type CameraConfig struct {
 	HLSSegmentSeconds *int          `yaml:"hls_segment_seconds"`
 	HLSListSize       *int          `yaml:"hls_list_size"`
 	Motion            *MotionConfig `yaml:"motion"`
+	RecordingEnabled  bool          `yaml:"recording_enabled"`
 }
 
 func (c CameraConfig) HLSSegmentSecondsOrDefault() int {

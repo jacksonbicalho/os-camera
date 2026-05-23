@@ -26,6 +26,7 @@ export interface CameraSettings {
   record_video_mode: string
   hls_segment_seconds: number | null
   hls_list_size: number | null
+  recording_enabled: boolean
   motion: MotionSettings | null
 }
 

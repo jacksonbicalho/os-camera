@@ -160,6 +160,23 @@ export default function CameraForm({ initial, onSave, onCancel, saving }: Camera
       </div>
 
       <div className="border-t border-gray-800 pt-3">
+        <p className="text-xs font-medium text-gray-400 mb-3">Gravação</p>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            id="recording_enabled"
+            checked={form.recording_enabled}
+            onChange={e => set('recording_enabled', e.target.checked)}
+            className="accent-blue-500"
+          />
+          <span className="text-xs text-gray-400">Gravar em disco</span>
+        </label>
+        {!form.recording_enabled && (
+          <p className="text-xs text-gray-600 mt-1">HLS e detecção de movimento continuam funcionando</p>
+        )}
+      </div>
+
+      <div className="border-t border-gray-800 pt-3">
         <p className="text-xs font-medium text-gray-400 mb-3">Detecção de movimento</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="flex items-center gap-2 sm:col-span-2">

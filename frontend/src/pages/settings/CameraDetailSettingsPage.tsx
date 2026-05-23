@@ -150,6 +150,7 @@ export default function CameraDetailSettingsPage() {
           <SettingsSection
             title="Gravação"
             fields={[
+              { label: 'Gravar em disco', value: cam.recording_enabled ? 'Sim' : 'Não' },
               { label: 'Duração do chunk', value: cam.chunk_duration },
               { label: 'Intervalo de reconexão', value: cam.reconnect_interval },
             ]}

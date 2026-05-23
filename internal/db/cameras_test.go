@@ -297,6 +297,70 @@ func TestMotionConfig_PlaybackLeadSecondsDefault(t *testing.T) {
 	}
 }
 
+func TestRecordingEnabled_PersistsTrue(t *testing.T) {
+	database := openTestDB(t)
+
+	cam := makeCamera("cam")
+	cam.RecordingEnabled = true
+	created, err := db.CreateCamera(database, cam, nil)
+	if err != nil {
+		t.Fatalf("CreateCamera: %v", err)
+	}
+
+	got, err := db.GetCamera(database, created.ID)
+	if err != nil {
+		t.Fatalf("GetCamera: %v", err)
+	}
+	if !got.RecordingEnabled {
+		t.Error("RecordingEnabled: got false, want true")
+	}
+}
+
+func TestRecordingEnabled_CanBeDisabled(t *testing.T) {
+	database := openTestDB(t)
+
+	cam := makeCamera("cam")
+	cam.RecordingEnabled = true
+	created, err := db.CreateCamera(database, cam, nil)
+	if err != nil {
+		t.Fatalf("CreateCamera: %v", err)
+	}
+
+	created.RecordingEnabled = false
+	if err := db.UpdateCamera(database, created, nil); err != nil {
+		t.Fatalf("UpdateCamera: %v", err)
+	}
+
+	got, err := db.GetCamera(database, created.ID)
+	if err != nil {
+		t.Fatalf("GetCamera: %v", err)
+	}
+	if got.RecordingEnabled {
+		t.Error("RecordingEnabled: got true, want false")
+	}
+}
+
+func TestListCameras_IncludesRecordingEnabled(t *testing.T) {
+	database := openTestDB(t)
+
+	cam := makeCamera("cam")
+	cam.RecordingEnabled = true
+	if _, err := db.CreateCamera(database, cam, nil); err != nil {
+		t.Fatalf("CreateCamera: %v", err)
+	}
+
+	cams, err := db.ListCameras(database)
+	if err != nil {
+		t.Fatalf("ListCameras: %v", err)
+	}
+	if len(cams) != 1 {
+		t.Fatalf("expected 1 camera, got %d", len(cams))
+	}
+	if !cams[0].RecordingEnabled {
+		t.Error("RecordingEnabled: got false, want true")
+	}
+}
+
 func TestReorderCameras(t *testing.T) {
 	database := openTestDB(t)
 

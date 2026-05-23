@@ -511,6 +511,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		RecordVideoMode   string     `json:"record_video_mode"`
 		HLSSegmentSeconds *int       `json:"hls_segment_seconds"`
 		HLSListSize       *int       `json:"hls_list_size"`
+		RecordingEnabled  bool       `json:"recording_enabled"`
 		Motion            *motionDTO `json:"motion"`
 	}
 	camList := s.cameras
@@ -563,6 +564,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			RecordVideoMode:   c.RecordVideoMode,
 			HLSSegmentSeconds: c.HLSSegmentSeconds,
 			HLSListSize:       c.HLSListSize,
+			RecordingEnabled:  c.RecordingEnabled,
 			Motion:            motion,
 		}
 	}
