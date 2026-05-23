@@ -207,4 +207,36 @@ describe('NotificationContext — sem token', () => {
 
     expect(FakeEventSource.instances).toHaveLength(0)
   })
+
+  it('abre EventSource após login (camera:token-changed)', async () => {
+    localStorage.removeItem('camera_token')
+
+    renderHook(() => useNotifications(), { wrapper })
+    await flush()
+    expect(FakeEventSource.instances).toHaveLength(0)
+
+    // Simula login: salva token e dispara evento
+    act(() => {
+      localStorage.setItem('camera_token', 'new-token')
+      window.dispatchEvent(new Event('camera:token-changed'))
+    })
+    await flush()
+
+    expect(FakeEventSource.instances).toHaveLength(1)
+    expect(FakeEventSource.instances[0].url).toContain('/api/motion/live')
+  })
+
+  it('fecha EventSource ao sair (token removido via camera:token-changed)', async () => {
+    renderHook(() => useNotifications(), { wrapper })
+    await flush()
+    expect(FakeEventSource.instances).toHaveLength(1)
+
+    act(() => {
+      localStorage.removeItem('camera_token')
+      window.dispatchEvent(new Event('camera:token-changed'))
+    })
+    await flush()
+
+    expect(FakeEventSource.instances[0].closed).toBe(true)
+  })
 })
