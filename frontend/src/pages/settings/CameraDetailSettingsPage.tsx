@@ -48,7 +48,6 @@ export default function CameraDetailSettingsPage() {
   const [stats, setStats] = useState<CameraStatsData | null>(null)
   const [editing, setEditing] = useState(startEditing)
   const [saving, setSaving] = useState(false)
-  const [togglingRecording, setTogglingRecording] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -58,20 +57,6 @@ export default function CameraDetailSettingsPage() {
       .then(data => { if (data) setStats(data) })
       .catch(() => {})
   }, [id])
-
-  const handleToggleRecording = async () => {
-    if (!id || !cam) return
-    setTogglingRecording(true); setError(null)
-    try {
-      const res = await fetch(`/api/settings/cameras/${id}`, {
-        method: 'PUT',
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rtsp_url: cam.rtsp_url, recording_enabled: !cam.recording_enabled }),
-      })
-      if (!res.ok) { setError((await res.text()).trim() || 'Erro ao alterar gravação'); return }
-      reload()
-    } finally { setTogglingRecording(false) }
-  }
 
   const handleUpdate = async (data: CameraFormData) => {
     if (!id) return
@@ -165,32 +150,11 @@ export default function CameraDetailSettingsPage() {
           <SettingsSection
             title="Gravação"
             fields={[
+              { label: 'Gravar em disco', value: cam.recording_enabled ? 'Sim' : 'Não' },
               { label: 'Duração do chunk', value: cam.chunk_duration },
               { label: 'Intervalo de reconexão', value: cam.reconnect_interval },
             ]}
-          >
-            <div className="flex items-center justify-between px-5 py-3 border-t border-gray-800">
-              <div>
-                <p className="text-sm text-gray-300">Gravar em disco</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {cam.recording_enabled ? 'Gravação ativa' : 'Gravação desabilitada — HLS e detecção de movimento continuam funcionando'}
-                </p>
-              </div>
-              <button
-                onClick={handleToggleRecording}
-                disabled={togglingRecording}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
-                  cam.recording_enabled ? 'bg-blue-600' : 'bg-gray-700'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    cam.recording_enabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-          </SettingsSection>
+          />
 
           <SettingsSection
             title="Estatísticas"
