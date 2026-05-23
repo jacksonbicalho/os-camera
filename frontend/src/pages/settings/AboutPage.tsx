@@ -27,17 +27,16 @@ export default function AboutPage() {
   const about = useAbout('/settings/about')
   const isAdmin = getRole() === 'admin'
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
-  const [checking, setChecking] = useState(false)
+  const [checking, setChecking] = useState(isAdmin)
   const [applying, setApplying] = useState(false)
   const [applyMsg, setApplyMsg] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isAdmin) return
-    setChecking(true)
     fetch('/api/update/check', { headers: authHeaders() })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setUpdateInfo(d) })
-      .catch(() => {})
+      .catch(() => { /* ignore network errors */ })
       .finally(() => setChecking(false))
   }, [isAdmin])
 
@@ -74,7 +73,7 @@ export default function AboutPage() {
           setApplying(false)
         }
       }, 2000)
-    } catch {
+    } catch (_err) {
       setApplyMsg('Erro ao aplicar atualização.')
       setApplying(false)
     }
