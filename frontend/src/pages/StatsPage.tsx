@@ -3,7 +3,6 @@ import { useNavigate, Link } from 'react-router-dom'
 import { authHeaders, clearToken } from '../auth'
 import AppLayout from '../components/AppLayout'
 import MotionScoreChart from '../components/MotionScoreChart'
-import StatCard from '../components/StatCard'
 import { useStats } from '../hooks/useStats'
 import { formatBytes, formatDuration } from './statsUtils'
 import { formatDistanceToNow } from 'date-fns'
@@ -64,7 +63,11 @@ export default function StatsPage() {
   const warnThreshold = hasLimit && stats ? stats.warn_percent : 0
   const isWarning = warnThreshold > 0 && usedPercent >= warnThreshold
   const isOver = hasLimit && stats ? stats.recordings_bytes >= stats.max_size_bytes : false
-  const barColor = isOver ? 'bg-red-600' : isWarning ? 'bg-yellow-500' : 'bg-blue-600'
+  const barColor = isOver
+    ? 'bg-gradient-to-r from-red-700 to-red-500'
+    : isWarning
+    ? 'bg-gradient-to-r from-yellow-600 to-yellow-400'
+    : 'bg-gradient-to-r from-blue-700 to-blue-400'
 
   const cameraHealthMap = Object.fromEntries((stats?.cameras ?? []).map(c => [c.id, c]))
 
@@ -73,9 +76,9 @@ export default function StatsPage() {
 
   return (
     <AppLayout mainClassName="max-w-4xl mx-auto w-full">
-      <div className="mb-6">
+      <div className="mb-8">
         <Link to="/" className="text-sm text-blue-400 hover:text-blue-300">← Câmeras</Link>
-        <h2 className="text-lg font-semibold text-gray-200 mt-1">Estatísticas</h2>
+        <h1 className="text-xl font-semibold text-gray-100 mt-2">Estatísticas</h1>
       </div>
 
       {!stats ? (
@@ -83,111 +86,121 @@ export default function StatsPage() {
       ) : (
         <div className="space-y-4">
 
-          {/* Sistema */}
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
-            <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-4">Sistema</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Sistema operacional</p>
-                <p className="text-sm font-medium text-gray-200">{stats.os || '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">PID</p>
-                <p className="text-sm font-mono text-gray-200">{stats.pid}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Goroutines</p>
-                <p className="text-sm font-mono text-gray-200">{stats.goroutines}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">CPU (processo)</p>
-                <p className="text-sm font-mono text-gray-200">
-                  {cpuPct < 0 ? '—' : `${cpuPct.toFixed(1)}%`}
-                </p>
-                {cpuPct >= 0 && <p className="text-xs text-gray-600">amostra 30 s</p>}
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Memória (processo)</p>
-                <p className="text-sm font-mono text-gray-200">
-                  {stats.mem_rss_bytes > 0 ? formatBytes(stats.mem_rss_bytes) : '—'}
-                </p>
-              </div>
-              {stats.sys_mem_total_bytes > 0 && (
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">RAM do host</p>
-                  <p className="text-sm font-mono text-gray-200">
-                    {formatBytes(sysMemUsed)} / {formatBytes(stats.sys_mem_total_bytes)}
-                  </p>
-                  <p className="text-xs text-gray-600">livre: {formatBytes(stats.sys_mem_free_bytes)}</p>
-                </div>
-              )}
+          {/* KPIs */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Gravações</p>
+              <p className="text-3xl font-bold text-gray-100">{stats.recordings_count.toLocaleString()}</p>
+              <p className="text-sm text-gray-400 mt-1">{formatBytes(stats.recordings_bytes)}</p>
+            </div>
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Horas gravadas</p>
+              <p className="text-3xl font-bold text-gray-100">{formatDuration(stats.recordings_duration_seconds)}</p>
+              <p className="text-sm text-gray-400 mt-1">de vídeo em disco</p>
+            </div>
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Câmeras</p>
+              <p className="text-3xl font-bold text-gray-100">{stats.camera_count}</p>
+              <p className="text-sm text-gray-400 mt-1">
+                {stats.connected_clients} cliente{stats.connected_clients !== 1 ? 's' : ''} conectado{stats.connected_clients !== 1 ? 's' : ''}
+              </p>
             </div>
           </div>
 
           {/* Disco */}
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
-            <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-4">Disco</p>
-            <div className="grid grid-cols-3 gap-4 mb-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-5">Armazenamento</p>
+            <div className="grid grid-cols-3 gap-6 mb-5">
               <div>
                 <p className="text-xs text-gray-500 mb-1">{hasLimit ? 'Limite' : 'Total'}</p>
-                <p className="text-lg font-semibold text-gray-200">
+                <p className="text-2xl font-bold text-gray-200">
                   {formatBytes(hasLimit ? stats.max_size_bytes : stats.disk_total_bytes)}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-gray-500 mb-1">Gravações</p>
-                <p className={`text-lg font-semibold ${isOver ? 'text-red-400' : isWarning ? 'text-yellow-400' : 'text-blue-400'}`}>
+                <p className={`text-2xl font-bold ${isOver ? 'text-red-400' : isWarning ? 'text-yellow-400' : 'text-blue-400'}`}>
                   {formatBytes(stats.recordings_bytes)}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-gray-500 mb-1">Disponível</p>
-                <p className="text-lg font-semibold text-green-400">
+                <p className="text-2xl font-bold text-green-400">
                   {formatBytes(hasLimit
                     ? Math.max(0, stats.max_size_bytes - stats.recordings_bytes)
                     : stats.disk_free_bytes)}
                 </p>
               </div>
             </div>
-            <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
-              <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${usedPercent}%` }} />
+            <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+                style={{ width: `${usedPercent}%` }}
+              />
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              {usedPercent}% {hasLimit ? `do limite de ${formatBytes(stats.max_size_bytes)}` : 'do disco'}
-              {isWarning && !isOver && <span className="text-yellow-500 ml-2">⚠ próximo do limite</span>}
-              {isOver && <span className="text-red-500 ml-2">⚠ limite atingido</span>}
-            </p>
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-xs text-gray-500">
+                {usedPercent}% {hasLimit ? `do limite de ${formatBytes(stats.max_size_bytes)}` : 'do disco'}
+              </p>
+              {isWarning && !isOver && <p className="text-xs text-yellow-500">⚠ próximo do limite</p>}
+              {isOver && <p className="text-xs text-red-500">⚠ limite atingido</p>}
+            </div>
+            {stats.forecast_seconds > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-800">
+                <p className="text-xs text-gray-500">
+                  Previsão de capacidade:{' '}
+                  <span className="text-gray-300 font-medium">{formatDuration(stats.forecast_seconds)} restantes</span>
+                </p>
+              </div>
+            )}
           </div>
 
-          {/* Cards de gravações */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <StatCard label="Câmeras" value={stats.camera_count} subtext="configuradas" />
-            <StatCard label="Clientes conectados" value={stats.connected_clients} subtext="ativos no stream (30s)" />
-            <StatCard
-              label="Gravações"
-              value={stats.recordings_count.toLocaleString()}
-              subtext={`arquivos MP4 · ${formatBytes(stats.recordings_bytes)}`}
-            />
-            <StatCard
-              label="Horas gravadas"
-              value={formatDuration(stats.recordings_duration_seconds)}
-              subtext="de vídeo em disco"
-            />
-            <StatCard
-              label="Previsão de capacidade"
-              value={formatDuration(stats.forecast_seconds)}
-              subtext={stats.forecast_seconds > 0
-                ? 'restantes com o espaço disponível'
-                : 'dados insuficientes para estimar'}
-              colSpan2
-            />
+          {/* Sistema */}
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-4">Sistema</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-4">
+              <div>
+                <p className="text-xs text-gray-600 mb-1">OS</p>
+                <p className="text-sm font-medium text-gray-300 truncate">{stats.os || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600 mb-1">PID</p>
+                <p className="text-sm font-mono text-gray-300">{stats.pid}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600 mb-1">CPU</p>
+                <p className="text-sm font-mono text-gray-300">
+                  {cpuPct < 0 ? '—' : `${cpuPct.toFixed(1)}%`}
+                </p>
+                {cpuPct >= 0 && <p className="text-xs text-gray-700">amostra 30 s</p>}
+              </div>
+              <div>
+                <p className="text-xs text-gray-600 mb-1">Mem. processo</p>
+                <p className="text-sm font-mono text-gray-300">
+                  {stats.mem_rss_bytes > 0 ? formatBytes(stats.mem_rss_bytes) : '—'}
+                </p>
+              </div>
+              {stats.sys_mem_total_bytes > 0 && (
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">RAM host</p>
+                  <p className="text-sm font-mono text-gray-300">
+                    {formatBytes(sysMemUsed)} / {formatBytes(stats.sys_mem_total_bytes)}
+                  </p>
+                  <p className="text-xs text-gray-700">livre: {formatBytes(stats.sys_mem_free_bytes)}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-xs text-gray-600 mb-1">Goroutines</p>
+                <p className="text-sm font-mono text-gray-300">{stats.goroutines}</p>
+              </div>
+            </div>
           </div>
 
-          {/* Câmeras: saúde + monitor de movimento */}
+          {/* Câmeras */}
           {cameras.length > 0 && (
-            <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+            <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-800">
-                <p className="text-xs text-gray-400 uppercase tracking-wider font-medium">Câmeras</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Câmeras</p>
               </div>
               <div className="divide-y divide-gray-800">
                 {cameras.map(cam => {
@@ -200,12 +213,12 @@ export default function StatsPage() {
                     <div key={cam.id}>
                       <button
                         onClick={() => toggleCam(cam.id)}
-                        className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-gray-800 transition-colors"
+                        className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-gray-800/50 transition-colors"
                       >
                         <StatusDot online={health?.online ?? false} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-200 truncate">{cam.name || cam.id}</p>
-                          <p className="text-xs text-gray-500 font-mono">{cam.id}</p>
+                          <p className="text-xs text-gray-600 font-mono">{cam.id}</p>
                         </div>
                         <div className="text-right flex-shrink-0 mr-2">
                           {lastRec ? (
@@ -223,7 +236,7 @@ export default function StatsPage() {
                       </button>
 
                       {isOpen && (
-                        <div className="px-5 pb-5 bg-gray-850">
+                        <div className="px-5 pb-5">
                           {hasMotion ? (
                             <MotionScoreChart
                               key={cam.id}
@@ -243,6 +256,7 @@ export default function StatsPage() {
               </div>
             </div>
           )}
+
         </div>
       )}
     </AppLayout>
