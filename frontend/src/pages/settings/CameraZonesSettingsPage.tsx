@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type HlsType from 'hls.js'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
+import CameraSettingsTabs from '../../components/CameraSettingsTabs'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { authHeaders, getToken } from '../../auth'
 import { useSettings } from '../../hooks/useSettings'
@@ -559,17 +560,8 @@ export default function CameraZonesSettingsPage() {
 
   return (
     <SettingsLayout>
-      <nav className="flex items-center gap-1.5 text-xs text-gray-500 mb-5">
-        <Link to="/settings/cameras" className="hover:text-gray-300 transition-colors">Câmeras</Link>
-        <span>/</span>
-        <Link to={`/settings/cameras/${id}`} className="hover:text-gray-300 transition-colors">{id}</Link>
-        <span>/</span>
-        <Link to={`/settings/cameras/${id}/motion`} className="hover:text-gray-300 transition-colors">Detecção de movimento</Link>
-        <span>/</span>
-        <span className="text-gray-300">Zonas</span>
-      </nav>
+      <CameraSettingsTabs id={id!} active="zones" camName={cam?.name} />
 
-      <h2 className="text-lg font-semibold text-gray-200 mb-2">{id} — zonas</h2>
       <p className="text-xs text-gray-500 mb-5">
         Arraste em área vazia para criar uma zona. Clique numa zona para selecioná-la e configurá-la. Arraste os cantos para redimensionar. Clique no × para excluir.
       </p>

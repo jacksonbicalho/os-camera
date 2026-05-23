@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams, useLocation } from 'react-router-dom'
+import { useParams, useLocation } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import CameraForm from '../../components/CameraForm'
+import CameraSettingsTabs from '../../components/CameraSettingsTabs'
 import { type CameraFormData, type Camera, formToPayload } from '../../components/cameraFormUtils'
 import { useSettings } from '../../hooks/useSettings'
 import { authHeaders } from '../../auth'
@@ -75,32 +76,7 @@ export default function CameraDetailSettingsPage() {
 
   return (
     <SettingsLayout>
-      <nav className="flex items-center gap-1.5 text-xs text-gray-500 mb-5">
-        <Link to="/settings/cameras" className="hover:text-gray-300 transition-colors">Câmeras</Link>
-        <span>/</span>
-        <span className={editing ? 'hover:text-gray-300' : 'text-gray-300'}>
-          {editing
-            ? <Link to={`/settings/cameras/${id}`} onClick={() => setEditing(false)} className="hover:text-gray-300 transition-colors">{cam?.name || id}</Link>
-            : cam?.name || id}
-        </span>
-        {editing && (
-          <>
-            <span>/</span>
-            <span className="text-gray-300">Editar</span>
-          </>
-        )}
-      </nav>
-
-      <div className="flex items-center justify-between mb-6">
-        {!editing && (
-          <button
-            onClick={() => { setEditing(true); setError(null) }}
-            className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded transition-colors"
-          >
-            Editar
-          </button>
-        )}
-      </div>
+      <CameraSettingsTabs id={id!} active="detail" camName={cam?.name} />
 
       {error && (
         <div className="mb-4 px-3 py-2 bg-red-900/30 border border-red-700/50 rounded text-xs text-red-400">
@@ -121,6 +97,14 @@ export default function CameraDetailSettingsPage() {
         />
       ) : (
         <div className="flex flex-col gap-4">
+          <div className="flex justify-end">
+            <button
+              onClick={() => { setEditing(true); setError(null) }}
+              className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded transition-colors"
+            >
+              Editar
+            </button>
+          </div>
           <SettingsSection
             title="Identificação"
             fields={[
@@ -155,7 +139,6 @@ export default function CameraDetailSettingsPage() {
               { label: 'Intervalo de reconexão', value: cam.reconnect_interval },
             ]}
           />
-
           <SettingsSection
             title="Estatísticas"
             fields={
@@ -169,19 +152,6 @@ export default function CameraDetailSettingsPage() {
                   ]
             }
           />
-
-          <Link
-            to={`/settings/cameras/${id}/motion`}
-            className="bg-gray-900 border border-gray-800 rounded-lg px-5 py-4 flex items-center justify-between hover:border-gray-700 hover:bg-gray-800/50 transition-colors group"
-          >
-            <div>
-              <p className="text-sm font-medium text-gray-300">Detecção de movimento</p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {cam.motion ? 'configuração override ativa' : 'herda configuração global'}
-              </p>
-            </div>
-            <span className="text-sm text-blue-400 group-hover:text-blue-300 transition-colors">Ver detalhes →</span>
-          </Link>
         </div>
       )}
     </SettingsLayout>
