@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { createPortal } from "react-dom"
 import { useNavigate, Link, NavLink } from "react-router-dom"
 import { clearToken } from "../auth"
 import { useNotifications } from "../contexts/NotificationContext"
@@ -212,9 +213,19 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
     enableBrowserNotifications, disableBrowserNotifications,
   } = useNotifications()
 
+  const bellBtnRef = useRef<HTMLButtonElement>(null)
+  const [bellPos, setBellPos] = useState({ top: 0, left: 0 })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   const navigate = useNavigate()
+
+  function openBell() {
+    if (bellBtnRef.current) {
+      const r = bellBtnRef.current.getBoundingClientRect()
+      setBellPos({ top: r.top, left: r.right + 8 })
+    }
+    setBellOpen(v => !v)
+  }
 
   useEffect(() => {
     if (!bellOpen) setKebabOpen(false)
@@ -283,9 +294,10 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
       {/* Bell — logo abaixo da logo */}
       <div className="flex flex-col items-center py-1 border-b border-gray-800 flex-none">
-        <div className="relative" ref={bellRef}>
+        <div ref={bellRef}>
           <button
-            onClick={() => setBellOpen((v) => !v)}
+            ref={bellBtnRef}
+            onClick={openBell}
             className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
               unreadCount > 0 ? "text-white animate-pulse" : "text-gray-400 hover:bg-gray-800 hover:text-white"
             }`}
@@ -303,8 +315,10 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             )}
           </button>
 
-          {bellOpen && (
-            <div className="absolute left-full top-0 ml-2 w-72 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 flex flex-col max-h-[80vh]">
+          {bellOpen && createPortal(
+            <div
+              style={{ position: 'fixed', top: bellPos.top, left: bellPos.left, zIndex: 9999 }}
+              className="w-72 bg-gray-800 border border-gray-700 rounded shadow-lg flex flex-col max-h-[80vh]">
               <div className="px-3 pt-2.5 pb-0">
                 <span className="text-xs font-semibold text-gray-300">Notificações</span>
               </div>
@@ -443,7 +457,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
                 </div>
               )}
             </div>
-          )}
+          , document.body)}
         </div>
       </div>
 
