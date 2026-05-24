@@ -10,6 +10,7 @@ export interface MotionSettings {
   capture_width?: number
   capture_height?: number
   playback_lead_seconds: number
+  playback_trail_seconds: number
 }
 
 export interface CameraSettings {
