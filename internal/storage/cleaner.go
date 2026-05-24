@@ -203,15 +203,24 @@ func (c *Cleaner) syncRecordings() {
 		}
 	}
 
-	// Batch-update has_motion for recordings that have overlapping motion events.
+	// Batch-update has_motion for recordings whose time range overlaps with
+	// [event.occurred_at - lead, event.occurred_at + trail], using per-camera
+	// playback_lead_seconds and playback_trail_seconds from camera_motion.
+	// strftime keeps RFC3339 format (T separator, Z suffix) so comparisons with
+	// started_at/ended_at — also stored as RFC3339 — are lexicographically correct.
 	_, err := c.db.Exec(`
 		UPDATE recordings SET has_motion=1
 		WHERE has_motion=0
 		AND EXISTS (
-			SELECT 1 FROM motion_events me
+			SELECT 1
+			FROM motion_events me
+			JOIN camera_motion cm ON cm.camera_id = me.camera_id
 			WHERE me.camera_id = recordings.camera_id
-			AND me.occurred_at >= recordings.started_at
-			AND (recordings.ended_at IS NULL OR me.occurred_at < recordings.ended_at)
+			AND recordings.started_at < strftime('%Y-%m-%dT%H:%M:%SZ', me.occurred_at, '+' || cm.playback_trail_seconds || ' seconds')
+			AND (
+				recordings.ended_at IS NULL
+				OR recordings.ended_at > strftime('%Y-%m-%dT%H:%M:%SZ', me.occurred_at, '-' || cm.playback_lead_seconds || ' seconds')
+			)
 		)`)
 	if err != nil {
 		c.log.Warn("failed to update has_motion from motion_events", "err", err)

@@ -6,6 +6,7 @@ export interface MotionConfig {
   capture_width?: number
   capture_height?: number
   playback_lead_seconds?: number
+  playback_trail_seconds?: number
 }
 
 export interface Camera {
@@ -48,6 +49,7 @@ export interface CameraFormData {
   motion_capture_auto: boolean
   motion_capture_pct: number
   motion_playback_lead: string
+  motion_playback_trail: string
 }
 
 export const RESOLUTIONS = [
@@ -89,7 +91,7 @@ export function emptyForm(cam?: Camera): CameraFormData {
       hls_list_size_default: true, hls_list_size: '5',
       recording_enabled: true,
       motion_enabled: false, motion_threshold: '0.02', motion_fps: '2', motion_cooldown: '30',
-      motion_capture_auto: true, motion_capture_pct: 25, motion_playback_lead: '10',
+      motion_capture_auto: true, motion_capture_pct: 25, motion_playback_lead: '10', motion_playback_trail: '10',
     }
   }
   const capW = cam.motion?.capture_width ?? 0
@@ -116,6 +118,7 @@ export function emptyForm(cam?: Camera): CameraFormData {
     motion_capture_auto: auto,
     motion_capture_pct: capturePct(capW, cam.width ?? 0),
     motion_playback_lead: String(cam.motion?.playback_lead_seconds ?? 10),
+    motion_playback_trail: String(cam.motion?.playback_trail_seconds ?? 10),
   }
 }
 
@@ -143,6 +146,7 @@ export function formToPayload(f: CameraFormData) {
       capture_width: f.motion_capture_auto ? 0 : Math.round(width * f.motion_capture_pct / 100),
       capture_height: f.motion_capture_auto ? 0 : Math.round(height * f.motion_capture_pct / 100),
       playback_lead_seconds: parseInt(f.motion_playback_lead) || 10,
+      playback_trail_seconds: parseInt(f.motion_playback_trail) || 10,
     },
   }
   return payload

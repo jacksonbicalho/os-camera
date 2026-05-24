@@ -217,6 +217,11 @@ function MotionFormContent({ cam, id, peak, reload }: MotionFormContentProps) {
                 <input type="number" min="0" max="300" value={form.motion_playback_lead} onChange={e => set('motion_playback_lead', e.target.value)} className={inputClass} />
                 <p className="text-xs text-gray-600 mt-0.5">0 – 300 s · recua o player antes do instante detectado</p>
               </div>
+              <div>
+                <label className={labelClass}>Segundos após o evento</label>
+                <input type="number" min="0" max="300" value={form.motion_playback_trail} onChange={e => set('motion_playback_trail', e.target.value)} className={inputClass} />
+                <p className="text-xs text-gray-600 mt-0.5">0 – 300 s · preserva chunks gravados após o evento</p>
+              </div>
               <div className="sm:col-span-2">
                 <label className={labelClass}>Resolução de análise</label>
                 <div className="flex items-center gap-2 mb-2">

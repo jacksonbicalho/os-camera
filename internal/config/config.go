@@ -86,7 +86,8 @@ type MotionConfig struct {
 	CooldownSeconds     int     `yaml:"cooldown_seconds"`
 	CaptureWidth        int     `yaml:"capture_width"`
 	CaptureHeight       int     `yaml:"capture_height"`
-	PlaybackLeadSeconds int     `yaml:"playback_lead_seconds"`
+	PlaybackLeadSeconds  int `yaml:"playback_lead_seconds"`
+	PlaybackTrailSeconds int `yaml:"playback_trail_seconds"`
 }
 
 // CameraConfig holds per-camera settings loaded from the database.

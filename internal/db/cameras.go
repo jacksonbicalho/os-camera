@@ -305,15 +305,20 @@ type execer interface {
 }
 
 const defaultPlaybackLeadSeconds = 10
+const defaultPlaybackTrailSeconds = 10
 
 func insertMotion(ex execer, cameraID string, m *config.MotionConfig) error {
 	lead := m.PlaybackLeadSeconds
 	if lead == 0 {
 		lead = defaultPlaybackLeadSeconds
 	}
+	trail := m.PlaybackTrailSeconds
+	if trail == 0 {
+		trail = defaultPlaybackTrailSeconds
+	}
 	_, err := ex.Exec(
-		`INSERT INTO camera_motion(camera_id, enabled, threshold, fps, cooldown_seconds, capture_width, capture_height, playback_lead_seconds)
-		 VALUES(?,?,?,?,?,?,?,?)`,
+		`INSERT INTO camera_motion(camera_id, enabled, threshold, fps, cooldown_seconds, capture_width, capture_height, playback_lead_seconds, playback_trail_seconds)
+		 VALUES(?,?,?,?,?,?,?,?,?)`,
 		cameraID,
 		boolToInt(m.Enabled),
 		m.Threshold,
@@ -322,6 +327,7 @@ func insertMotion(ex execer, cameraID string, m *config.MotionConfig) error {
 		m.CaptureWidth,
 		m.CaptureHeight,
 		lead,
+		trail,
 	)
 	return err
 }
@@ -330,9 +336,9 @@ func getMotion(db *sql.DB, cameraID string) (*config.MotionConfig, error) {
 	var m config.MotionConfig
 	var enabled int
 	err := db.QueryRow(
-		`SELECT enabled, threshold, fps, cooldown_seconds, capture_width, capture_height, playback_lead_seconds FROM camera_motion WHERE camera_id=?`,
+		`SELECT enabled, threshold, fps, cooldown_seconds, capture_width, capture_height, playback_lead_seconds, playback_trail_seconds FROM camera_motion WHERE camera_id=?`,
 		cameraID,
-	).Scan(&enabled, &m.Threshold, &m.FPS, &m.CooldownSeconds, &m.CaptureWidth, &m.CaptureHeight, &m.PlaybackLeadSeconds)
+	).Scan(&enabled, &m.Threshold, &m.FPS, &m.CooldownSeconds, &m.CaptureWidth, &m.CaptureHeight, &m.PlaybackLeadSeconds, &m.PlaybackTrailSeconds)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
