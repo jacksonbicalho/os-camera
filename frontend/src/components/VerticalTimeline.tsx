@@ -31,6 +31,7 @@ export default function VerticalTimeline({
   const containerRef = useRef<HTMLDivElement>(null)
   const isDragging = useRef(false)
   const [zoom, setZoom] = useState(1)
+  const [hoverY, setHoverY] = useState<number | null>(null)
   const zoomRef = useRef(zoom)
   const zoomIdx = ZOOM_LEVELS.indexOf(zoom)
 
@@ -78,12 +79,28 @@ export default function VerticalTimeline({
   const fmt = new Intl.DateTimeFormat('pt-BR', {
     timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false,
   })
-  const hourLabels: { min: number; label: string }[] = []
+
+  type TickType = 'hour' | 'half' | 'quarter' | 'five'
+  interface Tick { min: number; type: TickType; label?: string }
+  const ticks: Tick[] = []
   for (let m = 0; m < totalMinutes; m++) {
     const absMin = firstMin + m
     if (absMin % 60 === 0) {
-      hourLabels.push({ min: m, label: fmt.format(new Date(absMin * 60_000)) })
+      ticks.push({ min: m, type: 'hour', label: fmt.format(new Date(absMin * 60_000)) })
+    } else if (absMin % 30 === 0) {
+      ticks.push({ min: m, type: 'half', label: zoom >= 2 ? fmt.format(new Date(absMin * 60_000)) : undefined })
+    } else if (zoom >= 2 && absMin % 15 === 0) {
+      ticks.push({ min: m, type: 'quarter' })
+    } else if (zoom >= 4 && absMin % 5 === 0) {
+      ticks.push({ min: m, type: 'five' })
     }
+  }
+
+  const tickStyle: Record<TickType, { color: string; left: number }> = {
+    hour:    { color: 'rgba(245,158,11,0.55)', left: 0 },
+    half:    { color: 'rgba(245,158,11,0.22)', left: 0 },
+    quarter: { color: 'rgba(245,158,11,0.12)', left: LABEL_W },
+    five:    { color: 'rgba(245,158,11,0.07)', left: LABEL_W },
   }
 
   const seekAtY = useCallback((clientY: number) => {
@@ -175,9 +192,13 @@ export default function VerticalTimeline({
           className="relative cursor-pointer"
           style={{ width: 72, height: totalMinutes * pxPerMin }}
           onMouseDown={e => { isDragging.current = true; seekAtY(e.clientY) }}
-          onMouseMove={e => { if (isDragging.current) seekAtY(e.clientY) }}
+          onMouseMove={e => {
+            const rect = containerRef.current?.getBoundingClientRect()
+            if (rect) setHoverY(Math.max(0, e.clientY - rect.top))
+            if (isDragging.current) seekAtY(e.clientY)
+          }}
           onMouseUp={() => { isDragging.current = false }}
-          onMouseLeave={() => { isDragging.current = false }}
+          onMouseLeave={() => { isDragging.current = false; setHoverY(null) }}
         >
           {/* Recording backgrounds */}
           {recRanges.map(({ rec, startMin, endMin }) => {
@@ -218,21 +239,32 @@ export default function VerticalTimeline({
             )
           })}
 
-          {/* Hour tick lines */}
-          {hourLabels.map(({ min }) => (
-            <div
-              key={`tick-${min}`}
-              className="absolute left-0 right-0 pointer-events-none"
-              style={{ top: min * pxPerMin, height: 1, backgroundColor: 'rgba(245,158,11,0.25)' }}
-            />
-          ))}
+          {/* Tick lines */}
+          {ticks.map(({ min, type }) => {
+            const { color, left } = tickStyle[type]
+            return (
+              <div
+                key={`tick-${type}-${min}`}
+                className="absolute right-0 pointer-events-none"
+                style={{ top: min * pxPerMin, left, height: 1, backgroundColor: color }}
+              />
+            )
+          })}
 
-          {/* Hour labels */}
-          {hourLabels.map(({ min, label }) => (
+          {/* Tick labels */}
+          {ticks.filter(t => t.label).map(({ min, type, label }) => (
             <span
-              key={`label-${min}`}
-              className="absolute text-amber-400/60 pointer-events-none leading-none"
-              style={{ fontSize: 8, top: min * pxPerMin + 1, left: 1, width: LABEL_W - 2, overflow: 'hidden', whiteSpace: 'nowrap' }}
+              key={`label-${type}-${min}`}
+              className="absolute pointer-events-none leading-none select-none"
+              style={{
+                fontSize: type === 'hour' ? 8 : 7,
+                top: min * pxPerMin + 1,
+                left: 1,
+                width: LABEL_W - 2,
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+                color: type === 'hour' ? 'rgba(245,158,11,0.65)' : 'rgba(245,158,11,0.35)',
+              }}
             >
               {label}
             </span>
@@ -250,6 +282,33 @@ export default function VerticalTimeline({
               }}
             />
           )}
+
+          {/* Hover time indicator */}
+          {hoverY !== null && (() => {
+            const hoverMin = Math.floor(hoverY / pxPerMin)
+            if (hoverMin < 0 || hoverMin >= totalMinutes) return null
+            const hoverMs = (firstMin + hoverMin) * 60_000
+            const label = fmt.format(new Date(hoverMs))
+            const flipLabel = hoverY > (totalMinutes * pxPerMin) - 14
+            return (
+              <div className="absolute left-0 right-0 pointer-events-none z-30" style={{ top: hoverY }}>
+                <div className="absolute left-0 right-0" style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.55)' }} />
+                <span
+                  className="absolute select-none leading-none"
+                  style={{
+                    fontSize: 8,
+                    left: 1,
+                    top: flipLabel ? -10 : 2,
+                    color: 'rgba(255,255,255,0.9)',
+                    textShadow: '0 0 3px #000, 0 0 6px #000',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {label}
+                </span>
+              </div>
+            )
+          })()}
         </div>
       </div>
     </div>
