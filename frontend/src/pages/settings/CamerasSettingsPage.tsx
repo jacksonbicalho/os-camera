@@ -96,7 +96,8 @@ export default function CamerasSettingsPage() {
   if (!isAdmin) {
     return (
       <SettingsLayout>
-        <h2 className="text-lg font-semibold text-gray-200 mb-6">Câmeras</h2>
+        <h3 className="text-lg font-semibold text-gray-200">Câmeras</h3>
+        <p className="text-sm text-gray-500 mt-1 mb-6">Gerencie as câmeras do sistema.</p>
         {loading ? (
           <p className="text-gray-500 text-sm">Carregando...</p>
         ) : cameras.length === 0 ? (
@@ -131,12 +132,15 @@ export default function CamerasSettingsPage() {
 
   return (
     <SettingsLayout>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-gray-200">Câmeras</h2>
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-200">Câmeras</h3>
+          <p className="text-sm text-gray-500 mt-1">Gerencie as câmeras do sistema.</p>
+        </div>
         {!creating && !noDb && (
           <button
             onClick={() => { setCreating(true); setError(null) }}
-            className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+            className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors shrink-0"
           >
             + Nova câmera
           </button>
@@ -195,26 +199,24 @@ export default function CamerasSettingsPage() {
                   onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
                 />
               </div>
-              <div className="flex-1 flex items-center justify-between gap-3 min-w-0">
-                <div className="flex items-center gap-3 min-w-0">
-                  <Link
-                    to={`/settings/cameras/${cam.id}`}
-                    className="text-sm font-mono text-gray-200 hover:text-blue-400 transition-colors truncate"
-                  >
-                    {cam.name || cam.id}
-                  </Link>
-                  {cam.motion?.enabled && (
-                    <span className="px-2 py-0.5 text-xs rounded-full bg-green-900/40 text-green-400 border border-green-700/40 shrink-0">
-                      motion
-                    </span>
-                  )}
-                  {!cam.recording_enabled && (
-                    <span className="px-2 py-0.5 text-xs rounded-full bg-gray-800 text-gray-500 border border-gray-700 shrink-0">
-                      rec off
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
+              <div className="flex-1 flex items-center gap-3 min-w-0">
+                <Link
+                  to={`/settings/cameras/${cam.id}`}
+                  className="text-sm font-mono text-gray-200 hover:text-blue-400 transition-colors truncate min-w-0"
+                >
+                  {cam.name || cam.id}
+                </Link>
+                {cam.motion?.enabled && (
+                  <span className="px-2 py-0.5 text-xs rounded-full bg-green-900/40 text-green-400 border border-green-700/40 shrink-0">
+                    motion
+                  </span>
+                )}
+                {!cam.recording_enabled && (
+                  <span className="px-2 py-0.5 text-xs rounded-full bg-gray-800 text-gray-500 border border-gray-700 shrink-0">
+                    rec off
+                  </span>
+                )}
+                <div className="ml-auto flex items-center gap-1 pl-3 shrink-0">
                   <Link
                     to={`/settings/cameras/${cam.id}`}
                     state={{ editing: true }}

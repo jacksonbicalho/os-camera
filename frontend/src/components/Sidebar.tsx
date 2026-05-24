@@ -283,6 +283,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
         className="flex items-center justify-center h-14 text-white hover:text-gray-300 transition-colors border-b border-gray-800 flex-none"
         title="Camera"
       >
+        <h1 className="sr-only">Camera</h1>
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M15 10l4.553-2.276A1 1 0 0121 8.723v6.554a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"
@@ -463,7 +464,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
       {/* Injected camera items */}
       {items.length > 0 && (
-        <div className="flex flex-col items-center gap-0.5 py-2 border-b border-gray-800 flex-none">
+        <div className="flex flex-col items-center gap-1 py-2 border-b border-gray-800 flex-none">
           {items.map(item => <SidebarInjectedItem key={item.id} item={item} />)}
         </div>
       )}
