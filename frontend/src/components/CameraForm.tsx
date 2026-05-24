@@ -3,13 +3,20 @@ import { type Camera, type CameraFormData, RESOLUTIONS, emptyForm } from './came
 
 interface CameraFormProps {
   initial?: Camera
+  prefillRtsp?: string
+  prefillName?: string
   onSave: (data: CameraFormData) => Promise<void>
   onCancel: () => void
   saving: boolean
 }
 
-export default function CameraForm({ initial, onSave, onCancel, saving }: CameraFormProps) {
-  const [form, setForm] = useState<CameraFormData>(() => emptyForm(initial))
+export default function CameraForm({ initial, prefillRtsp, prefillName, onSave, onCancel, saving }: CameraFormProps) {
+  const [form, setForm] = useState<CameraFormData>(() => {
+    const base = emptyForm(initial)
+    if (prefillRtsp) base.rtsp_url = prefillRtsp
+    if (prefillName) base.name = prefillName
+    return base
+  })
   // editing mode when `initial` is provided
 
   const set = (field: keyof CameraFormData, value: string | boolean | number) =>

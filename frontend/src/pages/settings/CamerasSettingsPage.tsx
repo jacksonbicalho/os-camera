@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import CameraForm from '../../components/CameraForm'
@@ -9,8 +9,11 @@ import { authHeaders, clearToken, getRole, getToken } from '../../auth'
 export default function CamerasSettingsPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
   const isAdmin = getRole() === 'admin'
   const isNewRoute = location.pathname === '/settings/cameras/new'
+  const prefillRTSP = searchParams.get('prefill_rtsp') ?? ''
+  const prefillName = searchParams.get('prefill_name') ?? ''
   const [cameras, setCameras] = useState<Camera[]>([])
   const [loading, setLoading] = useState(isAdmin)
   const [creating, setCreating] = useState(isNewRoute)
@@ -167,6 +170,8 @@ export default function CamerasSettingsPage() {
               setCreating(false); setError(null)
             }}
             saving={saving}
+            prefillRtsp={prefillRTSP || undefined}
+            prefillName={prefillName || undefined}
           />
         </div>
       )}

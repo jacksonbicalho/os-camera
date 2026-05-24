@@ -18,6 +18,7 @@ const SystemSettingsPage = lazy(() => import('./pages/settings/SystemSettingsPag
 const AboutPage = lazy(() => import('./pages/settings/AboutPage'))
 const UsersSettingsPage = lazy(() => import('./pages/settings/UsersSettingsPage'))
 const UserDetailSettingsPage = lazy(() => import('./pages/settings/UserDetailSettingsPage'))
+const DiscoverPage = lazy(() => import('./pages/settings/DiscoverPage'))
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation()
@@ -55,6 +56,7 @@ export default function App() {
       <Route path="/settings/users" element={<Lazy><UsersSettingsPage /></Lazy>} />
       <Route path="/settings/users/new" element={<Lazy><UsersSettingsPage /></Lazy>} />
       <Route path="/settings/users/:id" element={<Lazy><UserDetailSettingsPage /></Lazy>} />
+      <Route path="/settings/discover" element={<Lazy><DiscoverPage /></Lazy>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </SidebarItemsProvider>
