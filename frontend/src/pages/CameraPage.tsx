@@ -95,7 +95,6 @@ export default function CameraPage() {
   })
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [recordingsTotal, setRecordingsTotal] = useState(0)
-  const [hasMore, setHasMore] = useState(false)
   const [activeRecording, setActiveRecording] = useState<Recording | null>(null)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [motionEvents, setMotionEvents] = useState<MotionEvent[]>([])
@@ -219,7 +218,7 @@ export default function CameraPage() {
       skipNextRecordingScrollRef.current = false
       return
     }
-    const idx = recordings.findIndex(r => r.filename === activeRecordingFilename)
+    const idx = recordingsRef.current.findIndex(r => r.filename === activeRecordingFilename)
     if (idx >= 0) {
       const neededPage = Math.ceil((idx + 1) / PAGE_SIZE)
       if (neededPage > recordingsDisplayPageRef.current) {
@@ -228,7 +227,8 @@ export default function CameraPage() {
       }
     }
     activeRecordingItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [activeRecordingFilename, recordingsDisplayPage, recordings])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRecordingFilename, recordingsDisplayPage])
 
   // Handles same-route navigation (component doesn't remount when already on this camera)
   useEffect(() => {
@@ -274,7 +274,6 @@ export default function CameraPage() {
       setActiveRecording(null)
       setRecordings(result.recordings)
       setRecordingsTotal(result.total)
-      setHasMore(result.hasMore)
       setMotionEvents(events)
       setEventsPage(1)
       setActiveEventTime(null)
@@ -305,11 +304,11 @@ export default function CameraPage() {
       if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
       setRecordings(prev => mergeRecordings(prev, result.recordings, sortOrder, result.hasMore))
       setRecordingsTotal(result.total)
-      setHasMore(result.hasMore)
     }, 30_000)
 
     return () => clearInterval(interval)
-  }, [selectedDate, id, navigate, hasMore, sortOrder])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, id, navigate, sortOrder])
 
   const today = new Date()
   const isToday =
@@ -334,7 +333,6 @@ export default function CameraPage() {
     if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
     setRecordings(result.recordings)
     setRecordingsTotal(result.total)
-    setHasMore(result.hasMore)
     setMotionEvents(events)
   }
 

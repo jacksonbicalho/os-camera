@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { authHeaders, clearToken } from '../auth'
 import AppLayout from '../components/AppLayout'
 import MotionScoreChart from '../components/MotionScoreChart'
@@ -77,8 +77,7 @@ export default function StatsPage() {
   return (
     <AppLayout mainClassName="max-w-4xl mx-auto w-full">
       <div className="mb-8">
-        <Link to="/" className="text-sm text-blue-400 hover:text-blue-300">← Câmeras</Link>
-        <h1 className="text-xl font-semibold text-gray-100 mt-2">Estatísticas</h1>
+        <h2 className="text-2xl font-bold text-white">Estatísticas</h2>
       </div>
 
       {!stats ? (
