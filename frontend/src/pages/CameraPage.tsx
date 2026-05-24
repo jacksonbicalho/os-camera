@@ -473,8 +473,8 @@ export default function CameraPage() {
       {
         type: 'button', id: 'live-status',
         icon: (
-          <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${isLive ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-300'}`}>
-            {isLive ? 'LIVE' : 'REC'}
+          <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${isLive ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-500'}`}>
+            LIVE
           </span>
         ),
         title: isLive ? 'Ao vivo' : 'Reprodução',
