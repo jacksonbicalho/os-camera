@@ -304,7 +304,7 @@ export default function CameraPage() {
       if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
       setRecordings(prev => mergeRecordings(prev, result.recordings, sortOrder, result.hasMore))
       setRecordingsTotal(result.total)
-    }, 30_000)
+    }, 5_000)
 
     return () => clearInterval(interval)
   // eslint-disable-next-line react-hooks/exhaustive-deps

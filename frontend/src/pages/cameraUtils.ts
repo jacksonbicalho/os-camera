@@ -47,10 +47,29 @@ export function mergeRecordings(
   const existingNames = new Set(prev.map(r => r.filename))
   const newOnes = fresh.filter(r => !existingNames.has(r.filename))
 
-  return [...kept, ...newOnes].sort((a, b) =>
+  const result = [...kept, ...newOnes].sort((a, b) =>
     sortOrder === 'desc'
       ? b.filename.localeCompare(a.filename)
       : a.filename.localeCompare(b.filename)
   )
+
+  // Return same reference when nothing changed — React bails out and skips re-render
+  if (
+    result.length === prev.length &&
+    result.every((r, i) => r.filename === prev[i].filename && r.is_recording === prev[i].is_recording)
+  ) {
+    return prev
+  }
+  return result
 }
 
+// Parses a Go-formatted duration string ("5m", "30s", "2h") to milliseconds.
+export function parseDurationToMs(s: string | undefined, defaultMs = 30_000): number {
+  if (!s) return defaultMs
+  const m = s.match(/^(\d+)(h|m|s)$/)
+  if (!m) return defaultMs
+  const n = parseInt(m[1], 10)
+  if (m[2] === 'h') return n * 3_600_000
+  if (m[2] === 'm') return n * 60_000
+  return n * 1_000
+}
