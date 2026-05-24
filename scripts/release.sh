@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Gera uma nova versão a partir dos commits convencionais desde a última tag.
-# Por enquanto todas as releases são beta (-beta.N).
+# Todas as releases são rc (-rc.N) enquanto o projeto não atingir estabilidade.
 #
 # Uso:
 #   ./scripts/release.sh            # interativo — cria e envia a tag
@@ -66,15 +66,15 @@ esac
 
 NEW_BASE="v${MAJ}.${MIN}.${PAT}"
 
-# Incrementa beta dentro do mesmo base se já houver
-BETA_N=1
-EXISTING="$(git tag --list "${NEW_BASE}-beta.*" 2>/dev/null | sort -V | tail -1 || true)"
+# Incrementa rc dentro do mesmo base se já houver
+RC_N=1
+EXISTING="$(git tag --list "${NEW_BASE}-rc.*" 2>/dev/null | sort -V | tail -1 || true)"
 if [[ -n "$EXISTING" ]]; then
-    LAST_N="${EXISTING##*beta.}"
-    BETA_N=$((LAST_N + 1))
+    LAST_N="${EXISTING##*rc.}"
+    RC_N=$((LAST_N + 1))
 fi
 
-NEW_VERSION="${NEW_BASE}-beta.${BETA_N}"
+NEW_VERSION="${NEW_BASE}-rc.${RC_N}"
 
 # ── organiza commits por categoria ────────────────────────────────────────────
 declare -A SECTIONS=(
