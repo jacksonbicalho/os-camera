@@ -493,9 +493,10 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		Threshold           float64 `json:"threshold"`
 		FPS                 int     `json:"fps"`
 		CooldownSeconds     int     `json:"cooldown_seconds"`
-		CaptureWidth        int     `json:"capture_width,omitempty"`
-		CaptureHeight       int     `json:"capture_height,omitempty"`
-		PlaybackLeadSeconds int     `json:"playback_lead_seconds"`
+		CaptureWidth         int `json:"capture_width,omitempty"`
+		CaptureHeight        int `json:"capture_height,omitempty"`
+		PlaybackLeadSeconds  int `json:"playback_lead_seconds"`
+		PlaybackTrailSeconds int `json:"playback_trail_seconds"`
 	}
 	type cameraDTO struct {
 		ID                string     `json:"id"`
@@ -525,13 +526,14 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		var motion *motionDTO
 		if c.Motion != nil {
 			motion = &motionDTO{
-				Enabled:             c.Motion.Enabled,
-				Threshold:           c.Motion.Threshold,
-				FPS:                 c.Motion.FPS,
-				CooldownSeconds:     c.Motion.CooldownSeconds,
-				CaptureWidth:        c.Motion.CaptureWidth,
-				CaptureHeight:       c.Motion.CaptureHeight,
-				PlaybackLeadSeconds: c.Motion.PlaybackLeadSeconds,
+				Enabled:              c.Motion.Enabled,
+				Threshold:            c.Motion.Threshold,
+				FPS:                  c.Motion.FPS,
+				CooldownSeconds:      c.Motion.CooldownSeconds,
+				CaptureWidth:         c.Motion.CaptureWidth,
+				CaptureHeight:        c.Motion.CaptureHeight,
+				PlaybackLeadSeconds:  c.Motion.PlaybackLeadSeconds,
+				PlaybackTrailSeconds: c.Motion.PlaybackTrailSeconds,
 			}
 		}
 		videoCodec := c.VideoCodec
@@ -620,10 +622,11 @@ func (s *Server) handleClientConfig(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
 	type cameraInfo struct {
-		ID                  string  `json:"id"`
-		Name                string  `json:"name"`
-		MotionThreshold     float64 `json:"motion_threshold"`
-		PlaybackLeadSeconds int     `json:"playback_lead_seconds"`
+		ID                   string  `json:"id"`
+		Name                 string  `json:"name"`
+		MotionThreshold      float64 `json:"motion_threshold"`
+		PlaybackLeadSeconds  int     `json:"playback_lead_seconds"`
+		PlaybackTrailSeconds int     `json:"playback_trail_seconds"`
 	}
 
 	cameras := s.cameras
@@ -653,16 +656,21 @@ func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
 
 	list := make([]cameraInfo, len(cameras))
 	for i, c := range cameras {
-		threshold := c.EffectiveMotionConfig().Threshold
+		mc := c.EffectiveMotionConfig()
 		lead := 10
-		if mc := c.EffectiveMotionConfig(); mc.PlaybackLeadSeconds > 0 {
+		if mc.PlaybackLeadSeconds > 0 {
 			lead = mc.PlaybackLeadSeconds
 		}
+		trail := 10
+		if mc.PlaybackTrailSeconds > 0 {
+			trail = mc.PlaybackTrailSeconds
+		}
 		list[i] = cameraInfo{
-			ID:                  c.ID,
-			Name:                c.Name,
-			MotionThreshold:     threshold,
-			PlaybackLeadSeconds: lead,
+			ID:                   c.ID,
+			Name:                 c.Name,
+			MotionThreshold:      mc.Threshold,
+			PlaybackLeadSeconds:  lead,
+			PlaybackTrailSeconds: trail,
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")

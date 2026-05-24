@@ -563,6 +563,108 @@ func TestSyncRecordings_UpdatesEndedAtWhenSuccessorAppears(t *testing.T) {
 	}
 }
 
+// createTestCameraWithMotion cria câmera com lead e trail configurados.
+func createTestCameraWithMotion(t *testing.T, database *db.DB, id string, lead, trail int) {
+	t.Helper()
+	dur5m := config.Duration(5 * time.Minute)
+	dur30s := config.Duration(30 * time.Second)
+	cam := config.CameraConfig{
+		ID:                id,
+		RTSPURL:           "rtsp://localhost/" + id,
+		ChunkDuration:     dur5m,
+		ReconnectInterval: dur30s,
+	}
+	motion := &config.MotionConfig{
+		Enabled:              true,
+		Threshold:            0.05,
+		PlaybackLeadSeconds:  lead,
+		PlaybackTrailSeconds: trail,
+	}
+	if _, err := db.CreateCamera(database, cam, motion); err != nil {
+		t.Fatalf("create camera %s: %v", id, err)
+	}
+}
+
+// Chunk imediatamente após um evento deve ser marcado has_motion=1 quando
+// o evento cai dentro da janela de trail do chunk seguinte.
+func TestSyncRecordings_TrailWindowMarksNextChunk(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCameraWithMotion(t, database, "cam1", 10, 10)
+
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	// Chunk A: [base, base+5s)  — contém o evento (1s antes do fim)
+	// Chunk B: [base+5s, base+10s) — não contém evento, mas está dentro de trail=10s
+	chunkA := base
+	chunkB := base.Add(5 * time.Second)
+	pathA := mp4WithTimestamp(dir, "cam1", chunkA)
+	pathB := mp4WithTimestamp(dir, "cam1", chunkB)
+	writeFile(t, pathA, chunkA)
+	writeFile(t, pathB, chunkB)
+
+	// evento 1s antes do fim de A → aftermath está em B
+	evTime := chunkA.Add(4 * time.Second)
+	addMotionEvent(t, database, "cam1", evTime, 0.1)
+
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	if !hasMotionInDB(t, database, pathA) {
+		t.Error("chunk A deveria ter has_motion=1 (contém o evento)")
+	}
+	if !hasMotionInDB(t, database, pathB) {
+		t.Error("chunk B deveria ter has_motion=1 (está dentro do trail do evento)")
+	}
+}
+
+// Chunk muito depois do evento (além do trail) não deve ser marcado.
+func TestSyncRecordings_ChunkBeyondTrailNotMarked(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCameraWithMotion(t, database, "cam1", 10, 10)
+
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	// Chunk A: contém o evento
+	// Chunk C: começa 30s após o evento → fora do trail de 10s
+	chunkA := base
+	chunkC := base.Add(30 * time.Second)
+	pathA := mp4WithTimestamp(dir, "cam1", chunkA)
+	pathC := mp4WithTimestamp(dir, "cam1", chunkC)
+	writeFile(t, pathA, chunkA)
+	writeFile(t, pathC, chunkC)
+
+	evTime := chunkA.Add(2 * time.Second)
+	addMotionEvent(t, database, "cam1", evTime, 0.1)
+
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	if !hasMotionInDB(t, database, pathA) {
+		t.Error("chunk A deveria ter has_motion=1")
+	}
+	if hasMotionInDB(t, database, pathC) {
+		t.Error("chunk C deveria ter has_motion=0 (além do trail)")
+	}
+}
+
+func addMotionEvent(t *testing.T, database *db.DB, cameraID string, ts time.Time, score float64) {
+	t.Helper()
+	_, err := database.Exec(
+		`INSERT INTO motion_events(camera_id, occurred_at, score) VALUES(?,?,?)`,
+		cameraID, ts.UTC().Format(time.RFC3339), score,
+	)
+	if err != nil {
+		t.Fatalf("insert motion event: %v", err)
+	}
+}
+
+func hasMotionInDB(t *testing.T, database *db.DB, path string) bool {
+	t.Helper()
+	var v int
+	if err := database.QueryRow(`SELECT has_motion FROM recordings WHERE path=?`, path).Scan(&v); err != nil {
+		t.Fatalf("query has_motion for %s: %v", path, err)
+	}
+	return v != 0
+}
+
 func TestCheckSize_NoWarnWhenBelowThreshold(t *testing.T) {
 	dir := t.TempDir()
 	// 50 bytes total; maxSizeGB ~107 bytes, 70% threshold ~75 bytes → no warn
