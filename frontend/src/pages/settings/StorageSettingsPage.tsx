@@ -16,7 +16,8 @@ export default function StorageSettingsPage() {
 
   return (
     <SettingsLayout>
-      <h2 className="text-lg font-semibold text-gray-200 mb-6">Armazenamento</h2>
+      <h3 className="text-lg font-semibold text-gray-200">Armazenamento</h3>
+      <p className="text-sm text-gray-500 mt-1 mb-6">Retenção, limpeza automática e espaço em disco.</p>
       {!s ? (
         <p className="text-gray-500 text-sm">Carregando...</p>
       ) : (

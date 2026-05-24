@@ -68,7 +68,7 @@ export function SettingsSidebar({ NAV_LINKS }: SettingsSidebarProps) {
     border-r border-gray-800
     p-4
     transition-transform duration-300
-    md:static md:h-auto md:w-44 md:border-none md:bg-transparent md:p-0
+    md:static md:h-auto md:w-48 md:border-none md:bg-transparent md:p-0
 
     ${openSidebar ? "translate-x-0" : "-translate-x-full"}
 
@@ -76,10 +76,6 @@ export function SettingsSidebar({ NAV_LINKS }: SettingsSidebarProps) {
   `}
       >
         <nav className="mt-8 md:mt-0 w-full">
-          <p className="mb-3 text-xs font-medium uppercase tracking-wider text-gray-500">
-            Configurações
-          </p>
-
           <ul className="flex flex-col gap-1">
             {NAV_LINKS.map(({ to, label }) => (
               <li key={to}>

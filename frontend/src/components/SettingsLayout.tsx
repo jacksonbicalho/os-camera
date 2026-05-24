@@ -21,8 +21,9 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
   const navLinks = getRole() === "admin" ? BASE_NAV_LINKS : VIEWER_NAV_LINKS;
 
   return (
-    <AppLayout mainClassName="max-w-5xl mx-auto w-full">
-      <div className="flex gap-8">
+    <AppLayout mainClassName="max-w-4xl mx-auto w-full">
+      <h2 className="text-2xl font-bold text-white mb-6">Configurações</h2>
+      <div className="flex gap-10">
         <SettingsSidebar NAV_LINKS={navLinks} />
         <div className="flex-1 min-w-0">{children}</div>
       </div>

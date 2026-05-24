@@ -8,7 +8,8 @@ export default function ServerSettingsPage() {
 
   return (
     <SettingsLayout>
-      <h2 className="text-lg font-semibold text-gray-200 mb-6">Servidor</h2>
+      <h3 className="text-lg font-semibold text-gray-200">Servidor</h3>
+      <p className="text-sm text-gray-500 mt-1 mb-6">Porta, JWT e configurações de rede.</p>
       {!s ? (
         <p className="text-gray-500 text-sm">Carregando...</p>
       ) : (

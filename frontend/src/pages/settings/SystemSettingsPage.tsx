@@ -7,7 +7,8 @@ export default function SystemSettingsPage() {
 
   return (
     <SettingsLayout>
-      <h2 className="text-lg font-semibold text-gray-200 mb-6">Sistema</h2>
+      <h3 className="text-lg font-semibold text-gray-200">Sistema</h3>
+      <p className="text-sm text-gray-500 mt-1 mb-6">Fuso horário e configurações de log.</p>
       {!settings ? (
         <p className="text-gray-500 text-sm">Carregando...</p>
       ) : (
