@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mergeRecordings } from './cameraUtils'
+import { mergeRecordings, parseDurationToMs } from './cameraUtils'
 import type { Recording } from './cameraUtils'
 
 function rec(filename: string): Recording {
@@ -63,5 +63,30 @@ describe('mergeRecordings', () => {
     const result = mergeRecordings([old], [fresh], 'desc', false)
     expect(result[0].is_recording).toBe(false)
   })
+
+  it('returns same prev reference when nothing changed', () => {
+    const prev = [rec('20260506120000.mp4'), rec('20260506110000.mp4')]
+    const fresh = [{ ...prev[0] }, { ...prev[1] }]
+    const result = mergeRecordings(prev, fresh, 'desc', false)
+    expect(result).toBe(prev)
+  })
+
+  it('returns new array when is_recording flag changes', () => {
+    const prev = [{ ...rec('20260506120000.mp4'), is_recording: true }]
+    const fresh = [{ ...rec('20260506120000.mp4'), is_recording: false }]
+    const result = mergeRecordings(prev, fresh, 'desc', false)
+    expect(result).not.toBe(prev)
+    expect(result[0].is_recording).toBe(false)
+  })
 })
 
+// ─── parseDurationToMs ──────────────────────────────────────────────────────
+
+describe('parseDurationToMs', () => {
+  it('"5m" → 300000', () => expect(parseDurationToMs('5m')).toBe(300_000))
+  it('"30s" → 30000', () => expect(parseDurationToMs('30s')).toBe(30_000))
+  it('"6s" → 6000', () => expect(parseDurationToMs('6s')).toBe(6_000))
+  it('"2h" → 7200000', () => expect(parseDurationToMs('2h')).toBe(7_200_000))
+  it('undefined → default 30000', () => expect(parseDurationToMs(undefined)).toBe(30_000))
+  it('empty string → default 30000', () => expect(parseDurationToMs('')).toBe(30_000))
+})
