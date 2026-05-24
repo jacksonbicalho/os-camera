@@ -28,8 +28,6 @@ export function mergeRecordings(
   sortOrder: 'asc' | 'desc',
   hasMore: boolean,
 ): Recording[] {
-  if (!hasMore) return fresh
-
   const freshByName = new Map(fresh.map(r => [r.filename, r]))
   const freshFilenames = new Set(fresh.map(r => r.filename))
   const freshAsc = [...fresh].sort((a, b) => a.filename.localeCompare(b.filename))
@@ -40,6 +38,9 @@ export function mergeRecordings(
     .map(r => freshByName.get(r.filename) ?? r)
     .filter(r => {
       if (freshFilenames.has(r.filename)) return true
+      // !hasMore: fresh é a lista completa — tudo fora dela foi deletado
+      if (!hasMore) return false
+      // hasMore: preserva gravações mais antigas fora da janela retornada
       return sortOrder === 'desc' ? r.filename < oldestFresh : r.filename > newestFresh
     })
 
