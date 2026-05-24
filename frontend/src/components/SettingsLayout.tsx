@@ -4,6 +4,7 @@ import { getRole } from "../auth";
 
 const BASE_NAV_LINKS = [
   { to: "/settings/cameras", label: "Câmeras" },
+  { to: "/settings/discover", label: "Rastrear câmeras" },
   { to: "/settings/users", label: "Usuários" },
   { to: "/settings/server", label: "Servidor" },
   { to: "/settings/storage", label: "Armazenamento" },
