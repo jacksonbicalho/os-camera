@@ -7,6 +7,7 @@ services:
       target: production
       args:
         VERSION: ${VERSION:-dev}
+    network_mode: host
     volumes:
       - ./camera.yaml:/app/camera.yaml:ro
       - ./storage:/data
@@ -18,14 +19,12 @@ services:
     build:
       context: .
       target: development
+    network_mode: host
     user: "${UID}:${GID}"
     volumes:
       - .:/app
       - ./storage:/data
       - ./frontend:/app/frontend
-    ports:
-      - 8080:8080
-
     environment:
       - VERSION=${VERSION:-dev}
       - GOCACHE=/app/.cache/go-build
