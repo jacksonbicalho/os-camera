@@ -767,7 +767,6 @@ function toggleFullscreen() {
                     key={activeRecording.url}
                     src={`${activeRecording.url}?token=${getToken()}`}
                     className="w-full h-full bg-black cursor-pointer"
-                    autoPlay
                     playsInline
                     onClick={togglePlayRecording}
                     onPlay={() => { setRecPlaying(true); showRecControls() }}
