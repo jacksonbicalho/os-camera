@@ -115,11 +115,12 @@ func parseProbeMatches(data []byte) ([]Result, error) {
 			fmt.Sscanf(p, "%d", &port)
 		}
 		r := Result{
-			IP:       host,
-			Port:     port,
-			ONVIF:    true,
-			Services: addrs,
-			Name:     nameFromScopes(m.Scopes),
+			IP:         host,
+			Port:       port,
+			ONVIF:      true,
+			ONVIFXAddr: addrs[0],
+			Services:   addrs,
+			Name:       nameFromScopes(m.Scopes),
 		}
 		results = append(results, r)
 	}

@@ -266,6 +266,7 @@ func (s *Server) routes() {
 s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 
 	s.mux.HandleFunc("GET /api/discover", s.requireAdmin(s.handleDiscover))
+	s.mux.HandleFunc("POST /api/discover/streams", s.requireAdmin(s.handleDiscoverStreams))
 	s.mux.HandleFunc("GET /api/settings/cameras", s.requireAdmin(s.handleListSettingsCameras))
 	s.mux.HandleFunc("POST /api/settings/cameras", s.requireAdmin(s.handleCreateCamera))
 	s.mux.HandleFunc("PUT /api/settings/cameras/reorder", s.requireAdmin(s.handleReorderCameras))
