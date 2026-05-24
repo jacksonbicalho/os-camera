@@ -14,16 +14,24 @@ interface DiscoveryResult {
 
 type Status = 'idle' | 'scanning' | 'done' | 'error'
 
+function injectCredentials(url: string, user: string, pass: string): string {
+  const noAuth = url.replace(/^(rtsp:\/\/)([^@]+@)?/, '$1')
+  return noAuth.replace('rtsp://', `rtsp://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@`)
+}
+
 export default function DiscoverPage() {
   const [status, setStatus] = useState<Status>('idle')
   const [results, setResults] = useState<DiscoveryResult[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [addingIdx, setAddingIdx] = useState<number | null>(null)
+  const [creds, setCreds] = useState({ user: '', pass: '' })
   const navigate = useNavigate()
 
   async function handleScan() {
     setStatus('scanning')
     setError(null)
     setResults([])
+    setAddingIdx(null)
     try {
       const res = await fetch('/api/discover', { headers: authHeaders() })
       if (!res.ok) { setError(await res.text()); setStatus('error'); return }
@@ -36,12 +44,15 @@ export default function DiscoverPage() {
     }
   }
 
-  function handleAdd(r: DiscoveryResult) {
-    const rtsp = r.rtsp_urls?.[0] ?? `rtsp://${r.ip}:${r.port === 554 ? '' : r.port}/`
+  function confirmAdd(r: DiscoveryResult) {
+    const base = r.rtsp_urls?.[0] ?? `rtsp://${r.ip}:${r.port}/`
+    const rtsp = creds.user ? injectCredentials(base, creds.user, creds.pass) : base
     const params = new URLSearchParams({ prefill_rtsp: rtsp })
     if (r.name) params.set('prefill_name', r.name)
     navigate(`/settings/cameras/new?${params}`)
   }
+
+  const inputClass = "bg-gray-950 border border-gray-700 rounded px-2.5 py-1 text-xs text-gray-200 focus:outline-none focus:border-blue-500 w-36"
 
   return (
     <SettingsLayout>
@@ -105,26 +116,67 @@ export default function DiscoverPage() {
               </thead>
               <tbody>
                 {results.map((r, i) => (
-                  <tr key={i} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/40 transition-colors">
-                    <td className="px-4 py-2.5 font-mono text-gray-200">{r.ip}</td>
-                    <td className="px-4 py-2.5 text-gray-400">{r.port}</td>
-                    <td className="px-4 py-2.5">
-                      {r.onvif ? (
-                        <span className="px-1.5 py-0.5 rounded bg-blue-900/50 text-blue-300 text-[10px] font-medium">ONVIF</span>
-                      ) : (
-                        <span className="px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 text-[10px] font-medium">Scan</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-300">{r.name || <span className="text-gray-600">—</span>}</td>
-                    <td className="px-4 py-2.5 text-right">
-                      <button
-                        onClick={() => handleAdd(r)}
-                        className="px-3 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded text-[11px] font-medium transition-colors"
-                      >
-                        Adicionar
-                      </button>
-                    </td>
-                  </tr>
+                  <>
+                    <tr key={i} className={`border-b border-gray-800 ${addingIdx === i ? '' : 'last:border-0'} hover:bg-gray-800/40 transition-colors`}>
+                      <td className="px-4 py-2.5 font-mono text-gray-200">{r.ip}</td>
+                      <td className="px-4 py-2.5 text-gray-400">{r.port}</td>
+                      <td className="px-4 py-2.5">
+                        {r.onvif ? (
+                          <span className="px-1.5 py-0.5 rounded bg-blue-900/50 text-blue-300 text-[10px] font-medium">ONVIF</span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 text-[10px] font-medium">Scan</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-300">{r.name || <span className="text-gray-600">—</span>}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        {addingIdx === i ? (
+                          <button
+                            onClick={() => setAddingIdx(null)}
+                            className="px-3 py-1 text-gray-400 hover:text-white border border-gray-700 rounded text-[11px] font-medium transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => { setAddingIdx(i); setCreds({ user: '', pass: '' }) }}
+                            className="px-3 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded text-[11px] font-medium transition-colors"
+                          >
+                            Adicionar
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+
+                    {addingIdx === i && (
+                      <tr key={`${i}-creds`} className="border-b border-gray-800 last:border-0 bg-gray-800/50">
+                        <td colSpan={5} className="px-4 py-3">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <input
+                              placeholder="Usuário"
+                              value={creds.user}
+                              onChange={e => setCreds(p => ({ ...p, user: e.target.value }))}
+                              className={inputClass}
+                              autoFocus
+                            />
+                            <input
+                              type="password"
+                              placeholder="Senha"
+                              value={creds.pass}
+                              onChange={e => setCreds(p => ({ ...p, pass: e.target.value }))}
+                              onKeyDown={e => e.key === 'Enter' && confirmAdd(r)}
+                              className={inputClass}
+                            />
+                            <button
+                              onClick={() => confirmAdd(r)}
+                              className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-medium transition-colors"
+                            >
+                              Confirmar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>
