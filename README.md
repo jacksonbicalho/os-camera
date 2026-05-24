@@ -21,6 +21,19 @@ Sistema de monitoramento residencial via RTSP. Um único binário estático grav
 
 ---
 
+## Documentação
+
+| | |
+|---|---|
+| [Instalação](docs/installation.md) | Script automático, Docker, Raspberry Pi, download manual |
+| [Configuração](docs/configuration.md) | Referência completa do `camera.yaml` |
+| [Câmeras](docs/cameras.md) | Adicionar, descobrir e configurar câmeras |
+| [Detecção de movimento](docs/motion.md) | Threshold, zonas, buffer pré/pós-evento |
+| [Armazenamento](docs/storage.md) | Retenção, limpeza e limites de disco |
+| [Usuários](docs/users.md) | Papéis, permissões e autenticação |
+
+---
+
 ## Instalação rápida (Linux)
 
 ```bash
@@ -294,4 +307,4 @@ O servidor emite dois endpoints SSE por câmera:
 ./scripts/release.sh
 ```
 
-O script lê os commits convencionais desde a última tag, calcula o bump semântico e cria uma tag `vX.Y.Z-beta.N`. O push da tag dispara o GitHub Actions que compila e publica os binários automaticamente.
+O script lê os commits convencionais desde a última tag, calcula o bump semântico e cria uma tag `vX.Y.Z-rc.N`. O push da tag dispara o GitHub Actions que compila e publica os binários automaticamente.
