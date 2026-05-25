@@ -29,7 +29,7 @@ func mockONVIFServer(t *testing.T) (srv *httptest.Server, srvURL *string) {
 			    <Profiles token="P1"><Name>MainStream</Name></Profiles>
 			    <Profiles token="P2"><Name>SubStream</Name></Profiles>
 			  </GetProfilesResponse></s:Body></s:Envelope>`))
-		case strings.Contains(body, "GetStreamUri") && strings.Contains(body, "P2"):
+		case strings.Contains(body, "GetStreamUri") && strings.Contains(body, "<ProfileToken>P2</ProfileToken>"):
 			w.Write([]byte(`<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body>
 			  <GetStreamUriResponse xmlns="http://www.onvif.org/ver10/media/wsdl">
 			    <MediaUri><Uri>rtsp://192.168.1.100:554/sub</Uri></MediaUri>
