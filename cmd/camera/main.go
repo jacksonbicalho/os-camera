@@ -286,6 +286,9 @@ func main() {
 		database,
 		slog,
 	)
+	if srv != nil {
+		srv.WithCleaner(cleaner)
+	}
 	go cleaner.Run(ctx, cleanInterval)
 
 	stop := make(chan os.Signal, 1)

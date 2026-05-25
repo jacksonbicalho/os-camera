@@ -1039,18 +1039,9 @@ function toggleFullscreen() {
                       emptyMessage={cam?.recording_enabled === false ? "Gravação desabilitada. Câmera disponível apenas ao vivo." : "Sem gravações nesta data."}
                     >
                       {(() => {
-                        const recordingsAsc = [...recordings].sort((a, b) => a.filename.localeCompare(b.filename))
                         return displayedRecordings.map(rec => {
                           const isActive = activeRecording?.filename === rec.filename
-                          const recStart = new Date(rec.start).getTime()
-                          const idx = recordingsAsc.findIndex(r => r.filename === rec.filename)
-                          const nextStart = idx + 1 < recordingsAsc.length
-                            ? new Date(recordingsAsc[idx + 1].start).getTime()
-                            : recStart + 5 * 60 * 1000
-                          const hasMotion = motionEvents.some(ev => {
-                            const t = new Date(ev.time).getTime()
-                            return t >= recStart && t < nextStart
-                          })
+                          const hasMotion = rec.has_motion
                           return (
                             <div
                               key={rec.filename}

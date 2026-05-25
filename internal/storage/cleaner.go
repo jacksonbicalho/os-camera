@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ type Cleaner struct {
 	warnPercent          float64
 	db                   *db.DB
 	log                  *slog.Logger
+	forceCh              chan struct{}
 }
 
 func New(storagePath string, withMotionMinutes, withoutMotionMinutes int, chunkDuration time.Duration, maxSizeGB float64, warnPercent float64, database *db.DB, log *slog.Logger) *Cleaner {
@@ -37,6 +39,16 @@ func New(storagePath string, withMotionMinutes, withoutMotionMinutes int, chunkD
 		warnPercent:          warnPercent,
 		db:                   database,
 		log:                  log,
+		forceCh:              make(chan struct{}, 1),
+	}
+}
+
+// ForceClean schedules an immediate clean without waiting for the next interval.
+// Safe to call concurrently; excess signals are dropped.
+func (c *Cleaner) ForceClean() {
+	select {
+	case c.forceCh <- struct{}{}:
+	default:
 	}
 }
 
@@ -227,20 +239,83 @@ func (c *Cleaner) syncRecordings() {
 	}
 }
 
+// effectiveRetentionMinutes returns the retention minutes, preferring DB
+// overrides (storage.with_motion_minutes / storage.without_motion_minutes)
+// over the values set at construction time.
+func (c *Cleaner) effectiveRetentionMinutes() (withMotion, withoutMotion int) {
+	withMotion = c.withMotionMinutes
+	withoutMotion = c.withoutMotionMinutes
+	if c.db == nil {
+		return
+	}
+	all, err := db.GetAllConfig(c.db)
+	if err != nil {
+		return
+	}
+	if v, ok := all["storage.with_motion_minutes"]; ok {
+		if n, err := strconv.Atoi(v); err == nil {
+			withMotion = n
+		}
+	}
+	if v, ok := all["storage.without_motion_minutes"]; ok {
+		if n, err := strconv.Atoi(v); err == nil {
+			withoutMotion = n
+		}
+	}
+	return
+}
+
+func (c *Cleaner) loadDrives() (drives map[string]Drive, withMotionAction, withoutMotionAction string, withMotionDriveID, withoutMotionDriveID string) {
+	drives = make(map[string]Drive)
+	withMotionAction = "delete"
+	withoutMotionAction = "delete"
+
+	dbDrives, err := db.ListDrives(c.db)
+	if err != nil {
+		c.log.Warn("failed to load drives from db", "err", err)
+		return
+	}
+	for _, dr := range dbDrives {
+		if dr.Type == "s3" {
+			drives[dr.ID] = NewS3Drive(dr)
+		}
+	}
+
+	configs, err := db.ListRetentionConfigs(c.db)
+	if err != nil {
+		c.log.Warn("failed to load retention configs from db", "err", err)
+		return
+	}
+	for _, rc := range configs {
+		switch rc.Category {
+		case "with_motion":
+			withMotionAction = rc.Action
+			withMotionDriveID = rc.DriveID
+		case "without_motion":
+			withoutMotionAction = rc.Action
+			withoutMotionDriveID = rc.DriveID
+		}
+	}
+	return
+}
+
 func (c *Cleaner) cleanFromDB() {
-	if c.withMotionMinutes == 0 && c.withoutMotionMinutes == 0 {
+	withMotionMinutes, withoutMotionMinutes := c.effectiveRetentionMinutes()
+	if withMotionMinutes == 0 && withoutMotionMinutes == 0 {
 		return
 	}
 	now := time.Now().UTC()
+
+	drives, withMotionAction, withoutMotionAction, withMotionDriveID, withoutMotionDriveID := c.loadDrives()
 
 	type row struct {
 		path      string
 		hasMotion bool
 	}
-	var toDelete []row
+	var toProcess []row
 
-	if c.withoutMotionMinutes > 0 {
-		cutoff := now.Add(-time.Duration(c.withoutMotionMinutes) * time.Minute).Format(time.RFC3339)
+	if withoutMotionMinutes > 0 {
+		cutoff := now.Add(-time.Duration(withoutMotionMinutes) * time.Minute).Format(time.RFC3339)
 		rows, err := c.db.Query(`SELECT path FROM recordings WHERE has_motion=0 AND started_at < ?`, cutoff)
 		if err != nil {
 			c.log.Warn("failed to query without-motion recordings", "err", err)
@@ -252,13 +327,13 @@ func (c *Cleaner) cleanFromDB() {
 					c.log.Warn("failed to scan recording path", "err", err)
 					continue
 				}
-				toDelete = append(toDelete, row{path: path, hasMotion: false})
+				toProcess = append(toProcess, row{path: path, hasMotion: false})
 			}
 		}
 	}
 
-	if c.withMotionMinutes > 0 {
-		cutoff := now.Add(-time.Duration(c.withMotionMinutes) * time.Minute).Format(time.RFC3339)
+	if withMotionMinutes > 0 {
+		cutoff := now.Add(-time.Duration(withMotionMinutes) * time.Minute).Format(time.RFC3339)
 		rows, err := c.db.Query(`SELECT path FROM recordings WHERE has_motion=1 AND started_at < ?`, cutoff)
 		if err != nil {
 			c.log.Warn("failed to query with-motion recordings", "err", err)
@@ -270,12 +345,33 @@ func (c *Cleaner) cleanFromDB() {
 					c.log.Warn("failed to scan recording path", "err", err)
 					continue
 				}
-				toDelete = append(toDelete, row{path: path, hasMotion: true})
+				toProcess = append(toProcess, row{path: path, hasMotion: true})
 			}
 		}
 	}
 
-	for _, r := range toDelete {
+	for _, r := range toProcess {
+		action := withoutMotionAction
+		driveID := withoutMotionDriveID
+		if r.hasMotion {
+			action = withMotionAction
+			driveID = withMotionDriveID
+		}
+
+		if action == "send_to_drive" {
+			drive, ok := drives[driveID]
+			if !ok {
+				c.log.Warn("drive not found for retention action, skipping", "drive_id", driveID, "path", r.path)
+				continue
+			}
+			if err := c.uploadAndPurge(drive, r.path); err != nil {
+				c.log.Warn("failed to send recording to drive, skipping deletion", "path", r.path, "err", err)
+				continue
+			}
+			continue
+		}
+
+		// Default: delete
 		c.log.Debug("deleting old recording", "path", r.path, "has_motion", r.hasMotion)
 		if err := os.Remove(r.path); err != nil && !os.IsNotExist(err) {
 			c.log.Warn("failed to delete recording", "path", r.path, "err", err)
@@ -284,6 +380,51 @@ func (c *Cleaner) cleanFromDB() {
 			c.log.Warn("failed to delete recording from db", "path", r.path, "err", err)
 		}
 	}
+}
+
+// uploadAndPurge uploads the MP4 file to the given drive, then removes the
+// local file and all DB references. On upload failure nothing is deleted.
+func (c *Cleaner) uploadAndPurge(drive Drive, path string) error {
+	key := filepath.Base(filepath.Dir(path)) + "/" + filepath.Base(path)
+	// Include camera subdirectory in the key: e.g. "camera-id/2025/01/15/20250115120000.mp4"
+	rel, err := filepath.Rel(c.storagePath, path)
+	if err == nil {
+		key = rel
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// File already gone — clean up DB entry.
+			_ = db.DeleteRecording(c.db, path)
+			return nil
+		}
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+
+	c.log.Info("uploading recording to drive", "path", path, "key", key)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	if err := drive.Upload(ctx, key, f, info.Size()); err != nil {
+		f.Close()
+		return err
+	}
+	f.Close()
+
+	c.log.Debug("purging local recording after upload", "path", path)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		c.log.Warn("failed to delete recording after upload", "path", path, "err", err)
+	}
+	if err := db.DeleteRecording(c.db, path); err != nil {
+		c.log.Warn("failed to delete recording from db after upload", "path", path, "err", err)
+	}
+	return nil
 }
 
 func (c *Cleaner) cleanFromFS() {
@@ -391,30 +532,53 @@ func (c *Cleaner) CheckSize() {
 	}
 }
 
-func (c *Cleaner) Run(ctx context.Context, interval time.Duration) {
+// effectiveInterval returns the clean interval from the DB if set, falling back
+// to defaultInterval. This lets the user change the interval at runtime.
+func (c *Cleaner) effectiveInterval(defaultInterval time.Duration) time.Duration {
+	if c.db == nil {
+		return defaultInterval
+	}
+	all, err := db.GetAllConfig(c.db)
+	if err != nil {
+		return defaultInterval
+	}
+	if v, ok := all["storage.interval_minutes"]; ok {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return time.Duration(n) * time.Minute
+		}
+	}
+	return defaultInterval
+}
+
+func (c *Cleaner) Run(ctx context.Context, defaultInterval time.Duration) {
 	c.Clean()
 	c.CheckSize()
 
-	// syncRecordings runs on a short cadence so motion events are associated
-	// with recordings quickly after each chunk is finalized. The full clean
-	// (retention + size enforcement) runs on the slower configured interval.
-	const syncInterval = time.Minute
-	syncTicker := time.NewTicker(syncInterval)
-	defer syncTicker.Stop()
-	cleanTicker := time.NewTicker(interval)
-	defer cleanTicker.Stop()
+	// A single ticker fires every minute. syncRecordings runs on every tick;
+	// the full clean runs whenever the effective interval (read from DB each tick)
+	// has elapsed — so interval changes take effect within one minute.
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+
+	lastClean := time.Now()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-syncTicker.C:
+		case <-ticker.C:
 			if c.db != nil {
 				c.syncRecordings()
 			}
-		case <-cleanTicker.C:
+			if time.Since(lastClean) >= c.effectiveInterval(defaultInterval) {
+				c.Clean()
+				c.CheckSize()
+				lastClean = time.Now()
+			}
+		case <-c.forceCh:
 			c.Clean()
 			c.CheckSize()
+			lastClean = time.Now()
 		}
 	}
 }
