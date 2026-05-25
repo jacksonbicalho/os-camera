@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -67,6 +68,35 @@ func HasMotionInRangeDB(db *DB, cameraID string, start, end time.Time) (found bo
 		return false, false, err
 	}
 	return count > 0, motion != 0, nil
+}
+
+// HasMotionByPaths returns a map of path → has_motion for the given file paths.
+// Paths not found in the DB are absent from the map (caller may treat as false).
+func HasMotionByPaths(db *DB, paths []string) (map[string]bool, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	placeholders := strings.Repeat("?,", len(paths))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(paths))
+	for i, p := range paths {
+		args[i] = p
+	}
+	rows, err := db.Query(`SELECT path, has_motion FROM recordings WHERE path IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]bool, len(paths))
+	for rows.Next() {
+		var path string
+		var hm int
+		if err := rows.Scan(&path, &hm); err != nil {
+			return nil, err
+		}
+		result[path] = hm != 0
+	}
+	return result, rows.Err()
 }
 
 // DeleteRecording removes the recording row for the given path.

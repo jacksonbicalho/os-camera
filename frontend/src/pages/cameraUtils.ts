@@ -3,6 +3,7 @@ export interface Recording {
   start: string
   url: string
   is_recording: boolean
+  has_motion: boolean
 }
 
 export interface MotionBBox {

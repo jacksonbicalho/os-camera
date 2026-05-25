@@ -118,6 +118,7 @@ type Server struct {
 	onCameraStop       func(string)
 	monitors           map[string]*motion.Monitor
 	cpu                cpuTracker
+	cleaner            interface{ ForceClean() }
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
@@ -179,6 +180,11 @@ func (s *Server) WithVersion(v string) *Server {
 func (s *Server) WithBuildInfo(commit, builtAt string) *Server {
 	s.commit = commit
 	s.builtAt = builtAt
+	return s
+}
+
+func (s *Server) WithCleaner(c interface{ ForceClean() }) *Server {
+	s.cleaner = c
 	return s
 }
 
@@ -277,6 +283,15 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("POST /api/users", s.requireAdmin(s.handleCreateUser))
 	s.mux.HandleFunc("PUT /api/users/{id}", s.requireAdmin(s.handleUpdateUser))
 	s.mux.HandleFunc("DELETE /api/users/{id}", s.requireAdmin(s.handleDeleteUser))
+
+	s.mux.HandleFunc("PUT /api/settings/storage", s.requireAdmin(s.handleUpdateStorageSettings))
+
+	s.mux.HandleFunc("GET /api/drives", s.requireAdmin(s.handleListDrives))
+	s.mux.HandleFunc("POST /api/drives", s.requireAdmin(s.handleCreateDrive))
+	s.mux.HandleFunc("PUT /api/drives/{id}", s.requireAdmin(s.handleUpdateDrive))
+	s.mux.HandleFunc("DELETE /api/drives/{id}", s.requireAdmin(s.handleDeleteDrive))
+	s.mux.HandleFunc("GET /api/retention", s.requireAdmin(s.handleListRetentionConfigs))
+	s.mux.HandleFunc("PUT /api/retention/{category}", s.requireAdmin(s.handleUpdateRetentionConfig))
 
 	streamHandler := http.StripPrefix("/stream/", http.FileServer(http.Dir(s.cfg.SegmentsPath)))
 	s.mux.Handle("/stream/", s.requireStreamAccess(streamHandler))
@@ -586,14 +601,14 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			"hls_dvr_seconds": s.cfg.HLSDVRSeconds,
 		},
 		"storage": func() map[string]any {
-			withMotion, withoutMotion := s.storageCfg.EffectiveRetention()
+			wm, wom, interval, maxGB, warnPct := s.effectiveStorageSettings()
 			return map[string]any{
 				"path":                   s.storageCfg.Path,
-				"with_motion_minutes":    withMotion,
-				"without_motion_minutes": withoutMotion,
-				"interval_minutes":       s.storageCfg.IntervalMinutes,
-				"max_size_gb":            s.storageCfg.MaxSizeGB,
-				"warn_percent":           s.storageCfg.WarnPercent,
+				"with_motion_minutes":    wm,
+				"without_motion_minutes": wom,
+				"interval_minutes":       interval,
+				"max_size_gb":            maxGB,
+				"warn_percent":           warnPct,
 			}
 		}(),
 		"defaults": map[string]any{
@@ -718,7 +733,9 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 		Start       string    `json:"start"`
 		URL         string    `json:"url"`
 		IsRecording bool      `json:"is_recording"`
+		HasMotion   bool      `json:"has_motion"`
 		mtime       time.Time // not serialized; used to detect active recording
+		path        string    // not serialized; used for DB has_motion lookup
 	}
 
 	var all []recording
@@ -748,6 +765,7 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 				Start:    ts.UTC().Format(time.RFC3339),
 				URL:      "/recordings/" + id + "/" + utcDay.Format("2006/01/02") + "/" + e.Name(),
 				mtime:    info.ModTime(),
+				path:     filepath.Join(dir, e.Name()),
 			})
 		}
 	}
@@ -766,6 +784,21 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 			all[latest].IsRecording = true
 		}
 	}
+	// Enrich has_motion from DB so lead/trail recordings are also marked.
+	if s.db != nil && len(all) > 0 {
+		paths := make([]string, len(all))
+		for i, r := range all {
+			paths[i] = r.path
+		}
+		if motionByPath, err := db.HasMotionByPaths(s.db, paths); err == nil {
+			for i := range all {
+				if motionByPath[all[i].path] {
+					all[i].HasMotion = true
+				}
+			}
+		}
+	}
+
 	sort.Slice(all, func(i, j int) bool {
 		if order == "asc" {
 			return all[i].Filename < all[j].Filename

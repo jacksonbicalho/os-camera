@@ -443,6 +443,71 @@ func TestRecordingsRequiresAuth(t *testing.T) {
 	}
 }
 
+func TestRecordingsHasMotionFromDB(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "05", "24")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"20260524150000.mp4", "20260524153000.mp4"} {
+		if err := os.WriteFile(filepath.Join(dateDir, name), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "admin", "pw", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Only the second recording has has_motion=true in the DB.
+	db.InsertRecording(database, db.Recording{
+		CameraID: cameraID, StartedAt: time.Date(2026, 5, 24, 15, 0, 0, 0, time.UTC),
+		Path: filepath.Join(tmpDir, cameraID, "2026", "05", "24", "20260524150000.mp4"), HasMotion: false,
+	})
+	db.InsertRecording(database, db.Recording{
+		CameraID: cameraID, StartedAt: time.Date(2026, 5, 24, 15, 30, 0, 0, time.UTC),
+		Path: filepath.Join(tmpDir, cameraID, "2026", "05", "24", "20260524153000.mp4"), HasMotion: true,
+	})
+
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+	cameras := []config.CameraConfig{{ID: cameraID}}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).WithDB(database)
+
+	token := loginAndGetToken(t, srv, "admin", "pw")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-05-24&page=1&limit=10", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Recordings []struct {
+			Filename  string `json:"filename"`
+			HasMotion bool   `json:"has_motion"`
+		} `json:"recordings"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if len(resp.Recordings) != 2 {
+		t.Fatalf("expected 2 recordings, got %d", len(resp.Recordings))
+	}
+	// default order is desc — 15:30 first
+	if resp.Recordings[0].Filename != "20260524153000.mp4" {
+		t.Fatalf("unexpected first recording: %v", resp.Recordings[0].Filename)
+	}
+	if !resp.Recordings[0].HasMotion {
+		t.Error("20260524153000.mp4: expected has_motion=true")
+	}
+	if resp.Recordings[1].HasMotion {
+		t.Error("20260524150000.mp4: expected has_motion=false")
+	}
+}
+
 func TestGetStatsReturnsStorageInfo(t *testing.T) {
 	tmpDir := t.TempDir()
 	cameraID := "entrada"
