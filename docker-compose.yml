@@ -29,6 +29,7 @@ services:
       - VERSION=${VERSION:-dev}
       - GOCACHE=/app/.cache/go-build
       - YARN_CACHE_FOLDER=/app/.cache/yarn
+      - HOME=/tmp
     command: sh -c "cd frontend && yarn install && yarn build && cd .. && go run -ldflags=\"-X main.version=$$VERSION\" ./cmd/camera --config /app/camera.yaml"
     restart: "no"
 
