@@ -12,7 +12,9 @@ const BASE_NAV_LINKS = [
   { to: "/settings/about", label: "Sobre" },
 ];
 
-const VIEWER_NAV_LINKS = BASE_NAV_LINKS.filter(l => l.to !== "/settings/users");
+const VIEWER_NAV_LINKS = BASE_NAV_LINKS.filter(l =>
+  l.to !== "/settings/users" && l.to !== "/settings/discover"
+);
 
 interface SettingsLayoutProps {
   children: React.ReactNode;
