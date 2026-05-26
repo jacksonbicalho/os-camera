@@ -83,6 +83,23 @@ yarn install  # apenas para desenvolvimento local do frontend
 yarn dev      # Vite dev server na porta 5173 (proxy /api e /stream para :8080)
 ```
 
+**Node/yarn não estão instalados no sistema host** — os testes e builds do frontend rodam via Docker. Para rodar os testes do frontend localmente use:
+
+```bash
+# Testes + lint + build do frontend via Docker (equivalente ao CI)
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v "$(pwd)/frontend":/app \
+  -v camera-yarn-cache:/yarn-cache \
+  -w /app \
+  -e YARN_CACHE_FOLDER=/yarn-cache \
+  -e HOME=/tmp \
+  node:20-alpine \
+  sh -c "yarn install --frozen-lockfile && yarn lint && yarn test --run && yarn build"
+```
+
+Nunca afirmar que os testes do frontend passaram sem ter rodado o comando acima (ou visto o CI verde).
+
 ## Arquitetura
 
 ### Binários

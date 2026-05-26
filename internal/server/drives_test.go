@@ -94,6 +94,62 @@ func TestCreateAndDeleteDrive(t *testing.T) {
 	}
 }
 
+func TestDeleteDrive_ResetsRetentionConfig(t *testing.T) {
+	srv, token := setupDrivesServer(t)
+
+	// Create a drive.
+	body := `{"name":"s3-drive","bucket":"bkt","region":"us-east-1","access_key":"AK","secret_key":"SK"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/drives", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create drive: %d", w.Code)
+	}
+	var created map[string]any
+	json.Unmarshal(w.Body.Bytes(), &created)
+	id := created["id"].(string)
+
+	// Point retention at that drive.
+	retBody := `{"action":"send_to_drive","drive_id":"` + id + `"}`
+	req = httptest.NewRequest(http.MethodPut, "/api/retention/with_motion", bytes.NewBufferString(retBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("set retention: %d: %s", w.Code, w.Body.String())
+	}
+
+	// Delete the drive.
+	req = httptest.NewRequest(http.MethodDelete, "/api/drives/"+id, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("delete drive: %d", w.Code)
+	}
+
+	// Retention for with_motion must have been reset to delete.
+	req = httptest.NewRequest(http.MethodGet, "/api/retention", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var configs []map[string]any
+	json.Unmarshal(w.Body.Bytes(), &configs)
+	for _, rc := range configs {
+		if rc["category"] == "with_motion" {
+			if rc["action"] != "delete" {
+				t.Errorf("with_motion action = %q after drive deletion, want delete", rc["action"])
+			}
+			if rc["drive_id"] != nil && rc["drive_id"] != "" {
+				t.Errorf("with_motion drive_id = %v after drive deletion, want empty", rc["drive_id"])
+			}
+		}
+	}
+}
+
 func TestRetentionConfig_Defaults(t *testing.T) {
 	srv, token := setupDrivesServer(t)
 

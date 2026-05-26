@@ -81,6 +81,11 @@ func UpdateDrive(d *DB, dr Drive) error {
 }
 
 func DeleteDrive(d *DB, id string) error {
+	// Reset retention configs before deleting the drive so the WHERE clause can
+	// still match (the FK ON DELETE SET DEFAULT would NULL drive_id first otherwise).
+	if _, err := d.Exec(`UPDATE retention_config SET action='delete', drive_id=NULL WHERE drive_id=?`, id); err != nil {
+		return err
+	}
 	_, err := d.Exec(`DELETE FROM drives WHERE id=?`, id)
 	return err
 }
