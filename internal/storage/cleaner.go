@@ -443,11 +443,23 @@ func (c *Cleaner) cameraSlug(id string) string {
 	return id
 }
 
+var deaccent = map[rune]rune{
+	'à': 'a', 'á': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a',
+	'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
+	'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i',
+	'ò': 'o', 'ó': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o',
+	'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u',
+	'ç': 'c', 'ñ': 'n', 'ý': 'y',
+}
+
 func slugify(s string) string {
 	s = strings.ToLower(s)
 	var b strings.Builder
 	prev := false
 	for _, r := range s {
+		if mapped, ok := deaccent[r]; ok {
+			r = mapped
+		}
 		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
 			b.WriteRune(r)
 			prev = false
