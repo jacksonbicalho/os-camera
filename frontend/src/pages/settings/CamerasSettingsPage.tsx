@@ -110,8 +110,9 @@ export default function CamerasSettingsPage() {
   if (!isAdmin) {
     return (
       <SettingsLayout>
-        <h3 className="text-lg font-semibold text-gray-200">Câmeras</h3>
-        <p className="text-sm text-gray-500 mt-1 mb-6">Câmeras disponíveis.</p>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-base font-semibold text-gray-200">Câmeras</h3>
+        </div>
         {loading ? (
           <p className="text-gray-500 text-sm">Carregando...</p>
         ) : cameras.length === 0 ? (
@@ -124,28 +125,14 @@ export default function CamerasSettingsPage() {
                 to={`/settings/cameras/${cam.id}`}
                 className="flex items-center gap-4 bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 hover:border-blue-600 transition-colors"
               >
-                <div className="w-24 h-14 shrink-0 rounded overflow-hidden bg-gray-800">
-                  <img
-                    src={`/api/cameras/${cam.id}/snapshot?token=${getToken()}`}
-                    alt={cam.name || cam.id}
-                    className="w-full h-full object-cover"
-                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-                  />
+                <Thumbnail cameraId={cam.id} name={cam.name} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-200 truncate">{cam.name || cam.id}</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <StatusBadges cam={cam} />
+                  </div>
                 </div>
-                <div className="flex flex-1 items-center gap-2 min-w-0">
-                  <span className="text-sm font-mono text-gray-200 truncate">{cam.name || cam.id}</span>
-                  {cam.motion?.enabled && (
-                    <span className="px-2 py-0.5 text-xs rounded-full bg-green-900/40 text-green-400 border border-green-700/40 shrink-0">
-                      motion
-                    </span>
-                  )}
-                  {!cam.recording_enabled && (
-                    <span className="px-2 py-0.5 text-xs rounded-full bg-gray-800 text-gray-500 border border-gray-700 shrink-0">
-                      rec off
-                    </span>
-                  )}
-                </div>
-                <svg className="w-4 h-4 text-gray-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-gray-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </Link>
@@ -158,17 +145,17 @@ export default function CamerasSettingsPage() {
 
   return (
     <SettingsLayout>
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-200">Câmeras</h3>
-          <p className="text-sm text-gray-500 mt-1">Gerencie as câmeras do sistema.</p>
-        </div>
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-base font-semibold text-gray-200">Câmeras</h3>
         {!creating && !noDb && (
           <button
             onClick={() => { setCreating(true); setError(null) }}
-            className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
           >
-            + Nova câmera
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Nova câmera
           </button>
         )}
       </div>
@@ -214,51 +201,50 @@ export default function CamerasSettingsPage() {
               onDragLeave={() => setDragOverId(null)}
               onDrop={() => handleDrop(cam.id)}
               onDragEnd={() => { dragIdRef.current = null; setDragOverId(null) }}
-              className={`bg-gray-900 border rounded-lg px-4 py-3 flex items-center gap-4 transition-colors ${dragOverId === cam.id ? 'border-blue-500' : 'border-gray-800'}`}
+              className={`group bg-gray-900 border rounded-lg px-3 py-3 flex items-center gap-3 transition-colors ${dragOverId === cam.id ? 'border-blue-500' : 'border-gray-800 hover:border-gray-700'}`}
             >
-              <svg className="w-4 h-4 text-gray-600 shrink-0 cursor-grab active:cursor-grabbing" fill="currentColor" viewBox="0 0 20 20">
+              {/* drag handle */}
+              <svg className="w-4 h-4 text-gray-700 group-hover:text-gray-500 shrink-0 cursor-grab active:cursor-grabbing transition-colors" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M7 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm6 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM7 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm6 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-6 5a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm6 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" />
               </svg>
-              <div className="w-24 h-14 shrink-0 rounded overflow-hidden bg-gray-800">
-                <img
-                  src={`/api/cameras/${cam.id}/snapshot?token=${getToken()}`}
-                  alt={cam.name || cam.id}
-                  className="w-full h-full object-cover"
-                  onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-                />
-              </div>
-              <div className="flex-1 flex items-center gap-3 min-w-0">
+
+              {/* thumbnail */}
+              <Thumbnail cameraId={cam.id} name={cam.name} />
+
+              {/* info */}
+              <div className="flex-1 min-w-0">
                 <Link
                   to={`/settings/cameras/${cam.id}`}
-                  className="text-sm font-mono text-gray-200 hover:text-blue-400 transition-colors truncate min-w-0"
+                  className="text-sm font-medium text-gray-200 hover:text-blue-400 transition-colors truncate block"
                 >
                   {cam.name || cam.id}
                 </Link>
-                {cam.motion?.enabled && (
-                  <span className="px-2 py-0.5 text-xs rounded-full bg-green-900/40 text-green-400 border border-green-700/40 shrink-0">
-                    motion
-                  </span>
-                )}
-                {!cam.recording_enabled && (
-                  <span className="px-2 py-0.5 text-xs rounded-full bg-gray-800 text-gray-500 border border-gray-700 shrink-0">
-                    rec off
-                  </span>
-                )}
-                <div className="ml-auto flex items-center gap-1 pl-3 shrink-0">
-                  <Link
-                    to={`/settings/cameras/${cam.id}`}
-                    state={{ editing: true }}
-                    className="px-3 py-1 text-xs text-gray-400 hover:text-white border border-gray-700 rounded transition-colors"
-                  >
-                    Editar
-                  </Link>
-                  <button
-                    onClick={() => setDeleteId(cam.id)}
-                    className="px-3 py-1 text-xs text-red-500 hover:text-red-400 border border-gray-700 rounded transition-colors"
-                  >
-                    Remover
-                  </button>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <StatusBadges cam={cam} />
                 </div>
+              </div>
+
+              {/* actions */}
+              <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Link
+                  to={`/settings/cameras/${cam.id}`}
+                  state={{ editing: true }}
+                  title="Editar"
+                  className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </Link>
+                <button
+                  onClick={() => setDeleteId(cam.id)}
+                  title="Remover"
+                  className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
               </div>
             </div>
           ))}
@@ -268,7 +254,7 @@ export default function CamerasSettingsPage() {
       <ConfirmDialog
         open={deleteId != null}
         title="Remover câmera"
-        message={`Remover câmera "${camToDelete?.id}"?`}
+        message={`Remover câmera "${camToDelete?.name || camToDelete?.id}"?`}
         confirmLabel="Remover"
         danger
         onConfirm={handleDelete}
@@ -285,5 +271,35 @@ export default function CamerasSettingsPage() {
         </label>
       </ConfirmDialog>
     </SettingsLayout>
+  )
+}
+
+function Thumbnail({ cameraId, name }: { cameraId: string; name?: string }) {
+  return (
+    <div className="w-20 h-12 shrink-0 rounded overflow-hidden bg-gray-800">
+      <img
+        src={`/api/cameras/${cameraId}/snapshot?token=${getToken()}`}
+        alt={name || cameraId}
+        className="w-full h-full object-cover"
+        onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+      />
+    </div>
+  )
+}
+
+function StatusBadges({ cam }: { cam: Camera }) {
+  return (
+    <>
+      {cam.motion?.enabled && (
+        <span className="px-1.5 py-0.5 text-xs rounded bg-green-900/40 text-green-400 border border-green-800/50">
+          motion
+        </span>
+      )}
+      {!cam.recording_enabled && (
+        <span className="px-1.5 py-0.5 text-xs rounded bg-gray-800 text-gray-500 border border-gray-700">
+          rec off
+        </span>
+      )}
+    </>
   )
 }
