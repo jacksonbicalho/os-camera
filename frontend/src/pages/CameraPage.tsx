@@ -322,10 +322,14 @@ export default function CameraPage() {
       selectedDate.getDate() === today.getDate()
 
     const interval = setInterval(async () => {
-      const result = await loadRecordingsData(id!, selectedDate, 1, sortOrder, ALL_RECORDINGS_LIMIT)
+      const [result, events] = await Promise.all([
+        loadRecordingsData(id!, selectedDate, 1, sortOrder, ALL_RECORDINGS_LIMIT),
+        loadMotionEvents(id!, selectedDate),
+      ])
       if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
       setRecordings(prev => mergeRecordings(prev, result.recordings, sortOrder, result.hasMore))
       setRecordingsTotal(result.total)
+      setMotionEvents(events)
     }, isToday ? 5_000 : 30_000)
 
     return () => clearInterval(interval)

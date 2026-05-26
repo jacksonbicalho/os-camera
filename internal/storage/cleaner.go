@@ -384,27 +384,51 @@ func (c *Cleaner) cleanFromDB() {
 	}
 }
 
-// purgeMotionAssets removes the motion.ndjson entries (and their JPEGs) for the
-// given recording time range, and deletes the corresponding motion_events rows.
+// purgeMotionAssets deletes motion_events rows and their JPEG files for the
+// given recording time range. JPEGs are resolved from frame_path in the DB
+// (the legacy motion.ndjson path is also tried for backwards-compatibility).
 func (c *Cleaner) purgeMotionAssets(path string, startedAt, endedAt time.Time) {
 	if startedAt.IsZero() || endedAt.IsZero() {
 		return
 	}
+
+	// Legacy: ndjson-backed installations (no DB or ndjson still present).
 	ndjsonPath := filepath.Join(filepath.Dir(path), "motion.ndjson")
 	if err := RemoveEventsInRange(ndjsonPath, startedAt, endedAt); err != nil {
 		c.log.Warn("failed to remove motion events from ndjson", "path", ndjsonPath, "err", err)
 	}
-	if c.db != nil {
-		rel, err := filepath.Rel(c.storagePath, path)
-		if err == nil {
-			parts := strings.SplitN(filepath.ToSlash(rel), "/", 2)
-			if len(parts) >= 1 {
-				cameraID := parts[0]
-				if err := db.DeleteMotionEventsInRange(c.db, cameraID, startedAt, endedAt); err != nil {
-					c.log.Warn("failed to delete motion events from db", "camera_id", cameraID, "err", err)
-				}
-			}
+
+	if c.db == nil {
+		return
+	}
+	rel, err := filepath.Rel(c.storagePath, path)
+	if err != nil {
+		return
+	}
+	parts := strings.SplitN(filepath.ToSlash(rel), "/", 2)
+	if len(parts) < 1 {
+		return
+	}
+	cameraID := parts[0]
+
+	// Fetch frame paths before deleting rows so we can remove the files.
+	events, err := db.ListMotionEvents(c.db, cameraID, startedAt, endedAt)
+	if err != nil {
+		c.log.Warn("failed to list motion events for purge", "camera_id", cameraID, "err", err)
+	}
+	for _, ev := range events {
+		if ev.FramePath == "" {
+			continue
 		}
+		dayDir := ev.OccurredAt.UTC().Format("2006/01/02")
+		jpegPath := filepath.Join(c.storagePath, cameraID, filepath.FromSlash(dayDir), ev.FramePath)
+		if err := os.Remove(jpegPath); err != nil && !os.IsNotExist(err) {
+			c.log.Warn("failed to delete motion jpeg", "path", jpegPath, "err", err)
+		}
+	}
+
+	if err := db.DeleteMotionEventsInRange(c.db, cameraID, startedAt, endedAt); err != nil {
+		c.log.Warn("failed to delete motion events from db", "camera_id", cameraID, "err", err)
 	}
 }
 
