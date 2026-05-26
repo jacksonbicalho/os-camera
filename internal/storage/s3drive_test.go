@@ -128,6 +128,40 @@ func TestSlugify(t *testing.T) {
 	}
 }
 
+func TestS3Drive_PlusInPrefixEncodedAsPct2B(t *testing.T) {
+	var rawPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawPath = r.URL.RawPath
+		if rawPath == "" {
+			rawPath = r.URL.Path
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	drive := NewS3Drive(db.Drive{
+		Type:      "s3",
+		Endpoint:  srv.URL,
+		Bucket:    "bucket",
+		Region:    "us-east-1",
+		AccessKey: "AK",
+		SecretKey: "SK",
+		Prefix:    "my+prefix/sub",
+	})
+
+	_ = drive.Upload(t.Context(), "cam/file.mp4", strings.NewReader("x"), 1)
+
+	if strings.Contains(rawPath, "+") {
+		t.Errorf("'+' must be encoded as %%2B in URL path, got: %s", rawPath)
+	}
+	if !strings.Contains(rawPath, "%2B") {
+		t.Errorf("'+' not encoded as %%2B in URL path: %s", rawPath)
+	}
+	if strings.Contains(rawPath, "%2F") {
+		t.Errorf("'/' must not be encoded as %%2F in URL path: %s", rawPath)
+	}
+}
+
 func TestS3Drive_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "NoSuchBucket", http.StatusNotFound)
