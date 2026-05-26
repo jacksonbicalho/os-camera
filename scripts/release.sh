@@ -22,6 +22,21 @@ for cmd in git; do
     command -v "$cmd" &>/dev/null || { echo -e "${RED}Erro: $cmd não encontrado${RESET}" >&2; exit 1; }
 done
 
+# Garante que está no branch master
+CURRENT_BRANCH="$(git branch --show-current)"
+if [[ "$CURRENT_BRANCH" != "master" ]]; then
+    echo -e "${RED}Erro: execute o script a partir do branch master (atual: ${CURRENT_BRANCH}).${RESET}" >&2
+    exit 1
+fi
+
+# Garante que master está sincronizado com origin
+git fetch origin master --quiet
+BEHIND="$(git rev-list --count HEAD..origin/master 2>/dev/null || echo 0)"
+if [[ "$BEHIND" -gt 0 ]]; then
+    echo -e "${RED}Erro: master está ${BEHIND} commit(s) atrás de origin/master. Faça git pull antes.${RESET}" >&2
+    exit 1
+fi
+
 # Garante que não há alterações em arquivos rastreados
 if [[ -n "$(git status --porcelain | grep -v '^??')" ]]; then
     echo -e "${RED}Erro: há alterações não commitadas. Faça commit ou stash antes de criar uma release.${RESET}" >&2
@@ -141,7 +156,9 @@ echo -e "${BOLD}╔════════════════════�
 echo -e "${BOLD}║           Nova release: ${CYAN}${NEW_VERSION}${RESET}${BOLD}   ║${RESET}"
 echo -e "${BOLD}╚══════════════════════════════════════════╝${RESET}"
 echo ""
+COMMIT_COUNT="$(echo "$COMMITS" | grep -c . || true)"
 echo -e "  Última tag : ${YELLOW}${LAST_TAG:-<nenhuma>}${RESET}"
+echo -e "  Commits    : ${COMMIT_COUNT}"
 echo -e "  Tipo bump  : ${GREEN}${BUMP}${RESET}"
 echo -e "  Nova versão: ${CYAN}${NEW_VERSION}${RESET}"
 echo ""

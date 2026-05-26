@@ -3,6 +3,8 @@ RUN apk add --no-cache ffmpeg nodejs yarn
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
+COPY frontend/package.json frontend/yarn.lock ./frontend/
+RUN cd frontend && yarn install --frozen-lockfile --non-interactive
 CMD ["go", "run", "./cmd/camera"]
 
 FROM golang:1.25-alpine AS builder

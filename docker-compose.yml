@@ -20,16 +20,17 @@ services:
       context: .
       target: development
     network_mode: host
-    user: "${UID}:${GID}"
+    #user: "${UID}:${GID}"
     volumes:
       - .:/app
       - ./storage:/data
-      - ./frontend:/app/frontend
+      - frontend_node_modules:/app/frontend/node_modules
     environment:
       - VERSION=${VERSION:-dev}
       - GOCACHE=/app/.cache/go-build
-      - YARN_CACHE_FOLDER=/app/.cache/yarn
       - HOME=/tmp
-    command: sh -c "cd frontend && yarn install && yarn build && cd .. && go run -ldflags=\"-X main.version=$$VERSION\" ./cmd/camera --config /app/camera.yaml"
+    command: sh -c "cd frontend && yarn build && cd .. && go run -ldflags=\"-X main.version=$$VERSION\" ./cmd/camera --config /app/camera.yaml"
     restart: "no"
 
+volumes:
+  frontend_node_modules:
