@@ -680,3 +680,64 @@ func TestCheckSize_NoWarnWhenBelowThreshold(t *testing.T) {
 		t.Errorf("unexpected storage usage warning below threshold")
 	}
 }
+
+// O arquivo mais recente de cada câmera tem ended_at IS NULL enquanto o próximo
+// não aparece. O cleaner não deve deletá-lo nem enviá-lo ao drive — ele ainda
+// está sendo gravado.
+// Quando o cleaner deleta uma gravação com motion, deve também apagar os JPEGs
+// de evento referenciados no banco e remover as linhas de motion_events.
+func TestClean_PurgesMotionJPEGsOnDelete(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCameraWithMotion(t, database, "cam1", 0, 0)
+
+	base := time.Now().UTC().Add(-120 * time.Minute).Truncate(time.Second)
+	pathA := mp4WithTimestamp(dir, "cam1", base)
+	pathB := mp4WithTimestamp(dir, "cam1", base.Add(time.Minute))
+	writeFile(t, pathA, base)
+	writeFile(t, pathB, base.Add(time.Minute))
+
+	// evento com frame_path dentro da janela de A
+	evTime := base.Add(10 * time.Second)
+	jpegName := evTime.UTC().Format("20060102150405") + "_motion.jpg"
+	jpegPath := filepath.Join(filepath.Dir(pathA), jpegName)
+	writeFile(t, jpegPath, evTime)
+
+	_, err := database.Exec(
+		`INSERT INTO motion_events(camera_id, occurred_at, score, frame_path) VALUES(?,?,?,?)`,
+		"cam1", evTime.UTC().Format(time.RFC3339), 0.1, jpegName,
+	)
+	if err != nil {
+		t.Fatalf("insert motion event: %v", err)
+	}
+
+	// retenção de 60 min com e sem motion → A (com motion) será deletado
+	storage.New(dir, 60, 60, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	if _, err := os.Stat(jpegPath); !os.IsNotExist(err) {
+		t.Error("_motion.jpg deve ser apagado junto com a gravação")
+	}
+	var count int
+	database.QueryRow(`SELECT COUNT(*) FROM motion_events WHERE camera_id='cam1'`).Scan(&count)
+	if count != 0 {
+		t.Errorf("motion_events deve estar vazio após purge, mas tem %d linhas", count)
+	}
+}
+
+func TestClean_DoesNotDeleteCurrentRecording(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCamera(t, database, "cam1")
+
+	// Único arquivo na pasta: sem succeeded, ended_at ficará NULL após sync.
+	chunkStart := time.Now().UTC().Add(-30 * time.Minute).Truncate(time.Second)
+	path := mp4WithTimestamp(dir, "cam1", chunkStart)
+	writeFile(t, path, chunkStart)
+
+	// Retenção curta (1 min) sem motion: sem ended_at o arquivo não deve ser deletado.
+	storage.New(dir, 0, 1, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("arquivo corrente (ended_at NULL) não deve ser deletado: %v", err)
+	}
+}
