@@ -21,11 +21,6 @@ func TestSeedFromBootstrap(t *testing.T) {
 		},
 		Storage: config.StorageConfig{
 			Path: "/tmp/recordings",
-			Retention: config.RetentionConfig{
-				WithMotionMinutes:    10080,
-				WithoutMotionMinutes: 1440,
-			},
-			MaxSizeGB: 20,
 		},
 	}
 

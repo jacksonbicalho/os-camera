@@ -52,30 +52,8 @@ type ServerConfig struct {
 	JWTSecret      string `yaml:"jwt_secret"`
 }
 
-type RetentionConfig struct {
-	WithMotionMinutes    int `yaml:"with_motion_minutes"`
-	WithoutMotionMinutes int `yaml:"without_motion_minutes"`
-}
-
 type StorageConfig struct {
-	Path             string          `yaml:"path"`
-	RetentionMinutes int             `yaml:"retention_minutes"` // legacy fallback; 0 = disabled
-	Retention        RetentionConfig `yaml:"retention"`
-	IntervalMinutes  int             `yaml:"interval_minutes"` // 0 = default (60 min)
-	MaxSizeGB        float64         `yaml:"max_size_gb"`      // 0 = disabled
-	WarnPercent      float64         `yaml:"warn_percent"`
-}
-
-// EffectiveRetention returns (withMotionMinutes, withoutMotionMinutes).
-func (s StorageConfig) EffectiveRetention() (withMotion, withoutMotion int) {
-	r := s.Retention
-	if r.WithMotionMinutes == 0 && r.WithoutMotionMinutes == 0 {
-		return s.RetentionMinutes, s.RetentionMinutes
-	}
-	if r.WithMotionMinutes > 0 && r.WithoutMotionMinutes == 0 {
-		return r.WithMotionMinutes, r.WithMotionMinutes
-	}
-	return r.WithMotionMinutes, r.WithoutMotionMinutes
+	Path string `yaml:"path"`
 }
 
 // MotionConfig holds per-camera motion detection settings (used by the DB layer).

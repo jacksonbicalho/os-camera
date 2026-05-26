@@ -35,8 +35,6 @@ func SeedFromBootstrap(database *DB, cfg config.Config) error {
 }
 
 func bootstrapConfigPairs(cfg config.Config) map[string]string {
-	withMotion, withoutMotion := cfg.Storage.EffectiveRetention()
-
 	return map[string]string{
 		"debug":    strconv.FormatBool(cfg.Debug),
 		"timezone": cfg.Timezone,
@@ -49,11 +47,6 @@ func bootstrapConfigPairs(cfg config.Config) map[string]string {
 		"server.hls_dvr_seconds": strconv.Itoa(cfg.Server.HLSDVRSeconds),
 		"server.jwt_secret":      cfg.Server.JWTSecret,
 
-		"storage.path":                   cfg.Storage.Path,
-		"storage.with_motion_minutes":    strconv.Itoa(withMotion),
-		"storage.without_motion_minutes": strconv.Itoa(withoutMotion),
-		"storage.interval_minutes":       strconv.Itoa(cfg.Storage.IntervalMinutes),
-		"storage.max_size_gb":            strconv.FormatFloat(cfg.Storage.MaxSizeGB, 'f', -1, 64),
-		"storage.warn_percent":           strconv.FormatFloat(cfg.Storage.WarnPercent, 'f', -1, 64),
+		"storage.path": cfg.Storage.Path,
 	}
 }

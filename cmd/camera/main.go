@@ -100,6 +100,9 @@ func main() {
 			slog.Warn("seed from bootstrap failed", "error", seedErr)
 		}
 	}
+	if err := db.EnsureStorageDefaults(database); err != nil {
+		slog.Warn("ensure storage defaults failed", "error", err)
+	}
 
 	cameras, err := db.ListCameras(database)
 	if err != nil {
@@ -271,18 +274,18 @@ func main() {
 		printStartupURLs(cfg.Server.Port)
 	}
 
-	cleanInterval := time.Duration(cfg.Storage.IntervalMinutes) * time.Minute
+	storageCfg := db.StorageSettingsFromDB(database)
+	cleanInterval := time.Duration(storageCfg.IntervalMinutes) * time.Minute
 	if cleanInterval == 0 {
 		cleanInterval = time.Hour
 	}
-	withMotion, withoutMotion := cfg.Storage.EffectiveRetention()
 	cleaner := storage.New(
 		cfg.Storage.Path,
-		withMotion,
-		withoutMotion,
+		storageCfg.WithMotionMinutes,
+		storageCfg.WithoutMotionMinutes,
 		config.DefaultChunkDuration,
-		cfg.Storage.MaxSizeGB,
-		cfg.Storage.WarnPercent,
+		storageCfg.MaxSizeGB,
+		storageCfg.WarnPercent,
 		database,
 		slog,
 	)
