@@ -12,7 +12,7 @@ import ListPanel from '../components/ListPanel'
 import MotionScoreChart from '../components/MotionScoreChart'
 import { useScrollToPlayer } from '../hooks/useScrollToPlayer'
 import { useEventSource } from '../hooks/useEventSource'
-import { useSettings } from '../hooks/useSettings'
+import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { mergeRecordings } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
@@ -102,6 +102,7 @@ export default function CameraPage() {
     }
     return new Date()
   })
+  const [viewerCam, setViewerCam] = useState<CameraSettings | undefined>(undefined)
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [recordingsTotal, setRecordingsTotal] = useState(0)
   const [activeRecording, setActiveRecording] = useState<Recording | null>(null)
@@ -249,7 +250,6 @@ export default function CameraPage() {
       }
     }
     activeRecordingItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRecordingFilename, recordingsDisplayPage])
 
   // Handles same-route navigation (component doesn't remount when already on this camera)
@@ -275,9 +275,10 @@ export default function CameraPage() {
     if (!id) return
     fetch('/api/cameras', { headers: authHeaders() })
       .then(r => r.ok ? r.json() : null)
-      .then((list: Array<{ id: string; playback_lead_seconds?: number }> | null) => {
-        const cam = list?.find(c => c.id === id)
-        if (cam?.playback_lead_seconds) setPlaybackLeadSeconds(cam.playback_lead_seconds)
+      .then((list: Array<CameraSettings & { playback_lead_seconds?: number }> | null) => {
+        const entry = list?.find(c => c.id === id)
+        if (entry?.playback_lead_seconds) setPlaybackLeadSeconds(entry.playback_lead_seconds)
+        if (entry) setViewerCam(entry)
       })
       .catch(() => {})
   }, [id])
@@ -329,7 +330,6 @@ export default function CameraPage() {
     }, 5_000)
 
     return () => clearInterval(interval)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, id, navigate, sortOrder])
 
   const today = new Date()
@@ -457,7 +457,7 @@ export default function CameraPage() {
   const motionPeak = useMotionPeak(id, `/cameras/${id}`)
   const { markRead } = useNotifications()
   const setItems = useSetSidebarItems()
-  const cam = settings?.cameras.find(c => c.id === id)
+  const cam = settings?.cameras.find(c => c.id === id) ?? viewerCam
   const effectiveThreshold = cam?.motion?.threshold ?? 0
 
   // Score contextual para o painel de debug: evento ativo > pico da gravação > pico diário
@@ -1204,27 +1204,36 @@ function toggleFullscreen() {
                             key={ev.id ?? `${ev.time}-${i}`}
                             ref={isActive ? (el) => { activeEventItemRef.current = el } : null}
                             onClick={() => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) }}
-                            className={`w-full flex items-center justify-between px-3 py-2 transition-colors text-left ${
+                            className={`w-full flex flex-col px-3 py-2 transition-colors text-left ${
                               isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-gray-800'
                             }`}
                           >
-                            <span className={`text-sm ${isActive ? 'text-blue-300' : 'text-gray-300'}`}>
-                              {formatRecordingTime(ev.time, timezone)}
-                            </span>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-between w-full gap-2">
+                              <span className={`text-sm tabular-nums ${isActive ? 'text-blue-300' : 'text-gray-300'}`}>
+                                {formatRecordingTime(ev.time, timezone)}
+                              </span>
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                {ev.label && (
+                                  <>
+                                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ev.color ?? '#fb923c' }} />
+                                    <span className="text-xs font-medium truncate" style={{ color: ev.color ?? '#f97316' }}>{ev.label}</span>
+                                  </>
+                                )}
+                                <span className="text-xs text-gray-500 shrink-0">[{(ev.score * 100).toFixed(1)}%]</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
                               {thumbURL && (
                                 <img
                                   src={thumbURL}
                                   alt="snapshot"
-                                  className="w-16 h-10 object-cover rounded cursor-zoom-in border border-gray-700"
+                                  className="w-16 h-10 object-cover rounded cursor-zoom-in border border-gray-700 shrink-0"
                                   onClick={e => { e.stopPropagation(); setSnapshotEvent(ev) }}
                                 />
                               )}
-                              {ev.label && (
-                                <span className="text-xs font-medium" style={{ color: ev.color ?? '#f97316' }}>{ev.label}</span>
-                              )}
-                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ev.color ?? '#fb923c' }} />
-                              <span className="text-xs text-gray-500">{(ev.score * 100).toFixed(1)}%</span>
+                              <span className="text-xs text-gray-400 truncate">
+                                {ev.label ?? 'Movimento'}
+                              </span>
                             </div>
                           </button>
                         )

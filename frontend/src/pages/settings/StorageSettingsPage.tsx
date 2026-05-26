@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import SettingsLayout from '../../components/SettingsLayout'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { useSettings } from '../../hooks/useSettings'
-import { authHeaders } from '../../auth'
+import { authHeaders, getRole } from '../../auth'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -88,6 +88,7 @@ const emptyDriveForm = () => ({
 // ── component ────────────────────────────────────────────────────────────────
 
 export default function StorageSettingsPage() {
+  const isAdmin = getRole() === 'admin'
   const { settings, reload } = useSettings('/settings/storage')
   const s = settings?.storage
 
@@ -112,7 +113,10 @@ export default function StorageSettingsPage() {
     fetch('/api/retention', { headers: authHeaders() })
       .then(r => r.json()).then(d => setRetention(d ?? [])).catch(() => {})
 
-  useEffect(() => { loadDrives(); loadRetention() }, [])
+  useEffect(() => {
+    if (!isAdmin) return
+    loadDrives(); loadRetention()
+  }, [isAdmin])
 
   // Derive current form values: server values merged with local overrides.
   const form = s ? (() => {
@@ -191,6 +195,16 @@ export default function StorageSettingsPage() {
       .catch(() => {})
 
   // ── render ──────────────────────────────────────────────────────────────────
+
+  if (!isAdmin) {
+    return (
+      <SettingsLayout>
+        <h3 className="text-lg font-semibold text-gray-200">Armazenamento</h3>
+        <p className="text-sm text-gray-500 mt-1 mb-6">Retenção, limpeza automática e espaço em disco.</p>
+        <p className="text-gray-500 text-sm">Acesso restrito.</p>
+      </SettingsLayout>
+    )
+  }
 
   return (
     <SettingsLayout>

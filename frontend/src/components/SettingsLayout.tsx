@@ -13,7 +13,7 @@ const BASE_NAV_LINKS = [
 ];
 
 const VIEWER_NAV_LINKS = BASE_NAV_LINKS.filter(l =>
-  l.to !== "/settings/users" && l.to !== "/settings/discover"
+  l.to === "/settings/cameras" || l.to === "/settings/about"
 );
 
 interface SettingsLayoutProps {
