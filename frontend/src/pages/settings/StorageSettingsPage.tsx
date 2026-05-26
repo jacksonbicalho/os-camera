@@ -356,6 +356,7 @@ export default function StorageSettingsPage() {
                   </label>
                   <input
                     type={password ? 'password' : 'text'}
+                    autoComplete="off"
                     className="w-full bg-gray-800 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500"
                     value={driveForm[field]}
                     placeholder={placeholder}

@@ -57,7 +57,8 @@ func (s *S3Drive) Upload(ctx context.Context, key string, r io.Reader, size int6
 	dateStamp := now.Format("20060102")
 	amzDate := now.Format("20060102T150405Z")
 
-	objectURL := fmt.Sprintf("%s/%s/%s", s.endpoint, s.bucket, url.PathEscape(key))
+	encodedKey := awsEncodeKey(key)
+	objectURL := fmt.Sprintf("%s/%s/%s", s.endpoint, s.bucket, encodedKey)
 
 	contentHash := hashHex(body)
 
@@ -80,7 +81,7 @@ func (s *S3Drive) Upload(ctx context.Context, key string, r io.Reader, size int6
 
 	canonicalRequest := strings.Join([]string{
 		"PUT",
-		"/" + url.PathEscape(key),
+		"/" + encodedKey,
 		"",
 		canonicalHeaders,
 		signedHeaders,
@@ -141,6 +142,28 @@ func hostFromURL(endpoint, bucket string) string {
 		return u.Host
 	}
 	return bucket + "." + u.Host
+}
+
+// awsEncodeKey percent-encodes an S3 object key for use in SigV4 canonical
+// requests and request URLs. Each path segment (split on '/') is encoded
+// independently so that '/' is preserved as a path separator. Only the AWS
+// unreserved characters (A-Za-z0-9 _ - ~ .) are left unencoded; everything
+// else — including '+' — is encoded as %XX.
+func awsEncodeKey(key string) string {
+	segments := strings.Split(key, "/")
+	for i, seg := range segments {
+		var buf strings.Builder
+		for _, b := range []byte(seg) {
+			if (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') ||
+				b == '_' || b == '-' || b == '~' || b == '.' {
+				buf.WriteByte(b)
+			} else {
+				fmt.Fprintf(&buf, "%%%02X", b)
+			}
+		}
+		segments[i] = buf.String()
+	}
+	return strings.Join(segments, "/")
 }
 
 func hashHex(b []byte) string {
