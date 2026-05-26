@@ -316,7 +316,7 @@ func (c *Cleaner) cleanFromDB() {
 
 	if withoutMotionMinutes > 0 {
 		cutoff := now.Add(-time.Duration(withoutMotionMinutes) * time.Minute).Format(time.RFC3339)
-		rows, err := c.db.Query(`SELECT path FROM recordings WHERE has_motion=0 AND started_at < ?`, cutoff)
+		rows, err := c.db.Query(`SELECT path FROM recordings WHERE has_motion=0 AND ended_at IS NOT NULL AND started_at < ?`, cutoff)
 		if err != nil {
 			c.log.Warn("failed to query without-motion recordings", "err", err)
 		} else {
@@ -334,7 +334,7 @@ func (c *Cleaner) cleanFromDB() {
 
 	if withMotionMinutes > 0 {
 		cutoff := now.Add(-time.Duration(withMotionMinutes) * time.Minute).Format(time.RFC3339)
-		rows, err := c.db.Query(`SELECT path FROM recordings WHERE has_motion=1 AND started_at < ?`, cutoff)
+		rows, err := c.db.Query(`SELECT path FROM recordings WHERE has_motion=1 AND ended_at IS NOT NULL AND started_at < ?`, cutoff)
 		if err != nil {
 			c.log.Warn("failed to query with-motion recordings", "err", err)
 		} else {

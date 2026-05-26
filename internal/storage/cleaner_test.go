@@ -680,3 +680,24 @@ func TestCheckSize_NoWarnWhenBelowThreshold(t *testing.T) {
 		t.Errorf("unexpected storage usage warning below threshold")
 	}
 }
+
+// O arquivo mais recente de cada câmera tem ended_at IS NULL enquanto o próximo
+// não aparece. O cleaner não deve deletá-lo nem enviá-lo ao drive — ele ainda
+// está sendo gravado.
+func TestClean_DoesNotDeleteCurrentRecording(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCamera(t, database, "cam1")
+
+	// Único arquivo na pasta: sem succeeded, ended_at ficará NULL após sync.
+	chunkStart := time.Now().UTC().Add(-30 * time.Minute).Truncate(time.Second)
+	path := mp4WithTimestamp(dir, "cam1", chunkStart)
+	writeFile(t, path, chunkStart)
+
+	// Retenção curta (1 min) sem motion: sem ended_at o arquivo não deve ser deletado.
+	storage.New(dir, 0, 1, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("arquivo corrente (ended_at NULL) não deve ser deletado: %v", err)
+	}
+}
