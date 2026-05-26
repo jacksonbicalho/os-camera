@@ -386,10 +386,15 @@ func (c *Cleaner) cleanFromDB() {
 // local file and all DB references. On upload failure nothing is deleted.
 func (c *Cleaner) uploadAndPurge(drive Drive, path string) error {
 	key := filepath.Base(filepath.Dir(path)) + "/" + filepath.Base(path)
-	// Include camera subdirectory in the key: e.g. "camera-id/2025/01/15/20250115120000.mp4"
+	// Build key using camera name as first segment: "camera-name/YYYY/MM/DD/file.mp4"
 	rel, err := filepath.Rel(c.storagePath, path)
 	if err == nil {
-		key = rel
+		parts := strings.SplitN(filepath.ToSlash(rel), "/", 2)
+		if len(parts) == 2 {
+			key = c.cameraSlug(parts[0]) + "/" + parts[1]
+		} else {
+			key = filepath.ToSlash(rel)
+		}
 	}
 
 	f, err := os.Open(path)
@@ -425,6 +430,33 @@ func (c *Cleaner) uploadAndPurge(drive Drive, path string) error {
 		c.log.Warn("failed to delete recording from db after upload", "path", path, "err", err)
 	}
 	return nil
+}
+
+// cameraSlug returns the camera name slugified (lowercase, non-alphanumeric → "-").
+// Falls back to the raw id if the camera is not found in the DB.
+func (c *Cleaner) cameraSlug(id string) string {
+	if c.db != nil {
+		if cam, err := db.GetCamera(c.db, id); err == nil && cam.Name != "" {
+			return slugify(cam.Name)
+		}
+	}
+	return id
+}
+
+func slugify(s string) string {
+	s = strings.ToLower(s)
+	var b strings.Builder
+	prev := false
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			prev = false
+		} else if !prev {
+			b.WriteByte('-')
+			prev = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }
 
 func (c *Cleaner) cleanFromFS() {

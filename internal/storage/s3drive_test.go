@@ -104,9 +104,27 @@ func TestS3Drive_PlusInPrefixEncodedAsPct2B(t *testing.T) {
 	if !strings.Contains(rawPath, "%2B") {
 		t.Errorf("'+' not encoded as %%2B in URL path: %s", rawPath)
 	}
-	// slashes must remain as path separators, not encoded as %2F
 	if strings.Contains(rawPath, "%2F") {
 		t.Errorf("'/' must not be encoded as %%2F in URL path: %s", rawPath)
+	}
+}
+
+func TestSlugify(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"Corredor da Frente", "corredor-da-frente"},
+		{"corredor-da-frente", "corredor-da-frente"},
+		{"Câmera 01", "c-mera-01"},
+		{"  spaces  ", "spaces"},
+		{"cam/1", "cam-1"},
+	}
+	for _, tc := range cases {
+		got := slugify(tc.in)
+		if got != tc.want {
+			t.Errorf("slugify(%q) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }
 
