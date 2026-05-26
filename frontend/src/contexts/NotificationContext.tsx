@@ -111,7 +111,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           })
           browserNotifyRef.current(id, score, label, () => {
             navigate(`/cameras/${id}`, { state: { eventTime: time } })
-          })
+          }, payload.camera_name || undefined)
         } catch {
           // ignore malformed events
         }
