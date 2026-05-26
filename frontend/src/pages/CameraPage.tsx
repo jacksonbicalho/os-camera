@@ -1225,7 +1225,10 @@ function toggleFullscreen() {
                                 <span className="text-xs text-gray-500 shrink-0">[{(ev.score * 100).toFixed(1)}%]</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2 mt-1">
+                            <div className="flex items-center justify-between gap-2 mt-1">
+                              <span className="text-xs text-gray-400 truncate">
+                                {ev.label ?? 'Movimento'}
+                              </span>
                               {thumbURL && (
                                 <img
                                   src={thumbURL}
@@ -1234,9 +1237,6 @@ function toggleFullscreen() {
                                   onClick={e => { e.stopPropagation(); setSnapshotEvent(ev) }}
                                 />
                               )}
-                              <span className="text-xs text-gray-400 truncate">
-                                {ev.label ?? 'Movimento'}
-                              </span>
                             </div>
                           </button>
                         )
@@ -1255,6 +1255,7 @@ function toggleFullscreen() {
             activeTime={activeEventTime ?? activeRecording?.start ?? null}
             timezone={timezone}
             onSeek={handleTimelineSeek}
+            onEventClick={ev => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) }}
             maxHeight={playerHeight}
           />
         </div>
