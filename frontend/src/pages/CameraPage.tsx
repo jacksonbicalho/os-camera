@@ -1255,7 +1255,7 @@ function toggleFullscreen() {
             activeTime={activeEventTime ?? activeRecording?.start ?? null}
             timezone={timezone}
             onSeek={handleTimelineSeek}
-            onEventClick={ev => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) }}
+            onEventClick={activePanel === 'events' ? ev => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) } : undefined}
             maxHeight={playerHeight}
           />
         </div>
