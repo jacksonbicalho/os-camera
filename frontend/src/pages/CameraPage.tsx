@@ -117,6 +117,8 @@ export default function CameraPage() {
   const [recCurrentTime, setRecCurrentTime] = useState(0)
   const [recDuration, setRecDuration] = useState(0)
   const [recControlsVisible, setRecControlsVisible] = useState(true)
+  const [recPlayBlocked, setRecPlayBlocked] = useState(false)
+  const [lastFrameDataUrl, setLastFrameDataUrl] = useState<string | null>(null)
   const [snapshotEvent, setSnapshotEvent] = useState<MotionEvent | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const [showDebug, setShowDebug] = useState(false)
@@ -642,6 +644,16 @@ function toggleFullscreen() {
     document.addEventListener('mouseup', onUp)
   }
 
+  // Atualiza src do <video> imperativamente para evitar remonte do elemento DOM,
+  // mantendo o último frame visível enquanto o novo vídeo carrega.
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || !activeRecording) return
+    setRecPlayBlocked(false)
+    v.src = `${activeRecording.url}?token=${getToken()}`
+    v.load()
+  }, [activeRecording])
+
   const liveUrl = `/stream/${id}/index.m3u8`
 
   // Aplica seek pendente no HLS quando o player monta (troca de MP4 → live)
@@ -765,13 +777,12 @@ function toggleFullscreen() {
                 >
                   <video
                     ref={videoRef}
-                    key={activeRecording.url}
-                    src={`${activeRecording.url}?token=${getToken()}`}
                     className="w-full h-full bg-black cursor-pointer"
                     playsInline
                     onClick={togglePlayRecording}
-                    onPlay={() => { setRecPlaying(true); showRecControls() }}
+                    onPlay={() => { setRecPlaying(true); setRecPlayBlocked(false); setLastFrameDataUrl(null); showRecControls() }}
                     onPause={() => { setRecPlaying(false); setRecControlsVisible(true) }}
+                    onCanPlay={() => setLastFrameDataUrl(null)}
                     onTimeUpdate={e => setRecCurrentTime(e.currentTarget.currentTime)}
                     onDurationChange={e => setRecDuration(e.currentTarget.duration)}
                     onLoadedMetadata={e => {
@@ -785,11 +796,24 @@ function toggleFullscreen() {
                         e.currentTarget.currentTime = pendingSeekRef.current
                         pendingSeekRef.current = null
                       }
-                      e.currentTarget.play().catch(() => {})
+                      e.currentTarget.play().catch((err: unknown) => {
+                        if ((err as { name?: string })?.name === 'NotAllowedError') setRecPlayBlocked(true)
+                      })
                     }}
                     onVolumeChange={e => setVideoMuted(e.currentTarget.muted)}
                     onEnded={() => {
                       if (!continuousPlayRef.current) return
+                      // Captura último frame para overlay de transição
+                      const v = videoRef.current
+                      if (v && v.videoWidth > 0) {
+                        try {
+                          const canvas = document.createElement('canvas')
+                          canvas.width = v.videoWidth
+                          canvas.height = v.videoHeight
+                          canvas.getContext('2d')?.drawImage(v, 0, 0)
+                          setLastFrameDataUrl(canvas.toDataURL())
+                        } catch { /* canvas bloqueado (CORS) — ignora */ }
+                      }
                       if (activeEventTimeRef.current !== null) {
                         const allAsc = [...allMotionEventsRef.current]
                           .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
@@ -815,6 +839,29 @@ function toggleFullscreen() {
                       }
                     }}
                   />
+                  {/* Último frame: mantém imagem visível enquanto próxima gravação carrega */}
+                  {lastFrameDataUrl && (
+                    <img
+                      src={lastFrameDataUrl}
+                      className="absolute inset-0 w-full h-full object-contain bg-black pointer-events-none"
+                      aria-hidden
+                    />
+                  )}
+                  {/* Play bloqueado pelo browser: solicita gesto do usuário */}
+                  {recPlayBlocked && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                      <button
+                        className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-full text-sm font-medium backdrop-blur-sm"
+                        onClick={() => {
+                          setRecPlayBlocked(false)
+                          videoRef.current?.play().catch(() => {})
+                        }}
+                      >
+                        <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        Clique para continuar
+                      </button>
+                    </div>
+                  )}
                   {/* Custom controls overlay */}
                   <div className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 transition-opacity duration-200 pointer-events-none ${recControlsVisible || !recPlaying ? 'opacity-100' : 'opacity-0'}`}>
                     {/* Progress bar */}
