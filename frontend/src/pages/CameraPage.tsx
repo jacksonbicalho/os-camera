@@ -94,6 +94,14 @@ export default function CameraPage() {
     }
     return new Date()
   })
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
+    const state = location.state as { eventTime?: string } | null
+    if (state?.eventTime) {
+      const t = new Date(state.eventTime)
+      return new Date(t.getFullYear(), t.getMonth(), 1)
+    }
+    return new Date()
+  })
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [recordingsTotal, setRecordingsTotal] = useState(0)
   const [activeRecording, setActiveRecording] = useState<Recording | null>(null)
@@ -329,6 +337,9 @@ export default function CameraPage() {
     selectedDate.getFullYear() === today.getFullYear() &&
     selectedDate.getMonth() === today.getMonth() &&
     selectedDate.getDate() === today.getDate()
+  const calendarOnCurrentMonth =
+    calendarMonth.getFullYear() === today.getFullYear() &&
+    calendarMonth.getMonth() === today.getMonth()
 
   const handleLiveMotion = useCallback(() => {
     loadMotionEvents(id!, selectedDate).then(setMotionEvents)
@@ -1033,11 +1044,39 @@ function toggleFullscreen() {
           {activePanel && (
             <div className="w-72 shrink-0 border-l border-gray-800 bg-gray-900 flex flex-col h-full">
               {activePanel === 'calendar' && (
-                <div className="p-3 overflow-y-auto">
+                <div className="flex flex-col h-full">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800 shrink-0">
+                    <span className="text-xs font-medium text-gray-400">
+                      {isToday ? 'Calendário' : `Calendário · ${format(selectedDate, "d MMM", { locale: ptBR })}`}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {(!isToday || !calendarOnCurrentMonth) && (
+                        <button
+                          onClick={() => { setSelectedDate(new Date()); setCalendarMonth(new Date()) }}
+                          title="Ir para hoje"
+                          className="px-1.5 py-0.5 text-[10px] font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                        >
+                          Hoje
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setActivePanel(null)}
+                        title="Fechar"
+                        className="px-1 py-1 text-gray-600 hover:text-gray-300 transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-3 overflow-y-auto">
                   <DayPicker
                     mode="single"
                     selected={selectedDate}
-                    onSelect={d => { if (d) { setSelectedDate(d); setActivePanel(null) } }}
+                    month={calendarMonth}
+                    onMonthChange={setCalendarMonth}
+                    onSelect={d => { if (d) { setSelectedDate(d); setCalendarMonth(d); setActivePanel(null) } }}
                     locale={ptBR}
                     classNames={{
                       root: 'text-gray-200 text-sm',
@@ -1051,6 +1090,7 @@ function toggleFullscreen() {
                       disabled: 'text-gray-700',
                     }}
                   />
+                  </div>
                 </div>
               )}
               {(activePanel === 'recordings' || activePanel === 'events') && (
