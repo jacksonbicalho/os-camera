@@ -16,22 +16,23 @@ Cada câmera tem seu próprio diretório. Os chunks são nomeados pelo horário 
 
 ## Retenção
 
-A limpeza automática é executada periodicamente (padrão: a cada 60 min) e apaga chunks com base em duas regras independentes:
+A limpeza automática é executada periodicamente (padrão: a cada 60 min) e processa chunks com base em duas regras independentes, configuradas em **Configurações → Armazenamento**:
 
-| Regra | Campo | Comportamento |
-|---|---|---|
-| **Com movimento** | `retention.with_motion_minutes` | Apaga gravações marcadas com movimento mais antigas que N minutos. `0` = nunca apaga |
-| **Sem movimento** | `retention.without_motion_minutes` | Apaga gravações **sem** movimento mais antigas que N minutos. `0` = desabilitado |
+| Categoria | Comportamento |
+|---|---|
+| **Com movimento** | Chunks marcados com movimento mais antigos que N. `0` = nunca expira |
+| **Sem movimento** | Chunks **sem** movimento mais antigos que N. `0` = desabilitado |
 
-**Exemplo típico:**
-```yaml
-storage:
-  retention:
-    with_motion_minutes: 10080     # 7 dias
-    without_motion_minutes: 1440   # 1 dia
-```
+### Ação ao expirar
 
-Com essa configuração, cenas paradas são apagadas em 1 dia liberando espaço, enquanto gravações com eventos de movimento ficam por 7 dias.
+Para cada categoria é possível escolher o que acontece quando o chunk expira:
+
+| Ação | Descrição |
+|---|---|
+| **Apagar** | Remove o MP4 e os snapshots JPEG do evento de movimento do disco |
+| **Enviar para drive** | Faz upload para um drive S3 configurado e então apaga o arquivo local |
+
+**Exemplo típico:** sem movimento → 1 dia (apagar); com movimento → 7 dias (enviar para drive).
 
 ### Como um chunk é marcado com movimento
 
@@ -43,33 +44,56 @@ Ver: [Buffer pré/pós-evento](motion.md#buffer-pré/pós-evento)
 
 ---
 
-## Limite de tamanho
+## Limite de tamanho e intervalo
 
-```yaml
-storage:
-  max_size_gb: 20       # limite total em GB
-  warn_percent: 90      # aviso quando ultrapassar 90% do limite
-```
+Configurados em **Configurações → Armazenamento**:
 
-Quando o uso total ultrapassar `warn_percent`% do limite, o sistema emite um aviso nos logs. O `max_size_gb: 0` desabilita o controle por tamanho.
+| Campo | Padrão | Descrição |
+|---|---|---|
+| **Máximo (GB)** | `0` | Limite total de disco em GB; `0` = desabilitado |
+| **Alerta (%)** | `90` | Percentual do limite que dispara aviso nos logs |
+| **Intervalo cleaner** | `60 min` | Frequência da limpeza automática |
 
 ---
 
-## Intervalo de limpeza
+## Drives S3
 
-```yaml
-storage:
-  interval_minutes: 60   # executa limpeza a cada 60 minutos
+Drives permitem enviar gravações para armazenamento externo S3-compatível (AWS S3, Backblaze B2, MinIO, etc.) ao invés de apagar localmente.
+
+### Adicionar um drive
+
+1. Acesse **Configurações → Armazenamento**
+2. Role até a seção **Drives** e clique em **+ Adicionar drive**
+3. Preencha os campos:
+
+| Campo | Descrição |
+|---|---|
+| **Nome** | Nome de exibição (ex: "Backblaze B2 Principal") |
+| **Endpoint** | URL do endpoint S3 (deixe vazio para AWS S3) |
+| **Bucket** | Nome do bucket |
+| **Região** | Região do bucket (ex: `us-east-1`) |
+| **Access Key / Secret Key** | Credenciais de acesso |
+| **Prefixo** | Prefixo opcional para os objetos (ex: `cameras/`) |
+
+4. Após salvar, configure a **ação ao expirar** de uma categoria para **Enviar para drive** e selecione o drive criado.
+
+### Estrutura dos objetos no S3
+
 ```
+{prefix}/{camera-slug}/{YYYY}/{MM}/{DD}/{HHmmss}.mp4
+```
+
+O `camera-slug` é derivado do nome da câmera: letras minúsculas, acentos removidos, espaços substituídos por `-`.
 
 ---
 
 ## Tela de armazenamento
 
-Em **Configurações → Armazenamento** você pode visualizar:
-- Espaço em uso por câmera
-- Total de gravações no banco
-- Configurações de retenção atuais
+Em **Configurações → Armazenamento** você pode visualizar e configurar:
+- Diretório raiz das gravações
+- Retenção por categoria (com/sem movimento) e ação ao expirar
+- Intervalo de limpeza e limite de tamanho
+- Drives S3 configurados
 
 ---
 

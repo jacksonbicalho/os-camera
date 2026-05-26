@@ -103,11 +103,12 @@ Na tela de listagem de câmeras, arraste o ícone ⠿ à esquerda de cada câmer
 
 ---
 
-## Remover câmera
+## Editar ou remover câmera
 
-1. Clique em **Remover** ao lado da câmera
-2. Confirme a remoção
-3. Opcionalmente marque **Apagar também as gravações do disco** para remover os arquivos MP4
+Passe o mouse sobre uma câmera na lista para exibir os ícones de ação:
+
+- **Lápis** — abre o formulário de edição da câmera
+- **Lixeira** — remove a câmera; na confirmação é possível marcar **Apagar também as gravações do disco** para remover os arquivos MP4
 
 ---
 

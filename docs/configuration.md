@@ -21,7 +21,7 @@ cp camera.yaml.example camera.yaml
 
 ```yaml
 debug: false
-timezone: America/Sao_Paulo
+timezone: America/Sao_Paulo       # env: CAMERA_TIMEZONE
 
 db_path: /var/camera/data/camera.db
 
@@ -33,16 +33,12 @@ server:
   port: 8080
   segments_path: /var/camera/data/hls
   hls_dvr_seconds: 0
-  jwt_secret: ""
+  jwt_secret: ""        # env: CAMERA_SERVER_JWT_SECRET
 
 storage:
   path: /var/camera/data/recordings
-  retention:
-    with_motion_minutes: 10080
-    without_motion_minutes: 1440
-  interval_minutes: 60
-  max_size_gb: 20
-  warn_percent: 90
+  # retenção, tamanho máximo e intervalo de limpeza são configurados
+  # via Configurações → Armazenamento na interface web
 
 admin:
   username: admin
@@ -82,11 +78,8 @@ admin:
 | Campo | Padrão | Descrição |
 |---|---|---|
 | `path` | — | Diretório raiz das gravações |
-| `retention.with_motion_minutes` | `0` | Retenção de gravações **com** movimento detectado; `0` = nunca apaga |
-| `retention.without_motion_minutes` | `0` | Retenção de gravações **sem** movimento; `0` = desabilitado |
-| `interval_minutes` | `60` | Intervalo entre execuções da limpeza automática |
-| `max_size_gb` | `0` | Limite total de disco em GB; `0` = desabilitado |
-| `warn_percent` | `90` | Percentual do `max_size_gb` que dispara aviso de disco cheio |
+
+> Retenção, intervalo de limpeza, limite de tamanho e drives S3 são configurados via **Configurações → Armazenamento** na interface web e armazenados no banco de dados.
 
 ### `admin`
 
