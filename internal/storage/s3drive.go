@@ -63,7 +63,7 @@ func (s *S3Drive) Upload(ctx context.Context, key string, r io.Reader, size int6
 	contentHash := hashHex(body)
 
 	headers := map[string]string{
-		"host":                 hostFromURL(s.endpoint, s.bucket),
+		"host":                 hostFromURL(s.endpoint),
 		"x-amz-date":          amzDate,
 		"x-amz-content-sha256": contentHash,
 		"content-type":        "application/octet-stream",
@@ -81,7 +81,7 @@ func (s *S3Drive) Upload(ctx context.Context, key string, r io.Reader, size int6
 
 	canonicalRequest := strings.Join([]string{
 		"PUT",
-		"/" + encodedKey,
+		"/" + s.bucket + "/" + encodedKey,
 		"",
 		canonicalHeaders,
 		signedHeaders,
@@ -131,17 +131,12 @@ func (s *S3Drive) Upload(ctx context.Context, key string, r io.Reader, size int6
 	return nil
 }
 
-func hostFromURL(endpoint, bucket string) string {
+func hostFromURL(endpoint string) string {
 	u, err := url.Parse(endpoint)
 	if err != nil || u.Host == "" {
-		return bucket + "." + endpoint
+		return endpoint
 	}
-	// For path-style endpoints (e.g. MinIO), host is just the endpoint host.
-	// For virtual-hosted endpoints, prefix bucket.
-	if strings.Contains(u.Host, bucket) {
-		return u.Host
-	}
-	return bucket + "." + u.Host
+	return u.Host
 }
 
 // awsEncodeKey percent-encodes an S3 object key for use in SigV4 canonical

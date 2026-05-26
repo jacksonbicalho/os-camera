@@ -162,6 +162,47 @@ func TestS3Drive_PlusInPrefixEncodedAsPct2B(t *testing.T) {
 	}
 }
 
+func TestS3Drive_BucketInCanonicalURI(t *testing.T) {
+	var receivedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	drive := NewS3Drive(db.Drive{
+		Type:      "s3",
+		Endpoint:  srv.URL,
+		Bucket:    "my-bucket",
+		Region:    "us-east-1",
+		AccessKey: "AK",
+		SecretKey: "SK",
+	})
+
+	_ = drive.Upload(t.Context(), "cam/file.mp4", strings.NewReader("x"), 1)
+
+	if !strings.HasPrefix(receivedPath, "/my-bucket/") {
+		t.Errorf("bucket must appear as first path segment, got: %s", receivedPath)
+	}
+}
+
+func TestHostFromURL(t *testing.T) {
+	cases := []struct {
+		endpoint string
+		want     string
+	}{
+		{"https://s3.us-east-1.amazonaws.com", "s3.us-east-1.amazonaws.com"},
+		{"http://localhost:9000", "localhost:9000"},
+		{"https://minio.example.com", "minio.example.com"},
+	}
+	for _, tc := range cases {
+		got := hostFromURL(tc.endpoint)
+		if got != tc.want {
+			t.Errorf("hostFromURL(%q) = %q, want %q", tc.endpoint, got, tc.want)
+		}
+	}
+}
+
 func TestS3Drive_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "NoSuchBucket", http.StatusNotFound)
