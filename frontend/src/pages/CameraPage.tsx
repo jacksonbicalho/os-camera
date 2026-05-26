@@ -122,11 +122,13 @@ export default function CameraPage() {
   const [snapshotEvent, setSnapshotEvent] = useState<MotionEvent | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const [showDebug, setShowDebug] = useState(false)
+  const [speedMenuOpen, setSpeedMenuOpen] = useState(false)
   const [debugStats, setDebugStats] = useState<{ fps: number; dropped: number; hlsStats: HLSStats | null; lagMs: number } | null>(null)
   const [showDebugChart, setShowDebugChart] = useState(false)
   const [debugPos, setDebugPos] = useState({ x: 8, y: 48 })
   const [playerHeight, setPlayerHeight] = useState<number | undefined>(undefined)
   const debugDragRef = useRef<{ startMouseX: number; startMouseY: number; startPosX: number; startPosY: number } | null>(null)
+  const speedMenuRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<HTMLDivElement>(null)
   const pendingSeekRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -153,6 +155,15 @@ export default function CameraPage() {
   useEffect(() => { recordingsRef.current = recordings }, [recordings])
   useEffect(() => { allMotionEventsRef.current = motionEvents }, [motionEvents])
   useEffect(() => { activeEventIdRef.current = activeEventId }, [activeEventId])
+
+  useEffect(() => {
+    if (!speedMenuOpen) return
+    const handle = (e: MouseEvent) => {
+      if (!speedMenuRef.current?.contains(e.target as Node)) setSpeedMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [speedMenuOpen])
 
   useEffect(() => {
     if (!snapshotEvent) return
@@ -468,137 +479,10 @@ export default function CameraPage() {
 
   const isLive = activeRecording === null
 
-  // Inject camera controls into the left sidebar
   useEffect(() => {
-    setItems([
-      {
-        type: 'button', id: 'live-status',
-        icon: (
-          <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${isLive ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-500'}`}>
-            LIVE
-          </span>
-        ),
-        title: isLive ? 'Ao vivo' : 'Reprodução',
-        onClick: () => { if (!isLive) { setActiveRecording(null); setActivePanel(null) } },
-        active: isLive,
-      },
-      { type: 'separator', id: 'sep1' },
-      {
-        type: 'button', id: 'mute',
-        icon: videoMuted ? (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-          </svg>
-        ) : (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M12 6v12m-3.536-9.536a5 5 0 000 7.072M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-          </svg>
-        ),
-        title: videoMuted ? 'Ativar áudio' : 'Silenciar',
-        onClick: () => setVideoMuted(m => { const next = !m; if (videoRef.current) videoRef.current.muted = next; return next }),
-        active: !videoMuted,
-      },
-      {
-        type: 'dropdown', id: 'speed',
-        icon: (
-          <span className="relative flex items-center justify-center">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6C7.58 6 4 9.58 4 14c0 1.38.36 2.67.98 3.8L6.41 16.38A6.96 6.96 0 015 14a7 7 0 1114 0c0 .85-.15 1.66-.42 2.42l1.49 1.49c.6-1.19.93-2.53.93-3.91 0-4.42-3.58-8-8-8z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l2.5-4" />
-              <circle cx="12" cy="14" r="1" fill="currentColor" stroke="none" />
-            </svg>
-            {playbackRate > 1 && (
-              <span className="absolute -bottom-1 -right-1 text-[9px] font-bold leading-none bg-blue-600 text-white rounded-full px-0.5 py-px">
-                {playbackRate}×
-              </span>
-            )}
-          </span>
-        ),
-        title: `Velocidade ${playbackRate}×`,
-        disabled: isLive,
-        active: playbackRate > 1,
-        options: [1, 2, 4, 8, 16, 32]
-          .filter(v => browserMaxRate === null || v <= browserMaxRate)
-          .map(v => ({
-            label: `${v}×`,
-            active: v === playbackRate,
-            onClick: () => handleRateChange(v),
-          })),
-      },
-      {
-        type: 'button', id: 'continuous',
-        icon: (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-        ),
-        title: continuousPlay ? 'Desativar reprodução contínua' : 'Ativar reprodução contínua',
-        onClick: () => setContinuousPlay(v => !v),
-        disabled: isLive,
-        active: continuousPlay,
-      },
-      { type: 'separator', id: 'sep2' },
-      ...((cam?.recording_enabled !== false) && (recordingsTotal > 0 || recordings.length > 0) ? [{
-        type: 'button' as const, id: 'recordings',
-        icon: (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
-          </svg>
-        ),
-        title: 'Gravações',
-        onClick: () => {
-          setActivePanel(p => p === 'recordings' ? null : 'recordings')
-          if (isLive && recordings.length > 0) setActiveRecording(recordings[0])
-        },
-        active: activePanel === 'recordings',
-        badge: recordingsTotal || recordings.length || undefined,
-      }] : []),
-      {
-        type: 'button', id: 'events',
-        icon: (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        ),
-        title: 'Eventos de movimento',
-        onClick: () => {
-          setActivePanel(p => p === 'events' ? null : 'events')
-          if (isLive && motionEvents.length > 0) playEventAt(motionEvents[0])
-        },
-        active: activePanel === 'events',
-        badge: motionEvents.length || undefined,
-      },
-      {
-        type: 'button', id: 'calendar',
-        icon: (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-        ),
-        title: isToday ? 'Calendário' : `Calendário · ${format(selectedDate, "d MMM", { locale: ptBR })}`,
-        onClick: () => setActivePanel(p => p === 'calendar' ? null : 'calendar'),
-        active: activePanel === 'calendar',
-        badge: !isToday ? format(selectedDate, "d/M") : undefined,
-      },
-      { type: 'separator', id: 'sep3' },
-      {
-        type: 'button', id: 'debug',
-        icon: (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-          </svg>
-        ),
-        title: 'Debug',
-        onClick: () => setShowDebug(d => !d),
-        active: showDebug,
-      },
-    ])
+    setItems([])
     return () => setItems([])
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setItems, isLive, videoMuted, playbackRate, continuousPlay, browserMaxRate, activePanel,
-      recordings.length, recordingsTotal, motionEvents.length, isToday, selectedDate,
-      showDebug, id])
+  }, [setItems])
 
   function formatRecTime(s: number): string {
     if (!isFinite(s) || isNaN(s)) return '0:00'
@@ -731,33 +615,160 @@ function toggleFullscreen() {
               }`}
             >
               <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-gray-700 min-w-0">
-                <span className="font-medium text-sm text-gray-200 truncate shrink-0 max-w-[40%]">{cam?.name ?? id}</span>
-                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold shrink-0 ${isLive ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-300'}`}>
+                <span className={`inline-flex items-center justify-center rounded px-2 py-1 text-[10px] font-bold leading-none shrink-0 ${isLive ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400'}`}>
                   {isLive ? 'AO VIVO' : 'Reprodução'}
                 </span>
                 {!isLive && activeRecording && (() => {
                   const ev = activeEventIdx >= 0 ? visibleEvents[activeEventIdx] : null
                   return (
-                    <span className="flex items-center gap-2 text-xs text-gray-400 min-w-0 truncate">
-                      <span className="text-gray-600">·</span>
-                      <span className="tabular-nums shrink-0">{formatRecordingDateTime(activeRecording.start, timezone)}</span>
-                      {recDuration > 0 && <span className="text-gray-600 shrink-0">· {formatRecTime(recDuration)}</span>}
-                      {ev?.label && (
-                        <span className="shrink-0 font-medium" style={{ color: ev.color ?? '#f97316' }}>· {ev.label}</span>
-                      )}
-                      {ev && (
-                        <span className="text-gray-500 shrink-0">· {(ev.score * 100).toFixed(1)}%</span>
-                      )}
+                    <span className="text-sm text-gray-300 min-w-0 truncate">
+                      {cam?.name ?? id}
+                      {' · '}
+                      <span className="tabular-nums">{formatRecordingDateTime(activeRecording.start, timezone)}</span>
+                      {recDuration > 0 && ` · ${formatRecTime(recDuration)}`}
+                      {ev?.label && <span className="font-medium" style={{ color: ev.color ?? '#f97316' }}> · {ev.label}</span>}
                     </span>
                   )
                 })()}
+                {isLive && <span className="font-medium text-sm text-gray-200 truncate">{cam?.name ?? id}</span>}
                 <div className="ml-auto shrink-0 flex items-center gap-1">
+                  {/* Voltar ao vivo — visível só durante reprodução */}
+                  {!isLive && (
+                    <button
+                      onClick={() => { setActiveRecording(null); setActivePanel(null) }}
+                      title="Voltar ao vivo"
+                      className="p-1 transition-colors cursor-pointer text-gray-400 hover:text-gray-200"
+                    >
+                      <span className="text-[9px] font-bold leading-none tracking-wide">AO VIVO</span>
+                    </button>
+                  )}
+                  {!isLive && <div className="w-px h-4 bg-gray-700 mx-0.5" />}
+                  {/* Mute */}
+                  <button
+                    onClick={() => setVideoMuted(m => { const next = !m; if (videoRef.current) videoRef.current.muted = next; return next })}
+                    title={videoMuted ? 'Ativar áudio' : 'Silenciar'}
+                    className={`p-1 transition-colors cursor-pointer ${!videoMuted ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                  >
+                    {videoMuted ? (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M12 6v12m-3.536-9.536a5 5 0 000 7.072M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                      </svg>
+                    )}
+                  </button>
+                  {/* Speed dropdown */}
+                  <div ref={speedMenuRef} className="relative">
+                    <button
+                      onClick={() => !isLive && setSpeedMenuOpen(o => !o)}
+                      title={`Velocidade ${playbackRate}×`}
+                      className={`relative p-1 transition-colors ${isLive ? 'text-gray-600 cursor-default' : `cursor-pointer ${playbackRate > 1 ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6C7.58 6 4 9.58 4 14c0 1.38.36 2.67.98 3.8L6.41 16.38A6.96 6.96 0 015 14a7 7 0 1114 0c0 .85-.15 1.66-.42 2.42l1.49 1.49c.6-1.19.93-2.53.93-3.91 0-4.42-3.58-8-8-8z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l2.5-4" />
+                        <circle cx="12" cy="14" r="1" fill="currentColor" stroke="none" />
+                      </svg>
+                      {playbackRate > 1 && (
+                        <span className="absolute -bottom-0.5 -right-0.5 text-[8px] font-bold leading-none bg-blue-600 text-white rounded-full px-0.5 py-px">
+                          {playbackRate}×
+                        </span>
+                      )}
+                    </button>
+                    {speedMenuOpen && (
+                      <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 py-1 min-w-[4rem]">
+                        {[1, 2, 4, 8, 16, 32]
+                          .filter(v => browserMaxRate === null || v <= browserMaxRate)
+                          .map(v => (
+                            <button
+                              key={v}
+                              onClick={() => { handleRateChange(v); setSpeedMenuOpen(false) }}
+                              className={`w-full text-left px-3 py-1 text-xs ${v === playbackRate ? 'text-blue-400 font-semibold' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
+                            >
+                              {v}×
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                  {/* Continuous play */}
+                  <button
+                    onClick={() => !isLive && setContinuousPlay(v => !v)}
+                    title={continuousPlay ? 'Desativar reprodução contínua' : 'Ativar reprodução contínua'}
+                    className={`p-1 transition-colors ${isLive ? 'text-gray-600 cursor-default' : `cursor-pointer ${continuousPlay ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                  <div className="w-px h-4 bg-gray-700 mx-0.5" />
+                  {/* Recordings */}
+                  {(cam?.recording_enabled !== false) && (recordingsTotal > 0 || recordings.length > 0) && (
+                    <button
+                      onClick={() => {
+                        setActivePanel(p => p === 'recordings' ? null : 'recordings')
+                        if (isLive && recordings.length > 0) setActiveRecording(recordings[0])
+                      }}
+                      title="Gravações"
+                      className={`relative p-1 transition-colors cursor-pointer ${activePanel === 'recordings' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+                      </svg>
+                      {(recordingsTotal || recordings.length) > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                          {recordingsTotal || recordings.length}
+                        </span>
+                      )}
+                    </button>
+                  )}
+                  {/* Events */}
+                  {motionEvents.length > 0 && (
+                    <button
+                      onClick={() => setActivePanel(p => p === 'events' ? null : 'events')}
+                      title="Eventos de movimento"
+                      className={`relative p-1 transition-colors cursor-pointer ${activePanel === 'events' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                        {motionEvents.length}
+                      </span>
+                    </button>
+                  )}
+                  {/* Calendar */}
+                  <button
+                    onClick={() => setActivePanel(p => p === 'calendar' ? null : 'calendar')}
+                    title={isToday ? 'Calendário' : `Calendário · ${format(selectedDate, "d MMM", { locale: ptBR })}`}
+                    className={`p-1 transition-colors cursor-pointer ${activePanel === 'calendar' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+                  <div className="w-px h-4 bg-gray-700 mx-0.5" />
+                  {/* Debug */}
+                  <button
+                    onClick={() => setShowDebug(d => !d)}
+                    title="Debug"
+                    className={`p-1 transition-colors cursor-pointer ${showDebug ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                    </svg>
+                  </button>
+                  {/* Settings */}
                   {isAdmin && <button onClick={() => navigate(`/settings/cameras/${id}`, { state: { from: `/cameras/${id}`, editing: true } })} title="Configurar câmera" className="p-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                   </button>}
+                  {/* Fullscreen */}
                   <button onClick={toggleFullscreen} title="Tela inteira" className="p-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V6a2 2 0 012-2h2M4 16v2a2 2 0 002 2h2m8-16h2a2 2 0 012 2v2m0 8v2a2 2 0 01-2 2h-2" />
