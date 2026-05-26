@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { getRole } from '../auth'
 
 type Tab = 'detail' | 'motion' | 'zones'
 
@@ -15,6 +16,7 @@ const TABS: { key: Tab; label: string; path: (id: string) => string }[] = [
 ]
 
 export default function CameraSettingsTabs({ id, active, camName }: Props) {
+  const isAdmin = getRole() === 'admin'
   return (
     <div className="mb-6">
       <nav className="flex items-center gap-1.5 text-xs text-gray-500 mb-4">
@@ -38,12 +40,14 @@ export default function CameraSettingsTabs({ id, active, camName }: Props) {
             </Link>
           ))}
         </div>
-        <Link
-          to="/settings/cameras/new"
-          className="mb-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-        >
-          + nova câmera
-        </Link>
+        {isAdmin && (
+          <Link
+            to="/settings/cameras/new"
+            className="mb-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+          >
+            + nova câmera
+          </Link>
+        )}
       </div>
     </div>
   )

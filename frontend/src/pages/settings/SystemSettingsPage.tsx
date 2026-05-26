@@ -1,15 +1,19 @@
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import { useSettings } from '../../hooks/useSettings'
+import { getRole } from '../../auth'
 
 export default function SystemSettingsPage() {
+  const isAdmin = getRole() === 'admin'
   const { settings } = useSettings('/settings/system')
 
   return (
     <SettingsLayout>
       <h3 className="text-lg font-semibold text-gray-200">Sistema</h3>
       <p className="text-sm text-gray-500 mt-1 mb-6">Fuso horário e configurações de log.</p>
-      {!settings ? (
+      {!isAdmin ? (
+        <p className="text-gray-500 text-sm">Acesso restrito.</p>
+      ) : !settings ? (
         <p className="text-gray-500 text-sm">Carregando...</p>
       ) : (
         <div className="flex flex-col gap-4">

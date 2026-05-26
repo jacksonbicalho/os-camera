@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import CameraSettingsTabs from '../../components/CameraSettingsTabs'
 import ConfirmDialog from '../../components/ConfirmDialog'
-import { authHeaders, getToken } from '../../auth'
+import { authHeaders, getRole, getToken } from '../../auth'
 import { useSettings } from '../../hooks/useSettings'
 import { useEventSource } from '../../hooks/useEventSource'
 
@@ -231,6 +231,7 @@ function paintCanvas(
   ch: number,
   ia: Interaction,
   selectedIdx: number | null,
+  readonly = false,
 ) {
   ctx.clearRect(0, 0, cw, ch)
   if (video && video.readyState >= 2) {
@@ -281,26 +282,28 @@ function paintCanvas(
     ctx.restore()
 
     if (!isDrawing) {
-      const corners: [number, number][] = [[px, py], [px + pw, py], [px + pw, py + ph], [px, py + ph]]
-      for (const [hx, hy] of corners) {
-        ctx.fillStyle = colors.handle
-        ctx.fillRect(hx - 5, hy - 5, 10, 10)
+      if (!readonly) {
+        const corners: [number, number][] = [[px, py], [px + pw, py], [px + pw, py + ph], [px, py + ph]]
+        for (const [hx, hy] of corners) {
+          ctx.fillStyle = colors.handle
+          ctx.fillRect(hx - 5, hy - 5, 10, 10)
+        }
+        if (isSelected) {
+          const { cx, cy } = zoneCenterPx(z, cw, ch)
+          const { hx, hy } = rotateHandlePos(z, cw, ch)
+          ctx.beginPath()
+          ctx.moveTo(cx, cy - ph / 2)
+          ctx.lineTo(hx, hy)
+          ctx.strokeStyle = colors.handle
+          ctx.lineWidth = 1.2
+          ctx.stroke()
+          ctx.beginPath()
+          ctx.arc(hx, hy, 7, 0, Math.PI * 2)
+          ctx.fillStyle = colors.handle
+          ctx.fill()
+        }
+        drawDeleteButton(ctx, px + pw - DELETE_PX, py + DELETE_PX, colors.stroke)
       }
-      if (isSelected) {
-        const { cx, cy } = zoneCenterPx(z, cw, ch)
-        const { hx, hy } = rotateHandlePos(z, cw, ch)
-        ctx.beginPath()
-        ctx.moveTo(cx, cy - ph / 2)
-        ctx.lineTo(hx, hy)
-        ctx.strokeStyle = colors.handle
-        ctx.lineWidth = 1.2
-        ctx.stroke()
-        ctx.beginPath()
-        ctx.arc(hx, hy, 7, 0, Math.PI * 2)
-        ctx.fillStyle = colors.handle
-        ctx.fill()
-      }
-      drawDeleteButton(ctx, px + pw - DELETE_PX, py + DELETE_PX, colors.stroke)
 
       // label / type badge
       const displayLabel = z.label || (z.type === 'detect' ? 'detect' : null)
@@ -318,6 +321,7 @@ function paintCanvas(
 
 export default function CameraZonesSettingsPage() {
   const { id } = useParams<{ id: string }>()
+  const isAdmin = getRole() === 'admin'
   const { settings } = useSettings(`/settings/cameras/${id}/zones`)
   const cam = settings?.cameras.find(c => c.id === id)
 
@@ -346,6 +350,7 @@ export default function CameraZonesSettingsPage() {
   const zonesRef = useRef(zones)
   const interactionRef = useRef(interaction)
   const selectedIdxRef = useRef(selectedIdx)
+  const readonlyRef = useRef(!isAdmin)
   useEffect(() => {
     zonesRef.current = zones
     interactionRef.current = interaction
@@ -425,7 +430,7 @@ export default function CameraZonesSettingsPage() {
       const canvas = canvasRef.current
       const ctx = canvas?.getContext('2d')
       if (canvas && ctx) {
-        paintCanvas(ctx, videoRef.current, zonesRef.current, canvas.width, canvas.height, interactionRef.current, selectedIdxRef.current)
+        paintCanvas(ctx, videoRef.current, zonesRef.current, canvas.width, canvas.height, interactionRef.current, selectedIdxRef.current, readonlyRef.current)
       }
       rafRef.current = requestAnimationFrame(loop)
     }
@@ -562,13 +567,15 @@ export default function CameraZonesSettingsPage() {
     <SettingsLayout>
       <CameraSettingsTabs id={id!} active="zones" camName={cam?.name} />
 
-      <p className="text-xs text-gray-500 mb-5">
-        Arraste em área vazia para criar uma zona. Clique numa zona para selecioná-la e configurá-la. Arraste os cantos para redimensionar. Clique no × para excluir.
-      </p>
+      {isAdmin && (
+        <p className="text-xs text-gray-500 mb-5">
+          Arraste em área vazia para criar uma zona. Clique numa zona para selecioná-la e configurá-la. Arraste os cantos para redimensionar. Clique no × para excluir.
+        </p>
+      )}
 
-      {!settings ? (
+      {isAdmin && !settings ? (
         <p className="text-gray-500 text-sm">Carregando...</p>
-      ) : !cam ? (
+      ) : isAdmin && !cam ? (
         <p className="text-gray-500 text-sm">Câmera não encontrada.</p>
       ) : loading ? (
         <p className="text-gray-500 text-sm">Carregando zonas...</p>
@@ -584,19 +591,19 @@ export default function CameraZonesSettingsPage() {
               width={960}
               height={540}
               className="w-full h-full select-none"
-              style={{ cursor: cursorStyle }}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={() => {
+              style={{ cursor: isAdmin ? cursorStyle : 'default' }}
+              onMouseDown={isAdmin ? handleMouseDown : undefined}
+              onMouseMove={isAdmin ? handleMouseMove : undefined}
+              onMouseUp={isAdmin ? handleMouseUp : undefined}
+              onMouseLeave={isAdmin ? () => {
                 if (interaction) handleMouseUp({ preventDefault: () => {} } as React.MouseEvent<HTMLCanvasElement>)
                 setCursorStyle('crosshair')
-              }}
+              } : undefined}
             />
           </div>
 
-          {/* Zone settings panel */}
-          {selectedZone && (
+          {/* Zone settings panel — admin only */}
+          {isAdmin && selectedZone && (
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium text-gray-200 flex items-center gap-2">
@@ -743,30 +750,36 @@ export default function CameraZonesSettingsPage() {
             </div>
           )}
 
-          {toast && (
+          {isAdmin && toast && (
             <p className={`text-sm ${toast.ok ? 'text-green-400' : 'text-red-400'}`}>{toast.msg}</p>
           )}
 
-          <div className="flex gap-3 items-center">
-            <button
-              onClick={save}
-              disabled={saving}
-              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
-            >
-              {saving ? 'Salvando...' : 'Salvar zonas'}
-            </button>
-            {zones.length > 0 && (
+          {isAdmin && (
+            <div className="flex gap-3 items-center">
               <button
-                onClick={() => setConfirmClear(true)}
-                className="px-4 py-2 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors"
+                onClick={save}
+                disabled={saving}
+                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
               >
-                Limpar todas
+                {saving ? 'Salvando...' : 'Salvar zonas'}
               </button>
-            )}
-            {zones.length > 0 && (
-              <span className="text-xs text-gray-600">{zones.length} zona{zones.length !== 1 ? 's' : ''}</span>
-            )}
-          </div>
+              {zones.length > 0 && (
+                <button
+                  onClick={() => setConfirmClear(true)}
+                  className="px-4 py-2 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors"
+                >
+                  Limpar todas
+                </button>
+              )}
+              {zones.length > 0 && (
+                <span className="text-xs text-gray-600">{zones.length} zona{zones.length !== 1 ? 's' : ''}</span>
+              )}
+            </div>
+          )}
+
+          {!isAdmin && zones.length > 0 && (
+            <p className="text-xs text-gray-600">{zones.length} zona{zones.length !== 1 ? 's' : ''}</p>
+          )}
         </div>
       )}
 

@@ -1,13 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import MotionScoreChart from '../../components/MotionScoreChart'
 import CameraSettingsTabs from '../../components/CameraSettingsTabs'
-import { useSettings } from '../../hooks/useSettings'
-import { useMotionPeak } from '../../hooks/useMotionPeak'
+import { useSettings, type CameraSettings } from '../../hooks/useSettings'
+import { useMotionPeak, type MotionDailyPeak } from '../../hooks/useMotionPeak'
 import { emptyForm, formToPayload, type Camera, type CameraFormData } from '../../components/cameraFormUtils'
-import { authHeaders } from '../../auth'
+import { authHeaders, getRole } from '../../auth'
 
 function formatScore(v: number): string {
   if (v <= 0) return '—'
@@ -104,6 +104,45 @@ function RatioGuide({ peak, threshold }: { peak: number; threshold: number }) {
           })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+function MotionReadOnly({ cam, id, peak }: { cam: CameraSettings | null; id: string; peak: MotionDailyPeak | null }) {
+  if (!cam) return <p className="text-gray-500 text-sm">Câmera não encontrada.</p>
+  const motion = cam.motion
+  if (!motion?.enabled) {
+    return (
+      <SettingsSection
+        title="Detecção de movimento"
+        fields={[{ label: 'Status', value: 'Desabilitado' }]}
+      />
+    )
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      <SettingsSection
+        title="Configuração"
+        fields={[
+          { label: 'Status', value: 'Habilitado' },
+          { label: 'Limiar', value: formatScore(motion.threshold) },
+          { label: 'FPS de análise', value: motion.fps },
+          { label: 'Cooldown (s)', value: motion.cooldown_seconds },
+        ]}
+      />
+      <div className="bg-gray-900 border border-gray-800 rounded-lg px-5 py-4">
+        <p className="text-xs font-medium text-gray-400 mb-3">Score em tempo real</p>
+        <MotionScoreChart cameraId={id} threshold={motion.threshold} />
+      </div>
+      {peak !== null && (
+        <SettingsSection
+          title="Hoje"
+          fields={[
+            { label: 'Pico de score bruto', value: formatScore(peak.peak_raw_score) },
+            { label: 'Limiar configurado', value: formatScore(motion.threshold) },
+          ]}
+        />
+      )}
     </div>
   )
 }
@@ -285,14 +324,33 @@ function MotionFormContent({ cam, id, peak, reload }: MotionFormContentProps) {
 
 export default function CameraMotionSettingsPage() {
   const { id } = useParams<{ id: string }>()
+  const isAdmin = getRole() === 'admin'
   const { settings, reload } = useSettings(`/settings/cameras/${id}/motion`)
   const peak = useMotionPeak(id, `/settings/cameras/${id}/motion`)
   const cam = settings?.cameras.find(c => c.id === id) as Camera | undefined
 
+  const [viewerCam, setViewerCam] = useState<CameraSettings | null>(null)
+  const [viewerLoading, setViewerLoading] = useState(!isAdmin)
+
+  useEffect(() => {
+    if (isAdmin || !id) return
+    fetch('/api/cameras', { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then((cams: CameraSettings[]) => setViewerCam(cams.find(c => c.id === id) ?? null))
+      .catch(() => {})
+      .finally(() => setViewerLoading(false))
+  }, [isAdmin, id])
+
   return (
     <SettingsLayout>
-      <CameraSettingsTabs id={id!} active="motion" camName={cam?.name} />
-      {!settings ? (
+      <CameraSettingsTabs id={id!} active="motion" camName={isAdmin ? cam?.name : viewerCam?.name} />
+      {!isAdmin ? (
+        viewerLoading ? (
+          <p className="text-gray-500 text-sm">Carregando...</p>
+        ) : (
+          <MotionReadOnly cam={viewerCam} id={id!} peak={peak} />
+        )
+      ) : !settings ? (
         <p className="text-gray-500 text-sm">Carregando...</p>
       ) : !cam ? (
         <p className="text-gray-500 text-sm">Câmera não encontrada.</p>

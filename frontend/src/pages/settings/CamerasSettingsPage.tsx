@@ -15,7 +15,7 @@ export default function CamerasSettingsPage() {
   const prefillRTSP = searchParams.get('prefill_rtsp') ?? ''
   const prefillName = searchParams.get('prefill_name') ?? ''
   const [cameras, setCameras] = useState<Camera[]>([])
-  const [loading, setLoading] = useState(isAdmin)
+  const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(isNewRoute)
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -38,6 +38,17 @@ export default function CamerasSettingsPage() {
       .then(async res => {
         if (res.status === 401) { clearToken(); navigate('/login', { replace: true }); return }
         if (res.status === 503) { setNoDb(true); return }
+        if (res.ok) setCameras(await res.json())
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [isAdmin, navigate])
+
+  useEffect(() => {
+    if (isAdmin) return
+    fetch('/api/cameras', { headers: authHeaders() })
+      .then(async res => {
+        if (res.status === 401) { clearToken(); navigate('/login', { replace: true }); return }
         if (res.ok) setCameras(await res.json())
       })
       .catch(() => {})
@@ -100,11 +111,11 @@ export default function CamerasSettingsPage() {
     return (
       <SettingsLayout>
         <h3 className="text-lg font-semibold text-gray-200">Câmeras</h3>
-        <p className="text-sm text-gray-500 mt-1 mb-6">Gerencie as câmeras do sistema.</p>
+        <p className="text-sm text-gray-500 mt-1 mb-6">Câmeras disponíveis.</p>
         {loading ? (
           <p className="text-gray-500 text-sm">Carregando...</p>
         ) : cameras.length === 0 ? (
-          <p className="text-gray-500 text-sm">Nenhuma câmera configurada.</p>
+          <p className="text-gray-500 text-sm">Nenhuma câmera disponível.</p>
         ) : (
           <div className="flex flex-col gap-2">
             {cameras.map(cam => (
@@ -121,7 +132,19 @@ export default function CamerasSettingsPage() {
                     onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
                   />
                 </div>
-                <span className="flex-1 text-sm font-mono text-gray-200 truncate">{cam.name || cam.id}</span>
+                <div className="flex flex-1 items-center gap-2 min-w-0">
+                  <span className="text-sm font-mono text-gray-200 truncate">{cam.name || cam.id}</span>
+                  {cam.motion?.enabled && (
+                    <span className="px-2 py-0.5 text-xs rounded-full bg-green-900/40 text-green-400 border border-green-700/40 shrink-0">
+                      motion
+                    </span>
+                  )}
+                  {!cam.recording_enabled && (
+                    <span className="px-2 py-0.5 text-xs rounded-full bg-gray-800 text-gray-500 border border-gray-700 shrink-0">
+                      rec off
+                    </span>
+                  )}
+                </div>
                 <svg className="w-4 h-4 text-gray-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>

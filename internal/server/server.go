@@ -638,12 +638,27 @@ func (s *Server) handleClientConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
+	type motionInfo struct {
+		Enabled         bool    `json:"enabled"`
+		Threshold       float64 `json:"threshold"`
+		FPS             int     `json:"fps"`
+		CooldownSeconds int     `json:"cooldown_seconds"`
+		CaptureWidth    int     `json:"capture_width,omitempty"`
+		CaptureHeight   int     `json:"capture_height,omitempty"`
+	}
+
 	type cameraInfo struct {
-		ID                   string  `json:"id"`
-		Name                 string  `json:"name"`
-		MotionThreshold      float64 `json:"motion_threshold"`
-		PlaybackLeadSeconds  int     `json:"playback_lead_seconds"`
-		PlaybackTrailSeconds int     `json:"playback_trail_seconds"`
+		ID                   string      `json:"id"`
+		Name                 string      `json:"name"`
+		RecordingEnabled     bool        `json:"recording_enabled"`
+		VideoCodec           string      `json:"video_codec,omitempty"`
+		HasAudio             *bool       `json:"has_audio"`
+		Width                int         `json:"width,omitempty"`
+		Height               int         `json:"height,omitempty"`
+		Motion               *motionInfo `json:"motion"`
+		MotionThreshold      float64     `json:"motion_threshold"`
+		PlaybackLeadSeconds  int         `json:"playback_lead_seconds"`
+		PlaybackTrailSeconds int         `json:"playback_trail_seconds"`
 	}
 
 	cameras := s.cameras
@@ -682,9 +697,26 @@ func (s *Server) handleCameras(w http.ResponseWriter, r *http.Request) {
 		if mc.PlaybackTrailSeconds > 0 {
 			trail = mc.PlaybackTrailSeconds
 		}
+		var motion *motionInfo
+		if c.Motion != nil {
+			motion = &motionInfo{
+				Enabled:         mc.Enabled,
+				Threshold:       mc.Threshold,
+				FPS:             mc.FPS,
+				CooldownSeconds: mc.CooldownSeconds,
+				CaptureWidth:    mc.CaptureWidth,
+				CaptureHeight:   mc.CaptureHeight,
+			}
+		}
 		list[i] = cameraInfo{
 			ID:                   c.ID,
 			Name:                 c.Name,
+			RecordingEnabled:     c.RecordingEnabled,
+			VideoCodec:           c.VideoCodec,
+			HasAudio:             c.HasAudio,
+			Width:                c.Width,
+			Height:               c.Height,
+			Motion:               motion,
 			MotionThreshold:      mc.Threshold,
 			PlaybackLeadSeconds:  lead,
 			PlaybackTrailSeconds: trail,

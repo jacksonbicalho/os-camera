@@ -5,8 +5,8 @@ import SettingsSection from '../../components/SettingsSection'
 import CameraForm from '../../components/CameraForm'
 import CameraSettingsTabs from '../../components/CameraSettingsTabs'
 import { type CameraFormData, type Camera, formToPayload } from '../../components/cameraFormUtils'
-import { useSettings } from '../../hooks/useSettings'
-import { authHeaders } from '../../auth'
+import { useSettings, type CameraSettings } from '../../hooks/useSettings'
+import { authHeaders, getRole } from '../../auth'
 
 function fmtHasAudio(v: boolean | null): string {
   if (v === null) return 'auto'
@@ -42,14 +42,18 @@ interface CameraStatsData {
 
 export default function CameraDetailSettingsPage() {
   const { id } = useParams<{ id: string }>()
+  const isAdmin = getRole() === 'admin'
   const location = useLocation()
   const startEditing = (location.state as { editing?: boolean } | null)?.editing ?? false
   const { settings, reload } = useSettings(`/settings/cameras/${id}`)
   const cam = settings?.cameras.find(c => c.id === id) as Camera | undefined
   const [stats, setStats] = useState<CameraStatsData | null>(null)
-  const [editing, setEditing] = useState(startEditing)
+  const [editing, setEditing] = useState(startEditing && isAdmin)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const [viewerCam, setViewerCam] = useState<CameraSettings | null>(null)
+  const [viewerLoading, setViewerLoading] = useState(!isAdmin)
 
   useEffect(() => {
     if (!id) return
@@ -58,6 +62,15 @@ export default function CameraDetailSettingsPage() {
       .then(data => { if (data) setStats(data) })
       .catch(() => {})
   }, [id])
+
+  useEffect(() => {
+    if (isAdmin || !id) return
+    fetch('/api/cameras', { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then((cams: CameraSettings[]) => setViewerCam(cams.find(c => c.id === id) ?? null))
+      .catch(() => {})
+      .finally(() => setViewerLoading(false))
+  }, [isAdmin, id])
 
   const handleUpdate = async (data: CameraFormData) => {
     if (!id) return
@@ -72,6 +85,56 @@ export default function CameraDetailSettingsPage() {
       setEditing(false)
       reload()
     } finally { setSaving(false) }
+  }
+
+  if (!isAdmin) {
+    return (
+      <SettingsLayout>
+        <CameraSettingsTabs id={id!} active="detail" camName={viewerCam?.name} />
+        {viewerLoading ? (
+          <p className="text-gray-500 text-sm">Carregando...</p>
+        ) : !viewerCam ? (
+          <p className="text-gray-500 text-sm">Câmera não encontrada.</p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <SettingsSection
+              title="Identificação"
+              fields={[
+                { label: 'ID', value: viewerCam.id },
+                { label: 'Nome', value: viewerCam.name },
+              ]}
+            />
+            <SettingsSection
+              title="Stream"
+              fields={[
+                { label: 'Codec de vídeo', value: viewerCam.video_codec || 'auto' },
+                { label: 'Áudio', value: fmtHasAudio(viewerCam.has_audio) },
+                { label: 'Resolução', value: fmtResolution(viewerCam.width, viewerCam.height) },
+              ]}
+            />
+            <SettingsSection
+              title="Gravação"
+              fields={[
+                { label: 'Gravar em disco', value: viewerCam.recording_enabled ? 'Sim' : 'Não' },
+              ]}
+            />
+            <SettingsSection
+              title="Estatísticas"
+              fields={
+                stats == null
+                  ? [{ label: 'Carregando...', value: '' }]
+                  : [
+                      { label: 'Total gravado', value: fmtDuration(stats.total_seconds) },
+                      { label: 'Segmentos MP4', value: String(stats.total_chunks) },
+                      { label: 'Espaço em disco', value: fmtBytes(stats.total_bytes) },
+                      { label: 'Eventos de movimento', value: String(stats.total_motion_events) },
+                    ]
+              }
+            />
+          </div>
+        )}
+      </SettingsLayout>
+    )
   }
 
   return (
