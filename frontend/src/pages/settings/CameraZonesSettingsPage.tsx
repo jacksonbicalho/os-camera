@@ -564,7 +564,7 @@ export default function CameraZonesSettingsPage() {
   const selectedZone = selectedIdx !== null ? zones[selectedIdx] : null
 
   return (
-    <SettingsLayout>
+    <SettingsLayout wide>
       <CameraSettingsTabs id={id!} active="zones" camName={cam?.name} />
 
       {isAdmin && (
@@ -588,8 +588,8 @@ export default function CameraZonesSettingsPage() {
           >
             <canvas
               ref={canvasRef}
-              width={960}
-              height={540}
+              width={1280}
+              height={720}
               className="w-full h-full select-none"
               style={{ cursor: isAdmin ? cursorStyle : 'default' }}
               onMouseDown={isAdmin ? handleMouseDown : undefined}
