@@ -14,10 +14,6 @@ func TestInitWizardDefaultInputs(t *testing.T) {
 		"",         // segments_path
 		"",         // hls_dvr: 0
 		"",         // storage path
-		"",         // with_motion_minutes: 10080
-		"",         // without_motion_minutes: 1440
-		"",         // max_size: 10
-		"",         // warn_percent: 70
 		"",         // timezone: America/Sao_Paulo
 		"",         // admin username: admin
 		"changeme", // admin password
@@ -46,10 +42,6 @@ func TestInitWizardDefaultInputs(t *testing.T) {
 		segPath,
 		"hls_dvr_seconds: 0",
 		storagePath,
-		"with_motion_minutes: 10080",
-		"without_motion_minutes: 1440",
-		"max_size_gb: 10.0",
-		"warn_percent: 70.0",
 		"timezone: America/Sao_Paulo",
 		"username: admin",
 		"password: changeme",
@@ -60,10 +52,14 @@ func TestInitWizardDefaultInputs(t *testing.T) {
 		}
 	}
 
-	// Must NOT contain old-format camera/motion sections
-	for _, must_not := range []string{"cameras:", "motion:", "username: master"} {
-		if strings.Contains(yaml, must_not) {
-			t.Errorf("YAML should not contain %q\n\nGot:\n%s", must_not, yaml)
+	// Storage settings must NOT appear in the YAML — they live only in the DB.
+	for _, mustNot := range []string{
+		"with_motion_minutes", "without_motion_minutes",
+		"max_size_gb", "warn_percent", "interval_minutes",
+		"cameras:", "motion:", "username: master",
+	} {
+		if strings.Contains(yaml, mustNot) {
+			t.Errorf("YAML should not contain %q\n\nGot:\n%s", mustNot, yaml)
 		}
 	}
 }
@@ -75,10 +71,6 @@ func TestInitWizardCustomValues(t *testing.T) {
 		"/var/hls",       // segments_path
 		"1200",           // hls_dvr
 		"/mnt/cams",      // storage path
-		"10080",          // with_motion_minutes
-		"2880",           // without_motion_minutes
-		"50",             // max_size_gb
-		"80",             // warn_percent
 		"America/Recife", // timezone
 		"master",         // admin username
 		"s3cr3t!",        // admin password (has special char)
@@ -96,10 +88,6 @@ func TestInitWizardCustomValues(t *testing.T) {
 		"segments_path: /var/hls",
 		"hls_dvr_seconds: 1200",
 		"path: /mnt/cams",
-		"with_motion_minutes: 10080",
-		"without_motion_minutes: 2880",
-		"max_size_gb: 50.0",
-		"warn_percent: 80.0",
 		"timezone: America/Recife",
 		"username: master",
 		`password: "s3cr3t!"`,
@@ -118,10 +106,6 @@ func TestInitWizardNoCamerasIsNotError(t *testing.T) {
 		"", // segments_path
 		"", // hls_dvr
 		"", // storage path
-		"", // with_motion_minutes
-		"", // without_motion_minutes
-		"", // max_size_gb
-		"", // warn_percent
 		"", // timezone
 		"", // admin username
 		"", // admin password (empty = default "changeme")

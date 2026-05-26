@@ -47,6 +47,89 @@ func TestGetConfig_Missing(t *testing.T) {
 	}
 }
 
+func TestStorageSettingsFromDB_FallsBackToDefaults(t *testing.T) {
+	database := openTestDB(t)
+
+	got := db.StorageSettingsFromDB(database)
+
+	if got.WithMotionMinutes != db.DefaultStorageSettings.WithMotionMinutes {
+		t.Errorf("WithMotionMinutes: got %d, want %d", got.WithMotionMinutes, db.DefaultStorageSettings.WithMotionMinutes)
+	}
+	if got.WithoutMotionMinutes != db.DefaultStorageSettings.WithoutMotionMinutes {
+		t.Errorf("WithoutMotionMinutes: got %d, want %d", got.WithoutMotionMinutes, db.DefaultStorageSettings.WithoutMotionMinutes)
+	}
+	if got.MaxSizeGB != db.DefaultStorageSettings.MaxSizeGB {
+		t.Errorf("MaxSizeGB: got %f, want %f", got.MaxSizeGB, db.DefaultStorageSettings.MaxSizeGB)
+	}
+}
+
+func TestStorageSettingsFromDB_DBOverridesDefaults(t *testing.T) {
+	database := openTestDB(t)
+
+	_ = db.SetConfig(database, "storage.with_motion_minutes", "120")
+	_ = db.SetConfig(database, "storage.without_motion_minutes", "45")
+	_ = db.SetConfig(database, "storage.interval_minutes", "20")
+	_ = db.SetConfig(database, "storage.max_size_gb", "50")
+	_ = db.SetConfig(database, "storage.warn_percent", "90")
+
+	got := db.StorageSettingsFromDB(database)
+
+	if got.WithMotionMinutes != 120 {
+		t.Errorf("WithMotionMinutes: got %d, want 120", got.WithMotionMinutes)
+	}
+	if got.WithoutMotionMinutes != 45 {
+		t.Errorf("WithoutMotionMinutes: got %d, want 45", got.WithoutMotionMinutes)
+	}
+	if got.IntervalMinutes != 20 {
+		t.Errorf("IntervalMinutes: got %d, want 20", got.IntervalMinutes)
+	}
+	if got.MaxSizeGB != 50 {
+		t.Errorf("MaxSizeGB: got %f, want 50", got.MaxSizeGB)
+	}
+	if got.WarnPercent != 90 {
+		t.Errorf("WarnPercent: got %f, want 90", got.WarnPercent)
+	}
+}
+
+func TestStorageSettingsFromDB_NilDB(t *testing.T) {
+	got := db.StorageSettingsFromDB(nil)
+
+	if got.MaxSizeGB != db.DefaultStorageSettings.MaxSizeGB {
+		t.Errorf("MaxSizeGB: got %f, want %f", got.MaxSizeGB, db.DefaultStorageSettings.MaxSizeGB)
+	}
+}
+
+func TestEnsureStorageDefaults_WritesDefaults(t *testing.T) {
+	database := openTestDB(t)
+
+	if err := db.EnsureStorageDefaults(database); err != nil {
+		t.Fatalf("EnsureStorageDefaults: %v", err)
+	}
+
+	got := db.StorageSettingsFromDB(database)
+	if got.WithMotionMinutes != db.DefaultStorageSettings.WithMotionMinutes {
+		t.Errorf("WithMotionMinutes: got %d, want %d", got.WithMotionMinutes, db.DefaultStorageSettings.WithMotionMinutes)
+	}
+	if got.IntervalMinutes != db.DefaultStorageSettings.IntervalMinutes {
+		t.Errorf("IntervalMinutes: got %d, want %d", got.IntervalMinutes, db.DefaultStorageSettings.IntervalMinutes)
+	}
+}
+
+func TestEnsureStorageDefaults_DoesNotOverrideExisting(t *testing.T) {
+	database := openTestDB(t)
+
+	_ = db.SetConfig(database, "storage.max_size_gb", "99")
+
+	if err := db.EnsureStorageDefaults(database); err != nil {
+		t.Fatalf("EnsureStorageDefaults: %v", err)
+	}
+
+	got := db.StorageSettingsFromDB(database)
+	if got.MaxSizeGB != 99 {
+		t.Errorf("MaxSizeGB: got %f, want 99 (existing value must not be overwritten)", got.MaxSizeGB)
+	}
+}
+
 func TestGetAllConfig(t *testing.T) {
 	database := openTestDB(t)
 

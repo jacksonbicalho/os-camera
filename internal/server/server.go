@@ -910,7 +910,8 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		diskTotal, diskFree = diskStats(s.cfg.RecordingsPath)
 	}
 
-	maxSizeBytes := int64(s.storageCfg.MaxSizeGB * 1024 * 1024 * 1024)
+	_, _, _, maxGB, warnPct := s.effectiveStorageSettings()
+	maxSizeBytes := int64(maxGB * 1024 * 1024 * 1024)
 
 	chunkSec := int64(config.DefaultChunkDuration.Seconds())
 	durationSec := recCount * chunkSec
@@ -981,7 +982,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		"camera_count":                len(allCameras),
 		"connected_clients":           s.activeStreamClients(time.Now()),
 		"max_size_bytes":              maxSizeBytes,
-		"warn_percent":                s.storageCfg.WarnPercent,
+		"warn_percent":                warnPct,
 		"cameras":                     cameras,
 		"os":                          osName(),
 		"pid":                         os.Getpid(),

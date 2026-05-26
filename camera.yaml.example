@@ -21,12 +21,8 @@ server:
 
 storage:
   path: /var/camera/data/recordings   # diretório de gravações
-  retention:
-    with_motion_minutes: 10080     # 7 dias — 0 = nunca apaga gravações com movimento
-    without_motion_minutes: 1440   # 1 dia  — 0 = desabilitado
-  interval_minutes: 60             # intervalo entre limpezas (0 = 60 min)
-  max_size_gb: 20                  # tamanho máximo em GB (0 = desabilitado)
-  warn_percent: 90                 # % do max_size_gb para emitir aviso
+  # retenção, tamanho máximo e intervalo de limpeza são configurados via /settings/storage na UI
+  # e armazenados no banco de dados — nunca neste arquivo
 
 admin:
   username: admin                  # usuário administrador criado na primeira inicialização

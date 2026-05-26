@@ -19,46 +19,8 @@ const (
 // effectiveStorageSettings returns the active storage settings, preferring
 // DB overrides over the values loaded from camera.yaml at startup.
 func (s *Server) effectiveStorageSettings() (withMotion, withoutMotion, interval int, maxGB, warnPct float64) {
-	cfgWithMotion, cfgWithoutMotion := s.storageCfg.EffectiveRetention()
-	withMotion = cfgWithMotion
-	withoutMotion = cfgWithoutMotion
-	interval = s.storageCfg.IntervalMinutes
-	maxGB = s.storageCfg.MaxSizeGB
-	warnPct = s.storageCfg.WarnPercent
-
-	if s.db == nil {
-		return
-	}
-	all, err := db.GetAllConfig(s.db)
-	if err != nil {
-		return
-	}
-	if v, ok := all[keyWithMotionMinutes]; ok {
-		if n, err := strconv.Atoi(v); err == nil {
-			withMotion = n
-		}
-	}
-	if v, ok := all[keyWithoutMotionMinutes]; ok {
-		if n, err := strconv.Atoi(v); err == nil {
-			withoutMotion = n
-		}
-	}
-	if v, ok := all[keyIntervalMinutes]; ok {
-		if n, err := strconv.Atoi(v); err == nil {
-			interval = n
-		}
-	}
-	if v, ok := all[keyMaxSizeGB]; ok {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			maxGB = f
-		}
-	}
-	if v, ok := all[keyWarnPercent]; ok {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			warnPct = f
-		}
-	}
-	return
+	r := db.StorageSettingsFromDB(s.db)
+	return r.WithMotionMinutes, r.WithoutMotionMinutes, r.IntervalMinutes, r.MaxSizeGB, r.WarnPercent
 }
 
 func (s *Server) handleUpdateStorageSettings(w http.ResponseWriter, r *http.Request) {

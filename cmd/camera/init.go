@@ -71,28 +71,15 @@ func (wi *wizardReader) askInt(prompt string, def int) int {
 	return v
 }
 
-func (wi *wizardReader) askFloat(prompt string, def float64) float64 {
-	s := wi.ask(prompt, strconv.FormatFloat(def, 'f', -1, 64))
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return def
-	}
-	return v
-}
-
 type initParams struct {
-	port             int
-	dbPath           string
-	timezone         string
-	segmentsPath     string
-	hlsDVR           int
-	storagePath      string
-	withMotionMin    int
-	withoutMotionMin int
-	maxSizeGB        float64
-	warnPercent      float64
-	adminUsername    string
-	adminPassword    string
+	port          int
+	dbPath        string
+	timezone      string
+	segmentsPath  string
+	hlsDVR        int
+	storagePath   string
+	adminUsername string
+	adminPassword string
 }
 
 func initWizard(input io.Reader, output io.Writer) (string, error) {
@@ -116,10 +103,6 @@ func initWizard(input io.Reader, output io.Writer) (string, error) {
 
 	fmt.Fprintln(output, "\n--- Storage ---")
 	storagePath := wi.ask("Caminho de gravações", defaultBase("recordings"))
-	withMotionMin := wi.askInt("Retenção COM movimento em minutos (0 = nunca apaga; 10080 = 7 dias)", 10080)
-	withoutMotionMin := wi.askInt("Retenção SEM movimento em minutos (0 = nunca apaga; 1440 = 1 dia)", 1440)
-	maxSizeGB := wi.askFloat("Tamanho máximo em GB (0 = desabilitado)", 10)
-	warnPercent := wi.askFloat("Aviso de uso em %", 70)
 
 	fmt.Fprintln(output, "\n--- Geral ---")
 	timezone := wi.ask("Fuso horário", "America/Sao_Paulo")
@@ -129,18 +112,14 @@ func initWizard(input io.Reader, output io.Writer) (string, error) {
 	adminPassword := wi.ask("Senha inicial (obrigatório trocar no primeiro login)", "changeme")
 
 	return buildInitYAML(initParams{
-		port:             port,
-		dbPath:           dbPath,
-		timezone:         timezone,
-		segmentsPath:     segmentsPath,
-		hlsDVR:           hlsDVR,
-		storagePath:      storagePath,
-		withMotionMin:    withMotionMin,
-		withoutMotionMin: withoutMotionMin,
-		maxSizeGB:        maxSizeGB,
-		warnPercent:      warnPercent,
-		adminUsername:    adminUsername,
-		adminPassword:    adminPassword,
+		port:          port,
+		dbPath:        dbPath,
+		timezone:      timezone,
+		segmentsPath:  segmentsPath,
+		hlsDVR:        hlsDVR,
+		storagePath:   storagePath,
+		adminUsername: adminUsername,
+		adminPassword: adminPassword,
 	}), nil
 }
 
@@ -158,12 +137,6 @@ func buildInitYAML(p initParams) string {
 	fmt.Fprintf(&sb, "  jwt_secret: \"\"\n")
 	fmt.Fprintf(&sb, "\nstorage:\n")
 	fmt.Fprintf(&sb, "  path: %s\n", p.storagePath)
-	fmt.Fprintf(&sb, "  retention:\n")
-	fmt.Fprintf(&sb, "    with_motion_minutes: %d\n", p.withMotionMin)
-	fmt.Fprintf(&sb, "    without_motion_minutes: %d\n", p.withoutMotionMin)
-	fmt.Fprintf(&sb, "  interval_minutes: 60\n")
-	fmt.Fprintf(&sb, "  max_size_gb: %s\n", yamlFloat(p.maxSizeGB))
-	fmt.Fprintf(&sb, "  warn_percent: %s\n", yamlFloat(p.warnPercent))
 	fmt.Fprintf(&sb, "\nadmin:\n")
 	fmt.Fprintf(&sb, "  username: %s\n", p.adminUsername)
 	fmt.Fprintf(&sb, "  password: %s\n", yamlStringValue(p.adminPassword))
@@ -184,11 +157,3 @@ func yamlStringValue(s string) string {
 	return s
 }
 
-// yamlFloat formats a float without trailing zeros, ensuring at least one decimal place.
-func yamlFloat(f float64) string {
-	s := strconv.FormatFloat(f, 'f', -1, 64)
-	if !strings.Contains(s, ".") {
-		s += ".0"
-	}
-	return s
-}

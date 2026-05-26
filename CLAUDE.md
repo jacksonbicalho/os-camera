@@ -163,6 +163,8 @@ Ao iniciar uma nova história:
 
 ### Fluxo por história
 
+> ⚠️ **OBRIGATÓRIO:** Antes de escrever qualquer linha de código ou teste, o driver DEVE criar o arquivo de história E abrir a branch. Sem exceção — nem para bugs simples, nem para "pequenas correções".
+
 1. Criar `stories/YYYYMMDDHHmm_<descricao>.md` e abrir uma branch: `git checkout -b <tipo>/<descricao-curta>` a partir de `master`.
 2. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.
 3. Implementar o mínimo para o teste passar (**green**).

@@ -638,10 +638,23 @@ func TestGetStatsIncludesRecordingsDurationAndForecast(t *testing.T) {
 func TestGetStatsIncludesMaxSizeWhenConfigured(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := config.ServerConfig{RecordingsPath: tmpDir}
-	storageCfg := config.StorageConfig{MaxSizeGB: 1.0, WarnPercent: 80}
-	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil).
-		WithStorageConfig(storageCfg)
-	srv = withTestUsers(t, srv)
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+
+	database := openServerTestDB(t)
+	for _, u := range []struct{ name, pass, role string }{
+		{"master", "secret", "admin"},
+	} {
+		if _, err := db.CreateUser(database, u.name, u.pass, u.role, false); err != nil {
+			t.Fatalf("seed test user %q: %v", u.name, err)
+		}
+	}
+	if err := db.SetConfig(database, "storage.max_size_gb", "1.0"); err != nil {
+		t.Fatalf("SetConfig max_size_gb: %v", err)
+	}
+	if err := db.SetConfig(database, "storage.warn_percent", "80"); err != nil {
+		t.Fatalf("SetConfig warn_percent: %v", err)
+	}
+	srv = srv.WithDB(database)
 
 	token := loginAndGetToken(t, srv, "master", "secret")
 	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
@@ -1180,7 +1193,7 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 		},
 	}
 	serverCfg := config.ServerConfig{Port: 8080, HLSDVRSeconds: 30}
-	storageCfg := config.StorageConfig{Path: "/data", Retention: config.RetentionConfig{WithMotionMinutes: 10080, WithoutMotionMinutes: 1440}, MaxSizeGB: 10, WarnPercent: 80}
+	storageCfg := config.StorageConfig{Path: "/data"}
 	srv := server.NewServer(serverCfg, "America/Sao_Paulo", cameras, discardLogger(), nil).
 		WithStorageConfig(storageCfg)
 	srv = withTestUsersAndCameras(t, srv, cameras)
