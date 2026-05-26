@@ -96,6 +96,7 @@ export default function StorageSettingsPage() {
   // Local user edits overlay the server-provided values.
   const [overrides, setOverrides] = useState<StorageOverrides>({})
   const [storageSaving, setStorageSaving] = useState(false)
+  const [storageSaved, setStorageSaved] = useState(false)
 
   const [showDriveForm, setShowDriveForm] = useState(false)
   const [editDrive, setEditDrive] = useState<Drive | null>(null)
@@ -130,7 +131,7 @@ export default function StorageSettingsPage() {
     }
   })() : null
 
-  const set = (patch: StorageOverrides) => setOverrides(o => ({ ...o, ...patch }))
+  const set = (patch: StorageOverrides) => { setOverrides(o => ({ ...o, ...patch })); setStorageSaved(false) }
 
   const retentionFor = (category: string): RetentionConfig =>
     retention.find(r => r.category === category) ?? { category, action: 'delete', drive_id: '' }
@@ -144,7 +145,7 @@ export default function StorageSettingsPage() {
 
   const handleStorageSave = () => {
     if (!form) return
-    setStorageSaving(true)
+    setStorageSaving(true); setStorageSaved(false)
     fetch('/api/settings/storage', {
       method: 'PUT',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -156,7 +157,7 @@ export default function StorageSettingsPage() {
         warn_percent: form.warnPercent,
       }),
     })
-      .then(() => { setOverrides({}); reload() })
+      .then(() => { setOverrides({}); reload(); setStorageSaved(true) })
       .catch(() => {})
       .finally(() => setStorageSaving(false))
   }
@@ -271,7 +272,8 @@ export default function StorageSettingsPage() {
             />
           </div>
 
-          <div className="flex justify-end pt-1">
+          <div className="flex justify-end items-center gap-3 pt-1">
+            {storageSaved && <span className="text-xs text-green-400">Salvo</span>}
             <button onClick={handleStorageSave} disabled={storageSaving}
               className="text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded">
               {storageSaving ? 'Salvando...' : 'Salvar'}
