@@ -116,7 +116,9 @@ func TestSlugify(t *testing.T) {
 	}{
 		{"Corredor da Frente", "corredor-da-frente"},
 		{"corredor-da-frente", "corredor-da-frente"},
-		{"Câmera 01", "c-mera-01"},
+		{"Câmera 01", "camera-01"},
+		{"portão de entrada", "portao-de-entrada"},
+		{"Câmera Garagem Nº1", "camera-garagem-n-1"},
 		{"  spaces  ", "spaces"},
 		{"cam/1", "cam-1"},
 	}
