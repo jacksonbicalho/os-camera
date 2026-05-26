@@ -114,17 +114,17 @@ export default function VerticalTimeline({
     const px = BASE_PX_PER_MIN * zoomRef.current
     const clickedMin = Math.floor(y / px)
     const targetMs = (firstMin + clickedMin) * 60_000
-    if (onEventClick && motionEvents.length > 0) {
-      let nearest: MotionEvent | null = null
-      let nearestDist = Infinity
-      for (const ev of motionEvents) {
-        const dist = Math.abs(new Date(ev.time).getTime() - targetMs)
-        if (dist < nearestDist) { nearestDist = dist; nearest = ev }
+    if (onEventClick) {
+      if (motionEvents.length > 0) {
+        let nearest: MotionEvent | null = null
+        let nearestDist = Infinity
+        for (const ev of motionEvents) {
+          const dist = Math.abs(new Date(ev.time).getTime() - targetMs)
+          if (dist < nearestDist) { nearestDist = dist; nearest = ev }
+        }
+        if (nearest) onEventClick(nearest)
       }
-      if (nearest && nearestDist <= 30_000) {
-        onEventClick(nearest)
-        return
-      }
+      return
     }
     for (const { rec, startMin, endMin } of recRanges) {
       if (rec.is_recording) continue
