@@ -239,7 +239,7 @@ export default function StorageSettingsPage() {
                 <select
                   className="bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600"
                   value={rc.action}
-                  onChange={e => handleRetentionChange(cat, e.target.value, e.target.value === 'delete' ? '' : rc.drive_id)}
+                  onChange={e => handleRetentionChange(cat, e.target.value, e.target.value === 'delete' ? '' : (rc.drive_id || drives[0]?.id || ''))}
                 >
                   <option value="delete">Apagar</option>
                   <option value="send_to_drive" disabled={drives.length === 0}>Enviar para drive</option>
