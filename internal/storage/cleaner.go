@@ -3,6 +3,7 @@ package storage
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -311,42 +312,42 @@ func (c *Cleaner) cleanFromDB() {
 	type row struct {
 		path      string
 		hasMotion bool
+		startedAt time.Time
+		endedAt   time.Time
 	}
 	var toProcess []row
 
+	scanRows := func(sqlRows *sql.Rows, hasMotion bool) {
+		defer sqlRows.Close()
+		for sqlRows.Next() {
+			var path, startedAtStr, endedAtStr string
+			if err := sqlRows.Scan(&path, &startedAtStr, &endedAtStr); err != nil {
+				c.log.Warn("failed to scan recording row", "err", err)
+				continue
+			}
+			startedAt, _ := time.Parse(time.RFC3339, startedAtStr)
+			endedAt, _ := time.Parse(time.RFC3339, endedAtStr)
+			toProcess = append(toProcess, row{path: path, hasMotion: hasMotion, startedAt: startedAt, endedAt: endedAt})
+		}
+	}
+
 	if withoutMotionMinutes > 0 {
 		cutoff := now.Add(-time.Duration(withoutMotionMinutes) * time.Minute).Format(time.RFC3339)
-		rows, err := c.db.Query(`SELECT path FROM recordings WHERE has_motion=0 AND ended_at IS NOT NULL AND started_at < ?`, cutoff)
+		rows, err := c.db.Query(`SELECT path, started_at, ended_at FROM recordings WHERE has_motion=0 AND ended_at IS NOT NULL AND started_at < ?`, cutoff)
 		if err != nil {
 			c.log.Warn("failed to query without-motion recordings", "err", err)
 		} else {
-			defer rows.Close()
-			for rows.Next() {
-				var path string
-				if err := rows.Scan(&path); err != nil {
-					c.log.Warn("failed to scan recording path", "err", err)
-					continue
-				}
-				toProcess = append(toProcess, row{path: path, hasMotion: false})
-			}
+			scanRows(rows, false)
 		}
 	}
 
 	if withMotionMinutes > 0 {
 		cutoff := now.Add(-time.Duration(withMotionMinutes) * time.Minute).Format(time.RFC3339)
-		rows, err := c.db.Query(`SELECT path FROM recordings WHERE has_motion=1 AND ended_at IS NOT NULL AND started_at < ?`, cutoff)
+		rows, err := c.db.Query(`SELECT path, started_at, ended_at FROM recordings WHERE has_motion=1 AND ended_at IS NOT NULL AND started_at < ?`, cutoff)
 		if err != nil {
 			c.log.Warn("failed to query with-motion recordings", "err", err)
 		} else {
-			defer rows.Close()
-			for rows.Next() {
-				var path string
-				if err := rows.Scan(&path); err != nil {
-					c.log.Warn("failed to scan recording path", "err", err)
-					continue
-				}
-				toProcess = append(toProcess, row{path: path, hasMotion: true})
-			}
+			scanRows(rows, true)
 		}
 	}
 
@@ -364,7 +365,7 @@ func (c *Cleaner) cleanFromDB() {
 				c.log.Warn("drive not found for retention action, skipping", "drive_id", driveID, "path", r.path)
 				continue
 			}
-			if err := c.uploadAndPurge(drive, r.path); err != nil {
+			if err := c.uploadAndPurge(drive, r.path, r.startedAt, r.endedAt); err != nil {
 				c.log.Warn("failed to send recording to drive, skipping deletion", "path", r.path, "err", err)
 				continue
 			}
@@ -376,15 +377,40 @@ func (c *Cleaner) cleanFromDB() {
 		if err := os.Remove(r.path); err != nil && !os.IsNotExist(err) {
 			c.log.Warn("failed to delete recording", "path", r.path, "err", err)
 		}
+		c.purgeMotionAssets(r.path, r.startedAt, r.endedAt)
 		if err := db.DeleteRecording(c.db, r.path); err != nil {
 			c.log.Warn("failed to delete recording from db", "path", r.path, "err", err)
 		}
 	}
 }
 
+// purgeMotionAssets removes the motion.ndjson entries (and their JPEGs) for the
+// given recording time range, and deletes the corresponding motion_events rows.
+func (c *Cleaner) purgeMotionAssets(path string, startedAt, endedAt time.Time) {
+	if startedAt.IsZero() || endedAt.IsZero() {
+		return
+	}
+	ndjsonPath := filepath.Join(filepath.Dir(path), "motion.ndjson")
+	if err := RemoveEventsInRange(ndjsonPath, startedAt, endedAt); err != nil {
+		c.log.Warn("failed to remove motion events from ndjson", "path", ndjsonPath, "err", err)
+	}
+	if c.db != nil {
+		rel, err := filepath.Rel(c.storagePath, path)
+		if err == nil {
+			parts := strings.SplitN(filepath.ToSlash(rel), "/", 2)
+			if len(parts) >= 1 {
+				cameraID := parts[0]
+				if err := db.DeleteMotionEventsInRange(c.db, cameraID, startedAt, endedAt); err != nil {
+					c.log.Warn("failed to delete motion events from db", "camera_id", cameraID, "err", err)
+				}
+			}
+		}
+	}
+}
+
 // uploadAndPurge uploads the MP4 file to the given drive, then removes the
 // local file and all DB references. On upload failure nothing is deleted.
-func (c *Cleaner) uploadAndPurge(drive Drive, path string) error {
+func (c *Cleaner) uploadAndPurge(drive Drive, path string, startedAt, endedAt time.Time) error {
 	key := filepath.Base(filepath.Dir(path)) + "/" + filepath.Base(path)
 	// Build key using camera name as first segment: "camera-name/YYYY/MM/DD/file.mp4"
 	rel, err := filepath.Rel(c.storagePath, path)
@@ -426,6 +452,7 @@ func (c *Cleaner) uploadAndPurge(drive Drive, path string) error {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		c.log.Warn("failed to delete recording after upload", "path", path, "err", err)
 	}
+	c.purgeMotionAssets(path, startedAt, endedAt)
 	if err := db.DeleteRecording(c.db, path); err != nil {
 		c.log.Warn("failed to delete recording from db after upload", "path", path, "err", err)
 	}

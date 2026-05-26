@@ -320,14 +320,13 @@ export default function CameraPage() {
       selectedDate.getFullYear() === today.getFullYear() &&
       selectedDate.getMonth() === today.getMonth() &&
       selectedDate.getDate() === today.getDate()
-    if (!isToday) return
 
     const interval = setInterval(async () => {
       const result = await loadRecordingsData(id!, selectedDate, 1, sortOrder, ALL_RECORDINGS_LIMIT)
       if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
       setRecordings(prev => mergeRecordings(prev, result.recordings, sortOrder, result.hasMore))
       setRecordingsTotal(result.total)
-    }, 5_000)
+    }, isToday ? 5_000 : 30_000)
 
     return () => clearInterval(interval)
   }, [selectedDate, id, navigate, sortOrder])
