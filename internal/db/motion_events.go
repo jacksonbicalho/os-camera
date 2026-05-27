@@ -82,6 +82,31 @@ func ListMotionEvents(db *DB, cameraID string, start, end time.Time) ([]MotionEv
 	return events, rows.Err()
 }
 
+// GetMotionEventByID returns a single motion event by its primary key.
+func GetMotionEventByID(db *DB, id int64) (MotionEvent, error) {
+	var ev MotionEvent
+	var occurredAt string
+	var framePath, label sql.NullString
+	var color string
+	var bboxX, bboxY, bboxW, bboxH sql.NullFloat64
+	err := db.QueryRow(`
+		SELECT id, camera_id, occurred_at, score, frame_path, label, color, bbox_x, bbox_y, bbox_w, bbox_h
+		FROM motion_events WHERE id=?`, id).
+		Scan(&ev.ID, &ev.CameraID, &occurredAt, &ev.Score, &framePath, &label, &color, &bboxX, &bboxY, &bboxW, &bboxH)
+	if err != nil {
+		return MotionEvent{}, fmt.Errorf("get motion event: %w", err)
+	}
+	ev.OccurredAt, _ = time.Parse(time.RFC3339, occurredAt)
+	ev.FramePath = framePath.String
+	ev.Label = label.String
+	ev.Color = color
+	ev.BboxX = bboxX.Float64
+	ev.BboxY = bboxY.Float64
+	ev.BboxW = bboxW.Float64
+	ev.BboxH = bboxH.Float64
+	return ev, nil
+}
+
 // MinMaxScoreForDay returns the min and max motion score for a camera in [start, end).
 // Returns 0, 0 when there are no events.
 func MinMaxScoreForDay(db *DB, cameraID string, start, end time.Time) (min, max float64, err error) {
