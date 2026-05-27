@@ -37,7 +37,7 @@ services:
     build:
       context: ./services/yolo
     volumes:
-      - ./storage:/data/recordings:ro
+      - ./storage:/data:ro
     ports:
       - "8001:8001"
     restart: unless-stopped

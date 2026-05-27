@@ -8,6 +8,8 @@ import (
 	"net/http"
 )
 
+var analysisTransport = &http.Transport{DisableKeepAlives: true}
+
 type Detection struct {
 	Label      string  `json:"label"`
 	Confidence float64 `json:"confidence"`
@@ -34,7 +36,7 @@ type Client struct {
 }
 
 func NewClient(baseURL string) *Client {
-	return &Client{baseURL: baseURL, httpClient: &http.Client{}}
+	return &Client{baseURL: baseURL, httpClient: &http.Client{Transport: analysisTransport}}
 }
 
 func (c *Client) Analyze(ctx context.Context, req AnalyzeRequest) ([]Detection, error) {
