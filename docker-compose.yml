@@ -32,5 +32,15 @@ services:
     command: sh -c "cd frontend && yarn build && cd .. && go run -ldflags=\"-X main.version=$$VERSION\" ./cmd/camera --config /app/camera.yaml"
     restart: "no"
 
+  yolo:
+    profiles: [yolo]
+    build:
+      context: ./services/yolo
+    volumes:
+      - ./storage:/data/recordings:ro
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
 volumes:
   frontend_node_modules:

@@ -4,6 +4,7 @@ export interface Recording {
   url: string
   is_recording: boolean
   has_motion: boolean
+  labels?: string[]
 }
 
 export interface MotionBBox {

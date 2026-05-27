@@ -1174,10 +1174,21 @@ function toggleFullscreen() {
                                 onClick={() => !rec.is_recording && setActiveRecording(rec)}
                                 className="flex-1 flex items-center justify-between text-left disabled:cursor-not-allowed"
                               >
-                                <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
-                                  {formatRecordingTime(rec.start, timezone)}
-                                </span>
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-col min-w-0">
+                                  <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
+                                    {formatRecordingTime(rec.start, timezone)}
+                                  </span>
+                                  {rec.labels && rec.labels.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-0.5">
+                                      {rec.labels.map(lbl => (
+                                        <span key={lbl} className="text-[10px] px-1.5 py-0.5 rounded bg-violet-900/60 text-violet-300 border border-violet-700/50">
+                                          {lbl}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0 ml-2">
                                   {hasMotion && (
                                     <span className="w-2 h-2 rounded-full bg-orange-400" title="Movimento detectado" />
                                   )}

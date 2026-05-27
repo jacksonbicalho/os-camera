@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { getRole } from '../auth'
 
-type Tab = 'detail' | 'motion' | 'zones'
+type Tab = 'detail' | 'motion' | 'zones' | 'analysis'
 
 interface Props {
   id: string
@@ -13,6 +13,7 @@ const TABS: { key: Tab; label: string; path: (id: string) => string }[] = [
   { key: 'detail', label: 'Câmera', path: id => `/settings/cameras/${id}` },
   { key: 'motion', label: 'Detecção de movimento', path: id => `/settings/cameras/${id}/motion` },
   { key: 'zones', label: 'Zonas', path: id => `/settings/cameras/${id}/motion/zones` },
+  { key: 'analysis', label: 'Análise', path: id => `/settings/cameras/${id}/analysis` },
 ]
 
 export default function CameraSettingsTabs({ id, active, camName }: Props) {

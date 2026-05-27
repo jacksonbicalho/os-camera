@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"camera/internal/analysis"
 	"camera/internal/db"
 )
 
@@ -28,6 +29,12 @@ type Cleaner struct {
 	db                   *db.DB
 	log                  *slog.Logger
 	forceCh              chan struct{}
+	analyzer             analysis.Analyzer
+}
+
+func (c *Cleaner) WithAnalyzer(a analysis.Analyzer) *Cleaner {
+	c.analyzer = a
+	return c
 }
 
 func New(storagePath string, withMotionMinutes, withoutMotionMinutes int, chunkDuration time.Duration, maxSizeGB float64, warnPercent float64, database *db.DB, log *slog.Logger) *Cleaner {
@@ -593,9 +600,75 @@ func (c *Cleaner) cleanFromFS() {
 func (c *Cleaner) Clean() {
 	if c.db != nil {
 		c.syncRecordings()
+		c.analyzeNewRecordings()
 		c.cleanFromDB()
 	} else {
 		c.cleanFromFS()
+	}
+}
+
+func (c *Cleaner) analyzeNewRecordings() {
+	if c.db == nil {
+		return
+	}
+	cfg, err := db.GetVideoAnalysisConfig(c.db)
+	if err != nil || !cfg.Enabled || cfg.ServiceURL == "" {
+		return
+	}
+	analyzer := c.analyzer
+	if analyzer == nil {
+		analyzer = analysis.NewClient(cfg.ServiceURL)
+	}
+
+	rows, err := c.db.Query(`
+		SELECT r.id, r.camera_id, r.path
+		FROM recordings r
+		WHERE r.ended_at IS NOT NULL
+		AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)`)
+	if err != nil {
+		c.log.Warn("analyzeNewRecordings: query failed", "err", err)
+		return
+	}
+	type pending struct {
+		id       int64
+		cameraID string
+		path     string
+	}
+	var candidates []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.id, &p.cameraID, &p.path); err != nil {
+			continue
+		}
+		candidates = append(candidates, p)
+	}
+	rows.Close()
+
+	for _, p := range candidates {
+		enabled, err := db.GetCameraAnalysisEnabled(c.db, p.cameraID)
+		if err != nil || !enabled {
+			continue
+		}
+		dets, err := analyzer.Analyze(context.Background(), analysis.AnalyzeRequest{
+			Path:                p.path,
+			Model:               cfg.Model,
+			ConfidenceThreshold: cfg.ConfidenceThreshold,
+		})
+		if err != nil {
+			c.log.Warn("analyzeNewRecordings: analyze failed", "path", p.path, "err", err)
+			continue
+		}
+		if len(dets) == 0 {
+			// Insert a sentinel so we don't retry empty results
+			continue
+		}
+		dbDets := make([]db.Detection, len(dets))
+		for i, d := range dets {
+			dbDets[i] = db.Detection{Label: d.Label, Confidence: d.Confidence, FrameCount: d.FrameCount}
+		}
+		if err := db.InsertDetections(c.db, p.path, dbDets); err != nil {
+			c.log.Warn("analyzeNewRecordings: insert detections failed", "path", p.path, "err", err)
+		}
 	}
 }
 

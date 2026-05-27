@@ -293,6 +293,11 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("GET /api/retention", s.requireAdmin(s.handleListRetentionConfigs))
 	s.mux.HandleFunc("PUT /api/retention/{category}", s.requireAdmin(s.handleUpdateRetentionConfig))
 
+	s.mux.HandleFunc("GET /api/settings/analysis", s.requireAdmin(s.handleGetAnalysisConfig))
+	s.mux.HandleFunc("PUT /api/settings/analysis", s.requireAdmin(s.handleUpdateAnalysisConfig))
+	s.mux.HandleFunc("GET /api/settings/cameras/{id}/analysis", s.requireAdmin(s.handleGetCameraAnalysisConfig))
+	s.mux.HandleFunc("PUT /api/settings/cameras/{id}/analysis", s.requireAdmin(s.handleUpdateCameraAnalysisConfig))
+
 	streamHandler := http.StripPrefix("/stream/", http.FileServer(http.Dir(s.cfg.SegmentsPath)))
 	s.mux.Handle("/stream/", s.requireStreamAccess(streamHandler))
 
@@ -766,6 +771,7 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 		URL         string    `json:"url"`
 		IsRecording bool      `json:"is_recording"`
 		HasMotion   bool      `json:"has_motion"`
+		Labels      []string  `json:"labels,omitempty"`
 		mtime       time.Time // not serialized; used to detect active recording
 		path        string    // not serialized; used for DB has_motion lookup
 	}
@@ -826,6 +832,21 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 			for i := range all {
 				if motionByPath[all[i].path] {
 					all[i].HasMotion = true
+				}
+			}
+		}
+	}
+
+	// Enrich labels from detections table.
+	if s.db != nil && len(all) > 0 {
+		paths := make([]string, len(all))
+		for i, r := range all {
+			paths[i] = r.path
+		}
+		if labelsByPath, err := db.DetectionLabelsByPaths(s.db, paths); err == nil {
+			for i := range all {
+				if lbls := labelsByPath[all[i].path]; len(lbls) > 0 {
+					all[i].Labels = lbls
 				}
 			}
 		}
