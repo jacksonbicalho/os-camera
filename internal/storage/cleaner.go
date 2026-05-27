@@ -612,7 +612,16 @@ func (c *Cleaner) analyzeNewRecordings() {
 		return
 	}
 	cfg, err := db.GetVideoAnalysisConfig(c.db)
-	if err != nil || !cfg.Enabled || cfg.ServiceURL == "" {
+	if err != nil {
+		c.log.Warn("analyzeNewRecordings: failed to read config", "err", err)
+		return
+	}
+	if !cfg.Enabled {
+		c.log.Debug("analyzeNewRecordings: skipped (disabled)")
+		return
+	}
+	if cfg.ServiceURL == "" {
+		c.log.Warn("analyzeNewRecordings: skipped (service_url not configured)")
 		return
 	}
 	analyzer := c.analyzer
@@ -643,6 +652,12 @@ func (c *Cleaner) analyzeNewRecordings() {
 		candidates = append(candidates, p)
 	}
 	rows.Close()
+
+	if len(candidates) == 0 {
+		c.log.Debug("analyzeNewRecordings: no pending recordings")
+		return
+	}
+	c.log.Info("analyzeNewRecordings: processing", "count", len(candidates))
 
 	for _, p := range candidates {
 		enabled, err := db.GetCameraAnalysisEnabled(c.db, p.cameraID)
