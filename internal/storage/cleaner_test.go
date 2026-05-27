@@ -746,7 +746,7 @@ func TestClean_DoesNotDeleteCurrentRecording(t *testing.T) {
 func TestAnalyzeNewRecordings_AnalyzesCompletedChunks(t *testing.T) {
 	dir := t.TempDir()
 	database := openTestDB(t)
-	createTestCamera(t, database, "cam1")
+	createTestCameraWithMotion(t, database, "cam1", 10, 10)
 
 	if err := db.UpdateVideoAnalysisConfig(database, db.VideoAnalysisConfig{
 		Enabled:             true,
@@ -762,6 +762,15 @@ func TestAnalyzeNewRecordings_AnalyzesCompletedChunks(t *testing.T) {
 	pathB := mp4WithTimestamp(dir, "cam1", base.Add(5*time.Minute))
 	writeFile(t, pathA, base)
 	writeFile(t, pathB, base.Add(5*time.Minute))
+
+	// Motion event within pathA's range so syncRecordings sets has_motion=1.
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID:   "cam1",
+		OccurredAt: base.Add(time.Minute),
+		Score:      0.5,
+	}); err != nil {
+		t.Fatalf("InsertMotionEvent: %v", err)
+	}
 
 	fake := &analysis.FakeAnalyzer{
 		Results: []analysis.Detection{

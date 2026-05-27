@@ -635,6 +635,7 @@ func (c *Cleaner) analyzeNewRecordings() {
 		SELECT r.id, r.camera_id, r.path
 		FROM recordings r
 		WHERE r.ended_at IS NOT NULL
+		AND r.has_motion = 1
 		AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)`)
 	if err != nil {
 		c.log.Warn("analyzeNewRecordings: query failed", "err", err)
@@ -659,10 +660,14 @@ func (c *Cleaner) analyzeNewRecordings() {
 		c.log.Debug("analyzeNewRecordings: no pending recordings")
 		return
 	}
-	c.log.Info("analyzeNewRecordings: processing", "count", len(candidates))
+	c.log.Info("analyzeNewRecordings: processing", "count", len(candidates), "model", cfg.Model)
 
+	total := len(candidates)
 	var analyzed int
-	for _, p := range candidates {
+	for i, p := range candidates {
+		if (i+1)%10 == 0 {
+			c.log.Info("analyzeNewRecordings: progress", "done", i+1, "total", total)
+		}
 		enabled, err := db.GetCameraAnalysisEnabled(c.db, p.cameraID)
 		if err != nil || !enabled {
 			continue
@@ -677,22 +682,26 @@ func (c *Cleaner) analyzeNewRecordings() {
 			continue
 		}
 		if len(dets) == 0 {
+			c.log.Debug("analyzeNewRecordings: result", "path", p.path, "labels", "none")
 			// Insert a sentinel (label="") so this recording is not retried.
 			_ = db.InsertDetections(c.db, p.path, []db.Detection{{Label: "", Confidence: 0, FrameCount: 0}})
 			analyzed++
 			continue
 		}
+		labels := make([]string, len(dets))
 		dbDets := make([]db.Detection, len(dets))
-		for i, d := range dets {
-			dbDets[i] = db.Detection{Label: d.Label, Confidence: d.Confidence, FrameCount: d.FrameCount}
+		for j, d := range dets {
+			labels[j] = d.Label
+			dbDets[j] = db.Detection{Label: d.Label, Confidence: d.Confidence, FrameCount: d.FrameCount}
 		}
+		c.log.Debug("analyzeNewRecordings: result", "path", p.path, "labels", labels)
 		if err := db.InsertDetections(c.db, p.path, dbDets); err != nil {
 			c.log.Warn("analyzeNewRecordings: insert detections failed", "path", p.path, "err", err)
 		} else {
 			analyzed++
 		}
 	}
-	c.log.Info("analyzeNewRecordings: done", "analyzed", analyzed, "total", len(candidates))
+	c.log.Info("analyzeNewRecordings: done", "analyzed", analyzed, "total", total)
 }
 
 func (c *Cleaner) CheckSize() {
