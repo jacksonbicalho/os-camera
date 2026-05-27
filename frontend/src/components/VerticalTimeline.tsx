@@ -8,6 +8,7 @@ interface VerticalTimelineProps {
   activeTime: string | null
   timezone: string
   onSeek: (recording: Recording, offsetSeconds: number) => void
+  onEventClick?: (ev: MotionEvent) => void
   className?: string
   maxHeight?: number
 }
@@ -24,6 +25,7 @@ export default function VerticalTimeline({
   activeTime,
   timezone,
   onSeek,
+  onEventClick,
   className,
   maxHeight,
 }: VerticalTimelineProps) {
@@ -112,6 +114,18 @@ export default function VerticalTimeline({
     const px = BASE_PX_PER_MIN * zoomRef.current
     const clickedMin = Math.floor(y / px)
     const targetMs = (firstMin + clickedMin) * 60_000
+    if (onEventClick) {
+      if (motionEvents.length > 0) {
+        let nearest: MotionEvent | null = null
+        let nearestDist = Infinity
+        for (const ev of motionEvents) {
+          const dist = Math.abs(new Date(ev.time).getTime() - targetMs)
+          if (dist < nearestDist) { nearestDist = dist; nearest = ev }
+        }
+        if (nearest) onEventClick(nearest)
+      }
+      return
+    }
     for (const { rec, startMin, endMin } of recRanges) {
       if (rec.is_recording) continue
       if (clickedMin >= startMin && clickedMin < endMin) {
@@ -120,7 +134,7 @@ export default function VerticalTimeline({
         return
       }
     }
-  }, [firstMin, recRanges, onSeek])
+  }, [firstMin, recRanges, motionEvents, onSeek, onEventClick])
 
   useEffect(() => {
     const el = scrollRef.current

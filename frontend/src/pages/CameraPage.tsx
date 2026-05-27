@@ -155,6 +155,8 @@ export default function CameraPage() {
   const visibleEventsRef = useRef<typeof visibleEvents>([])
   const continuousPlayRef = useRef(continuousPlay)
   const recordingsDisplayPageRef = useRef(recordingsDisplayPage)
+  const eventsPageRef = useRef(eventsPage)
+  const sortedEventsRef = useRef<MotionEvent[]>([])
   const pendingEventRef = useRef<string | null>(
     (location.state as { eventTime?: string } | null)?.eventTime ?? null
   )
@@ -231,8 +233,18 @@ export default function CameraPage() {
   useEffect(() => {
     if (activeEventTime === null) return
     if (continuousPlayRef.current) return
+    const idx = activeEventId !== null
+      ? sortedEventsRef.current.findIndex(e => e.id === activeEventId)
+      : sortedEventsRef.current.findIndex(e => e.time === activeEventTime)
+    if (idx >= 0) {
+      const neededPage = Math.ceil((idx + 1) / PAGE_SIZE)
+      if (neededPage > eventsPageRef.current) {
+        setEventsPage(neededPage)
+        return
+      }
+    }
     activeEventItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [activeEventTime, scrollNonce])
+  }, [activeEventTime, activeEventId, eventsPage, scrollNonce])
 
   const activeRecordingFilename = activeRecording?.filename
   useEffect(() => {
@@ -614,8 +626,10 @@ function toggleFullscreen() {
   // Keep refs in sync for use inside onEnded (avoids stale closure)
   activeEventTimeRef.current = activeEventTime
   visibleEventsRef.current = visibleEvents
+  sortedEventsRef.current = sortedEvents
   continuousPlayRef.current = continuousPlay
   recordingsDisplayPageRef.current = recordingsDisplayPage
+  eventsPageRef.current = eventsPage
 
   return (
     <AppLayout fill mainClassName="w-full p-3">
@@ -1225,7 +1239,10 @@ function toggleFullscreen() {
                                 <span className="text-xs text-gray-500 shrink-0">[{(ev.score * 100).toFixed(1)}%]</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2 mt-1">
+                            <div className="flex items-center justify-between gap-2 mt-1">
+                              <span className="text-xs text-gray-400 truncate">
+                                {ev.label ?? 'Movimento'}
+                              </span>
                               {thumbURL && (
                                 <img
                                   src={thumbURL}
@@ -1234,9 +1251,6 @@ function toggleFullscreen() {
                                   onClick={e => { e.stopPropagation(); setSnapshotEvent(ev) }}
                                 />
                               )}
-                              <span className="text-xs text-gray-400 truncate">
-                                {ev.label ?? 'Movimento'}
-                              </span>
                             </div>
                           </button>
                         )
@@ -1255,6 +1269,7 @@ function toggleFullscreen() {
             activeTime={activeEventTime ?? activeRecording?.start ?? null}
             timezone={timezone}
             onSeek={handleTimelineSeek}
+            onEventClick={activePanel === 'events' ? ev => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) } : undefined}
             maxHeight={playerHeight}
           />
         </div>
