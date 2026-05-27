@@ -48,7 +48,7 @@ def analyze(req: AnalyzeRequest):
 
     label_scores: dict[str, list[float]] = defaultdict(list)
     frame_counts: dict[str, int] = defaultdict(int)
-    frame_skip = 5  # analyze every 5th frame
+    frame_skip = 30  # analyze every 30th frame (~1 frame/s at 30fps)
     frame_idx = 0
 
     try:

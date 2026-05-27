@@ -672,11 +672,13 @@ func (c *Cleaner) analyzeNewRecordings() {
 		if err != nil || !enabled {
 			continue
 		}
-		dets, err := analyzer.Analyze(context.Background(), analysis.AnalyzeRequest{
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		dets, err := analyzer.Analyze(ctx, analysis.AnalyzeRequest{
 			Path:                p.path,
 			Model:               cfg.Model,
 			ConfidenceThreshold: cfg.ConfidenceThreshold,
 		})
+		cancel()
 		if err != nil {
 			c.log.Warn("analyzeNewRecordings: analyze failed", "path", p.path, "err", err)
 			continue
