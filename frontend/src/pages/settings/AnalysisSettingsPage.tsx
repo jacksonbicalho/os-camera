@@ -27,7 +27,7 @@ export default function AnalysisSettingsPage() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [annCount, setAnnCount] = useState<number | null>(null)
-  const [ftJobID, setFtJobID] = useState<string | null>(null)
+  const [ftJobID, setFtJobID] = useState<string | null>(() => localStorage.getItem('ft_job_id'))
   const [ftStatus, setFtStatus] = useState<{ status: string; epoch: number; total_epochs: number; error: string } | null>(null)
   const [ftError, setFtError] = useState('')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -45,6 +45,11 @@ export default function AnalysisSettingsPage() {
 
   useEffect(() => {
     if (!ftJobID) return
+    // Fetch once immediately to restore state when returning to the page
+    fetch(`/api/settings/analysis/finetune/status/${ftJobID}`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(s => { if (s) setFtStatus(s) })
+      .catch(() => {})
     pollRef.current = setInterval(async () => {
       try {
         const r = await fetch(`/api/settings/analysis/finetune/status/${ftJobID}`, { headers: authHeaders() })
@@ -54,6 +59,7 @@ export default function AnalysisSettingsPage() {
         if (s.status === 'done' || s.status === 'error') {
           clearInterval(pollRef.current!)
           pollRef.current = null
+          localStorage.removeItem('ft_job_id')
           if (s.status === 'error') setFtError(s.error || 'Erro no treino')
         }
       } catch { /* ignore poll errors */ }
@@ -65,6 +71,7 @@ export default function AnalysisSettingsPage() {
     setFtError('')
     setFtStatus(null)
     setFtJobID(null)
+    localStorage.removeItem('ft_job_id')
     const res = await fetch('/api/settings/analysis/finetune', {
       method: 'POST',
       headers: authHeaders(),
@@ -75,6 +82,7 @@ export default function AnalysisSettingsPage() {
       return
     }
     const { job_id } = await res.json()
+    localStorage.setItem('ft_job_id', job_id)
     setFtJobID(job_id)
     setFtStatus({ status: 'pending', epoch: 0, total_epochs: 20, error: '' })
   }
