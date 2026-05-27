@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import SettingsLayout from '../../components/SettingsLayout'
 import { useSettings } from '../../hooks/useSettings'
 import { authHeaders } from '../../auth'
@@ -26,13 +26,58 @@ export default function AnalysisSettingsPage() {
   })
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [annCount, setAnnCount] = useState<number | null>(null)
+  const [ftJobID, setFtJobID] = useState<string | null>(null)
+  const [ftStatus, setFtStatus] = useState<{ status: string; epoch: number; total_epochs: number; error: string } | null>(null)
+  const [ftError, setFtError] = useState('')
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     fetch('/api/settings/analysis', { headers: authHeaders() })
       .then(r => r.json())
       .then(setCfg)
       .catch(() => setError('Falha ao carregar configurações'))
+    fetch('/api/settings/analysis/annotation-count', { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d && setAnnCount(d.count))
+      .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!ftJobID) return
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/settings/analysis/finetune/status/${ftJobID}`, { headers: authHeaders() })
+        if (!r.ok) return
+        const s = await r.json()
+        setFtStatus(s)
+        if (s.status === 'done' || s.status === 'error') {
+          clearInterval(pollRef.current!)
+          pollRef.current = null
+          if (s.status === 'error') setFtError(s.error || 'Erro no treino')
+        }
+      } catch { /* ignore poll errors */ }
+    }, 3000)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [ftJobID])
+
+  async function handleStartFinetune() {
+    setFtError('')
+    setFtStatus(null)
+    setFtJobID(null)
+    const res = await fetch('/api/settings/analysis/finetune', {
+      method: 'POST',
+      headers: authHeaders(),
+    })
+    if (!res.ok) {
+      const msg = await res.text()
+      setFtError(msg || 'Erro ao iniciar treino')
+      return
+    }
+    const { job_id } = await res.json()
+    setFtJobID(job_id)
+    setFtStatus({ status: 'pending', epoch: 0, total_epochs: 20, error: '' })
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -148,6 +193,66 @@ export default function AnalysisSettingsPage() {
             <li>Ative a análise global e, se necessário, por câmera em Configurações → Câmeras → Análise</li>
             <li>Na próxima limpeza do storage, as gravações concluídas serão analisadas automaticamente</li>
           </ol>
+        </div>
+
+        <div className="bg-gray-800 rounded-lg border border-gray-700 divide-y divide-gray-700">
+          <div className="p-4">
+            <h4 className="text-sm font-semibold text-gray-200 mb-1">Fine-tuning</h4>
+            <p className="text-xs text-gray-400">
+              Treina um modelo personalizado usando os snapshots que você anotou nos eventos de movimento.
+              O modelo gerado (<code className="bg-gray-700 px-1 rounded">custom.pt</code>) fica disponível no seletor acima.
+            </p>
+          </div>
+
+          <div className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-300">
+                {annCount === null ? '…' : annCount} anotação{annCount !== 1 ? 'ões' : ''} disponível{annCount !== 1 ? 'eis' : ''}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Abra um evento de movimento e clique em "Anotar" para adicionar bounding boxes
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={!annCount || annCount === 0 || (ftStatus?.status === 'running' || ftStatus?.status === 'pending')}
+              onClick={handleStartFinetune}
+              className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Treinar agora
+            </button>
+          </div>
+
+          {ftStatus && (
+            <div className="p-4 space-y-2">
+              {(ftStatus.status === 'running' || ftStatus.status === 'pending') && (
+                <>
+                  <div className="flex justify-between text-xs text-gray-400">
+                    <span>{ftStatus.status === 'pending' ? 'Iniciando…' : `Época ${ftStatus.epoch} / ${ftStatus.total_epochs}`}</span>
+                    <span>{ftStatus.status === 'running' ? `${Math.round((ftStatus.epoch / ftStatus.total_epochs) * 100)}%` : ''}</span>
+                  </div>
+                  <div className="w-full bg-gray-700 rounded-full h-2">
+                    <div
+                      className="bg-violet-500 h-2 rounded-full transition-all"
+                      style={{ width: `${Math.round((ftStatus.epoch / ftStatus.total_epochs) * 100)}%` }}
+                    />
+                  </div>
+                </>
+              )}
+              {ftStatus.status === 'done' && (
+                <p className="text-sm text-green-400">Treino concluído. Modelo salvo como <code className="bg-gray-700 px-1 rounded">custom</code>.</p>
+              )}
+              {ftStatus.status === 'error' && (
+                <p className="text-sm text-red-400">{ftError || ftStatus.error || 'Erro no treino'}</p>
+              )}
+            </div>
+          )}
+
+          {ftError && !ftStatus && (
+            <div className="p-4">
+              <p className="text-sm text-red-400">{ftError}</p>
+            </div>
+          )}
         </div>
       </div>
     </SettingsLayout>

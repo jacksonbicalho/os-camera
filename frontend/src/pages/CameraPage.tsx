@@ -15,7 +15,7 @@ import { useEventSource } from '../hooks/useEventSource'
 import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { mergeRecordings } from './cameraUtils'
-import type { Recording, MotionEvent } from './cameraUtils'
+import type { Recording, MotionEvent, Annotation } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useSetSidebarItems } from '../contexts/SidebarContext'
@@ -129,6 +129,12 @@ export default function CameraPage() {
   const [recPlayBlocked, setRecPlayBlocked] = useState(false)
   const [lastFrameDataUrl, setLastFrameDataUrl] = useState<string | null>(null)
   const [snapshotEvent, setSnapshotEvent] = useState<MotionEvent | null>(null)
+  const [annotating, setAnnotating] = useState(false)
+  const [annotations, setAnnotations] = useState<Annotation[]>([])
+  const [annLabel, setAnnLabel] = useState('')
+  const [annDraft, setAnnDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
+  const annDragRef = useRef<{ startX: number; startY: number } | null>(null)
+  const annImgRef = useRef<HTMLImageElement>(null)
   const [detectionModal, setDetectionModal] = useState<Array<{ label: string; confidence: number; frame_count: number }> | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const [showDebug, setShowDebug] = useState(false)
@@ -177,12 +183,95 @@ export default function CameraPage() {
     return () => document.removeEventListener('mousedown', handle)
   }, [speedMenuOpen])
 
+  function closeSnapshotModal() {
+    setSnapshotEvent(null)
+    setAnnotating(false)
+    setAnnotations([])
+    setAnnLabel('')
+    setAnnDraft(null)
+  }
+
   useEffect(() => {
     if (!snapshotEvent) return
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setSnapshotEvent(null) }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') closeSnapshotModal() }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [snapshotEvent])
+
+  useEffect(() => {
+    if (!annotating || !snapshotEvent?.id) return
+    fetch(`/api/events/${snapshotEvent.id}/annotations`, { headers: authHeaders() })
+      .then(r => r.json())
+      .then((list: Annotation[]) => setAnnotations(list ?? []))
+      .catch(() => {})
+  }, [annotating, snapshotEvent])
+
+  function getImgRect(): DOMRect | null {
+    return annImgRef.current?.getBoundingClientRect() ?? null
+  }
+
+  function toRelative(clientX: number, clientY: number): { x: number; y: number } | null {
+    const rect = getImgRect()
+    if (!rect) return null
+    return {
+      x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+    }
+  }
+
+  function onAnnMouseDown(e: React.MouseEvent) {
+    if (!annotating) return
+    const rel = toRelative(e.clientX, e.clientY)
+    if (!rel) return
+    annDragRef.current = { startX: rel.x, startY: rel.y }
+    setAnnDraft({ x: rel.x, y: rel.y, w: 0, h: 0 })
+  }
+
+  function onAnnMouseMove(e: React.MouseEvent) {
+    if (!annDragRef.current) return
+    const rel = toRelative(e.clientX, e.clientY)
+    if (!rel) return
+    const { startX, startY } = annDragRef.current
+    setAnnDraft({
+      x: Math.min(startX, rel.x),
+      y: Math.min(startY, rel.y),
+      w: Math.abs(rel.x - startX),
+      h: Math.abs(rel.y - startY),
+    })
+  }
+
+  function onAnnMouseUp() {
+    annDragRef.current = null
+  }
+
+  async function saveAnnotation() {
+    if (!snapshotEvent?.id || !annDraft || annLabel.trim() === '') return
+    const rect = getImgRect()
+    if (!rect) return
+    const body = {
+      label: annLabel.trim(),
+      bbox_x: annDraft.x,
+      bbox_y: annDraft.y,
+      bbox_w: annDraft.w,
+      bbox_h: annDraft.h,
+    }
+    const res = await fetch(`/api/events/${snapshotEvent.id}/annotations`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return
+    const fresh = await fetch(`/api/events/${snapshotEvent.id}/annotations`, { headers: authHeaders() })
+    const list: Annotation[] = await fresh.json()
+    setAnnotations(list ?? [])
+    setAnnDraft(null)
+    setAnnLabel('')
+  }
+
+  async function deleteAnnotation(annId: number) {
+    await fetch(`/api/annotations/${annId}`, { method: 'DELETE', headers: authHeaders() })
+    setAnnotations(prev => prev.filter(a => a.id !== annId))
+  }
 
   useEffect(() => {
     const el = playerRef.current
@@ -1319,23 +1408,113 @@ function toggleFullscreen() {
       {snapshotEvent && snapshotEvent.frame && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-          onClick={() => setSnapshotEvent(null)}
+          onClick={closeSnapshotModal}
         >
           <div className="relative max-w-3xl w-full mx-4" onClick={e => e.stopPropagation()}>
-            <button
-              className="absolute -top-8 right-0 text-gray-400 hover:text-white text-sm"
-              onClick={() => setSnapshotEvent(null)}
+            <div className="absolute -top-8 left-0 right-0 flex justify-between items-center">
+              <button
+                className={`text-xs px-2 py-0.5 rounded border ${annotating ? 'border-blue-500 text-blue-400' : 'border-gray-600 text-gray-400 hover:text-white'}`}
+                onClick={() => setAnnotating(v => !v)}
+              >
+                {annotating ? 'Cancelar anotação' : 'Anotar'}
+              </button>
+              <button
+                className="text-gray-400 hover:text-white text-sm"
+                onClick={closeSnapshotModal}
+              >
+                Fechar ✕
+              </button>
+            </div>
+
+            {/* Image + annotation canvas */}
+            <div
+              className="relative select-none"
+              onMouseDown={annotating ? onAnnMouseDown : undefined}
+              onMouseMove={annotating ? onAnnMouseMove : undefined}
+              onMouseUp={annotating ? onAnnMouseUp : undefined}
             >
-              Fechar ✕
-            </button>
-            <img
-              src={snapshotURL(id!, snapshotEvent.time, snapshotEvent.frame)}
-              alt="snapshot de movimento"
-              className="w-full rounded-lg border border-gray-700"
-            />
+              <img
+                ref={annImgRef}
+                src={snapshotURL(id!, snapshotEvent.time, snapshotEvent.frame)}
+                alt="snapshot de movimento"
+                className={`w-full rounded-lg border border-gray-700 ${annotating ? 'cursor-crosshair' : ''}`}
+                draggable={false}
+              />
+              {/* Saved annotations overlay */}
+              {annotations.map(a => (
+                  <div
+                    key={a.id}
+                    className="absolute border-2 border-green-400 pointer-events-none"
+                    style={{
+                      left: `${a.bbox_x * 100}%`,
+                      top: `${a.bbox_y * 100}%`,
+                      width: `${a.bbox_w * 100}%`,
+                      height: `${a.bbox_h * 100}%`,
+                    }}
+                  >
+                    <span className="absolute -top-5 left-0 text-xs text-green-300 bg-black/60 px-1">{a.label}</span>
+                  </div>
+              ))}
+              {/* Draft bbox */}
+              {annDraft && annDraft.w > 0 && annDraft.h > 0 && (
+                <div
+                  className="absolute border-2 border-blue-400 bg-blue-400/10 pointer-events-none"
+                  style={{
+                    left: `${annDraft.x * 100}%`,
+                    top: `${annDraft.y * 100}%`,
+                    width: `${annDraft.w * 100}%`,
+                    height: `${annDraft.h * 100}%`,
+                  }}
+                />
+              )}
+            </div>
+
             <p className="mt-2 text-xs text-gray-400 text-center">
               {formatRecordingTime(snapshotEvent.time, timezone)} — score: {(snapshotEvent.score * 100).toFixed(1)}%
             </p>
+
+            {/* Annotation controls */}
+            {annotating && (
+              <div className="mt-3 space-y-2">
+                {annDraft && annDraft.w > 0.01 && annDraft.h > 0.01 && (
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                      placeholder="Label (ex: gato, pessoa…)"
+                      value={annLabel}
+                      onChange={e => setAnnLabel(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') saveAnnotation() }}
+                      autoFocus
+                    />
+                    <button
+                      className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded disabled:opacity-40"
+                      disabled={annLabel.trim() === ''}
+                      onClick={saveAnnotation}
+                    >
+                      Salvar
+                    </button>
+                  </div>
+                )}
+                {!annDraft && (
+                  <p className="text-xs text-gray-500 text-center">Arraste para desenhar a bounding box</p>
+                )}
+                {annotations.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {annotations.map(a => (
+                      <div key={a.id} className="flex items-center justify-between bg-gray-800 rounded px-2 py-1">
+                        <span className="text-sm text-green-300">{a.label}</span>
+                        <button
+                          className="text-gray-500 hover:text-red-400 text-xs"
+                          onClick={() => deleteAnnotation(a.id)}
+                        >
+                          remover
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

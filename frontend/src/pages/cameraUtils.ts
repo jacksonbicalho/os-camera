@@ -14,6 +14,17 @@ export interface MotionBBox {
   h: number
 }
 
+export interface Annotation {
+  id: number
+  event_id: number
+  label: string
+  bbox_x: number
+  bbox_y: number
+  bbox_w: number
+  bbox_h: number
+  created_at: string
+}
+
 export interface MotionEvent {
   id?: number
   time: string

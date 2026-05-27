@@ -1,0 +1,85 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"path/filepath"
+
+	"camera/internal/analysis"
+	"camera/internal/db"
+)
+
+func (s *Server) handleStartFinetune(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
+	cfg, err := db.GetVideoAnalysisConfig(s.db)
+	if err != nil || cfg.ServiceURL == "" {
+		http.Error(w, "analysis service not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	annotations, err := db.ListAllAnnotations(s.db)
+	if err != nil || len(annotations) == 0 {
+		http.Error(w, "no annotations available", http.StatusBadRequest)
+		return
+	}
+
+	items := make([]analysis.AnnotationItem, 0, len(annotations))
+	for _, a := range annotations {
+		ev, err := db.GetMotionEventByID(s.db, a.EventID)
+		if err != nil || ev.FramePath == "" {
+			continue
+		}
+		// FramePath is just the filename; reconstruct the full filesystem path.
+		datePart := ev.OccurredAt.UTC().Format("2006/01/02")
+		imagePath := filepath.Join(s.cfg.RecordingsPath, ev.CameraID, datePart, ev.FramePath)
+		items = append(items, analysis.AnnotationItem{
+			ImagePath: imagePath,
+			Label:     a.Label,
+			BboxX:     a.BboxX,
+			BboxY:     a.BboxY,
+			BboxW:     a.BboxW,
+			BboxH:     a.BboxH,
+		})
+	}
+	if len(items) == 0 {
+		http.Error(w, "no annotations with associated snapshots", http.StatusBadRequest)
+		return
+	}
+
+	client := analysis.NewClient(cfg.ServiceURL)
+	resp, err := client.Finetune(context.Background(), analysis.FinetuneRequest{
+		Annotations: items,
+		BaseModel:   cfg.Model,
+		Epochs:      20,
+	})
+	if err != nil {
+		http.Error(w, "finetune request failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) handleFinetuneStatus(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
+	cfg, err := db.GetVideoAnalysisConfig(s.db)
+	if err != nil || cfg.ServiceURL == "" {
+		http.Error(w, "analysis service not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	jobID := r.PathValue("job_id")
+	client := analysis.NewClient(cfg.ServiceURL)
+	status, err := client.FinetuneStatus(context.Background(), jobID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
+}
