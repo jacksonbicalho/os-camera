@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download the default model so first request doesn't block
-RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
+# Pre-download default models so first request doesn't block
+RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt'); YOLO('yolo11n.pt')"
 
 COPY main.py .
 

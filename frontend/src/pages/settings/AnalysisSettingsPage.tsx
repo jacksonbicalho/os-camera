@@ -10,7 +10,11 @@ interface AnalysisConfig {
   confidence_threshold: number
 }
 
-const MODELS = ['yolov8n', 'yolov8s', 'yolov8m', 'yolov8l', 'yolov8x']
+const MODELS = [
+  { group: 'YOLOv8',  names: ['yolov8n', 'yolov8s', 'yolov8m', 'yolov8l', 'yolov8x'] },
+  { group: 'YOLO11',  names: ['yolo11n', 'yolo11s', 'yolo11m', 'yolo11l', 'yolo11x'] },
+  { group: 'YOLO12',  names: ['yolo12n', 'yolo12s', 'yolo12m', 'yolo12l', 'yolo12x'] },
+]
 
 export default function AnalysisSettingsPage() {
   useSettings('/login')
@@ -92,8 +96,12 @@ export default function AnalysisSettingsPage() {
                   value={cfg.model}
                   onChange={e => setCfg(c => ({ ...c, model: e.target.value }))}
                 >
-                  {MODELS.map(m => (
-                    <option key={m} value={m}>{m}</option>
+                  {MODELS.map(({ group, names }) => (
+                    <optgroup key={group} label={group}>
+                      {names.map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">n = mais rápido · x = mais preciso</p>
