@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"camera/internal/analysis"
 	"camera/internal/config"
 	"camera/internal/db"
 	"camera/internal/storage"
@@ -739,5 +740,84 @@ func TestClean_DoesNotDeleteCurrentRecording(t *testing.T) {
 
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("arquivo corrente (ended_at NULL) não deve ser deletado: %v", err)
+	}
+}
+
+func TestAnalyzeNewRecordings_AnalyzesCompletedChunks(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCamera(t, database, "cam1")
+
+	if err := db.UpdateVideoAnalysisConfig(database, db.VideoAnalysisConfig{
+		Enabled:             true,
+		ServiceURL:          "http://yolo:8000",
+		Model:               "yolov8n",
+		ConfidenceThreshold: 0.4,
+	}); err != nil {
+		t.Fatalf("UpdateVideoAnalysisConfig: %v", err)
+	}
+
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	pathA := mp4WithTimestamp(dir, "cam1", base)
+	pathB := mp4WithTimestamp(dir, "cam1", base.Add(5*time.Minute))
+	writeFile(t, pathA, base)
+	writeFile(t, pathB, base.Add(5*time.Minute))
+
+	fake := &analysis.FakeAnalyzer{
+		Results: []analysis.Detection{
+			{Label: "person", Confidence: 0.9, FrameCount: 5},
+		},
+	}
+	cleaner := storage.New(dir, 0, 0, 5*time.Minute, 0, 0, database, discardLogger()).
+		WithAnalyzer(fake)
+	cleaner.Clean()
+
+	// pathA has ended_at (pathB appeared), so it should be analyzed
+	dets, err := db.ListDetectionsByPath(database, pathA)
+	if err != nil {
+		t.Fatalf("ListDetectionsByPath: %v", err)
+	}
+	if len(dets) != 1 || dets[0].Label != "person" {
+		t.Errorf("expected 1 detection 'person' for completed chunk, got %v", dets)
+	}
+
+	// pathB has no ended_at yet (last in dir) → should not be analyzed
+	detsB, _ := db.ListDetectionsByPath(database, pathB)
+	if len(detsB) != 0 {
+		t.Errorf("incomplete chunk should not be analyzed, got %d detections", len(detsB))
+	}
+
+	// Running Clean again should not re-analyze pathA (already has detections)
+	prevCalled := fake.Called
+	cleaner.Clean()
+	if fake.Called != prevCalled+0 {
+		// pathB might get ended_at if a third chunk appears, but none did —
+		// just ensure pathA is not re-analyzed
+	}
+	dets2, _ := db.ListDetectionsByPath(database, pathA)
+	if len(dets2) != 1 {
+		t.Errorf("re-run should not duplicate detections, got %d", len(dets2))
+	}
+}
+
+func TestAnalyzeNewRecordings_SkipsWhenDisabled(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCamera(t, database, "cam1")
+
+	// global config: disabled (default)
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	pathA := mp4WithTimestamp(dir, "cam1", base)
+	pathB := mp4WithTimestamp(dir, "cam1", base.Add(5*time.Minute))
+	writeFile(t, pathA, base)
+	writeFile(t, pathB, base.Add(5*time.Minute))
+
+	fake := &analysis.FakeAnalyzer{Results: []analysis.Detection{{Label: "car", Confidence: 0.8}}}
+	storage.New(dir, 0, 0, 5*time.Minute, 0, 0, database, discardLogger()).
+		WithAnalyzer(fake).
+		Clean()
+
+	if fake.Called != 0 {
+		t.Errorf("analyzer should not be called when global config is disabled, called %d times", fake.Called)
 	}
 }

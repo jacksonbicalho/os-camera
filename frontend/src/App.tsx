@@ -19,6 +19,8 @@ const AboutPage = lazy(() => import('./pages/settings/AboutPage'))
 const UsersSettingsPage = lazy(() => import('./pages/settings/UsersSettingsPage'))
 const UserDetailSettingsPage = lazy(() => import('./pages/settings/UserDetailSettingsPage'))
 const DiscoverPage = lazy(() => import('./pages/settings/DiscoverPage'))
+const AnalysisSettingsPage = lazy(() => import('./pages/settings/AnalysisSettingsPage'))
+const CameraAnalysisSettingsPage = lazy(() => import('./pages/settings/CameraAnalysisSettingsPage'))
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation()
@@ -49,6 +51,7 @@ export default function App() {
       <Route path="/settings/cameras/:id" element={<Lazy><CameraDetailSettingsPage /></Lazy>} />
       <Route path="/settings/cameras/:id/motion" element={<Lazy><CameraMotionSettingsPage /></Lazy>} />
       <Route path="/settings/cameras/:id/motion/zones" element={<Lazy><CameraZonesSettingsPage /></Lazy>} />
+      <Route path="/settings/cameras/:id/analysis" element={<Lazy><CameraAnalysisSettingsPage /></Lazy>} />
       <Route path="/settings/server" element={<Lazy><ServerSettingsPage /></Lazy>} />
       <Route path="/settings/storage" element={<Lazy><StorageSettingsPage /></Lazy>} />
       <Route path="/settings/system" element={<Lazy><SystemSettingsPage /></Lazy>} />
@@ -57,6 +60,7 @@ export default function App() {
       <Route path="/settings/users/new" element={<Lazy><UsersSettingsPage /></Lazy>} />
       <Route path="/settings/users/:id" element={<Lazy><UserDetailSettingsPage /></Lazy>} />
       <Route path="/settings/discover" element={<Lazy><DiscoverPage /></Lazy>} />
+      <Route path="/settings/analysis" element={<Lazy><AnalysisSettingsPage /></Lazy>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </SidebarItemsProvider>

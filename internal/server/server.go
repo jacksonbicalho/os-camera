@@ -293,6 +293,11 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("GET /api/retention", s.requireAdmin(s.handleListRetentionConfigs))
 	s.mux.HandleFunc("PUT /api/retention/{category}", s.requireAdmin(s.handleUpdateRetentionConfig))
 
+	s.mux.HandleFunc("GET /api/settings/analysis", s.requireAdmin(s.handleGetAnalysisConfig))
+	s.mux.HandleFunc("PUT /api/settings/analysis", s.requireAdmin(s.handleUpdateAnalysisConfig))
+	s.mux.HandleFunc("GET /api/settings/cameras/{id}/analysis", s.requireAdmin(s.handleGetCameraAnalysisConfig))
+	s.mux.HandleFunc("PUT /api/settings/cameras/{id}/analysis", s.requireAdmin(s.handleUpdateCameraAnalysisConfig))
+
 	streamHandler := http.StripPrefix("/stream/", http.FileServer(http.Dir(s.cfg.SegmentsPath)))
 	s.mux.Handle("/stream/", s.requireStreamAccess(streamHandler))
 
@@ -760,14 +765,20 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	// Collect UTC calendar days that overlap with this local day.
 	utcDays := utcDaysInRange(dayStart, dayEnd)
 
+	type recordingDetection struct {
+		Label      string  `json:"label"`
+		Confidence float64 `json:"confidence"`
+		FrameCount int     `json:"frame_count"`
+	}
 	type recording struct {
-		Filename    string    `json:"filename"`
-		Start       string    `json:"start"`
-		URL         string    `json:"url"`
-		IsRecording bool      `json:"is_recording"`
-		HasMotion   bool      `json:"has_motion"`
-		mtime       time.Time // not serialized; used to detect active recording
-		path        string    // not serialized; used for DB has_motion lookup
+		Filename    string               `json:"filename"`
+		Start       string               `json:"start"`
+		URL         string               `json:"url"`
+		IsRecording bool                 `json:"is_recording"`
+		HasMotion   bool                 `json:"has_motion"`
+		Detections  []recordingDetection `json:"detections,omitempty"`
+		mtime       time.Time            // not serialized; used to detect active recording
+		path        string               // not serialized; used for DB has_motion lookup
 	}
 
 	var all []recording
@@ -826,6 +837,25 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 			for i := range all {
 				if motionByPath[all[i].path] {
 					all[i].HasMotion = true
+				}
+			}
+		}
+	}
+
+	// Enrich detections from detections table.
+	if s.db != nil && len(all) > 0 {
+		paths := make([]string, len(all))
+		for i, r := range all {
+			paths[i] = r.path
+		}
+		if detsByPath, err := db.DetectionsByPaths(s.db, paths); err == nil {
+			for i := range all {
+				if dets := detsByPath[all[i].path]; len(dets) > 0 {
+					rd := make([]recordingDetection, len(dets))
+					for j, d := range dets {
+						rd[j] = recordingDetection{Label: d.Label, Confidence: d.Confidence, FrameCount: d.FrameCount}
+					}
+					all[i].Detections = rd
 				}
 			}
 		}

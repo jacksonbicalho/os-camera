@@ -8,6 +8,7 @@ const BASE_NAV_LINKS = [
   { to: "/settings/users", label: "Usuários" },
   { to: "/settings/server", label: "Servidor" },
   { to: "/settings/storage", label: "Armazenamento" },
+  { to: "/settings/analysis", label: "Análise de vídeo" },
   { to: "/settings/system", label: "Sistema" },
   { to: "/settings/about", label: "Sobre" },
 ];

@@ -9,12 +9,14 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"sync"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"camera/internal/analysis"
 	"camera/internal/db"
 )
 
@@ -28,6 +30,13 @@ type Cleaner struct {
 	db                   *db.DB
 	log                  *slog.Logger
 	forceCh              chan struct{}
+	analyzer             analysis.Analyzer
+	analyzeMu            sync.Mutex
+}
+
+func (c *Cleaner) WithAnalyzer(a analysis.Analyzer) *Cleaner {
+	c.analyzer = a
+	return c
 }
 
 func New(storagePath string, withMotionMinutes, withoutMotionMinutes int, chunkDuration time.Duration, maxSizeGB float64, warnPercent float64, database *db.DB, log *slog.Logger) *Cleaner {
@@ -593,10 +602,97 @@ func (c *Cleaner) cleanFromFS() {
 func (c *Cleaner) Clean() {
 	if c.db != nil {
 		c.syncRecordings()
+		c.analyzeNewRecordings()
 		c.cleanFromDB()
 	} else {
 		c.cleanFromFS()
 	}
+}
+
+func (c *Cleaner) analyzeNewRecordings() {
+	if c.db == nil {
+		return
+	}
+	cfg, err := db.GetVideoAnalysisConfig(c.db)
+	if err != nil {
+		c.log.Warn("analyzeNewRecordings: failed to read config", "err", err)
+		return
+	}
+	if !cfg.Enabled {
+		c.log.Debug("analyzeNewRecordings: skipped (disabled)")
+		return
+	}
+	if cfg.ServiceURL == "" {
+		c.log.Warn("analyzeNewRecordings: skipped (service_url not configured)")
+		return
+	}
+	analyzer := c.analyzer
+	if analyzer == nil {
+		analyzer = analysis.NewClient(cfg.ServiceURL)
+	}
+
+	rows, err := c.db.Query(`
+		SELECT r.id, r.camera_id, r.path
+		FROM recordings r
+		WHERE r.ended_at IS NOT NULL
+		AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)`)
+	if err != nil {
+		c.log.Warn("analyzeNewRecordings: query failed", "err", err)
+		return
+	}
+	type pending struct {
+		id       int64
+		cameraID string
+		path     string
+	}
+	var candidates []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.id, &p.cameraID, &p.path); err != nil {
+			continue
+		}
+		candidates = append(candidates, p)
+	}
+	rows.Close()
+
+	if len(candidates) == 0 {
+		c.log.Debug("analyzeNewRecordings: no pending recordings")
+		return
+	}
+	c.log.Info("analyzeNewRecordings: processing", "count", len(candidates))
+
+	var analyzed int
+	for _, p := range candidates {
+		enabled, err := db.GetCameraAnalysisEnabled(c.db, p.cameraID)
+		if err != nil || !enabled {
+			continue
+		}
+		dets, err := analyzer.Analyze(context.Background(), analysis.AnalyzeRequest{
+			Path:                p.path,
+			Model:               cfg.Model,
+			ConfidenceThreshold: cfg.ConfidenceThreshold,
+		})
+		if err != nil {
+			c.log.Warn("analyzeNewRecordings: analyze failed", "path", p.path, "err", err)
+			continue
+		}
+		if len(dets) == 0 {
+			// Insert a sentinel (label="") so this recording is not retried.
+			_ = db.InsertDetections(c.db, p.path, []db.Detection{{Label: "", Confidence: 0, FrameCount: 0}})
+			analyzed++
+			continue
+		}
+		dbDets := make([]db.Detection, len(dets))
+		for i, d := range dets {
+			dbDets[i] = db.Detection{Label: d.Label, Confidence: d.Confidence, FrameCount: d.FrameCount}
+		}
+		if err := db.InsertDetections(c.db, p.path, dbDets); err != nil {
+			c.log.Warn("analyzeNewRecordings: insert detections failed", "path", p.path, "err", err)
+		} else {
+			analyzed++
+		}
+	}
+	c.log.Info("analyzeNewRecordings: done", "analyzed", analyzed, "total", len(candidates))
 }
 
 func (c *Cleaner) CheckSize() {
@@ -664,6 +760,12 @@ func (c *Cleaner) Run(ctx context.Context, defaultInterval time.Duration) {
 		case <-ticker.C:
 			if c.db != nil {
 				c.syncRecordings()
+				if c.analyzeMu.TryLock() {
+					go func() {
+						defer c.analyzeMu.Unlock()
+						c.analyzeNewRecordings()
+					}()
+				}
 			}
 			if time.Since(lastClean) >= c.effectiveInterval(defaultInterval) {
 				c.Clean()
