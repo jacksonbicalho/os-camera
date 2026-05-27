@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"sync"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -30,6 +31,7 @@ type Cleaner struct {
 	log                  *slog.Logger
 	forceCh              chan struct{}
 	analyzer             analysis.Analyzer
+	analyzeMu            sync.Mutex
 }
 
 func (c *Cleaner) WithAnalyzer(a analysis.Analyzer) *Cleaner {
@@ -752,7 +754,12 @@ func (c *Cleaner) Run(ctx context.Context, defaultInterval time.Duration) {
 		case <-ticker.C:
 			if c.db != nil {
 				c.syncRecordings()
-				c.analyzeNewRecordings()
+				if c.analyzeMu.TryLock() {
+					go func() {
+						defer c.analyzeMu.Unlock()
+						c.analyzeNewRecordings()
+					}()
+				}
 			}
 			if time.Since(lastClean) >= c.effectiveInterval(defaultInterval) {
 				c.Clean()
