@@ -155,6 +155,8 @@ export default function CameraPage() {
   const visibleEventsRef = useRef<typeof visibleEvents>([])
   const continuousPlayRef = useRef(continuousPlay)
   const recordingsDisplayPageRef = useRef(recordingsDisplayPage)
+  const eventsPageRef = useRef(eventsPage)
+  const sortedEventsRef = useRef<MotionEvent[]>([])
   const pendingEventRef = useRef<string | null>(
     (location.state as { eventTime?: string } | null)?.eventTime ?? null
   )
@@ -231,8 +233,18 @@ export default function CameraPage() {
   useEffect(() => {
     if (activeEventTime === null) return
     if (continuousPlayRef.current) return
+    const idx = activeEventId !== null
+      ? sortedEventsRef.current.findIndex(e => e.id === activeEventId)
+      : sortedEventsRef.current.findIndex(e => e.time === activeEventTime)
+    if (idx >= 0) {
+      const neededPage = Math.ceil((idx + 1) / PAGE_SIZE)
+      if (neededPage > eventsPageRef.current) {
+        setEventsPage(neededPage)
+        return
+      }
+    }
     activeEventItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [activeEventTime, scrollNonce])
+  }, [activeEventTime, activeEventId, eventsPage, scrollNonce])
 
   const activeRecordingFilename = activeRecording?.filename
   useEffect(() => {
@@ -614,8 +626,10 @@ function toggleFullscreen() {
   // Keep refs in sync for use inside onEnded (avoids stale closure)
   activeEventTimeRef.current = activeEventTime
   visibleEventsRef.current = visibleEvents
+  sortedEventsRef.current = sortedEvents
   continuousPlayRef.current = continuousPlay
   recordingsDisplayPageRef.current = recordingsDisplayPage
+  eventsPageRef.current = eventsPage
 
   return (
     <AppLayout fill mainClassName="w-full p-3">
