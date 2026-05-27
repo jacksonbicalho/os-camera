@@ -322,7 +322,6 @@ export default function CameraPage() {
 
   useEffect(() => {
     if (activeEventTime === null) return
-    if (continuousPlayRef.current) return
     const idx = activeEventId !== null
       ? sortedEventsRef.current.findIndex(e => e.id === activeEventId)
       : sortedEventsRef.current.findIndex(e => e.time === activeEventTime)
@@ -963,7 +962,6 @@ function toggleFullscreen() {
                         const displayedCount = recordingsDisplayPageRef.current * PAGE_SIZE
                         const isVisible = recordingsRef.current.slice(0, displayedCount).some(r => r.filename === next.filename)
                         if (!isVisible) setRecordingsDisplayPage(p => p + 1)
-                        skipNextRecordingScrollRef.current = true
                         setActiveRecording(next)
                       }
                     }}
