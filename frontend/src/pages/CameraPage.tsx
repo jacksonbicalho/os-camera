@@ -129,6 +129,7 @@ export default function CameraPage() {
   const [recPlayBlocked, setRecPlayBlocked] = useState(false)
   const [lastFrameDataUrl, setLastFrameDataUrl] = useState<string | null>(null)
   const [snapshotEvent, setSnapshotEvent] = useState<MotionEvent | null>(null)
+  const [detectionModal, setDetectionModal] = useState<Array<{ label: string; confidence: number; frame_count: number }> | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const [showDebug, setShowDebug] = useState(false)
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false)
@@ -1174,20 +1175,9 @@ function toggleFullscreen() {
                                 onClick={() => !rec.is_recording && setActiveRecording(rec)}
                                 className="flex-1 flex items-center justify-between text-left disabled:cursor-not-allowed"
                               >
-                                <div className="flex flex-col min-w-0">
-                                  <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
-                                    {formatRecordingTime(rec.start, timezone)}
-                                  </span>
-                                  {rec.labels && rec.labels.length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mt-0.5">
-                                      {rec.labels.map(lbl => (
-                                        <span key={lbl} className="text-[10px] px-1.5 py-0.5 rounded bg-violet-900/60 text-violet-300 border border-violet-700/50">
-                                          {lbl}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
+                                <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
+                                  {formatRecordingTime(rec.start, timezone)}
+                                </span>
                                 <div className="flex items-center gap-2 shrink-0 ml-2">
                                   {hasMotion && (
                                     <span className="w-2 h-2 rounded-full bg-orange-400" title="Movimento detectado" />
@@ -1227,6 +1217,7 @@ function toggleFullscreen() {
                       {visibleEvents.map((ev, i) => {
                         const isActive = activeEventIdx === i
                         const thumbURL = ev.frame ? snapshotURL(id!, ev.time, ev.frame) : null
+                        const recDets = recordings.filter(r => r.start <= ev.time).sort((a, b) => b.start.localeCompare(a.start))[0]?.detections
                         return (
                           <button
                             key={ev.id ?? `${ev.time}-${i}`}
@@ -1263,6 +1254,15 @@ function toggleFullscreen() {
                                 />
                               )}
                             </div>
+                            {recDets && recDets.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1" onClick={e => { e.stopPropagation(); setDetectionModal(recDets) }}>
+                                {recDets.map(d => (
+                                  <span key={d.label} className="text-[10px] px-1.5 py-0.5 rounded bg-violet-900/60 text-violet-300 border border-violet-700/50 cursor-pointer hover:bg-violet-800/60">
+                                    {d.label}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </button>
                         )
                       })}
@@ -1284,6 +1284,37 @@ function toggleFullscreen() {
             maxHeight={playerHeight}
           />
         </div>
+
+      {detectionModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setDetectionModal(null)}
+        >
+          <div
+            className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-72 p-5"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-200">Detecções de objetos</h3>
+              <button
+                onClick={() => setDetectionModal(null)}
+                className="text-gray-500 hover:text-gray-300 text-lg leading-none"
+              >✕</button>
+            </div>
+            <div className="space-y-2">
+              {detectionModal.map(d => (
+                <div key={d.label} className="flex items-center justify-between">
+                  <span className="text-sm text-violet-300 font-medium">{d.label}</span>
+                  <div className="flex items-center gap-3 text-xs text-gray-400">
+                    <span>{(d.confidence * 100).toFixed(1)}%</span>
+                    <span>{d.frame_count} frames</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {snapshotEvent && snapshotEvent.frame && (
         <div

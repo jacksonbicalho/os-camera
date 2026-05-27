@@ -765,15 +765,20 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	// Collect UTC calendar days that overlap with this local day.
 	utcDays := utcDaysInRange(dayStart, dayEnd)
 
+	type recordingDetection struct {
+		Label      string  `json:"label"`
+		Confidence float64 `json:"confidence"`
+		FrameCount int     `json:"frame_count"`
+	}
 	type recording struct {
-		Filename    string    `json:"filename"`
-		Start       string    `json:"start"`
-		URL         string    `json:"url"`
-		IsRecording bool      `json:"is_recording"`
-		HasMotion   bool      `json:"has_motion"`
-		Labels      []string  `json:"labels,omitempty"`
-		mtime       time.Time // not serialized; used to detect active recording
-		path        string    // not serialized; used for DB has_motion lookup
+		Filename    string               `json:"filename"`
+		Start       string               `json:"start"`
+		URL         string               `json:"url"`
+		IsRecording bool                 `json:"is_recording"`
+		HasMotion   bool                 `json:"has_motion"`
+		Detections  []recordingDetection `json:"detections,omitempty"`
+		mtime       time.Time            // not serialized; used to detect active recording
+		path        string               // not serialized; used for DB has_motion lookup
 	}
 
 	var all []recording
@@ -837,16 +842,20 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Enrich labels from detections table.
+	// Enrich detections from detections table.
 	if s.db != nil && len(all) > 0 {
 		paths := make([]string, len(all))
 		for i, r := range all {
 			paths[i] = r.path
 		}
-		if labelsByPath, err := db.DetectionLabelsByPaths(s.db, paths); err == nil {
+		if detsByPath, err := db.DetectionsByPaths(s.db, paths); err == nil {
 			for i := range all {
-				if lbls := labelsByPath[all[i].path]; len(lbls) > 0 {
-					all[i].Labels = lbls
+				if dets := detsByPath[all[i].path]; len(dets) > 0 {
+					rd := make([]recordingDetection, len(dets))
+					for j, d := range dets {
+						rd[j] = recordingDetection{Label: d.Label, Confidence: d.Confidence, FrameCount: d.FrameCount}
+					}
+					all[i].Detections = rd
 				}
 			}
 		}

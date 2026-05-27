@@ -87,6 +87,46 @@ func InsertDetections(d *DB, path string, detections []Detection) error {
 	return nil
 }
 
+func DetectionsByPaths(d *DB, paths []string) (map[string][]Detection, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(paths))
+	args := make([]any, len(paths))
+	for i, p := range paths {
+		placeholders[i] = "?"
+		args[i] = p
+	}
+	rows, err := d.Query(`
+		SELECT rec.path, det.label, det.confidence, det.frame_count
+		FROM detections det
+		JOIN recordings rec ON rec.id = det.recording_id
+		WHERE rec.path IN (`+strings.Join(placeholders, ",")+`)
+		AND det.label != ''
+		ORDER BY det.confidence DESC`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string][]Detection{}
+	seen := map[string]map[string]bool{}
+	for rows.Next() {
+		var path string
+		var det Detection
+		if err := rows.Scan(&path, &det.Label, &det.Confidence, &det.FrameCount); err != nil {
+			return nil, err
+		}
+		if seen[path] == nil {
+			seen[path] = map[string]bool{}
+		}
+		if !seen[path][det.Label] {
+			seen[path][det.Label] = true
+			result[path] = append(result[path], det)
+		}
+	}
+	return result, rows.Err()
+}
+
 func DetectionLabelsByPaths(d *DB, paths []string) (map[string][]string, error) {
 	if len(paths) == 0 {
 		return nil, nil
@@ -102,6 +142,7 @@ func DetectionLabelsByPaths(d *DB, paths []string) (map[string][]string, error) 
 		FROM detections det
 		JOIN recordings rec ON rec.id = det.recording_id
 		WHERE rec.path IN (`+strings.Join(placeholders, ",")+`)
+		AND det.label != ''
 		ORDER BY det.confidence DESC`, args...)
 	if err != nil {
 		return nil, err

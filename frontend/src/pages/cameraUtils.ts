@@ -4,7 +4,7 @@ export interface Recording {
   url: string
   is_recording: boolean
   has_motion: boolean
-  labels?: string[]
+  detections?: Array<{ label: string; confidence: number; frame_count: number }>
 }
 
 export interface MotionBBox {

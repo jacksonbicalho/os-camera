@@ -661,6 +661,7 @@ func (c *Cleaner) analyzeNewRecordings() {
 	}
 	c.log.Info("analyzeNewRecordings: processing", "count", len(candidates))
 
+	var analyzed int
 	for _, p := range candidates {
 		enabled, err := db.GetCameraAnalysisEnabled(c.db, p.cameraID)
 		if err != nil || !enabled {
@@ -676,7 +677,9 @@ func (c *Cleaner) analyzeNewRecordings() {
 			continue
 		}
 		if len(dets) == 0 {
-			// Insert a sentinel so we don't retry empty results
+			// Insert a sentinel (label="") so this recording is not retried.
+			_ = db.InsertDetections(c.db, p.path, []db.Detection{{Label: "", Confidence: 0, FrameCount: 0}})
+			analyzed++
 			continue
 		}
 		dbDets := make([]db.Detection, len(dets))
@@ -685,8 +688,11 @@ func (c *Cleaner) analyzeNewRecordings() {
 		}
 		if err := db.InsertDetections(c.db, p.path, dbDets); err != nil {
 			c.log.Warn("analyzeNewRecordings: insert detections failed", "path", p.path, "err", err)
+		} else {
+			analyzed++
 		}
 	}
+	c.log.Info("analyzeNewRecordings: done", "analyzed", analyzed, "total", len(candidates))
 }
 
 func (c *Cleaner) CheckSize() {
