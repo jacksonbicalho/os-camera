@@ -737,6 +737,7 @@ func (c *Cleaner) Run(ctx context.Context, defaultInterval time.Duration) {
 		case <-ticker.C:
 			if c.db != nil {
 				c.syncRecordings()
+				c.analyzeNewRecordings()
 			}
 			if time.Since(lastClean) >= c.effectiveInterval(defaultInterval) {
 				c.Clean()
