@@ -1181,7 +1181,7 @@ function toggleFullscreen() {
                     selected={selectedDate}
                     month={calendarMonth}
                     onMonthChange={setCalendarMonth}
-                    onSelect={d => { if (d) { setSelectedDate(d); setCalendarMonth(d); setActivePanel(null) } }}
+                    onSelect={d => { if (d) { setSelectedDate(d); setCalendarMonth(d) } }}
                     locale={ptBR}
                     classNames={{
                       root: 'text-gray-200 text-sm',
