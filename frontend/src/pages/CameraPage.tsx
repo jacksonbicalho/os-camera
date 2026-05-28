@@ -41,12 +41,12 @@ async function loadRecordingsData(cameraId: string, date: Date, page: number, or
   return res.json()
 }
 
-async function deleteRecording(cameraId: string, filename: string): Promise<boolean> {
+async function deleteRecording(cameraId: string, filename: string): Promise<{ ok: boolean; serverError: boolean }> {
   const res = await fetch(`/api/cameras/${cameraId}/recordings/${filename}`, {
     method: 'DELETE',
     headers: authHeaders(),
   })
-  return res.status === 204
+  return { ok: res.status === 204, serverError: res.status >= 500 }
 }
 
 async function loadMotionEvents(cameraId: string, date: Date): Promise<MotionEvent[]> {
@@ -149,6 +149,7 @@ export default function CameraPage() {
   const annImgRef = useRef<HTMLImageElement>(null)
   const [detectionModal, setDetectionModal] = useState<Array<{ label: string; confidence: number; frame_count: number }> | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [showDebug, setShowDebug] = useState(false)
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false)
   const [debugStats, setDebugStats] = useState<{ fps: number; dropped: number; hlsStats: HLSStats | null; lagMs: number } | null>(null)
@@ -513,12 +514,13 @@ export default function CameraPage() {
 
   async function handleConfirmDelete() {
     if (!deleteTarget) return
+    const target = deleteTarget
     setDeleteTarget(null)
-    const ok = await deleteRecording(id!, deleteTarget.rec.filename)
-    if (ok) {
-      if (activeRecording?.filename === deleteTarget.rec.filename) setActiveRecording(null)
-      await reloadRecordingsAndEvents()
-    }
+    setDeleteError(null)
+    const { ok, serverError } = await deleteRecording(id!, target.rec.filename)
+    if (ok && activeRecording?.filename === target.rec.filename) setActiveRecording(null)
+    if (serverError) setDeleteError('Erro ao excluir gravação. Tente novamente.')
+    await reloadRecordingsAndEvents()
   }
 
   function playEventAt(ev: MotionEvent, recs: Recording[] = recordings, skipScroll = false) {
@@ -1503,6 +1505,12 @@ function toggleFullscreen() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {deleteError && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-red-900/90 border border-red-700 rounded text-sm text-red-200 shadow-lg">
+          {deleteError}
         </div>
       )}
 

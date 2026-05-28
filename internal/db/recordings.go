@@ -105,6 +105,13 @@ func DeleteRecording(db *DB, path string) error {
 	return err
 }
 
+// DeleteRecordingByStartedAt removes the recording row for a camera that started at the given time.
+func DeleteRecordingByStartedAt(db *DB, cameraID string, startedAt time.Time) error {
+	_, err := db.Exec(`DELETE FROM recordings WHERE camera_id=? AND started_at=?`,
+		cameraID, startedAt.UTC().Format(time.RFC3339))
+	return err
+}
+
 // SizeByCamera returns the total size in bytes per camera, ordered by camera_id.
 func SizeByCamera(db *DB) (map[string]int64, error) {
 	rows, err := db.Query(`SELECT camera_id, SUM(size_bytes) FROM recordings GROUP BY camera_id`)
