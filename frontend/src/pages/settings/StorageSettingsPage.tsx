@@ -211,15 +211,43 @@ export default function StorageSettingsPage() {
       <h3 className="text-lg font-semibold text-gray-200">Armazenamento</h3>
       <p className="text-sm text-gray-500 mt-1 mb-6">Retenção, limpeza automática e espaço em disco.</p>
 
-      {s && (
-        <div className="bg-gray-800 rounded-lg px-4 py-3 mb-4 flex items-center gap-3">
-          <span className="text-xs text-gray-500 w-28 shrink-0">Diretório</span>
-          <span className="text-sm text-gray-300">{s.path || '—'}</span>
-        </div>
-      )}
-
       {form ? (
         <div className="space-y-2 mb-4">
+          {/* Diretório + Máximo + Alerta + Intervalo */}
+          <div className="bg-gray-800 rounded-lg px-4 py-3 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-x-8 gap-y-3 items-start">
+            <div>
+              <span className="block text-xs text-gray-500 mb-1">Diretório</span>
+              <span className="text-sm text-gray-300 break-all">{s?.path || '—'}</span>
+            </div>
+            <div>
+              <span className="block text-xs text-gray-500 mb-1">Máximo (GB)</span>
+              <div className="flex items-center gap-2">
+                <input type="number" min={0} step={0.1}
+                  className="w-20 bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500"
+                  value={form.maxSizeGB}
+                  onChange={e => set({ maxSizeGB: Number(e.target.value) })}
+                />
+                <span className="text-xs text-gray-500 whitespace-nowrap">0 = off</span>
+              </div>
+            </div>
+            <div>
+              <span className="block text-xs text-gray-500 mb-1">Alerta (%)</span>
+              <input type="number" min={0} max={100}
+                className="w-20 bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500"
+                value={form.warnPercent}
+                onChange={e => set({ warnPercent: Number(e.target.value) })}
+              />
+            </div>
+            <div>
+              <span className="block text-xs text-gray-500 mb-1">Intervalo de verificação</span>
+              <DurationInput
+                value={form.intervalValue} unit={form.intervalUnit}
+                onValueChange={v => set({ intervalValue: v })}
+                onUnitChange={u => set({ intervalUnit: u })}
+              />
+            </div>
+          </div>
+
           {/* Retention rows */}
           {([
             { label: 'Com movimento',  vk: 'withMotionValue',    uk: 'withMotionUnit',    cat: 'with_motion' },
@@ -227,64 +255,43 @@ export default function StorageSettingsPage() {
           ] as const).map(({ label, vk, uk, cat }) => {
             const rc = retentionFor(cat)
             return (
-              <div key={cat} className="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-3 flex-wrap">
-                <span className="text-sm text-gray-400 w-28 shrink-0">{label}</span>
-                <DurationInput
-                  value={form[vk]}
-                  unit={form[uk]}
-                  onValueChange={v => set({ [vk]: v })}
-                  onUnitChange={u => set({ [uk]: u })}
-                />
-                <span className="text-xs text-gray-500 mx-1">→ ao expirar</span>
-                <select
-                  className="bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600"
-                  value={rc.action}
-                  onChange={e => handleRetentionChange(cat, e.target.value, e.target.value === 'delete' ? '' : (rc.drive_id || drives[0]?.id || ''))}
-                >
-                  <option value="delete">Apagar</option>
-                  <option value="send_to_drive" disabled={drives.length === 0}>Enviar para drive</option>
-                </select>
-                {rc.action === 'send_to_drive' && (
+              <div key={cat} className="bg-gray-800 rounded-lg px-4 py-3 grid grid-cols-1 sm:grid-cols-[auto_auto_auto] gap-x-6 gap-y-3 items-start">
+                <div>
+                  <span className="block text-xs text-gray-500 mb-1">{label}</span>
+                  <DurationInput
+                    value={form[vk]}
+                    unit={form[uk]}
+                    onValueChange={v => set({ [vk]: v })}
+                    onUnitChange={u => set({ [uk]: u })}
+                  />
+                </div>
+                <div>
+                  <span className="block text-xs text-gray-500 mb-1">Ao expirar</span>
                   <select
                     className="bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600"
-                    value={rc.drive_id}
-                    onChange={e => handleRetentionChange(cat, 'send_to_drive', e.target.value)}
+                    value={rc.action}
+                    onChange={e => handleRetentionChange(cat, e.target.value, e.target.value === 'delete' ? '' : (rc.drive_id || drives[0]?.id || ''))}
                   >
-                    <option value="">Selecionar drive...</option>
-                    {drives.map(dr => <option key={dr.id} value={dr.id}>{dr.name}</option>)}
+                    <option value="delete">Apagar</option>
+                    <option value="send_to_drive" disabled={drives.length === 0}>Enviar para drive</option>
                   </select>
+                </div>
+                {rc.action === 'send_to_drive' && (
+                  <div>
+                    <span className="block text-xs text-gray-500 mb-1">Drive</span>
+                    <select
+                      className="bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600"
+                      value={rc.drive_id}
+                      onChange={e => handleRetentionChange(cat, 'send_to_drive', e.target.value)}
+                    >
+                      <option value="">Selecionar drive...</option>
+                      {drives.map(dr => <option key={dr.id} value={dr.id}>{dr.name}</option>)}
+                    </select>
+                  </div>
                 )}
               </div>
             )
           })}
-
-          <div className="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-3">
-            <span className="text-sm text-gray-400 w-28 shrink-0">Intervalo cleaner</span>
-            <DurationInput
-              value={form.intervalValue} unit={form.intervalUnit}
-              onValueChange={v => set({ intervalValue: v })}
-              onUnitChange={u => set({ intervalUnit: u })}
-            />
-          </div>
-
-          <div className="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-3">
-            <span className="text-sm text-gray-400 w-28 shrink-0">Máximo (GB)</span>
-            <input type="number" min={0} step={0.1}
-              className="w-20 bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500"
-              value={form.maxSizeGB}
-              onChange={e => set({ maxSizeGB: Number(e.target.value) })}
-            />
-            <span className="text-xs text-gray-500">0 = desativado</span>
-          </div>
-
-          <div className="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-3">
-            <span className="text-sm text-gray-400 w-28 shrink-0">Alerta (%)</span>
-            <input type="number" min={0} max={100}
-              className="w-20 bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500"
-              value={form.warnPercent}
-              onChange={e => set({ warnPercent: Number(e.target.value) })}
-            />
-          </div>
 
           <div className="flex justify-end items-center gap-3 pt-1">
             {storageSaved && <span className="text-xs text-green-400">Salvo</span>}

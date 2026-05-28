@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
-import { useNavigate, Link, NavLink } from "react-router-dom"
-import { clearToken } from "../auth"
+import { useNavigate, useLocation, Link, NavLink } from "react-router-dom"
+import { clearToken, getRole } from "../auth"
 import { useNotifications } from "../contexts/NotificationContext"
 import { useSidebarItems, type SidebarItem, type SidebarDropdownOption } from "../contexts/SidebarContext"
 import { formatDistanceToNow } from "date-fns"
@@ -200,11 +200,33 @@ function NavIcon({ to, title, children, end }: { to: string; title: string; chil
   )
 }
 
+const ADMIN_SETTINGS_LINKS = [
+  { to: "/settings/cameras",  label: "Câmeras" },
+  { to: "/settings/discover", label: "Rastrear câmeras" },
+  { to: "/settings/users",    label: "Usuários" },
+  { to: "/settings/server",   label: "Servidor" },
+  { to: "/settings/storage",  label: "Armazenamento" },
+  { to: "/settings/analysis", label: "Análise de vídeo" },
+  { to: "/settings/system",   label: "Sistema" },
+  { to: "/settings/about",    label: "Sobre" },
+]
+
+const VIEWER_SETTINGS_LINKS = ADMIN_SETTINGS_LINKS.filter(
+  l => l.to === "/settings/cameras" || l.to === "/settings/about"
+)
+
 export default function Sidebar({ username = "usuário" }: SidebarProps) {
+  const location = useLocation()
   const bellPanelRef = useRef<HTMLDivElement>(null)
   const { open: userOpen, setOpen: setUserOpen, ref: userRef } = useDropdown()
   const { open: bellOpen, setOpen: setBellOpen, ref: bellRef } = useDropdown(bellPanelRef)
   const { open: kebabOpen, setOpen: setKebabOpen, ref: kebabRef } = useDropdown()
+  const settingsPanelRef = useRef<HTMLDivElement>(null)
+  const { open: settingsOpen, setOpen: setSettingsOpen, ref: settingsRef } = useDropdown(settingsPanelRef)
+  const settingsButtonRef = useRef<HTMLButtonElement>(null)
+  const [settingsPos, setSettingsPos] = useState({ bottom: 0, left: 0 })
+  const settingsLinks = getRole() === "admin" ? ADMIN_SETTINGS_LINKS : VIEWER_SETTINGS_LINKS
+  const settingsActive = location.pathname.startsWith("/settings")
 
   const {
     notifications, unreadCount,
@@ -280,14 +302,19 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
       {/* Logo */}
       <Link
         to="/"
-        className="flex items-center justify-center h-14 text-white hover:text-gray-300 transition-colors border-b border-gray-800 flex-none"
-        title="Camera"
+        className="flex items-center justify-center h-14 hover:opacity-80 transition-opacity border-b border-gray-800 flex-none"
+        title="os-camera"
       >
-        <h1 className="sr-only">Camera</h1>
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-            d="M15 10l4.553-2.276A1 1 0 0121 8.723v6.554a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"
-          />
+        <h1 className="sr-only">os-camera</h1>
+        <svg className="w-8 h-8" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+          <rect width="512" height="512" rx="112" fill="#18181b"/>
+          <rect x="68" y="172" width="376" height="252" rx="36" fill="#09090b" stroke="#f59e0b" strokeWidth="20"/>
+          <path d="M188 172 L188 132 Q188 112 208 112 L304 112 Q324 112 324 132 L324 172"
+                fill="#09090b" stroke="#f59e0b" strokeWidth="20" strokeLinejoin="round"/>
+          <circle cx="256" cy="298" r="90" fill="#09090b" stroke="#f59e0b" strokeWidth="20"/>
+          <circle cx="256" cy="298" r="56" fill="#09090b" stroke="#f59e0b" strokeWidth="12"/>
+          <circle cx="256" cy="298" r="26" fill="#f59e0b"/>
+          <circle cx="394" cy="216" r="18" fill="#ef4444"/>
         </svg>
       </Link>
 
@@ -485,22 +512,55 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
         </NavIcon>
 
         {/* Settings */}
-        <NavLink
-          to="/settings/cameras"
-          title="Configurações"
-          className={({ isActive }) =>
-            `relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
-              isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-            }`
-          }
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-            />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </NavLink>
+        <div ref={settingsRef}>
+          <button
+            ref={settingsButtonRef}
+            onClick={() => {
+              if (settingsButtonRef.current) {
+                const r = settingsButtonRef.current.getBoundingClientRect()
+                setSettingsPos({ bottom: window.innerHeight - r.bottom, left: r.right + 8 })
+              }
+              setSettingsOpen(v => !v)
+            }}
+            title="Configurações"
+            className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
+              settingsActive || settingsOpen
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+            }`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
+        {settingsOpen && createPortal(
+          <div
+            ref={settingsPanelRef}
+            style={{ position: 'fixed', bottom: settingsPos.bottom, left: settingsPos.left, zIndex: 9999 }}
+            className="w-48 bg-gray-800 border border-gray-700 rounded shadow-lg"
+          >
+            <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-700 font-medium">Configurações</div>
+            {settingsLinks.map(({ to, label }) => (
+              <Link
+                key={to}
+                to={to}
+                onClick={() => setSettingsOpen(false)}
+                className={`block px-3 py-2 text-sm transition-colors ${
+                  location.pathname.startsWith(to)
+                    ? 'bg-gray-700 text-white'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                }`}
+              >
+                {label}
+              </Link>
+            ))}
+          </div>,
+          document.body
+        )}
 
         {/* User */}
         <div className="relative" ref={userRef}>

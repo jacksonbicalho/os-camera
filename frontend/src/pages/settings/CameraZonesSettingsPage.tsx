@@ -564,7 +564,7 @@ export default function CameraZonesSettingsPage() {
   const selectedZone = selectedIdx !== null ? zones[selectedIdx] : null
 
   return (
-    <SettingsLayout wide>
+    <SettingsLayout>
       <CameraSettingsTabs id={id!} active="zones" camName={cam?.name} />
 
       {isAdmin && (
