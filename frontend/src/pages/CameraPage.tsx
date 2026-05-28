@@ -81,14 +81,19 @@ function formatRecordingDateTime(isoString: string, timezone: string): string {
 }
 
 export default function CameraPage() {
-  const { id } = useParams<{ id: string }>()
+  const { id, date: urlDate, filename: urlFilename } = useParams<{ id: string; date?: string; filename?: string }>()
   const navigate = useNavigate()
   const location = useLocation()
+  const isLiveRoute = location.pathname.startsWith('/camera/live/')
   const isAdmin = getRole() === 'admin'
   const [timezone, setTimezone] = useState('UTC')
   const [playbackLeadSeconds, setPlaybackLeadSeconds] = useState(10)
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
-    const state = location.state as { eventTime?: string } | null
+    if (urlDate) {
+      const [y, m, d] = urlDate.split('-').map(Number)
+      return new Date(y, m - 1, d)
+    }
+    const state = isLiveRoute ? null : (location.state as { eventTime?: string } | null)
     if (state?.eventTime) {
       const t = new Date(state.eventTime)
       return new Date(t.getFullYear(), t.getMonth(), t.getDate())
@@ -96,7 +101,11 @@ export default function CameraPage() {
     return new Date()
   })
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
-    const state = location.state as { eventTime?: string } | null
+    if (urlDate) {
+      const [y, m] = urlDate.split('-').map(Number)
+      return new Date(y, m - 1, 1)
+    }
+    const state = isLiveRoute ? null : (location.state as { eventTime?: string } | null)
     if (state?.eventTime) {
       const t = new Date(state.eventTime)
       return new Date(t.getFullYear(), t.getMonth(), 1)
@@ -110,6 +119,8 @@ export default function CameraPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [motionEvents, setMotionEvents] = useState<MotionEvent[]>([])
   const [activePanel, setActivePanel] = useState<null | 'recordings' | 'events' | 'calendar'>(() => {
+    if (urlFilename) return 'recordings'
+    if (isLiveRoute) return null
     const state = location.state as { eventTime?: string } | null
     return state?.eventTime ? 'events' : null
   })
@@ -166,10 +177,11 @@ export default function CameraPage() {
   const eventsPageRef = useRef(eventsPage)
   const sortedEventsRef = useRef<MotionEvent[]>([])
   const pendingEventRef = useRef<string | null>(
-    (location.state as { eventTime?: string } | null)?.eventTime ?? null
+    isLiveRoute ? null : (location.state as { eventTime?: string } | null)?.eventTime ?? null
   )
   // Tracks the eventTime already handled on mount so we skip re-processing it
   const handledEventRef = useRef<string | null>(pendingEventRef.current)
+  const isFirstLoadRef = useRef(true)
 
   useEffect(() => { recordingsRef.current = recordings }, [recordings])
   useEffect(() => { allMotionEventsRef.current = motionEvents }, [motionEvents])
@@ -293,7 +305,7 @@ export default function CameraPage() {
       const idx = activeRecording ? sorted.findIndex(r => r.filename === activeRecording.filename) : -1
       const nextIdx = e.key === 'ArrowDown' ? idx + 1 : idx - 1
       if (nextIdx < 0 || nextIdx >= sorted.length) return
-      setActiveRecording(sorted[nextIdx])
+      openRecording(sorted[nextIdx])
       setActiveEventTime(null)
       setActiveEventId(null)
       setScrollNonce(n => n + 1)
@@ -356,6 +368,7 @@ export default function CameraPage() {
 
   // Handles same-route navigation (component doesn't remount when already on this camera)
   useEffect(() => {
+    if (isLiveRoute) return
     const state = location.state as { eventTime?: string } | null
     if (!state?.eventTime) return
     if (handledEventRef.current === state.eventTime) return // already handled by lazy init
@@ -364,7 +377,7 @@ export default function CameraPage() {
     const t = new Date(state.eventTime)
     setSelectedDate(new Date(t.getFullYear(), t.getMonth(), t.getDate()))
     setActivePanel('events')
-  }, [location.state])
+  }, [location.state, isLiveRoute])
 
   useEffect(() => {
     fetch('/api/config')
@@ -386,6 +399,9 @@ export default function CameraPage() {
   }, [id])
 
   useEffect(() => {
+    const isFirst = isFirstLoadRef.current
+    isFirstLoadRef.current = false
+
     let cancelled = false
 
     async function load() {
@@ -396,12 +412,19 @@ export default function CameraPage() {
       if (cancelled) return
       if (result === 401) { onUnauthorized(); return }
       setRecordingsDisplayPage(1)
-      setActiveRecording(null)
       setRecordings(result.recordings)
       setRecordingsTotal(result.total)
       setMotionEvents(events)
       setEventsPage(1)
       setActiveEventTime(null)
+
+      if (isFirst && urlFilename) {
+        const rec = result.recordings.find(r => r.filename === urlFilename)
+        if (rec && !rec.is_recording) setActiveRecording(rec)
+        else setActiveRecording(null)
+      } else {
+        setActiveRecording(null)
+      }
 
       const pendingTime = pendingEventRef.current
       if (pendingTime) {
@@ -466,6 +489,11 @@ export default function CameraPage() {
     setMotionEvents(events)
   }
 
+  function openRecording(rec: Recording) {
+    setActiveRecording(rec)
+    navigate(`/camera/recording/${id}/${format(selectedDate, 'yyyy-MM-dd')}/${rec.filename}`, { replace: true })
+  }
+
   function handleTimelineSeek(recording: Recording, offsetSeconds: number) {
     setActiveEventTime(null)
     setActiveEventId(null)
@@ -479,7 +507,7 @@ export default function CameraPage() {
       }
     } else {
       pendingSeekRef.current = offsetSeconds
-      setActiveRecording(recording)
+      openRecording(recording)
     }
   }
 
@@ -526,7 +554,7 @@ export default function CameraPage() {
           }
         } else {
           pendingSeekRef.current = seekTime
-          setActiveRecording(asc[i])
+          openRecording(asc[i])
         }
         return
       }
@@ -593,7 +621,7 @@ export default function CameraPage() {
   })()
 
 
-  const isLive = activeRecording === null
+  const isLive = !urlFilename && (isLiveRoute || activeRecording === null)
 
   useEffect(() => {
     setItems([])
@@ -753,7 +781,7 @@ function toggleFullscreen() {
                   {/* Voltar ao vivo — visível só durante reprodução */}
                   {!isLive && (
                     <button
-                      onClick={() => { setActiveRecording(null); setActivePanel(null) }}
+                      onClick={() => { navigate(`/camera/live/${id}`, { replace: true }); setActivePanel(null) }}
                       title="Voltar ao vivo"
                       className="p-1 transition-colors cursor-pointer text-gray-400 hover:text-gray-200"
                     >
@@ -817,7 +845,7 @@ function toggleFullscreen() {
                     <button
                       onClick={() => {
                         setActivePanel(p => p === 'recordings' ? null : 'recordings')
-                        if (isLive && recordings.length > 0) setActiveRecording(recordings[0])
+                        if (isLive && recordings.length > 0) openRecording(recordings[0])
                       }}
                       title="Gravações"
                       className={`relative p-1 transition-colors cursor-pointer ${activePanel === 'recordings' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
@@ -939,7 +967,7 @@ function toggleFullscreen() {
                         const displayedCount = recordingsDisplayPageRef.current * PAGE_SIZE
                         const isVisible = recordingsRef.current.slice(0, displayedCount).some(r => r.filename === next.filename)
                         if (!isVisible) setRecordingsDisplayPage(p => p + 1)
-                        setActiveRecording(next)
+                        openRecording(next)
                       }
                     }}
                   />
@@ -1226,7 +1254,7 @@ function toggleFullscreen() {
                             >
                               <button
                                 disabled={rec.is_recording}
-                                onClick={() => !rec.is_recording && setActiveRecording(rec)}
+                                onClick={() => !rec.is_recording && openRecording(rec)}
                                 className="flex-1 flex items-center justify-between text-left disabled:cursor-not-allowed"
                               >
                                 <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
