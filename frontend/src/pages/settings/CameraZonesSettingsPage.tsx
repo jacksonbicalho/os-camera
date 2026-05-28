@@ -119,8 +119,14 @@ function hitCorner(z: Zone, px: number, py: number, cw: number, ch: number): num
   return -1
 }
 
-function hitRotHandle(z: Zone, px: number, py: number, cw: number, ch: number): boolean {
+// Clamp handle to canvas so it's always reachable even when zone is near an edge
+function rotHandleVisible(z: Zone, cw: number, ch: number): [number, number] {
   const [hx, hy] = rotHandleWorld(z, cw, ch)
+  return [clamp(hx, ROT_R + 4, cw - ROT_R - 4), clamp(hy, ROT_R + 4, ch - ROT_R - 4)]
+}
+
+function hitRotHandle(z: Zone, px: number, py: number, cw: number, ch: number): boolean {
+  const [hx, hy] = rotHandleVisible(z, cw, ch)
   return Math.hypot(px - hx, py - hy) <= ROT_R + 3
 }
 
@@ -268,9 +274,9 @@ function paintCanvas(
       const [bx, by] = delBtnWorld(z, cw, ch)
       drawDeleteButton(ctx, bx, by, stroke)
 
-      // Rotation handle (only for selected zone)
+      // Rotation handle (only for selected zone) — clamped so it's always on-screen
       if (isSel) {
-        const [hx, hy] = rotHandleWorld(z, cw, ch)
+        const [hx, hy] = rotHandleVisible(z, cw, ch)
         const [tx, ty] = toWorld(cx, cy, 0, -hh, a)  // rotated top-center
         ctx.beginPath()
         ctx.moveTo(tx, ty)
