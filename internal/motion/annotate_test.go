@@ -88,3 +88,53 @@ func TestAnnotateFrameFullBBox(t *testing.T) {
 		t.Fatal("expected non-empty JPEG output")
 	}
 }
+
+func TestAnnotateJPEGBytesPreservesColorAndDrawsAnnotations(t *testing.T) {
+	// Build a solid blue 16×12 JPEG.
+	w, h := 16, 12
+	src := image.NewNRGBA(image.Rect(0, 0, w, h))
+	blue := color.NRGBA{B: 200, A: 255}
+	for y := range h {
+		for x := range w {
+			src.SetNRGBA(x, y, blue)
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, src, &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatalf("encode source JPEG: %v", err)
+	}
+
+	bbox := BBox{X: 0.25, Y: 0.25, W: 0.5, H: 0.5}
+	out, err := annotateJPEGBytes(buf.Bytes(), bbox, 0.123, ColorGlobal, true)
+	if err != nil {
+		t.Fatalf("annotateJPEGBytes: %v", err)
+	}
+
+	img, err := jpeg.Decode(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("decode annotated JPEG: %v", err)
+	}
+	b := img.Bounds()
+	if b.Dx() != w || b.Dy() != h {
+		t.Errorf("expected %dx%d, got %dx%d", w, h, b.Dx(), b.Dy())
+	}
+}
+
+func TestAnnotateJPEGBytesUsesThickerLinesAtHighRes(t *testing.T) {
+	// Low-res: 480×270 → thickness 1. High-res: 1920×1080 → thickness 3.
+	if lineThickness(480, 270) != 1 {
+		t.Errorf("expected thickness 1 at 480×270, got %d", lineThickness(480, 270))
+	}
+	if lineThickness(1920, 1080) != 6 {
+		t.Errorf("expected thickness 6 at 1920×1080, got %d", lineThickness(1920, 1080))
+	}
+}
+
+func TestAnnotateJPEGBytesTextScaleProportional(t *testing.T) {
+	if textScale(480, 270) != 1 {
+		t.Errorf("expected scale 1 at height 270, got %d", textScale(480, 270))
+	}
+	if textScale(1920, 1080) != 4 {
+		t.Errorf("expected scale 4 at height 1080, got %d", textScale(1920, 1080))
+	}
+}

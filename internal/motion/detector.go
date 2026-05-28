@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,6 +32,10 @@ type frameCommander interface {
 	Start(url string, width, height, fps int) (frameProcess, error)
 }
 
+type snapshotGrabber interface {
+	Grab(ctx context.Context, rtspURL, destPath string) error
+}
+
 type detector struct {
 	cameraID   string
 	url        string
@@ -37,6 +43,7 @@ type detector struct {
 	height     int
 	cfg        config.MotionConfig
 	commander  frameCommander
+	grabber    snapshotGrabber
 	st         *store
 	log        *slog.Logger
 	notify     func(Event)
@@ -133,16 +140,21 @@ func (d *detector) processFrames(ctx context.Context) {
 			}
 			if score >= d.cfg.Threshold && d.cooldownElapsed(ts) {
 				bbox, bboxFound := computeBBox(prev, cur, d.width, d.height, zs)
-				jpegData := annotateFrame(cur, d.width, d.height, bbox, score, ColorGlobal, bboxFound)
-				frameName, saveErr := d.st.saveJPEG(d.cameraID, ts, jpegData)
-				if saveErr != nil {
-					d.log.Warn("motion: failed to save snapshot", "camera", d.cameraID, "error", saveErr)
-				}
-				if err := d.st.record(d.cameraID, ts, score, frameName, "", "", bbox); err != nil {
-					d.log.Error("motion: failed to record event", "camera", d.cameraID, "error", err)
-				} else if d.notify != nil {
-					d.lastEvent = ts
-					d.notify(Event{Time: ts, Score: score})
+				d.lastEvent = ts // update cooldown immediately before goroutine
+				if d.grabber != nil {
+					lowRes := annotateFrame(cur, d.width, d.height, bbox, score, ColorGlobal, bboxFound)
+					go d.recordWithHighRes(ctx, ts, score, bbox, lowRes, "", "")
+				} else {
+					jpegData := annotateFrame(cur, d.width, d.height, bbox, score, ColorGlobal, bboxFound)
+					frameName, _, saveErr := d.st.saveJPEG(d.cameraID, ts, jpegData)
+					if saveErr != nil {
+						d.log.Warn("motion: failed to save snapshot", "camera", d.cameraID, "error", saveErr)
+					}
+					if err := d.st.record(d.cameraID, ts, score, frameName, "", "", bbox); err != nil {
+						d.log.Error("motion: failed to record event", "camera", d.cameraID, "error", err)
+					} else if d.notify != nil {
+						d.notify(Event{Time: ts, Score: score})
+					}
 				}
 			}
 
@@ -182,23 +194,83 @@ func (d *detector) evaluateDetectZones(prev, cur []byte, zs []zones.Zone, ts tim
 		}
 		cooldownOk := cd <= 0 || ts.Sub(d.zoneLastEv[i]) >= time.Duration(cd)*time.Second
 		if zScore >= thr && cooldownOk {
-			d.zoneLastEv[i] = ts
 			bbox, bboxFound := computeBBoxInZone(prev, cur, d.width, d.height, dz)
 			zoneColor := ColorDetect
 			if dz.Color != "" {
 				zoneColor = hexToNRGBA(dz.Color)
 			}
-			jpegData := annotateFrame(cur, d.width, d.height, bbox, zScore, zoneColor, bboxFound)
-			frameName, saveErr := d.st.saveJPEG(d.cameraID, ts, jpegData)
-			if saveErr != nil {
-				d.log.Warn("motion: failed to save zone snapshot", "camera", d.cameraID, "zone", dz.Label, "error", saveErr)
-			}
-			if err := d.st.record(d.cameraID, ts, zScore, frameName, dz.Label, dz.Color, bbox); err != nil {
-				d.log.Error("motion: failed to record zone event", "camera", d.cameraID, "zone", dz.Label, "error", err)
-			} else if d.notify != nil {
-				d.notify(Event{Time: ts, Score: zScore, Label: dz.Label, Color: dz.Color})
+			d.zoneLastEv[i] = ts // update cooldown immediately before goroutine
+			if d.grabber != nil {
+				lowRes := annotateFrame(cur, d.width, d.height, bbox, zScore, zoneColor, bboxFound)
+				go d.recordWithHighRes(context.Background(), ts, zScore, bbox, lowRes, dz.Label, dz.Color)
+			} else {
+				jpegData := annotateFrame(cur, d.width, d.height, bbox, zScore, zoneColor, bboxFound)
+				frameName, _, saveErr := d.st.saveJPEG(d.cameraID, ts, jpegData)
+				if saveErr != nil {
+					d.log.Warn("motion: failed to save zone snapshot", "camera", d.cameraID, "zone", dz.Label, "error", saveErr)
+				}
+				if err := d.st.record(d.cameraID, ts, zScore, frameName, dz.Label, dz.Color, bbox); err != nil {
+					d.log.Error("motion: failed to record zone event", "camera", d.cameraID, "zone", dz.Label, "error", err)
+				} else if d.notify != nil {
+					d.notify(Event{Time: ts, Score: zScore, Label: dz.Label, Color: dz.Color})
+				}
 			}
 		}
+	}
+}
+
+// recordWithHighRes grabs a full-resolution JPEG from the RTSP stream, saves it
+// (falling back to the provided low-res data on failure), then records the event
+// and fires the notify callback. Running in a goroutine so the detector loop is
+// not blocked.
+func (d *detector) recordWithHighRes(ctx context.Context, ts time.Time, score float64, bbox BBox, lowRes []byte, label, zoneColor string) {
+	grabCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	// Build a temp path for the high-res grab; saveJPEG will finalise it.
+	dir := filepath.Join(d.st.basePath, d.cameraID, ts.UTC().Format("2006/01/02"))
+	_ = os.MkdirAll(dir, 0755)
+	tmpPath := filepath.Join(dir, ts.UTC().Format("20060102150405")+"_motion_hires.jpg")
+
+	var frameName string
+	c := ColorGlobal
+	if zoneColor != "" {
+		c = hexToNRGBA(zoneColor)
+	}
+	if err := d.grabber.Grab(grabCtx, d.url, tmpPath); err != nil {
+		d.log.Warn("motion: high-res grab failed, using low-res snapshot", "camera", d.cameraID, "err", err)
+		var saveErr error
+		frameName, _, saveErr = d.st.saveJPEG(d.cameraID, ts, lowRes)
+		if saveErr != nil {
+			d.log.Warn("motion: failed to save low-res snapshot", "camera", d.cameraID, "error", saveErr)
+		}
+	} else {
+		finalName := ts.UTC().Format("20060102150405") + "_motion.jpg"
+		finalPath := filepath.Join(dir, finalName)
+		raw, readErr := os.ReadFile(tmpPath)
+		os.Remove(tmpPath)
+		if readErr != nil {
+			d.log.Warn("motion: failed to read high-res grab", "camera", d.cameraID, "err", readErr)
+			frameName, _, _ = d.st.saveJPEG(d.cameraID, ts, lowRes)
+		} else {
+			annotated, annErr := annotateJPEGBytes(raw, bbox, score, c, true)
+			if annErr != nil {
+				d.log.Warn("motion: failed to annotate high-res JPEG, using raw grab", "camera", d.cameraID, "err", annErr)
+				annotated = raw
+			}
+			if err := os.WriteFile(finalPath, annotated, 0644); err != nil {
+				d.log.Warn("motion: failed to write high-res snapshot", "camera", d.cameraID, "err", err)
+				frameName, _, _ = d.st.saveJPEG(d.cameraID, ts, lowRes)
+			} else {
+				frameName = finalName
+			}
+		}
+	}
+
+	if err := d.st.record(d.cameraID, ts, score, frameName, label, zoneColor, bbox); err != nil {
+		d.log.Error("motion: failed to record event", "camera", d.cameraID, "error", err)
+	} else if d.notify != nil {
+		d.notify(Event{Time: ts, Score: score, Label: label, Color: zoneColor})
 	}
 }
 
