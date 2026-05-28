@@ -904,6 +904,21 @@ func utcDaysInRange(start, end time.Time) []time.Time {
 	return days
 }
 
+// findRecordingPath returns the filesystem path for filename under cameraID.
+// The recorder fixes the output directory at startup time, so a chunk that
+// crosses UTC midnight lands in the previous day's directory. We try the day
+// derived from the filename (chunkStart) and then the day before.
+func findRecordingPath(recordingsPath, cameraID, filename string, chunkStart time.Time) string {
+	for _, delta := range []int{0, -1} {
+		dir := chunkStart.UTC().AddDate(0, 0, delta).Format("2006/01/02")
+		p := filepath.Join(recordingsPath, cameraID, dir, filename)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
 func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	filename := r.PathValue("filename")
@@ -928,21 +943,26 @@ func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
 	chunkDuration := cam.EffectiveChunkDuration()
 	chunkEnd := chunkStart.Add(chunkDuration)
 
-	dateDir := chunkStart.UTC().Format("2006/01/02")
-	mp4Path := filepath.Join(s.cfg.RecordingsPath, id, dateDir, filename)
-	if err := os.Remove(mp4Path); os.IsNotExist(err) {
-		http.NotFound(w, r)
-		return
-	} else if err != nil {
-		http.Error(w, "failed to delete recording", http.StatusInternalServerError)
-		return
+	// The recorder creates the output directory from its startup time, so a
+	// chunk that crosses a UTC midnight lands in the previous day's directory.
+	// Try the UTC day derived from the filename first, then the day before.
+	mp4Path := findRecordingPath(s.cfg.RecordingsPath, id, filename, chunkStart)
+	if mp4Path != "" {
+		if err := os.Remove(mp4Path); err != nil && !os.IsNotExist(err) {
+			http.Error(w, "failed to delete recording", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if s.db != nil {
 		if err := db.DeleteMotionEventsInRange(s.db, id, chunkStart, chunkEnd); err != nil {
 			s.log.Warn("failed to clean motion events after recording deletion", "camera", id, "err", err)
 		}
+		if err := db.DeleteRecordingByStartedAt(s.db, id, chunkStart); err != nil {
+			s.log.Warn("failed to remove recording row after deletion", "camera", id, "err", err)
+		}
 	} else {
+		dateDir := chunkStart.UTC().Format("2006/01/02")
 		ndjsonPath := filepath.Join(s.cfg.RecordingsPath, id, dateDir, "motion.ndjson")
 		if err := storage.RemoveEventsInRange(ndjsonPath, chunkStart, chunkEnd); err != nil {
 			s.log.Warn("failed to clean motion events after recording deletion", "path", ndjsonPath, "err", err)
