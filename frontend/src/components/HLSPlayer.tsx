@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import type HlsType from 'hls.js'
 import { getToken } from '../auth'
 import { useEventSource } from '../hooks/useEventSource'
+import { AlertTriangle, Loader2, Play } from './Icons'
 
 export interface HLSStats {
   bandwidthKbps: number
@@ -161,10 +162,7 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
       />
       {fatalError && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/70">
-          <svg className="w-8 h-8 text-gray-400 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-          </svg>
+          <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
         </div>
       )}
       {!fatalError && playBlocked && (
@@ -173,17 +171,13 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
           className="absolute inset-0 flex items-center justify-center bg-black/50 hover:bg-black/40 transition-colors"
           aria-label="Reproduzir"
         >
-          <svg className="w-12 h-12 text-white/80" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M8 5v14l11-7z" />
-          </svg>
+          <Play className="w-12 h-12 text-white/80 fill-current" />
         </button>
       )}
       {motionAlert && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-yellow-400/30 animate-pulse">
           <div className="flex flex-col items-center gap-3 bg-yellow-500/60 backdrop-blur-sm px-6 py-5 rounded-xl">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            </svg>
+            <AlertTriangle className="w-8 h-8 text-gray-900" />
             <span className="font-semibold text-gray-900 text-base">Movimento detectado</span>
             <span className="text-xs font-mono text-gray-800">score: {motionAlert.score}</span>
             <div className="flex gap-2 mt-1">
