@@ -67,7 +67,7 @@ export interface AboutInfo {
   go_version: string
 }
 
-export function useSettings(_redirectTo?: string) {
+export function useSettings() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [key, setKey] = useState(0)
 
@@ -86,7 +86,7 @@ export function useSettings(_redirectTo?: string) {
   return { settings, reload }
 }
 
-export function useAbout(_redirectTo?: string) {
+export function useAbout() {
   const [about, setAbout] = useState<AboutInfo | null>(null)
 
   useEffect(() => {

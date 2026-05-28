@@ -5,7 +5,7 @@ import { getRole } from '../../auth'
 
 export default function SystemSettingsPage() {
   const isAdmin = getRole() === 'admin'
-  const { settings } = useSettings('/settings/system')
+  const { settings } = useSettings()
 
   return (
     <SettingsLayout>

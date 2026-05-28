@@ -31,7 +31,7 @@ export interface Stats {
   goroutines: number
 }
 
-export function useStats(_redirectTo?: string) {
+export function useStats() {
   const [stats, setStats] = useState<Stats | null>(null)
 
   useEffect(() => {

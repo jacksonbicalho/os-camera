@@ -557,7 +557,7 @@ export default function CameraPage() {
     setScrollNonce(n => n + 1)
   }
 
-  const { settings } = useSettings(`/cameras/${id}`)
+  const { settings } = useSettings()
   const motionPeak = useMotionPeak(id, `/cameras/${id}`)
   const { markRead } = useNotifications()
   const setItems = useSetSidebarItems()

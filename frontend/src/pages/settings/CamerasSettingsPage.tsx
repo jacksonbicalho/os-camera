@@ -30,7 +30,7 @@ export default function CamerasSettingsPage() {
     if (res.status === 401) { onUnauthorized(); return }
     if (res.status === 503) { setNoDb(true); return }
     if (res.ok) setCameras(await res.json())
-  }, [navigate])
+  }, [])
 
   useEffect(() => {
     if (!isAdmin) return

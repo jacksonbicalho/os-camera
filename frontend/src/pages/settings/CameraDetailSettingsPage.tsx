@@ -45,7 +45,7 @@ export default function CameraDetailSettingsPage() {
   const isAdmin = getRole() === 'admin'
   const location = useLocation()
   const startEditing = (location.state as { editing?: boolean } | null)?.editing ?? false
-  const { settings, reload } = useSettings(`/settings/cameras/${id}`)
+  const { settings, reload } = useSettings()
   const cam = settings?.cameras.find(c => c.id === id) as Camera | undefined
   const [stats, setStats] = useState<CameraStatsData | null>(null)
   const [editing, setEditing] = useState(startEditing && isAdmin)

@@ -7,7 +7,7 @@ import { authHeaders } from '../../auth'
 
 export default function CameraAnalysisSettingsPage() {
   const { id } = useParams<{ id: string }>()
-  const { settings } = useSettings('/login')
+  const { settings } = useSettings()
   const cam = settings?.cameras?.find((c: CameraSettings) => c.id === id)
 
   const [enabled, setEnabled] = useState(true)

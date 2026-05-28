@@ -8,7 +8,7 @@ export interface MotionDailyPeak {
   date: string
 }
 
-export function useMotionPeak(cameraId: string | undefined, _redirectTo?: string) {
+export function useMotionPeak(cameraId: string | undefined) {
   const [peak, setPeak] = useState<MotionDailyPeak | null>(null)
 
   useEffect(() => {

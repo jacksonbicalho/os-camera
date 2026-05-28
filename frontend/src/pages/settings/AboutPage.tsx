@@ -12,7 +12,7 @@ function fmtUptime(seconds: number): string {
 }
 
 export default function AboutPage() {
-  const about = useAbout('/settings/about')
+  const about = useAbout()
 
   return (
     <SettingsLayout>
