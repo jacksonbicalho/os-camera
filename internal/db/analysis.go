@@ -10,6 +10,7 @@ type VideoAnalysisConfig struct {
 	ServiceURL          string  `json:"service_url"`
 	Model               string  `json:"model"`
 	ConfidenceThreshold float64 `json:"confidence_threshold"`
+	HasCustomModel      bool    `json:"has_custom_model"`
 }
 
 type Detection struct {
@@ -22,15 +23,16 @@ type Detection struct {
 
 func GetVideoAnalysisConfig(d *DB) (VideoAnalysisConfig, error) {
 	var cfg VideoAnalysisConfig
-	var enabled int
+	var enabled, hasCustomModel int
 	err := d.QueryRow(`
-		SELECT enabled, service_url, model, confidence_threshold
+		SELECT enabled, service_url, model, confidence_threshold, has_custom_model
 		FROM video_analysis_config WHERE id=1`).
-		Scan(&enabled, &cfg.ServiceURL, &cfg.Model, &cfg.ConfidenceThreshold)
+		Scan(&enabled, &cfg.ServiceURL, &cfg.Model, &cfg.ConfidenceThreshold, &hasCustomModel)
 	if err != nil {
 		return VideoAnalysisConfig{}, err
 	}
 	cfg.Enabled = enabled != 0
+	cfg.HasCustomModel = hasCustomModel != 0
 	return cfg, nil
 }
 
@@ -44,6 +46,15 @@ func UpdateVideoAnalysisConfig(d *DB, cfg VideoAnalysisConfig) error {
 		SET enabled=?, service_url=?, model=?, confidence_threshold=?
 		WHERE id=1`,
 		enabled, cfg.ServiceURL, cfg.Model, cfg.ConfidenceThreshold)
+	return err
+}
+
+func SetHasCustomModel(d *DB, v bool) error {
+	n := 0
+	if v {
+		n = 1
+	}
+	_, err := d.Exec(`UPDATE video_analysis_config SET has_custom_model=? WHERE id=1`, n)
 	return err
 }
 
