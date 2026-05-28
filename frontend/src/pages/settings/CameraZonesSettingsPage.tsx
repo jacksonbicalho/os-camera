@@ -510,16 +510,17 @@ export default function CameraZonesSettingsPage() {
     setInteraction(ia => ia ? { ...ia, curX: x, curY: y } : null)
   }
 
-  function handleMouseUp(e: React.MouseEvent<HTMLCanvasElement>) {
-    e.preventDefault()
+  const commitInteraction = useCallback(() => {
+    const ia = interactionRef.current
     const canvas = canvasRef.current
-    if (!canvas || !interaction) { setInteraction(null); return }
+    if (!canvas || !ia) { setInteraction(null); return }
+    interactionRef.current = null  // prevent double-commit when both canvas onMouseUp and document pointerup fire
     const cw = canvas.width; const ch = canvas.height
 
-    if (interaction.mode === 'drawing') {
-      const z = dragToZone(interaction.startX, interaction.startY, interaction.curX, interaction.curY, cw, ch)
+    if (ia.mode === 'drawing') {
+      const z = dragToZone(ia.startX, ia.startY, ia.curX, ia.curY, cw, ch)
       if (z.w > 0.01 && z.h > 0.01) {
-        const newIdx = zones.length
+        const newIdx = zonesRef.current.length
         setRegionScore(null)
         setPeakScore(null)
         setZones(prev => {
@@ -528,20 +529,30 @@ export default function CameraZonesSettingsPage() {
         })
         setSelectedIdx(newIdx)
       }
-    } else if (interaction.mode === 'moving') {
-      const moved = applyMove(interaction.orig, interaction.curX - interaction.startX, interaction.curY - interaction.startY, cw, ch)
-      setZones(prev => prev.map((z, i) => i === interaction.idx ? moved : z))
-    } else if (interaction.mode === 'resizing') {
-      const resized = applyResize(interaction.orig, interaction.handle, interaction.curX - interaction.startX, interaction.curY - interaction.startY, cw, ch)
-      setZones(prev => prev.map((z, i) => i === interaction.idx ? resized : z))
-    } else if (interaction.mode === 'rotating') {
-      const { cx, cy } = zoneCenterPx(interaction.orig, cw, ch)
-      const deg = normalizeDeg(Math.atan2(interaction.curY - cy, interaction.curX - cx) * 180 / Math.PI + 90)
-      setZones(prev => prev.map((z, i) => i === interaction.idx ? { ...z, rotation_deg: deg } : z))
+    } else if (ia.mode === 'moving') {
+      const moved = applyMove(ia.orig, ia.curX - ia.startX, ia.curY - ia.startY, cw, ch)
+      setZones(prev => prev.map((z, i) => i === ia.idx ? moved : z))
+    } else if (ia.mode === 'resizing') {
+      const resized = applyResize(ia.orig, ia.handle, ia.curX - ia.startX, ia.curY - ia.startY, cw, ch)
+      setZones(prev => prev.map((z, i) => i === ia.idx ? resized : z))
+    } else if (ia.mode === 'rotating') {
+      const { cx, cy } = zoneCenterPx(ia.orig, cw, ch)
+      const deg = normalizeDeg(Math.atan2(ia.curY - cy, ia.curX - cx) * 180 / Math.PI + 90)
+      setZones(prev => prev.map((z, i) => i === ia.idx ? { ...z, rotation_deg: deg } : z))
     }
     setInteraction(null)
+  }, [])
+
+  useEffect(() => {
+    document.addEventListener('pointerup', commitInteraction)
+    return () => document.removeEventListener('pointerup', commitInteraction)
+  }, [commitInteraction])
+
+  function handleMouseUp(e: React.MouseEvent<HTMLCanvasElement>) {
+    e.preventDefault()
+    commitInteraction()
     const { x, y } = relPos(e)
-    updateCursor(x, y, zones)
+    updateCursor(x, y, zonesRef.current)
   }
 
   async function save() {
