@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { authHeaders, clearToken } from '../auth'
 
 export interface MotionSettings {
@@ -68,39 +68,41 @@ export interface AboutInfo {
   go_version: string
 }
 
-export function useSettings(redirectTo: string) {
+export function useSettings(_redirectTo?: string) {
   const navigate = useNavigate()
+  const location = useLocation()
   const [settings, setSettings] = useState<Settings | null>(null)
   const [key, setKey] = useState(0)
 
   useEffect(() => {
     fetch('/api/settings', { headers: authHeaders() })
       .then(res => {
-        if (res.status === 401) { clearToken(); navigate('/login', { state: { from: redirectTo }, replace: true }); return null }
+        if (res.status === 401) { clearToken(); navigate('/login', { state: { from: location.pathname + location.search }, replace: true }); return null }
         return res.json()
       })
       .then(data => { if (data) setSettings(data) })
       .catch(() => {})
-  }, [navigate, redirectTo, key])
+  }, [navigate, location.pathname, location.search, key])
 
   const reload = () => setKey(k => k + 1)
 
   return { settings, reload }
 }
 
-export function useAbout(redirectTo: string) {
+export function useAbout(_redirectTo?: string) {
   const navigate = useNavigate()
+  const location = useLocation()
   const [about, setAbout] = useState<AboutInfo | null>(null)
 
   useEffect(() => {
     fetch('/api/about', { headers: authHeaders() })
       .then(res => {
-        if (res.status === 401) { clearToken(); navigate('/login', { state: { from: redirectTo }, replace: true }); return null }
+        if (res.status === 401) { clearToken(); navigate('/login', { state: { from: location.pathname + location.search }, replace: true }); return null }
         return res.json()
       })
       .then(data => { if (data) setAbout(data) })
       .catch(() => {})
-  }, [navigate, redirectTo])
+  }, [navigate, location.pathname, location.search])
 
   return about
 }
