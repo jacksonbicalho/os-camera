@@ -35,6 +35,7 @@ build: frontend | $(OUTDIR)
 	$(BUILD) -o $(OUTDIR)/camera ./cmd/camera
 
 frontend:
+	docker run --rm -v "$(PWD)/frontend":/app -w /app node:20-alpine rm -rf dist
 	docker run --rm \
 		--user "$(shell id -u):$(shell id -g)" \
 		-v "$(PWD)/frontend":/app \

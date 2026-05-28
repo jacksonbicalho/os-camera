@@ -111,25 +111,6 @@ export default function RecordingTimeline({ recordings, motionEvents, activeReco
     el.scrollLeft = Math.max(0, Math.min(el.scrollWidth - el.clientWidth, target))
   }, [activeFrac, zoom])
 
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const onTouchStart = (e: TouchEvent) => { isDragging.current = true; seekAtX(e.touches[0].clientX) }
-    const onTouchMove  = (e: TouchEvent) => {
-      if (!isDragging.current) return
-      e.preventDefault()
-      seekAtX(e.touches[0].clientX)
-    }
-    const onTouchEnd = () => { isDragging.current = false }
-    el.addEventListener('touchstart', onTouchStart, { passive: true })
-    el.addEventListener('touchmove',  onTouchMove,  { passive: false })
-    el.addEventListener('touchend',   onTouchEnd)
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart)
-      el.removeEventListener('touchmove',  onTouchMove)
-      el.removeEventListener('touchend',   onTouchEnd)
-    }
-  }, [seekAtX])
 
   const activeLabel = activeTime ? fmt.format(new Date(activeTime)) : null
 
