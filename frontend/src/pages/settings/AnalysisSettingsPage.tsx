@@ -159,6 +159,7 @@ export default function AnalysisSettingsPage() {
                   {cfg.has_custom_model && (
                     <optgroup label="Custom">
                       <option value="custom">custom ✓ (treinado)</option>
+                      <option value="custom+yolov8n">custom + yolov8n</option>
                     </optgroup>
                   )}
                   {MODELS.map(({ group, names }) => (

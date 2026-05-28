@@ -168,6 +168,25 @@ def _run_finetune(job_id: str, req: FinetuneRequest):
         shutil.rmtree(work_dir, ignore_errors=True)
 
 
+def _analyze_one(model: YOLO, cap, conf_threshold: float):
+    label_scores: dict[str, list[float]] = defaultdict(list)
+    frame_counts: dict[str, int] = defaultdict(int)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    frame_idx = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        if frame_idx % 30 == 0:
+            for result in model(frame, conf=conf_threshold, verbose=False):
+                for box in result.boxes:
+                    label = model.names[int(box.cls)]
+                    label_scores[label].append(float(box.conf))
+                    frame_counts[label] += 1
+        frame_idx += 1
+    return label_scores, frame_counts
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -178,30 +197,20 @@ def analyze(req: AnalyzeRequest):
     if not os.path.isfile(req.path):
         raise HTTPException(status_code=404, detail=f"file not found: {req.path}")
 
-    model = get_model(req.model)
     cap = cv2.VideoCapture(req.path)
     if not cap.isOpened():
         raise HTTPException(status_code=422, detail="cannot open video file")
 
-    label_scores: dict[str, list[float]] = defaultdict(list)
-    frame_counts: dict[str, int] = defaultdict(int)
-    frame_skip = 30  # analyze every 30th frame (~1 frame/s at 30fps)
-    frame_idx = 0
+    merged_scores: dict[str, list[float]] = defaultdict(list)
+    merged_counts: dict[str, int] = defaultdict(int)
 
     try:
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            if frame_idx % frame_skip == 0:
-                results = model(frame, conf=req.confidence_threshold, verbose=False)
-                for result in results:
-                    for box in result.boxes:
-                        label = model.names[int(box.cls)]
-                        conf = float(box.conf)
-                        label_scores[label].append(conf)
-                        frame_counts[label] += 1
-            frame_idx += 1
+        for name in req.model.split("+"):
+            name = name.strip()
+            scores, counts = _analyze_one(get_model(name), cap, req.confidence_threshold)
+            for label, s in scores.items():
+                merged_scores[label].extend(s)
+                merged_counts[label] += counts[label]
     finally:
         cap.release()
 
@@ -209,9 +218,9 @@ def analyze(req: AnalyzeRequest):
         Detection(
             label=label,
             confidence=round(max(scores), 4),
-            frame_count=frame_counts[label],
+            frame_count=merged_counts[label],
         )
-        for label, scores in sorted(label_scores.items(), key=lambda x: -max(x[1]))
+        for label, scores in sorted(merged_scores.items(), key=lambda x: -max(x[1]))
     ]
     return AnalyzeResponse(detections=detections)
 
