@@ -54,6 +54,34 @@ EOF
 
 O script lê os commits convencionais desde a última tag, determina o bump (`feat` → minor, breaking → major, resto → patch), gera o changelog agrupado por tipo e cria uma tag no formato `vX.Y.Z-rc.N`. O push da tag dispara o GitHub Actions que publica a release. Todas as releases são rc enquanto o projeto não atingir estabilidade.
 
+#### Planejamento de release (releases/)
+
+`releases/` (gitignored) agrupa histórias em uma release antes de mergeá-las.
+
+**Fluxo:**
+1. Criar `releases/YYYYMMDDHHmm_vX.Y.Z.md` com as histórias planejadas.
+2. Ao concluir cada história, preencher branch e PR na tabela e marcar `[~]` (aguardando aprovação no GitHub).
+3. Após aprovação no GitHub, marcar `[x]`.
+4. Quando todas estiverem `[x]`, o navigator diz **"pode mergear a release"** — Claude itera a lista, mergeia cada PR em sequência e marca `[✓]`.
+5. Após todos os merges, Claude roda `./scripts/release.sh` para gerar a tag.
+
+**Estrutura do arquivo de release:**
+
+```markdown
+# Release vX.Y.Z — YYYYMMDD
+
+## Histórias
+
+| Status | Descrição | Branch | PR |
+|--------|-----------|--------|----|
+| [ ]    | descrição | `branch-name` | — |
+| [~]    | descrição | `branch-name` | #123 |
+| [x]    | descrição | `branch-name` | #123 |
+| [✓]    | descrição | `branch-name` | #123 |
+```
+
+**Legenda de status:** `[ ]` planejada · `[~]` aguardando aprovação no GitHub · `[x]` aprovada · `[✓]` mergeada.
+
 ### Frontend (`frontend/src/`)
 
 SPA React/Vite/Tailwind. Páginas principais: `LoginPage` → `DashboardPage` → `CameraPage` / `StatsPage`. Seção de configurações em `/settings/*` com sidebar lateral (padrão GitHub Settings). Token JWT em `localStorage` (`auth.ts`). Em desenvolvimento, Vite faz proxy de `/api` e `/stream` para `localhost:8080`.
@@ -191,7 +219,8 @@ Ao iniciar uma nova história:
    - Frontend: `yarn lint` + `yarn test --run` + `yarn build` (em `frontend/`)
    - Nunca commitar se qualquer um desses falhar.
 6. Adicionar seção `## Revisão` na história e aguardar aprovação do navigator. **Só proceder com o item 7 após o navigator aprovar marcando `[x] Aprovado` na seção Revisão.**
-7. Commitar com mensagem semântica na branch, fazer `git push origin <branch>`, abrir PR para `master` com `gh pr create` e aguardar CI verde. O merge é feito pelo GitHub após aprovação — nunca localmente em `master`.
+7. Commitar com mensagem semântica na branch, fazer `git push origin <branch>` e abrir PR para `master` com `gh pr create`.
+8. Atualizar o arquivo de release correspondente em `releases/`: preencher a branch e o número do PR na tabela, marcar `[~]` (aguardando aprovação no GitHub). O merge não é feito individualmente — acontece em lote quando o navigator liberar a release.
 
 ### Commits semânticos
 
