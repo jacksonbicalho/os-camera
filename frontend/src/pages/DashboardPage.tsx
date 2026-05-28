@@ -39,7 +39,7 @@ export default function DashboardPage() {
             {cameras.map(cam => (
               <button
                 key={cam.id}
-                onClick={() => navigate(`/cameras/${cam.id}`)}
+                onClick={() => navigate(`/camera/live/${cam.id}`)}
                 className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden hover:border-blue-600 transition-colors text-left group"
               >
                 <div className="relative">
