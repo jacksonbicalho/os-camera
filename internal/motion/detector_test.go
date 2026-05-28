@@ -332,3 +332,81 @@ func TestDetectorExclusionZoneSuppressesEvent(t *testing.T) {
 		t.Fatalf("expected 0 events with full exclusion zone, got %d", len(captured))
 	}
 }
+
+// --- snapshot grabber ---
+
+type fakeSnapshotGrabber struct {
+	mu      sync.Mutex
+	calls   []snapshotGrabCall
+	err     error
+}
+
+type snapshotGrabCall struct {
+	rtspURL  string
+	destPath string
+}
+
+func (g *fakeSnapshotGrabber) Grab(_ context.Context, rtspURL, destPath string) error {
+	g.mu.Lock()
+	g.calls = append(g.calls, snapshotGrabCall{rtspURL: rtspURL, destPath: destPath})
+	g.mu.Unlock()
+	return g.err
+}
+
+func TestDetectorGrabsHighResSnapshotOnMotionEvent(t *testing.T) {
+	frameSize := 4 // 2×2 px
+	frameData := append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...)
+
+	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
+	cmd := &fakeFrameCommander{process: proc}
+
+	grabber := &fakeSnapshotGrabber{}
+
+	var mu sync.Mutex
+	var recorded []string
+	st := newStore(t.TempDir(), func(_ string, _ time.Time, _ float64, frame, _, _ string, _ BBox) {
+		mu.Lock()
+		recorded = append(recorded, frame)
+		mu.Unlock()
+	})
+
+	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
+	det := newDetector("cam1", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
+	det.grabber = grabber
+
+	det.processFrames(context.Background())
+
+	// Wait for async grab + record to complete.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		grabber.mu.Lock()
+		n := len(grabber.calls)
+		grabber.mu.Unlock()
+		mu.Lock()
+		r := len(recorded)
+		mu.Unlock()
+		if n > 0 && r > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	grabber.mu.Lock()
+	calls := grabber.calls
+	grabber.mu.Unlock()
+
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 grab call, got %d", len(calls))
+	}
+	if calls[0].rtspURL != "rtsp://fake" {
+		t.Errorf("grab called with wrong URL: %q", calls[0].rtspURL)
+	}
+
+	// record must happen AFTER grab (event only reaches frontend with high-res ready).
+	mu.Lock()
+	n := len(recorded)
+	mu.Unlock()
+	if n != 1 {
+		t.Errorf("expected 1 recorded event after grab, got %d", n)
+	}
+}

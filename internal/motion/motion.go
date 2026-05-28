@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"camera/internal/config"
+	"camera/internal/exec"
 	"camera/internal/ffprobe"
 	"camera/internal/zones"
 )
@@ -72,6 +73,7 @@ func New(cam config.CameraConfig, stream ffprobe.StreamInfo, cfg config.MotionCo
 	cmd := newFFmpegFrameCommander()
 	st := newStore(storagePath, onEvent)
 	det := newDetector(cam.ID, cam.RTSPURL, scaledW, scaledH, effective, cmd, st, log, notify, notifyRaw, getZones)
+	det.grabber = newFFmpegSnapshotGrabber(exec.NewFFmpegCommander())
 
 	return &Monitor{
 		det:               det,

@@ -57,6 +57,104 @@ func annotateFrame(frame []byte, w, h int, bbox BBox, score float64, c color.NRG
 	return buf.Bytes()
 }
 
+// annotateJPEGBytes decodes a color JPEG, draws the bbox rectangle and score
+// label onto it with line thickness and text scale proportional to resolution,
+// and re-encodes it.
+func annotateJPEGBytes(data []byte, bbox BBox, score float64, c color.NRGBA, drawRect bool) ([]byte, error) {
+	src, err := jpeg.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	w := src.Bounds().Dx()
+	h := src.Bounds().Dy()
+
+	rgba := image.NewNRGBA(src.Bounds())
+	draw.Draw(rgba, rgba.Bounds(), src, image.Point{}, draw.Src)
+
+	thick := lineThickness(w, h)
+	scale := textScale(w, h)
+
+	if drawRect {
+		x0 := clamp(int(math.Round(bbox.X*float64(w))), 0, w-1)
+		y0 := clamp(int(math.Round(bbox.Y*float64(h))), 0, h-1)
+		x1 := clamp(int(math.Round((bbox.X+bbox.W)*float64(w)))-1, x0, w-1)
+		y1 := clamp(int(math.Round((bbox.Y+bbox.H)*float64(h)))-1, y0, h-1)
+		drawHLineThick(rgba, x0, x1, y0, thick, c)
+		drawHLineThick(rgba, x0, x1, y1, thick, c)
+		drawVLineThick(rgba, y0, y1, x0, thick, c)
+		drawVLineThick(rgba, y0, y1, x1, thick, c)
+	}
+
+	label := fmt.Sprintf("score: %.3f", score)
+	labelW := len(label) * charWidth * scale
+	const margin = 4
+	tx := w - labelW - margin*scale
+	if tx < 0 {
+		tx = 0
+	}
+	ty := margin*scale + 13*scale
+	shadow := color.NRGBA{A: 200}
+	drawTextScaled(rgba, label, tx+scale, ty+scale, scale, shadow)
+	drawTextScaled(rgba, label, tx, ty, scale, c)
+
+	var buf bytes.Buffer
+	jpeg.Encode(&buf, rgba, &jpeg.Options{Quality: 85})
+	return buf.Bytes(), nil
+}
+
+func lineThickness(w, h int) int {
+	t := (w + h) / 500
+	if t < 1 {
+		t = 1
+	}
+	return t
+}
+
+func textScale(w, h int) int {
+	s := h / 270
+	if s < 1 {
+		s = 1
+	}
+	return s
+}
+
+func drawHLineThick(img draw.Image, x0, x1, y, thickness int, c color.Color) {
+	half := thickness / 2
+	for dy := -half; dy < thickness-half; dy++ {
+		drawHLine(img, x0, x1, y+dy, c)
+	}
+}
+
+func drawVLineThick(img draw.Image, y0, y1, x, thickness int, c color.Color) {
+	half := thickness / 2
+	for dx := -half; dx < thickness-half; dx++ {
+		drawVLine(img, y0, y1, x+dx, c)
+	}
+}
+
+func drawTextScaled(img draw.Image, text string, x, y, scale int, c color.Color) {
+	if scale <= 1 {
+		drawText(img, text, x, y, c)
+		return
+	}
+	textW := len(text) * charWidth
+	const textH = 13
+	tmp := image.NewNRGBA(image.Rect(0, 0, textW, textH))
+	drawText(tmp, text, 0, 11, c)
+	for ty := 0; ty < textH; ty++ {
+		for tx := 0; tx < textW; tx++ {
+			_, _, _, a := tmp.At(tx, ty).RGBA()
+			if a > 0x8000 {
+				for sy := 0; sy < scale; sy++ {
+					for sx := 0; sx < scale; sx++ {
+						img.Set(x+tx*scale+sx, y+(ty-11)*scale+sy, c)
+					}
+				}
+			}
+		}
+	}
+}
+
 func clamp(v, lo, hi int) int {
 	if v < lo {
 		return lo
