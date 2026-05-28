@@ -24,14 +24,8 @@ interface Zone {
 }
 
 const ZONE_COLORS = [
-  '#ef4444', // vermelho
-  '#f97316', // laranja
-  '#eab308', // amarelo
-  '#22c55e', // verde
-  '#06b6d4', // ciano
-  '#3b82f6', // azul
-  '#8b5cf6', // violeta
-  '#ec4899', // rosa
+  '#ef4444', '#f97316', '#eab308', '#22c55e',
+  '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899',
 ]
 
 function pickZoneColor(existing: Zone[]): string {
@@ -48,180 +42,156 @@ function parseHex(hex: string): { r: number; g: number; b: number } {
   }
 }
 
-type ResizeHandle = 'nw' | 'ne' | 'se' | 'sw'
-
-type Interaction =
-  | { mode: 'drawing'; startX: number; startY: number; curX: number; curY: number }
-  | { mode: 'moving'; idx: number; orig: Zone; startX: number; startY: number; curX: number; curY: number }
-  | { mode: 'resizing'; idx: number; orig: Zone; handle: ResizeHandle; startX: number; startY: number; curX: number; curY: number }
-  | { mode: 'rotating'; idx: number; orig: Zone; startX: number; startY: number; curX: number; curY: number }
-  | null
-
-const HANDLE_PX = 10
-const DELETE_PX = 12
-const ROTATE_HANDLE_PX = 12
-const ROTATE_OFFSET_PX = 22
-const SNAP = 0.025
+// ── geometry ──────────────────────────────────────────────────────────────────
 
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)) }
-function snapEdge(v: number) {
-  if (v < SNAP) return 0
-  if (v > 1 - SNAP) return 1
-  return v
-}
-function toNorm(px: number, dim: number) { return clamp(px / dim, 0, 1) }
+const SNAP = 0.025
+function snapEdge(v: number) { return v < SNAP ? 0 : v > 1 - SNAP ? 1 : v }
+function deg2rad(d: number) { return (((d ?? 0) % 360 + 360) % 360) * Math.PI / 180 }
 
-function relPos(e: React.MouseEvent<HTMLCanvasElement>): { x: number; y: number } {
-  const c = e.currentTarget
-  const r = c.getBoundingClientRect()
-  return {
-    x: clamp((e.clientX - r.left) * c.width / r.width, 0, c.width),
-    y: clamp((e.clientY - r.top) * c.height / r.height, 0, c.height),
-  }
+// Rotate local vector (lx, ly) by angle a and offset by world center (cx, cy)
+function toWorld(cx: number, cy: number, lx: number, ly: number, a: number): [number, number] {
+  return [
+    cx + lx * Math.cos(a) - ly * Math.sin(a),
+    cy + lx * Math.sin(a) + ly * Math.cos(a),
+  ]
 }
 
-function dragToZone(x0: number, y0: number, x1: number, y1: number, cw: number, ch: number): Zone {
-  const lx = Math.min(x0, x1); const rx = Math.max(x0, x1)
-  const ly = Math.min(y0, y1); const ry = Math.max(y0, y1)
-  const nx = snapEdge(toNorm(lx, cw)); const nx1 = snapEdge(toNorm(rx, cw))
-  const ny = snapEdge(toNorm(ly, ch)); const ny1 = snapEdge(toNorm(ry, ch))
-  return { x: nx, y: ny, w: nx1 - nx, h: ny1 - ny, type: 'exclude' }
+// Map world point (wx, wy) into local frame of zone (center cx/cy, angle a)
+function toLocal(cx: number, cy: number, wx: number, wy: number, a: number): [number, number] {
+  const dx = wx - cx, dy = wy - cy
+  return [dx * Math.cos(a) + dy * Math.sin(a), -dx * Math.sin(a) + dy * Math.cos(a)]
 }
 
-function applyResize(orig: Zone, handle: ResizeHandle, dx: number, dy: number, cw: number, ch: number): Zone {
-  const ndx = dx / cw; const ndy = dy / ch
-  let { x, y, w, h } = orig
-  switch (handle) {
-    case 'nw':
-      x = clamp(orig.x + ndx, 0, orig.x + orig.w - 0.02)
-      y = clamp(orig.y + ndy, 0, orig.y + orig.h - 0.02)
-      w = orig.x + orig.w - x; h = orig.y + orig.h - y
-      break
-    case 'ne':
-      y = clamp(orig.y + ndy, 0, orig.y + orig.h - 0.02)
-      h = orig.y + orig.h - y
-      w = clamp(orig.w + ndx, 0.02, 1 - orig.x)
-      break
-    case 'se':
-      w = clamp(orig.w + ndx, 0.02, 1 - orig.x)
-      h = clamp(orig.h + ndy, 0.02, 1 - orig.y)
-      break
-    case 'sw':
-      x = clamp(orig.x + ndx, 0, orig.x + orig.w - 0.02)
-      w = orig.x + orig.w - x
-      h = clamp(orig.h + ndy, 0.02, 1 - orig.y)
-      break
-  }
-  return { ...orig, x, y, w, h }
+function zoneCenter(z: Zone, cw: number, ch: number): [number, number] {
+  return [(z.x + z.w / 2) * cw, (z.y + z.h / 2) * ch]
 }
 
-function applyMove(orig: Zone, dx: number, dy: number, cw: number, ch: number): Zone {
-  const nx = clamp(orig.x + dx / cw, 0, 1 - orig.w)
-  const ny = clamp(orig.y + dy / ch, 0, 1 - orig.h)
-  return { ...orig, x: nx, y: ny }
+// Corners: 0=TL 1=TR 2=BR 3=BL (local signs)
+const CORNER_SIGNS: [number, number][] = [[-1, -1], [1, -1], [1, 1], [-1, 1]]
+const OPP_CORNER = [2, 3, 0, 1]
+const CORNER_CURSORS = ['nw-resize', 'ne-resize', 'se-resize', 'sw-resize']
+const HANDLE_R = 6   // resize handle hit radius
+const ROT_R = 8      // rotation handle hit radius
+const ROT_OFFSET = 26 // px above top edge
+
+function cornerWorld(z: Zone, c: number, cw: number, ch: number): [number, number] {
+  const [cx, cy] = zoneCenter(z, cw, ch)
+  const hw = (z.w * cw) / 2, hh = (z.h * ch) / 2
+  const a = deg2rad(z.rotation_deg ?? 0)
+  const [sx, sy] = CORNER_SIGNS[c]
+  return toWorld(cx, cy, sx * hw, sy * hh, a)
 }
 
-function normalizeDeg(v: number): number {
-  let d = v % 360
-  if (d < 0) d += 360
-  return d
+// Rotation handle: above the top edge, along the zone's up-axis
+function rotHandleWorld(z: Zone, cw: number, ch: number): [number, number] {
+  const [cx, cy] = zoneCenter(z, cw, ch)
+  const hh = (z.h * ch) / 2
+  const a = deg2rad(z.rotation_deg ?? 0)
+  return toWorld(cx, cy, 0, -(hh + ROT_OFFSET), a)
 }
 
-function zoneCenterPx(z: Zone, cw: number, ch: number): { cx: number; cy: number } {
-  return { cx: (z.x + z.w / 2) * cw, cy: (z.y + z.h / 2) * ch }
+// Delete button: just outside TR corner, shifted in local (+x, -y) direction
+const DEL_R = 9
+const DEL_OFFSET = DEL_R + 2
+
+function delBtnWorld(z: Zone, cw: number, ch: number): [number, number] {
+  const [cx, cy] = zoneCenter(z, cw, ch)
+  const hw = (z.w * cw) / 2, hh = (z.h * ch) / 2
+  const a = deg2rad(z.rotation_deg ?? 0)
+  const off = DEL_OFFSET / Math.SQRT2
+  return toWorld(cx, cy, hw + off, -hh - off, a)
 }
 
-function rotateHandlePos(z: Zone, cw: number, ch: number): { hx: number; hy: number } {
-  const { cx, cy } = zoneCenterPx(z, cw, ch)
-  const a = ((z.rotation_deg ?? 0) * Math.PI) / 180
-  const topDist = z.h * ch / 2
-  const localY = -(topDist + ROTATE_OFFSET_PX)
-  return {
-    hx: cx - localY * Math.sin(a),
-    hy: cy + localY * Math.cos(a),
-  }
+function hitZone(z: Zone, px: number, py: number, cw: number, ch: number): boolean {
+  const [cx, cy] = zoneCenter(z, cw, ch)
+  const hw = (z.w * cw) / 2, hh = (z.h * ch) / 2
+  const a = deg2rad(z.rotation_deg ?? 0)
+  const [lx, ly] = toLocal(cx, cy, px, py, a)
+  return Math.abs(lx) < hw && Math.abs(ly) < hh
 }
 
-function detectRotateHandle(zones: Zone[], selectedIdx: number | null, px: number, py: number, cw: number, ch: number): number {
-  if (selectedIdx === null || !zones[selectedIdx]) return -1
-  const { hx, hy } = rotateHandlePos(zones[selectedIdx], cw, ch)
-  if (Math.hypot(px - hx, py - hy) <= ROTATE_HANDLE_PX) return selectedIdx
-  return -1
-}
-
-function detectHandle(zones: Zone[], px: number, py: number, cw: number, ch: number): { idx: number; handle: ResizeHandle } | null {
-  for (let i = zones.length - 1; i >= 0; i--) {
-    const z = zones[i]
-    const x0 = z.x * cw; const y0 = z.y * ch
-    const x1 = (z.x + z.w) * cw; const y1 = (z.y + z.h) * ch
-    const corners: [ResizeHandle, number, number][] = [
-      ['nw', x0, y0], ['ne', x1, y0], ['se', x1, y1], ['sw', x0, y1],
-    ]
-    for (const [handle, cx, cy] of corners) {
-      if (Math.abs(px - cx) <= HANDLE_PX && Math.abs(py - cy) <= HANDLE_PX) {
-        return { idx: i, handle }
-      }
-    }
-  }
-  return null
-}
-
-function detectDeleteButton(zones: Zone[], px: number, py: number, cw: number, ch: number): number {
-  for (let i = zones.length - 1; i >= 0; i--) {
-    const z = zones[i]
-    const bx = (z.x + z.w) * cw - DELETE_PX
-    const by = z.y * ch + DELETE_PX
-    if (Math.abs(px - bx) <= DELETE_PX && Math.abs(py - by) <= DELETE_PX) {
-      return i
-    }
+function hitCorner(z: Zone, px: number, py: number, cw: number, ch: number): number {
+  for (let c = 0; c < 4; c++) {
+    const [wx, wy] = cornerWorld(z, c, cw, ch)
+    if (Math.hypot(px - wx, py - wy) <= HANDLE_R + 3) return c
   }
   return -1
 }
 
-function hitTest(zones: Zone[], px: number, py: number, cw: number, ch: number): number {
-  for (let i = zones.length - 1; i >= 0; i--) {
-    const z = zones[i]
-    if (px >= z.x * cw && px <= (z.x + z.w) * cw &&
-        py >= z.y * ch && py <= (z.y + z.h) * ch) {
-      return i
-    }
-  }
-  return -1
+// Clamp handle to canvas so it's always reachable even when zone is near an edge
+function rotHandleVisible(z: Zone, cw: number, ch: number): [number, number] {
+  const [hx, hy] = rotHandleWorld(z, cw, ch)
+  return [clamp(hx, ROT_R + 4, cw - ROT_R - 4), clamp(hy, ROT_R + 4, ch - ROT_R - 4)]
 }
 
-const HANDLE_CURSORS: Record<ResizeHandle, string> = {
-  nw: 'nw-resize', ne: 'ne-resize', se: 'se-resize', sw: 'sw-resize',
+function hitRotHandle(z: Zone, px: number, py: number, cw: number, ch: number): boolean {
+  const [hx, hy] = rotHandleVisible(z, cw, ch)
+  return Math.hypot(px - hx, py - hy) <= ROT_R + 3
 }
 
-function zoneColor(z: Zone, selected: boolean): { fill: string; stroke: string; handle: string } {
-  const hex = z.color ?? (z.type === 'detect' ? '#f97316' : '#ef4444')
-  const { r, g, b } = parseHex(hex)
-  const fillOpacity = selected ? 0.30 : 0.18
-  const strokeOpacity = selected ? 1.0 : 0.85
-  return {
-    fill: `rgba(${r},${g},${b},${fillOpacity})`,
-    stroke: `rgba(${r},${g},${b},${strokeOpacity})`,
-    handle: `rgba(${r},${g},${b},0.95)`,
-  }
+function hitDelBtn(z: Zone, px: number, py: number, cw: number, ch: number): boolean {
+  const [bx, by] = delBtnWorld(z, cw, ch)
+  return Math.hypot(px - bx, py - by) <= DEL_R + 3
 }
 
-function drawDeleteButton(ctx: CanvasRenderingContext2D, cx: number, cy: number, strokeColor: string) {
-  const r = 9
+// Move zone by (dx, dy) canvas pixels, keeping center on canvas
+function moveZone(z: Zone, dx: number, dy: number, cw: number, ch: number): Zone {
+  const [cx, cy] = zoneCenter(z, cw, ch)
+  const hw = (z.w * cw) / 2, hh = (z.h * ch) / 2
+  const ncx = clamp(cx + dx, hw, cw - hw)
+  const ncy = clamp(cy + dy, hh, ch - hh)
+  return { ...z, x: (ncx - hw) / cw, y: (ncy - hh) / ch }
+}
+
+// Resize by dragging corner c to (mx, my). Opposite corner stays fixed.
+function resizeZone(z: Zone, c: number, mx: number, my: number, cw: number, ch: number): Zone {
+  const [fx, fy] = cornerWorld(z, OPP_CORNER[c], cw, ch)
+  const ncx = (fx + mx) / 2, ncy = (fy + my) / 2
+  const a = deg2rad(z.rotation_deg ?? 0)
+  const [lx, ly] = toLocal(ncx, ncy, fx, fy, a)
+  const hw = Math.max(0.015 * cw, Math.abs(lx))
+  const hh = Math.max(0.015 * ch, Math.abs(ly))
+  const nx = clamp((ncx - hw) / cw, 0, 1)
+  const ny = clamp((ncy - hh) / ch, 0, 1)
+  const nw = clamp((2 * hw) / cw, 0.02, 1 - nx)
+  const nh = clamp((2 * hh) / ch, 0.02, 1 - ny)
+  return { ...z, x: nx, y: ny, w: nw, h: nh }
+}
+
+// Rotate zone so its up-axis points towards (mx, my)
+function rotateZone(z: Zone, mx: number, my: number, cw: number, ch: number): Zone {
+  const [cx, cy] = zoneCenter(z, cw, ch)
+  let deg = Math.atan2(mx - cx, -(my - cy)) * 180 / Math.PI
+  if (deg < 0) deg += 360
+  return { ...z, rotation_deg: deg }
+}
+
+// ── canvas painting ───────────────────────────────────────────────────────────
+
+function drawDeleteButton(ctx: CanvasRenderingContext2D, bx: number, by: number, strokeColor: string) {
   ctx.beginPath()
-  ctx.arc(cx, cy, r, 0, Math.PI * 2)
+  ctx.arc(bx, by, DEL_R, 0, Math.PI * 2)
   ctx.fillStyle = 'rgba(30,30,30,0.85)'
   ctx.fill()
   ctx.strokeStyle = strokeColor
   ctx.lineWidth = 1.2
   ctx.stroke()
-  const d = 4
+  const d = 3.5
   ctx.beginPath()
-  ctx.moveTo(cx - d, cy - d); ctx.lineTo(cx + d, cy + d)
-  ctx.moveTo(cx + d, cy - d); ctx.lineTo(cx - d, cy + d)
+  ctx.moveTo(bx - d, by - d); ctx.lineTo(bx + d, by + d)
+  ctx.moveTo(bx + d, by - d); ctx.lineTo(bx - d, by + d)
   ctx.strokeStyle = strokeColor
   ctx.lineWidth = 1.8
   ctx.stroke()
 }
+
+type Interaction =
+  | null
+  | { mode: 'drawing'; x0: number; y0: number; x1: number; y1: number }
+  | { mode: 'moving'; idx: number; orig: Zone; x0: number; y0: number; x1: number; y1: number }
+  | { mode: 'resizing'; idx: number; corner: number; x1: number; y1: number }
+  | { mode: 'rotating'; idx: number; x1: number; y1: number }
 
 function paintCanvas(
   ctx: CanvasRenderingContext2D,
@@ -230,93 +200,125 @@ function paintCanvas(
   cw: number,
   ch: number,
   ia: Interaction,
-  selectedIdx: number | null,
-  readonly = false,
+  selIdx: number | null,
+  readonly: boolean,
 ) {
   ctx.clearRect(0, 0, cw, ch)
+
   if (video && video.readyState >= 2) {
     ctx.drawImage(video, 0, 0, cw, ch)
   } else {
-    ctx.fillStyle = '#1f2937'
+    ctx.fillStyle = '#111827'
     ctx.fillRect(0, 0, cw, ch)
     ctx.fillStyle = '#6b7280'
     ctx.font = '14px sans-serif'
     ctx.textAlign = 'center'
     ctx.fillText('Aguardando transmissão...', cw / 2, ch / 2)
+    ctx.textAlign = 'left'
   }
 
-  const preview: Zone[] = zones.map((z, i) => {
-    if (ia?.mode === 'moving' && ia.idx === i)
-      return applyMove(ia.orig, ia.curX - ia.startX, ia.curY - ia.startY, cw, ch)
-    if (ia?.mode === 'resizing' && ia.idx === i)
-      return applyResize(ia.orig, ia.handle, ia.curX - ia.startX, ia.curY - ia.startY, cw, ch)
-    if (ia?.mode === 'rotating' && ia.idx === i) {
-      const { cx, cy } = zoneCenterPx(ia.orig, cw, ch)
-      const deg = normalizeDeg(Math.atan2(ia.curY - cy, ia.curX - cx) * 180 / Math.PI + 90)
-      return { ...ia.orig, rotation_deg: deg }
-    }
+  // Build display list (active interaction applied)
+  const display: Zone[] = zones.map((z, i) => {
+    if (!ia) return z
+    if (ia.mode === 'moving' && ia.idx === i) return moveZone(ia.orig, ia.x1 - ia.x0, ia.y1 - ia.y0, cw, ch)
+    if (ia.mode === 'resizing' && ia.idx === i) return resizeZone(z, ia.corner, ia.x1, ia.y1, cw, ch)
+    if (ia.mode === 'rotating' && ia.idx === i) return rotateZone(z, ia.x1, ia.y1, cw, ch)
     return z
   })
+
+  let drawingPreview = false
   if (ia?.mode === 'drawing') {
-    preview.push(dragToZone(ia.startX, ia.startY, ia.curX, ia.curY, cw, ch))
+    const lx = Math.min(ia.x0, ia.x1), rx = Math.max(ia.x0, ia.x1)
+    const ly = Math.min(ia.y0, ia.y1), ry = Math.max(ia.y0, ia.y1)
+    const nx = snapEdge(lx / cw), nx1 = snapEdge(rx / cw)
+    const ny = snapEdge(ly / ch), ny1 = snapEdge(ry / ch)
+    if (nx1 - nx > 0.01 && ny1 - ny > 0.01) {
+      display.push({ x: nx, y: ny, w: nx1 - nx, h: ny1 - ny, type: 'exclude' })
+      drawingPreview = true
+    }
   }
 
-  for (let i = 0; i < preview.length; i++) {
-    const z = preview[i]
-    const px = z.x * cw; const py = z.y * ch; const pw = z.w * cw; const ph = z.h * ch
-    const isDrawing = ia?.mode === 'drawing' && i === preview.length - 1
-    const isSelected = !isDrawing && selectedIdx === i
-    const colors = zoneColor(z, isSelected)
+  for (let i = 0; i < display.length; i++) {
+    const z = display[i]
+    const isPreview = drawingPreview && i === display.length - 1
+    const isSel = !isPreview && selIdx === i
+    const [cx, cy] = zoneCenter(z, cw, ch)
+    const hw = (z.w * cw) / 2, hh = (z.h * ch) / 2
+    const a = deg2rad(z.rotation_deg ?? 0)
+    const hex = z.color ?? (z.type === 'detect' ? '#f97316' : '#ef4444')
+    const { r, g, b } = parseHex(hex)
+    const fill = `rgba(${r},${g},${b},${isSel ? 0.30 : 0.18})`
+    const stroke = `rgba(${r},${g},${b},${isSel ? 1.0 : 0.85})`
+    const handle = `rgba(${r},${g},${b},0.95)`
 
-    const cx = px + pw / 2
-    const cy = py + ph / 2
-    const a = ((z.rotation_deg ?? 0) * Math.PI) / 180
+    // Filled rotated rectangle
     ctx.save()
     ctx.translate(cx, cy)
     ctx.rotate(a)
-    ctx.fillStyle = colors.fill
-    ctx.fillRect(-pw / 2, -ph / 2, pw, ph)
-    ctx.strokeStyle = colors.stroke
-    ctx.lineWidth = isSelected ? 2 : 1.5
-    ctx.strokeRect(-pw / 2, -ph / 2, pw, ph)
+    ctx.fillStyle = fill
+    ctx.fillRect(-hw, -hh, hw * 2, hh * 2)
+    ctx.strokeStyle = stroke
+    ctx.lineWidth = isSel ? 2 : 1.5
+    ctx.strokeRect(-hw, -hh, hw * 2, hh * 2)
     ctx.restore()
 
-    if (!isDrawing) {
-      if (!readonly) {
-        const corners: [number, number][] = [[px, py], [px + pw, py], [px + pw, py + ph], [px, py + ph]]
-        for (const [hx, hy] of corners) {
-          ctx.fillStyle = colors.handle
-          ctx.fillRect(hx - 5, hy - 5, 10, 10)
-        }
-        if (isSelected) {
-          const { cx, cy } = zoneCenterPx(z, cw, ch)
-          const { hx, hy } = rotateHandlePos(z, cw, ch)
-          ctx.beginPath()
-          ctx.moveTo(cx, cy - ph / 2)
-          ctx.lineTo(hx, hy)
-          ctx.strokeStyle = colors.handle
-          ctx.lineWidth = 1.2
-          ctx.stroke()
-          ctx.beginPath()
-          ctx.arc(hx, hy, 7, 0, Math.PI * 2)
-          ctx.fillStyle = colors.handle
-          ctx.fill()
-        }
-        drawDeleteButton(ctx, px + pw - DELETE_PX, py + DELETE_PX, colors.stroke)
+    if (!readonly && !isPreview) {
+      // Corner handles at rotated positions
+      for (let c = 0; c < 4; c++) {
+        const [wx, wy] = cornerWorld(z, c, cw, ch)
+        ctx.fillStyle = handle
+        ctx.fillRect(wx - 5, wy - 5, 10, 10)
       }
 
-      // label / type badge
-      const displayLabel = z.label || (z.type === 'detect' ? 'detect' : null)
-      if (displayLabel) {
+      // Delete button just outside TR corner
+      const [bx, by] = delBtnWorld(z, cw, ch)
+      drawDeleteButton(ctx, bx, by, stroke)
+
+      // Rotation handle (only for selected zone) — clamped so it's always on-screen
+      if (isSel) {
+        const [hx, hy] = rotHandleVisible(z, cw, ch)
+        const [tx, ty] = toWorld(cx, cy, 0, -hh, a)  // rotated top-center
+        ctx.beginPath()
+        ctx.moveTo(tx, ty)
+        ctx.lineTo(hx, hy)
+        ctx.strokeStyle = handle
+        ctx.lineWidth = 1.2
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.arc(hx, hy, ROT_R, 0, Math.PI * 2)
+        ctx.fillStyle = handle
+        ctx.fill()
+      }
+
+      // Label: drawn in zone's local frame so it rotates with the zone
+      const label = z.label || (z.type === 'detect' ? 'detect' : null)
+      if (label) {
+        ctx.save()
+        const [tlx, tly] = cornerWorld(z, 0, cw, ch)
+        ctx.translate(tlx, tly)
+        ctx.rotate(a)
         ctx.font = '11px sans-serif'
         ctx.textAlign = 'left'
-        ctx.fillStyle = 'rgba(0,0,0,0.6)'
-        ctx.fillRect(px + 4, py + 4, ctx.measureText(displayLabel).width + 8, 16)
-        ctx.fillStyle = colors.stroke
-        ctx.fillText(displayLabel, px + 8, py + 15)
+        const tw = ctx.measureText(label).width
+        ctx.fillStyle = 'rgba(0,0,0,0.65)'
+        ctx.fillRect(4, 4, tw + 8, 16)
+        ctx.fillStyle = stroke
+        ctx.fillText(label, 8, 15)
+        ctx.restore()
       }
     }
   }
+}
+
+// ── component ─────────────────────────────────────────────────────────────────
+
+function relPos(e: React.MouseEvent<HTMLCanvasElement>): [number, number] {
+  const c = e.currentTarget
+  const r = c.getBoundingClientRect()
+  return [
+    clamp((e.clientX - r.left) * c.width / r.width, 0, c.width),
+    clamp((e.clientY - r.top) * c.height / r.height, 0, c.height),
+  ]
 }
 
 export default function CameraZonesSettingsPage() {
@@ -350,7 +352,8 @@ export default function CameraZonesSettingsPage() {
   const zonesRef = useRef(zones)
   const interactionRef = useRef(interaction)
   const selectedIdxRef = useRef(selectedIdx)
-  const readonlyRef = useRef(!isAdmin)
+
+  // Sync refs every render (no dep array — runs every render)
   useEffect(() => {
     zonesRef.current = zones
     interactionRef.current = interaction
@@ -371,13 +374,12 @@ export default function CameraZonesSettingsPage() {
         setRegionScore(p.score)
         setPeakScore(prev => prev === null ? p.score : Math.max(prev, p.score))
       }
-    } catch {
-      // ignore JSON parse errors
-    }
+    } catch { /* ignore */ }
   }, [])
 
   useEventSource(sseURL, handleScoreMessage)
 
+  // Load zones
   useEffect(() => {
     if (!id) return
     let active = true
@@ -388,7 +390,7 @@ export default function CameraZonesSettingsPage() {
     return () => { active = false }
   }, [id])
 
-  // HLS live stream setup
+  // HLS live stream
   useEffect(() => {
     if (!id) return
     const video = document.createElement('video')
@@ -406,9 +408,7 @@ export default function CameraZonesSettingsPage() {
       const hls = new Hls({
         manifestLoadingMaxRetry: 20,
         manifestLoadingRetryDelay: 2000,
-        xhrSetup(xhr) {
-          xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`)
-        },
+        xhrSetup(xhr) { xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`) },
       })
       hls.loadSource(src)
       hls.attachMedia(video)
@@ -424,124 +424,166 @@ export default function CameraZonesSettingsPage() {
     }
   }, [id])
 
-  // RAF loop — repinta o canvas a cada frame com o vídeo ao vivo e as zonas
+  // RAF paint loop
   useEffect(() => {
     function loop() {
       const canvas = canvasRef.current
       const ctx = canvas?.getContext('2d')
       if (canvas && ctx) {
-        paintCanvas(ctx, videoRef.current, zonesRef.current, canvas.width, canvas.height, interactionRef.current, selectedIdxRef.current, readonlyRef.current)
+        paintCanvas(
+          ctx, videoRef.current, zonesRef.current,
+          canvas.width, canvas.height,
+          interactionRef.current, selectedIdxRef.current, !isAdmin,
+        )
       }
       rafRef.current = requestAnimationFrame(loop)
     }
     rafRef.current = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [])
+  }, [isAdmin])
 
+  // ── cursor ──────────────────────────────────────────────────────────────────
 
-  function updateCursor(px: number, py: number, currentZones: Zone[]) {
+  function updateCursor(px: number, py: number) {
     const canvas = canvasRef.current
     if (!canvas) return
-    const cw = canvas.width; const ch = canvas.height
-    const del = detectDeleteButton(currentZones, px, py, cw, ch)
-    if (del >= 0) { setCursorStyle('pointer'); return }
-    const rot = detectRotateHandle(currentZones, selectedIdxRef.current, px, py, cw, ch)
-    if (rot >= 0) { setCursorStyle('alias'); return }
-    const h = detectHandle(currentZones, px, py, cw, ch)
-    if (h) { setCursorStyle(HANDLE_CURSORS[h.handle]); return }
-    const hit = hitTest(currentZones, px, py, cw, ch)
-    setCursorStyle(hit >= 0 ? 'grab' : 'crosshair')
+    const cw = canvas.width, ch = canvas.height
+    const zs = zonesRef.current
+    const si = selectedIdxRef.current
+
+    for (let i = zs.length - 1; i >= 0; i--) {
+      if (hitDelBtn(zs[i], px, py, cw, ch)) { setCursorStyle('pointer'); return }
+    }
+    if (si !== null && zs[si] && hitRotHandle(zs[si], px, py, cw, ch)) {
+      setCursorStyle('alias'); return
+    }
+    for (let i = zs.length - 1; i >= 0; i--) {
+      const c = hitCorner(zs[i], px, py, cw, ch)
+      if (c >= 0) { setCursorStyle(CORNER_CURSORS[c]); return }
+    }
+    for (let i = zs.length - 1; i >= 0; i--) {
+      if (hitZone(zs[i], px, py, cw, ch)) { setCursorStyle('grab'); return }
+    }
+    setCursorStyle('crosshair')
+  }
+
+  // ── commit ──────────────────────────────────────────────────────────────────
+
+  const commitInteraction = useCallback(() => {
+    const ia = interactionRef.current
+    const canvas = canvasRef.current
+    if (!ia || !canvas) { setInteraction(null); return }
+    interactionRef.current = null  // guard against double-commit (canvas + document)
+    const cw = canvas.width, ch = canvas.height
+
+    let next: Zone[] = zonesRef.current
+    if (ia.mode === 'drawing') {
+      const lx = Math.min(ia.x0, ia.x1), rx = Math.max(ia.x0, ia.x1)
+      const ly = Math.min(ia.y0, ia.y1), ry = Math.max(ia.y0, ia.y1)
+      const nx = snapEdge(lx / cw), nx1 = snapEdge(rx / cw)
+      const ny = snapEdge(ly / ch), ny1 = snapEdge(ry / ch)
+      if (nx1 - nx > 0.01 && ny1 - ny > 0.01) {
+        const newZone: Zone = { x: nx, y: ny, w: nx1 - nx, h: ny1 - ny, type: 'exclude', color: pickZoneColor(next) }
+        next = [...next, newZone]
+        setSelectedIdx(next.length - 1)
+        setRegionScore(null); setPeakScore(null)
+      }
+    } else if (ia.mode === 'moving') {
+      next = next.map((z, i) => i === ia.idx ? moveZone(ia.orig, ia.x1 - ia.x0, ia.y1 - ia.y0, cw, ch) : z)
+    } else if (ia.mode === 'resizing') {
+      next = next.map((z, i) => i === ia.idx ? resizeZone(z, ia.corner, ia.x1, ia.y1, cw, ch) : z)
+    } else if (ia.mode === 'rotating') {
+      next = next.map((z, i) => i === ia.idx ? rotateZone(z, ia.x1, ia.y1, cw, ch) : z)
+    }
+    // Sync ref immediately so save() reads correct positions before next render
+    zonesRef.current = next
+    setZones(next)
+    setInteraction(null)
+  }, [])
+
+  useEffect(() => {
+    document.addEventListener('pointerup', commitInteraction)
+    return () => document.removeEventListener('pointerup', commitInteraction)
+  }, [commitInteraction])
+
+  // ── mouse handlers ──────────────────────────────────────────────────────────
+
+  function handleMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
+    const [x, y] = relPos(e)
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const cw = canvas.width, ch = canvas.height
+    const zs = zonesRef.current
+    const si = selectedIdxRef.current
+
+    // Delete button (checked first, front to back)
+    for (let i = zs.length - 1; i >= 0; i--) {
+      if (hitDelBtn(zs[i], x, y, cw, ch)) {
+        setZones(prev => prev.filter((_, j) => j !== i))
+        setSelectedIdx(prev => {
+          if (prev === i) { setRegionScore(null); setPeakScore(null); return null }
+          if (prev !== null && i < prev) return prev - 1
+          return prev
+        })
+        return
+      }
+    }
+
+    // Rotation handle (only for selected zone)
+    if (si !== null && zs[si] && hitRotHandle(zs[si], x, y, cw, ch)) {
+      setInteraction({ mode: 'rotating', idx: si, x1: x, y1: y })
+      setCursorStyle('alias')
+      return
+    }
+
+    // Corner resize handles (front to back)
+    for (let i = zs.length - 1; i >= 0; i--) {
+      const c = hitCorner(zs[i], x, y, cw, ch)
+      if (c >= 0) {
+        if (i !== si) { setRegionScore(null); setPeakScore(null) }
+        setSelectedIdx(i)
+        setInteraction({ mode: 'resizing', idx: i, corner: c, x1: x, y1: y })
+        setCursorStyle(CORNER_CURSORS[c])
+        return
+      }
+    }
+
+    // Zone interior → move
+    for (let i = zs.length - 1; i >= 0; i--) {
+      if (hitZone(zs[i], x, y, cw, ch)) {
+        if (i !== si) { setRegionScore(null); setPeakScore(null) }
+        setSelectedIdx(i)
+        setInteraction({ mode: 'moving', idx: i, orig: zs[i], x0: x, y0: y, x1: x, y1: y })
+        setCursorStyle('grabbing')
+        return
+      }
+    }
+
+    // Empty area → draw
+    setSelectedIdx(null)
+    setRegionScore(null); setPeakScore(null)
+    setInteraction({ mode: 'drawing', x0: x, y0: y, x1: x, y1: y })
+  }
+
+  function handleMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
+    const [x, y] = relPos(e)
+    if (interactionRef.current) {
+      setInteraction(ia => ia ? { ...ia, x1: x, y1: y } : null)
+    } else {
+      updateCursor(x, y)
+    }
+  }
+
+  function handleMouseUp(e: React.MouseEvent<HTMLCanvasElement>) {
+    e.preventDefault()
+    commitInteraction()
+    const [x, y] = relPos(e)
+    updateCursor(x, y)
   }
 
   function updateSelectedZone(patch: Partial<Zone>) {
     if (selectedIdx === null) return
     setZones(prev => prev.map((z, i) => i === selectedIdx ? { ...z, ...patch } : z))
-  }
-
-  function handleMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
-    const { x, y } = relPos(e)
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const cw = canvas.width; const ch = canvas.height
-
-    const delIdx = detectDeleteButton(zones, x, y, cw, ch)
-    if (delIdx >= 0) {
-      setSelectedIdx(prev => {
-        if (prev === delIdx) { setRegionScore(null); setPeakScore(null); return null }
-        if (prev !== null && delIdx < prev) return prev - 1
-        return prev
-      })
-      setZones(prev => prev.filter((_, i) => i !== delIdx))
-      return
-    }
-    const rotIdx = detectRotateHandle(zones, selectedIdx, x, y, cw, ch)
-    if (rotIdx >= 0) {
-      if (rotIdx !== selectedIdx) { setRegionScore(null); setPeakScore(null) }
-      setSelectedIdx(rotIdx)
-      setInteraction({ mode: 'rotating', idx: rotIdx, orig: zones[rotIdx], startX: x, startY: y, curX: x, curY: y })
-      setCursorStyle('alias')
-      return
-    }
-    const h = detectHandle(zones, x, y, cw, ch)
-    if (h) {
-      if (h.idx !== selectedIdx) { setRegionScore(null); setPeakScore(null) }
-      setSelectedIdx(h.idx)
-      setInteraction({ mode: 'resizing', idx: h.idx, orig: zones[h.idx], handle: h.handle, startX: x, startY: y, curX: x, curY: y })
-      setCursorStyle(HANDLE_CURSORS[h.handle])
-      return
-    }
-    const idx = hitTest(zones, x, y, cw, ch)
-    if (idx >= 0) {
-      if (idx !== selectedIdx) { setRegionScore(null); setPeakScore(null) }
-      setSelectedIdx(idx)
-      setInteraction({ mode: 'moving', idx, orig: zones[idx], startX: x, startY: y, curX: x, curY: y })
-      setCursorStyle('grabbing')
-      return
-    }
-    setSelectedIdx(null)
-    setRegionScore(null)
-    setPeakScore(null)
-    setInteraction({ mode: 'drawing', startX: x, startY: y, curX: x, curY: y })
-  }
-
-  function handleMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
-    const { x, y } = relPos(e)
-    if (!interaction) { updateCursor(x, y, zones); return }
-    setInteraction(ia => ia ? { ...ia, curX: x, curY: y } : null)
-  }
-
-  function handleMouseUp(e: React.MouseEvent<HTMLCanvasElement>) {
-    e.preventDefault()
-    const canvas = canvasRef.current
-    if (!canvas || !interaction) { setInteraction(null); return }
-    const cw = canvas.width; const ch = canvas.height
-
-    if (interaction.mode === 'drawing') {
-      const z = dragToZone(interaction.startX, interaction.startY, interaction.curX, interaction.curY, cw, ch)
-      if (z.w > 0.01 && z.h > 0.01) {
-        const newIdx = zones.length
-        setRegionScore(null)
-        setPeakScore(null)
-        setZones(prev => {
-          const color = pickZoneColor(prev)
-          return [...prev, { ...z, color }]
-        })
-        setSelectedIdx(newIdx)
-      }
-    } else if (interaction.mode === 'moving') {
-      const moved = applyMove(interaction.orig, interaction.curX - interaction.startX, interaction.curY - interaction.startY, cw, ch)
-      setZones(prev => prev.map((z, i) => i === interaction.idx ? moved : z))
-    } else if (interaction.mode === 'resizing') {
-      const resized = applyResize(interaction.orig, interaction.handle, interaction.curX - interaction.startX, interaction.curY - interaction.startY, cw, ch)
-      setZones(prev => prev.map((z, i) => i === interaction.idx ? resized : z))
-    } else if (interaction.mode === 'rotating') {
-      const { cx, cy } = zoneCenterPx(interaction.orig, cw, ch)
-      const deg = normalizeDeg(Math.atan2(interaction.curY - cy, interaction.curX - cx) * 180 / Math.PI + 90)
-      setZones(prev => prev.map((z, i) => i === interaction.idx ? { ...z, rotation_deg: deg } : z))
-    }
-    setInteraction(null)
-    const { x, y } = relPos(e)
-    updateCursor(x, y, zones)
   }
 
   async function save() {
@@ -550,7 +592,7 @@ export default function CameraZonesSettingsPage() {
       const r = await fetch(`/api/cameras/${id}/motion/zones`, {
         method: 'PUT',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(zones),
+        body: JSON.stringify(zonesRef.current),
       })
       setToast({ msg: r.ok ? 'Zonas salvas.' : 'Erro ao salvar.', ok: r.ok })
     } catch {
@@ -569,7 +611,7 @@ export default function CameraZonesSettingsPage() {
 
       {isAdmin && (
         <p className="text-xs text-gray-500 mb-5">
-          Arraste em área vazia para criar uma zona. Clique numa zona para selecioná-la e configurá-la. Arraste os cantos para redimensionar. Clique no × para excluir.
+          Arraste em área vazia para criar uma zona. Clique numa zona para selecioná-la. Arraste os cantos para redimensionar. Use o círculo acima para rotacionar. Clique no × para excluir.
         </p>
       )}
 
@@ -581,7 +623,6 @@ export default function CameraZonesSettingsPage() {
         <p className="text-gray-500 text-sm">Carregando zonas...</p>
       ) : (
         <div className="flex flex-col gap-4">
-          {/* Canvas — fundo: transmissão ao vivo via HLS */}
           <div
             className="relative bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
             style={{ aspectRatio: '16/9' }}
@@ -595,14 +636,10 @@ export default function CameraZonesSettingsPage() {
               onMouseDown={isAdmin ? handleMouseDown : undefined}
               onMouseMove={isAdmin ? handleMouseMove : undefined}
               onMouseUp={isAdmin ? handleMouseUp : undefined}
-              onMouseLeave={isAdmin ? () => {
-                if (interaction) handleMouseUp({ preventDefault: () => {} } as React.MouseEvent<HTMLCanvasElement>)
-                setCursorStyle('crosshair')
-              } : undefined}
+              onMouseLeave={isAdmin ? () => setCursorStyle('crosshair') : undefined}
             />
           </div>
 
-          {/* Zone settings panel — admin only */}
           {isAdmin && selectedZone && (
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 flex flex-col gap-4">
               <div className="flex items-center justify-between">
@@ -635,7 +672,6 @@ export default function CameraZonesSettingsPage() {
               </div>
 
               <div className="flex gap-6 flex-wrap">
-                {/* Label */}
                 <div className="flex flex-col gap-1 min-w-40">
                   <label className="text-xs text-gray-400">Nome (opcional)</label>
                   <input
@@ -652,15 +688,18 @@ export default function CameraZonesSettingsPage() {
                   <input
                     type="number"
                     min={0}
-                    max={360}
-                    step={0.1}
-                    value={Math.round(((selectedZone.rotation_deg ?? 0) + Number.EPSILON) * 10) / 10}
-                    onChange={e => updateSelectedZone({ rotation_deg: normalizeDeg(parseFloat(e.target.value) || 0) })}
+                    max={359}
+                    step={1}
+                    value={Math.round(selectedZone.rotation_deg ?? 0)}
+                    onChange={e => {
+                      let d = parseFloat(e.target.value) || 0
+                      d = ((d % 360) + 360) % 360
+                      updateSelectedZone({ rotation_deg: d })
+                    }}
                     className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-600 w-28"
                   />
                 </div>
 
-                {/* Type */}
                 <div className="flex flex-col gap-2">
                   <span className="text-xs text-gray-400">Tipo</span>
                   <div className="flex gap-4">
@@ -684,7 +723,6 @@ export default function CameraZonesSettingsPage() {
                   </p>
                 </div>
 
-                {/* Detect-only fields */}
                 {(selectedZone.type ?? 'exclude') === 'detect' && (
                   <>
                     <div className="flex flex-col gap-1">

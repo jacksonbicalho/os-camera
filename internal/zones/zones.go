@@ -12,6 +12,7 @@ type Zone struct {
 	FPS             int     `json:"fps,omitempty"`              // 0 = herdado da câmera
 	Scale           float64 `json:"scale,omitempty"`            // 0 ou 1 = sem downscale; 0.5 = metade da resolução da zona
 	Color           string  `json:"color,omitempty"`            // hex como "#ef4444"; vazio = cor padrão por tipo
+	RotationDeg     float64 `json:"rotation_deg,omitempty"`     // graus no sentido horário; 0 = sem rotação
 }
 
 // IsExclude retorna true para zonas de exclusão (type "" ou "exclude").

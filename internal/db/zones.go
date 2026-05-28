@@ -10,7 +10,7 @@ import (
 // GetZones returns all zones for the given camera, ordered by display_order.
 func GetZones(database *DB, cameraID string) ([]zones.Zone, error) {
 	rows, err := database.Query(
-		`SELECT x, y, w, h, type, label, threshold, cooldown_seconds, fps, scale, color
+		`SELECT x, y, w, h, type, label, threshold, cooldown_seconds, fps, scale, color, rotation_deg
 		 FROM camera_motion_zones
 		 WHERE camera_id = ?
 		 ORDER BY display_order, id`,
@@ -25,7 +25,7 @@ func GetZones(database *DB, cameraID string) ([]zones.Zone, error) {
 	for rows.Next() {
 		var z zones.Zone
 		var label sql.NullString
-		if err := rows.Scan(&z.X, &z.Y, &z.W, &z.H, &z.Type, &label, &z.Threshold, &z.CooldownSeconds, &z.FPS, &z.Scale, &z.Color); err != nil {
+		if err := rows.Scan(&z.X, &z.Y, &z.W, &z.H, &z.Type, &label, &z.Threshold, &z.CooldownSeconds, &z.FPS, &z.Scale, &z.Color, &z.RotationDeg); err != nil {
 			return nil, fmt.Errorf("scan zone: %w", err)
 		}
 		z.Label = label.String
@@ -59,9 +59,9 @@ func SetZones(database *DB, cameraID string, zs []zones.Zone) error {
 		}
 		_, err := tx.Exec(
 			`INSERT INTO camera_motion_zones
-			 (camera_id, display_order, x, y, w, h, type, label, threshold, cooldown_seconds, fps, scale, color)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			cameraID, i, z.X, z.Y, z.W, z.H, zType, nullStr(z.Label), z.Threshold, z.CooldownSeconds, z.FPS, z.Scale, z.Color,
+			 (camera_id, display_order, x, y, w, h, type, label, threshold, cooldown_seconds, fps, scale, color, rotation_deg)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			cameraID, i, z.X, z.Y, z.W, z.H, zType, nullStr(z.Label), z.Threshold, z.CooldownSeconds, z.FPS, z.Scale, z.Color, z.RotationDeg,
 		)
 		if err != nil {
 			return fmt.Errorf("insert zone %d: %w", i, err)
