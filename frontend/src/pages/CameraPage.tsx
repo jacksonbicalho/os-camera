@@ -558,7 +558,7 @@ export default function CameraPage() {
   }
 
   const { settings } = useSettings()
-  const motionPeak = useMotionPeak(id, `/cameras/${id}`)
+  const motionPeak = useMotionPeak(id)
   const { markRead } = useNotifications()
   const setItems = useSetSidebarItems()
   const cam = settings?.cameras.find(c => c.id === id) ?? viewerCam
