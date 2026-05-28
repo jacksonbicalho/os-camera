@@ -219,7 +219,7 @@ Ao iniciar uma nova história:
    - Frontend: `yarn lint` + `yarn test --run` + `yarn build` (em `frontend/`)
    - Nunca commitar se qualquer um desses falhar.
 6. Adicionar seção `## Revisão` na história e aguardar aprovação do navigator. **Só proceder com o item 7 após o navigator aprovar marcando `[x] Aprovado` na seção Revisão.**
-7. Commitar com mensagem semântica na branch, fazer `git push origin <branch>` e abrir PR para `master` com `gh pr create`.
+7. Commitar com mensagem semântica na branch e fazer `git push origin <branch>`. **Aguardar autorização explícita do navigator antes de abrir o PR** — `[x] Aprovado` na história libera o commit/push, mas não o `gh pr create`. Só abrir o PR quando o navigator pedir.
 8. Atualizar o arquivo de release correspondente em `releases/`: preencher a branch e o número do PR na tabela, marcar `[~]` (aguardando aprovação no GitHub). O merge não é feito individualmente — acontece em lote quando o navigator liberar a release.
 
 ### Commits semânticos
