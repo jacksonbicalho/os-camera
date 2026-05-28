@@ -1,0 +1,1 @@
+ALTER TABLE recordings ADD COLUMN analysis_skipped BOOLEAN NOT NULL DEFAULT 0;

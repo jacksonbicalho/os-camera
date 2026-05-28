@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -902,5 +903,48 @@ func TestAnalyzeNewRecordings_SkipsWhenDisabled(t *testing.T) {
 
 	if fake.Called != 0 {
 		t.Errorf("analyzer should not be called when global config is disabled, called %d times", fake.Called)
+	}
+}
+
+func TestAnalyzeNewRecordings_SkipsAfterAnalyzeError(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCameraWithMotion(t, database, "cam1", 10, 10)
+
+	if err := db.UpdateVideoAnalysisConfig(database, db.VideoAnalysisConfig{
+		Enabled:    true,
+		ServiceURL: "http://yolo:8000",
+		Model:      "yolov8n",
+	}); err != nil {
+		t.Fatalf("UpdateVideoAnalysisConfig: %v", err)
+	}
+
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	pathA := mp4WithTimestamp(dir, "cam1", base)
+	pathB := mp4WithTimestamp(dir, "cam1", base.Add(5*time.Minute))
+	writeFile(t, pathA, base)
+	writeFile(t, pathB, base.Add(5*time.Minute))
+
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID:   "cam1",
+		OccurredAt: base.Add(time.Minute),
+		Score:      0.5,
+	}); err != nil {
+		t.Fatalf("InsertMotionEvent: %v", err)
+	}
+
+	fake := &analysis.FakeAnalyzer{Err: errors.New("yolo service returned 422")}
+	cleaner := storage.New(dir, 0, 0, 5*time.Minute, 0, 0, database, discardLogger()).
+		WithAnalyzer(fake)
+
+	cleaner.Clean()
+	if fake.Called != 1 {
+		t.Fatalf("expected analyzer called once, got %d", fake.Called)
+	}
+
+	// Second run must not retry the failed recording.
+	cleaner.Clean()
+	if fake.Called != 1 {
+		t.Errorf("failed recording should not be retried, analyzer called %d times total", fake.Called)
 	}
 }

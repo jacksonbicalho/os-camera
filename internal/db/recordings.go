@@ -171,6 +171,12 @@ func LastRecordingPerCamera(db *DB) (map[string]time.Time, error) {
 	return result, rows.Err()
 }
 
+// MarkAnalysisSkipped sets analysis_skipped=1 for the recording with the given id.
+func MarkAnalysisSkipped(database *DB, id int64) error {
+	_, err := database.Exec(`UPDATE recordings SET analysis_skipped=1 WHERE id=?`, id)
+	return err
+}
+
 func nullTime(t time.Time) sql.NullString {
 	if t.IsZero() {
 		return sql.NullString{}

@@ -656,6 +656,7 @@ func (c *Cleaner) analyzeNewRecordings() {
 		FROM recordings r
 		WHERE r.ended_at IS NOT NULL
 		AND r.has_motion = 1
+		AND r.analysis_skipped = 0
 		AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)`)
 	if err != nil {
 		c.log.Warn("analyzeNewRecordings: query failed", "err", err)
@@ -701,6 +702,7 @@ func (c *Cleaner) analyzeNewRecordings() {
 		cancel()
 		if err != nil {
 			c.log.Warn("analyzeNewRecordings: analyze failed", "path", p.path, "err", err)
+			_ = db.MarkAnalysisSkipped(c.db, p.id)
 			continue
 		}
 		if len(dets) == 0 {
