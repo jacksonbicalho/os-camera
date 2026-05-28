@@ -12,6 +12,7 @@ from pathlib import Path
 
 app = FastAPI()
 _models: dict[str, YOLO] = {}
+MODEL_DIR = Path("/models")
 
 # Fine-tune jobs: job_id -> {status, epoch, total_epochs, error}
 _jobs: dict[str, dict] = {}
@@ -20,7 +21,9 @@ _jobs_lock = threading.Lock()
 
 def get_model(name: str) -> YOLO:
     if name not in _models:
-        _models[name] = YOLO(name + ".pt")
+        custom_path = MODEL_DIR / f"{name}.pt"
+        path = str(custom_path) if custom_path.exists() else f"{name}.pt"
+        _models[name] = YOLO(path)
     return _models[name]
 
 
