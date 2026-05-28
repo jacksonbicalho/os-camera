@@ -1119,60 +1119,12 @@ function toggleFullscreen() {
           {/* Painel lateral condicional */}
           {activePanel && (
             <div className="w-72 shrink-0 border-l border-gray-800 bg-gray-900 flex flex-col h-full">
-              {activePanel === 'calendar' && (
-                <div className="flex flex-col h-full">
-                  <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800 shrink-0">
-                    <span className="text-xs font-medium text-gray-400">
-                      {isToday ? 'Calendário' : `Calendário · ${format(selectedDate, "d MMM", { locale: ptBR })}`}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      {(!isToday || !calendarOnCurrentMonth) && (
-                        <button
-                          onClick={() => { setSelectedDate(new Date()); setCalendarMonth(new Date()) }}
-                          title="Ir para hoje"
-                          className="px-1.5 py-0.5 text-[10px] font-medium text-blue-400 hover:text-blue-300 transition-colors"
-                        >
-                          Hoje
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setActivePanel(null)}
-                        title="Fechar"
-                        className="px-1 py-1 text-gray-600 hover:text-gray-300 transition-colors"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="p-3 overflow-y-auto">
-                  <DayPicker
-                    mode="single"
-                    selected={selectedDate}
-                    month={calendarMonth}
-                    onMonthChange={setCalendarMonth}
-                    onSelect={d => { if (d) { setSelectedDate(d); setCalendarMonth(d) } }}
-                    locale={ptBR}
-                    classNames={{
-                      root: 'text-gray-200 text-sm',
-                      month_caption: 'text-gray-200 font-medium',
-                      nav: 'text-gray-400',
-                      day: 'text-gray-300 hover:bg-gray-700 rounded',
-                      day_button: 'w-8 h-8 flex items-center justify-center rounded',
-                      selected: 'bg-blue-600 text-white rounded',
-                      today: 'text-blue-400 font-semibold',
-                      outside: 'text-gray-600',
-                      disabled: 'text-gray-700',
-                    }}
-                  />
-                  </div>
-                </div>
-              )}
-              {(activePanel === 'recordings' || activePanel === 'events') && (
+              {(activePanel === 'recordings' || activePanel === 'events' || activePanel === 'calendar') && (
                 <>
                   <div className="flex items-center border-b border-gray-800 shrink-0">
                     <button
                       onClick={() => setActivePanel('recordings')}
-                      className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                      className={`flex-1 px-2 py-2 text-xs font-medium transition-colors ${
                         activePanel === 'recordings'
                           ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
                           : 'text-gray-500 hover:text-gray-300'
@@ -1182,13 +1134,23 @@ function toggleFullscreen() {
                     </button>
                     <button
                       onClick={() => setActivePanel('events')}
-                      className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                      className={`flex-1 px-2 py-2 text-xs font-medium transition-colors ${
                         activePanel === 'events'
                           ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
                           : 'text-gray-500 hover:text-gray-300'
                       }`}
                     >
                       Eventos <span className="ml-1 text-gray-500">{motionEvents.length}</span>
+                    </button>
+                    <button
+                      onClick={() => setActivePanel('calendar')}
+                      className={`flex-1 px-2 py-2 text-xs font-medium transition-colors ${
+                        activePanel === 'calendar'
+                          ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
+                          : 'text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      {isToday ? 'Calendário' : format(selectedDate, "d MMM", { locale: ptBR })}
                     </button>
                     <button
                       onClick={() => setActivePanel(null)}
@@ -1256,7 +1218,7 @@ function toggleFullscreen() {
                         })
                       })()}
                     </ListPanel>
-                  ) : (
+                  ) : activePanel === 'events' ? (
                     <ListPanel
                       key="events"
                       sortOrder={eventsSortOrder}
@@ -1319,6 +1281,40 @@ function toggleFullscreen() {
                         )
                       })}
                     </ListPanel>
+                  ) : (
+                    <div className="flex flex-col overflow-y-auto">
+                      {(!isToday || !calendarOnCurrentMonth) && (
+                        <div className="flex justify-end px-3 pt-2">
+                          <button
+                            onClick={() => { setSelectedDate(new Date()); setCalendarMonth(new Date()) }}
+                            className="px-1.5 py-0.5 text-[10px] font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                          >
+                            Hoje
+                          </button>
+                        </div>
+                      )}
+                      <div className="p-3">
+                        <DayPicker
+                          mode="single"
+                          selected={selectedDate}
+                          month={calendarMonth}
+                          onMonthChange={setCalendarMonth}
+                          onSelect={d => { if (d) { setSelectedDate(d); setCalendarMonth(d) } }}
+                          locale={ptBR}
+                          classNames={{
+                            root: 'text-gray-200 text-sm',
+                            month_caption: 'text-gray-200 font-medium',
+                            nav: 'text-gray-400',
+                            day: 'text-gray-300 hover:bg-gray-700 rounded',
+                            day_button: 'w-8 h-8 flex items-center justify-center rounded',
+                            selected: 'bg-blue-600 text-white rounded',
+                            today: 'text-blue-400 font-semibold',
+                            outside: 'text-gray-600',
+                            disabled: 'text-gray-700',
+                          }}
+                        />
+                      </div>
+                    </div>
                   )}
                 </>
               )}
