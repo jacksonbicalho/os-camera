@@ -588,6 +588,8 @@ func createTestCameraWithMotion(t *testing.T, database *db.DB, id string, lead, 
 
 // Chunk imediatamente após um evento deve ser marcado has_motion=1 quando
 // o evento cai dentro da janela de trail do chunk seguinte.
+// Chunk C é necessário para que B receba ended_at; sem ended_at o chunk
+// não pode ser avaliado (está sendo gravado).
 func TestSyncRecordings_TrailWindowMarksNextChunk(t *testing.T) {
 	dir := t.TempDir()
 	database := openTestDB(t)
@@ -596,12 +598,16 @@ func TestSyncRecordings_TrailWindowMarksNextChunk(t *testing.T) {
 	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
 	// Chunk A: [base, base+5s)  — contém o evento (1s antes do fim)
 	// Chunk B: [base+5s, base+10s) — não contém evento, mas está dentro de trail=10s
+	// Chunk C: [base+10s, ...) — presença de C define o ended_at de B
 	chunkA := base
 	chunkB := base.Add(5 * time.Second)
+	chunkC := base.Add(10 * time.Second)
 	pathA := mp4WithTimestamp(dir, "cam1", chunkA)
 	pathB := mp4WithTimestamp(dir, "cam1", chunkB)
+	pathC := mp4WithTimestamp(dir, "cam1", chunkC)
 	writeFile(t, pathA, chunkA)
 	writeFile(t, pathB, chunkB)
+	writeFile(t, pathC, chunkC)
 
 	// evento 1s antes do fim de A → aftermath está em B
 	evTime := chunkA.Add(4 * time.Second)
@@ -664,6 +670,74 @@ func hasMotionInDB(t *testing.T, database *db.DB, path string) bool {
 		t.Fatalf("query has_motion for %s: %v", path, err)
 	}
 	return v != 0
+}
+
+// TestSyncRecordings_DoesNotMarkNullEndedAtAsHasMotion verifica que uma gravação
+// com ended_at=NULL não recebe has_motion=1 mesmo quando há eventos de movimento
+// após o início da gravação. O estado NULL indica que a gravação ainda está em
+// andamento — não há como saber se o evento pertence a ela.
+func TestSyncRecordings_DoesNotMarkNullEndedAtAsHasMotion(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCameraWithMotion(t, database, "cam1", 10, 10)
+
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	// Único arquivo na pasta: ended_at permanece NULL (não há arquivo seguinte).
+	path := mp4WithTimestamp(dir, "cam1", base)
+	writeFile(t, path, base)
+
+	// Evento após o início da gravação — com o bug, isso marca has_motion=1.
+	addMotionEvent(t, database, "cam1", base.Add(2*time.Minute), 0.1)
+
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	if hasMotionInDB(t, database, path) {
+		t.Error("gravação com ended_at=NULL não deve receber has_motion=1")
+	}
+}
+
+// TestCleanFromDB_PurgesOrphanedMotionEvents verifica que eventos de movimento
+// sem cobertura de nenhuma gravação (órfãos) são removidos após a gravação
+// relacionada ser deletada pela regra de retenção.
+func TestCleanFromDB_PurgesOrphanedMotionEvents(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	// lead=30s: evento 5s antes de A começa cobre A pelo lead
+	createTestCameraWithMotion(t, database, "cam1", 30, 10)
+
+	base := time.Now().UTC().Add(-120 * time.Minute).Truncate(time.Second)
+
+	pathA := mp4WithTimestamp(dir, "cam1", base)
+	pathB := mp4WithTimestamp(dir, "cam1", base.Add(10*time.Second))
+	writeFile(t, pathA, base)
+	writeFile(t, pathB, base.Add(10*time.Second))
+
+	// Evento 5s ANTES de A começar: fora do intervalo exato de A [base, base+10s),
+	// mas dentro da janela de lead (30s) → A será marcado has_motion=1.
+	evOrphan := base.Add(-5 * time.Second)
+	addMotionEvent(t, database, "cam1", evOrphan, 0.1)
+
+	// Primeiro ciclo: sincroniza gravações e marca has_motion.
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	if !hasMotionInDB(t, database, pathA) {
+		t.Fatal("pathA deve ter has_motion=1 (evento dentro da janela de lead)")
+	}
+
+	// Segundo ciclo: retenção curta deleta ambas as gravações (120min > 60min).
+	storage.New(dir, 60, 60, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	if _, err := os.Stat(pathA); !os.IsNotExist(err) {
+		t.Fatal("pathA deveria ter sido deletado")
+	}
+
+	// Após deletar as gravações, o evento órfão (base-5s, sem cobertura de
+	// nenhuma gravação) deve ser removido pelo purgeOrphanedEvents.
+	var count int
+	database.QueryRow(`SELECT COUNT(*) FROM motion_events WHERE camera_id='cam1'`).Scan(&count)
+	if count != 0 {
+		t.Errorf("evento órfão deve ser removido após todas as gravações serem deletadas, mas restaram %d", count)
+	}
 }
 
 func TestCheckSize_NoWarnWhenBelowThreshold(t *testing.T) {

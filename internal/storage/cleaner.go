@@ -233,16 +233,14 @@ func (c *Cleaner) syncRecordings() {
 	_, err := c.db.Exec(`
 		UPDATE recordings SET has_motion=1
 		WHERE has_motion=0
+		AND ended_at IS NOT NULL
 		AND EXISTS (
 			SELECT 1
 			FROM motion_events me
 			JOIN camera_motion cm ON cm.camera_id = me.camera_id
 			WHERE me.camera_id = recordings.camera_id
 			AND recordings.started_at < strftime('%Y-%m-%dT%H:%M:%SZ', me.occurred_at, '+' || cm.playback_trail_seconds || ' seconds')
-			AND (
-				recordings.ended_at IS NULL
-				OR recordings.ended_at > strftime('%Y-%m-%dT%H:%M:%SZ', me.occurred_at, '-' || cm.playback_lead_seconds || ' seconds')
-			)
+			AND recordings.ended_at > strftime('%Y-%m-%dT%H:%M:%SZ', me.occurred_at, '-' || cm.playback_lead_seconds || ' seconds')
 		)`)
 	if err != nil {
 		c.log.Warn("failed to update has_motion from motion_events", "err", err)
@@ -599,11 +597,33 @@ func (c *Cleaner) cleanFromFS() {
 	}
 }
 
+// purgeOrphanedEvents removes motion_events whose occurred_at is not covered by
+// any recording's exact time range [started_at, ended_at). A 10-minute grace
+// window protects events that belong to an in-progress chunk (ended_at IS NULL).
+func (c *Cleaner) purgeOrphanedEvents() {
+	if c.db == nil {
+		return
+	}
+	_, err := c.db.Exec(`
+		DELETE FROM motion_events
+		WHERE occurred_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-10 minutes')
+		AND NOT EXISTS (
+			SELECT 1 FROM recordings r
+			WHERE r.camera_id = motion_events.camera_id
+			AND r.started_at <= motion_events.occurred_at
+			AND (r.ended_at IS NULL OR r.ended_at > motion_events.occurred_at)
+		)`)
+	if err != nil {
+		c.log.Warn("failed to purge orphaned motion events", "err", err)
+	}
+}
+
 func (c *Cleaner) Clean() {
 	if c.db != nil {
 		c.syncRecordings()
 		c.analyzeNewRecordings()
 		c.cleanFromDB()
+		c.purgeOrphanedEvents()
 	} else {
 		c.cleanFromFS()
 	}
