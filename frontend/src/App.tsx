@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { lazy, Suspense, useEffect } from 'react'
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { getToken, mustChangePassword } from './auth'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
@@ -22,6 +22,17 @@ const DiscoverPage = lazy(() => import('./pages/settings/DiscoverPage'))
 const AnalysisSettingsPage = lazy(() => import('./pages/settings/AnalysisSettingsPage'))
 const CameraAnalysisSettingsPage = lazy(() => import('./pages/settings/CameraAnalysisSettingsPage'))
 
+function UnauthorizedHandler() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  useEffect(() => {
+    const handler = () => navigate('/login', { state: { from: location.pathname + location.search }, replace: true })
+    window.addEventListener('camera:unauthorized', handler)
+    return () => window.removeEventListener('camera:unauthorized', handler)
+  }, [navigate, location])
+  return null
+}
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   if (!getToken()) return <Navigate to="/login" state={{ from: location.pathname + location.search }} replace />
@@ -40,6 +51,7 @@ function Lazy({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <SidebarItemsProvider>
+    <UnauthorizedHandler />
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/change-password" element={<ChangePasswordPage />} />

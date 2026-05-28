@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { authHeaders, clearToken } from '../auth'
+import { authHeaders, onUnauthorized } from '../auth'
 import { useEventSource } from './useEventSource'
 
 export interface MotionDailyPeak {
@@ -9,18 +8,16 @@ export interface MotionDailyPeak {
   date: string
 }
 
-export function useMotionPeak(cameraId: string | undefined, redirectTo: string) {
-  const navigate = useNavigate()
+export function useMotionPeak(cameraId: string | undefined, _redirectTo?: string) {
   const [peak, setPeak] = useState<MotionDailyPeak | null>(null)
 
-  // Busca inicial e polling a cada 30s — traz o histórico do dia e lida com virada de data
   useEffect(() => {
     if (!cameraId) return
 
     const load = () => {
       fetch(`/api/cameras/${cameraId}/motion/daily-peak`, { headers: authHeaders() })
         .then(res => {
-          if (res.status === 401) { clearToken(); navigate('/login', { state: { from: redirectTo }, replace: true }); return null }
+          if (res.status === 401) { onUnauthorized(); return null }
           if (!res.ok) return null
           return res.json()
         })
@@ -31,7 +28,7 @@ export function useMotionPeak(cameraId: string | undefined, redirectTo: string) 
     load()
     const id = setInterval(load, 30_000)
     return () => clearInterval(id)
-  }, [cameraId, navigate, redirectTo])
+  }, [cameraId])
 
   // Atualização em tempo real: se o score recebido for maior que o pico atual, atualiza
   const handleScore = useCallback((data: string) => {

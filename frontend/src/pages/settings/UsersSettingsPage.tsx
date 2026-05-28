@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import UserForm, { type UserFormData } from '../../components/UserForm'
-import { authHeaders, clearToken } from '../../auth'
+import { authHeaders, onUnauthorized } from '../../auth'
 
 interface Camera {
   id: string
@@ -45,7 +45,7 @@ export default function UsersSettingsPage() {
 
   const loadUsers = useCallback(async () => {
     const res = await fetch('/api/users', { headers: authHeaders() })
-    if (res.status === 401) { clearToken(); navigate('/login', { replace: true }); return }
+    if (res.status === 401) { onUnauthorized(); return }
     if (res.status === 403) { navigate('/', { replace: true }); return }
     setUsers(await res.json())
   }, [navigate])
@@ -55,7 +55,7 @@ export default function UsersSettingsPage() {
       fetch('/api/users', { headers: authHeaders() }),
       fetch('/api/cameras', { headers: authHeaders() }),
     ]).then(async ([ur, cr]) => {
-      if (ur.status === 401 || cr.status === 401) { clearToken(); navigate('/login', { replace: true }); return }
+      if (ur.status === 401 || cr.status === 401) { onUnauthorized(); return }
       if (ur.status === 403) { navigate('/', { replace: true }); return }
       setUsers(await ur.json())
       setCameras(await cr.json())

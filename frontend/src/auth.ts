@@ -13,6 +13,11 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY)
 }
 
+export function onUnauthorized(): void {
+  clearToken()
+  window.dispatchEvent(new CustomEvent('camera:unauthorized'))
+}
+
 export async function login(username: string, password: string): Promise<void> {
   const res = await fetch('/api/auth/login', {
     method: 'POST',

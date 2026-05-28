@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { authHeaders, clearToken } from '../auth'
+import { authHeaders, onUnauthorized } from '../auth'
 import AppLayout from '../components/AppLayout'
 import MotionScoreChart from '../components/MotionScoreChart'
 import { useStats } from '../hooks/useStats'
@@ -32,20 +31,19 @@ function ChevronIcon({ open }: { open: boolean }) {
 }
 
 export default function StatsPage() {
-  const navigate = useNavigate()
-  const stats = useStats('/stats')
+  const stats = useStats()
   const [cameras, setCameras] = useState<CameraInfo[]>([])
   const [expandedCams, setExpandedCams] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     fetch('/api/cameras', { headers: authHeaders() })
       .then(res => {
-        if (res.status === 401) { clearToken(); navigate('/login', { state: { from: '/stats' }, replace: true }); return null }
+        if (res.status === 401) { onUnauthorized(); return null }
         return res.json()
       })
       .then(data => { if (Array.isArray(data)) setCameras(data) })
       .catch(() => {})
-  }, [navigate])
+  }, [])
 
   function toggleCam(id: string) {
     setExpandedCams(prev => {
