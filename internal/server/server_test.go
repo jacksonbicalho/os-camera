@@ -1800,7 +1800,40 @@ func TestDeleteRecordingReturns204(t *testing.T) {
 	}
 }
 
-func TestDeleteRecordingReturns404WhenFileNotFound(t *testing.T) {
+func TestDeleteRecordingDeletesFileInPreviousDayDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	// Filename encodes UTC 2026-05-27 00:03:21 (crosses midnight), but the
+	// recorder stored it in the previous day's directory (2026/05/26).
+	filename := "20260527000321.mp4"
+	prevDayDir := filepath.Join(tmpDir, cameraID, "2026", "05", "26")
+	if err := os.MkdirAll(prevDayDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(prevDayDir, filename)
+	if err := os.WriteFile(filePath, []byte("fake"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/"+cameraID+"/recordings/"+filename, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		t.Error("expected MP4 in previous-day directory to be deleted")
+	}
+}
+
+func TestDeleteRecordingReturns204WhenFileNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := config.ServerConfig{RecordingsPath: tmpDir}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
@@ -1812,8 +1845,49 @@ func TestDeleteRecordingReturns404WhenFileNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", w.Code)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+}
+
+func TestDeleteRecordingCleansDBEvenWhenFileNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	database := openServerTestDB(t)
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: "cam1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateUser(database, "u", "p", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert a motion event in the range of the chunk to be deleted.
+	chunkStart := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID:   "cam1",
+		OccurredAt: chunkStart.Add(30 * time.Second),
+		Score:      0.5,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/cam1/recordings/20260511100000.mp4", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+	events, err := db.ListMotionEvents(database, "cam1", chunkStart, chunkStart.Add(10*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 0 {
+		t.Errorf("expected motion events to be cleaned up, got %d", len(events))
 	}
 }
 

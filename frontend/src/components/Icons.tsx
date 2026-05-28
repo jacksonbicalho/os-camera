@@ -45,11 +45,11 @@ export function CameraLogo({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" className={className} {...props}>
       <rect width="512" height="512" rx="112" fill="#18181b" />
-      <rect x="68" y="172" width="376" height="252" rx="36" fill="#09090b" stroke="#f59e0b" strokeWidth="20" />
-      <path d="M188 172 L188 132 Q188 112 208 112 L304 112 Q324 112 324 132 L324 172" fill="#09090b" stroke="#f59e0b" strokeWidth="20" strokeLinejoin="round" />
-      <circle cx="256" cy="298" r="90" fill="#09090b" stroke="#f59e0b" strokeWidth="20" />
-      <circle cx="256" cy="298" r="56" fill="#09090b" stroke="#f59e0b" strokeWidth="12" />
-      <circle cx="256" cy="298" r="26" fill="#f59e0b" />
+      <rect x="68" y="172" width="376" height="252" rx="36" fill="#09090b" stroke="#ffffff" strokeWidth="20" />
+      <path d="M188 172 L188 132 Q188 112 208 112 L304 112 Q324 112 324 132 L324 172" fill="#09090b" stroke="#ffffff" strokeWidth="20" strokeLinejoin="round" />
+      <circle cx="256" cy="298" r="90" fill="#09090b" stroke="#ffffff" strokeWidth="20" />
+      <circle cx="256" cy="298" r="56" fill="#09090b" stroke="#ffffff" strokeWidth="12" />
+      <circle cx="256" cy="298" r="26" fill="#ffffff" />
       <circle cx="394" cy="216" r="18" fill="#ef4444" />
     </svg>
   )

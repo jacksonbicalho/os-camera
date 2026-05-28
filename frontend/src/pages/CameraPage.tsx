@@ -41,12 +41,12 @@ async function loadRecordingsData(cameraId: string, date: Date, page: number, or
   return res.json()
 }
 
-async function deleteRecording(cameraId: string, filename: string): Promise<boolean> {
+async function deleteRecording(cameraId: string, filename: string): Promise<{ ok: boolean; serverError: boolean }> {
   const res = await fetch(`/api/cameras/${cameraId}/recordings/${filename}`, {
     method: 'DELETE',
     headers: authHeaders(),
   })
-  return res.status === 204
+  return { ok: res.status === 204, serverError: res.status >= 500 }
 }
 
 async function loadMotionEvents(cameraId: string, date: Date): Promise<MotionEvent[]> {
@@ -149,6 +149,7 @@ export default function CameraPage() {
   const annImgRef = useRef<HTMLImageElement>(null)
   const [detectionModal, setDetectionModal] = useState<Array<{ label: string; confidence: number; frame_count: number }> | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [showDebug, setShowDebug] = useState(false)
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false)
   const [debugStats, setDebugStats] = useState<{ fps: number; dropped: number; hlsStats: HLSStats | null; lagMs: number } | null>(null)
@@ -513,12 +514,13 @@ export default function CameraPage() {
 
   async function handleConfirmDelete() {
     if (!deleteTarget) return
+    const target = deleteTarget
     setDeleteTarget(null)
-    const ok = await deleteRecording(id!, deleteTarget.rec.filename)
-    if (ok) {
-      if (activeRecording?.filename === deleteTarget.rec.filename) setActiveRecording(null)
-      await reloadRecordingsAndEvents()
-    }
+    setDeleteError(null)
+    const { ok, serverError } = await deleteRecording(id!, target.rec.filename)
+    if (ok && activeRecording?.filename === target.rec.filename) setActiveRecording(null)
+    if (serverError) setDeleteError('Erro ao excluir gravação. Tente novamente.')
+    await reloadRecordingsAndEvents()
   }
 
   function playEventAt(ev: MotionEvent, recs: Recording[] = recordings, skipScroll = false) {
@@ -994,24 +996,8 @@ function toggleFullscreen() {
                       </button>
                     </div>
                   )}
-                  {/* Custom controls overlay */}
+                  {/* Custom controls overlay — play/pause only; progress bar moved outside player */}
                   <div className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 transition-opacity duration-200 pointer-events-none ${recControlsVisible || !recPlaying ? 'opacity-100' : 'opacity-0'}`}>
-                    {/* Progress bar */}
-                    <div
-                      className="h-1 rounded-full bg-white/30 cursor-pointer relative mb-2 pointer-events-auto"
-                      onClick={e => {
-                        if (!videoRef.current || !recDuration) return
-                        const rect = e.currentTarget.getBoundingClientRect()
-                        const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-                        videoRef.current.currentTime = fraction * recDuration
-                      }}
-                    >
-                      <div
-                        className="absolute inset-y-0 left-0 rounded-full bg-blue-500 pointer-events-none"
-                        style={{ width: `${recDuration ? (recCurrentTime / recDuration) * 100 : 0}%` }}
-                      />
-                    </div>
-                    {/* Buttons */}
                     <div className="flex items-center gap-2 pointer-events-auto">
                       <button onClick={togglePlayRecording} aria-label={recPlaying ? 'Pausar' : 'Reproduzir'} className="p-1 text-white/80 hover:text-white transition-colors">
                         {recPlaying ? (
@@ -1020,12 +1006,33 @@ function toggleFullscreen() {
                           <Play className="w-4 h-4 fill-current" />
                         )}
                       </button>
-                      <span className="text-xs text-white/70 tabular-nums">{formatRecTime(recCurrentTime)} / {formatRecTime(recDuration)}</span>
                     </div>
                   </div>
                 </div>
               )}
             </div>
+
+            {/* Persistent progress bar — always visible during recording playback */}
+            {!isLive && recDuration > 0 && (
+              <div className="flex items-center gap-2 px-1 py-1.5">
+                <span className="text-xs text-gray-500 tabular-nums shrink-0">{formatRecTime(recCurrentTime)}</span>
+                <div
+                  className="flex-1 h-1.5 rounded-full bg-gray-700 cursor-pointer relative group"
+                  onClick={e => {
+                    if (!videoRef.current || !recDuration) return
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+                    videoRef.current.currentTime = fraction * recDuration
+                  }}
+                >
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full bg-blue-500 pointer-events-none group-hover:bg-blue-400 transition-colors"
+                    style={{ width: `${(recCurrentTime / recDuration) * 100}%` }}
+                  />
+                </div>
+                <span className="text-xs text-gray-500 tabular-nums shrink-0">{formatRecTime(recDuration)}</span>
+              </div>
+            )}
 
             {showDebug && (
               <div
@@ -1503,6 +1510,12 @@ function toggleFullscreen() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {deleteError && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-red-900/90 border border-red-700 rounded text-sm text-red-200 shadow-lg">
+          {deleteError}
         </div>
       )}
 
