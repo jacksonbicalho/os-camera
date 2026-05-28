@@ -144,13 +144,6 @@ export default function VerticalTimeline({
     el.scrollTop = Math.max(0, Math.min(el.scrollHeight - el.clientHeight, scrollTo))
   }, [activeMin, pxPerMin])
 
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const onTouchStart = (e: TouchEvent) => { seekAtY(e.touches[0].clientY) }
-    el.addEventListener('touchstart', onTouchStart, { passive: true })
-    return () => el.removeEventListener('touchstart', onTouchStart)
-  }, [seekAtY])
 
   const outerStyle = { maxHeight: maxHeight ?? 'calc(100vh - 10rem)' } as React.CSSProperties
 

@@ -193,7 +193,7 @@ export default function Header({ username = "usuário" }: HeaderProps) {
           </button>
 
           {bellOpen && (
-            <div className="fixed top-12 inset-x-2 sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-72 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 flex flex-col max-h-[80vh] sm:max-h-96">
+            <div className="absolute right-0 mt-2 w-72 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 flex flex-col max-h-96">
               {/* Linha 1: título */}
               <div className="px-3 pt-2.5 pb-0">
                 <span className="text-xs font-semibold text-gray-300">Notificações</span>
