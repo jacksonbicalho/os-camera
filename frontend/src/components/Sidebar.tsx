@@ -8,6 +8,7 @@ import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import type { Notification } from "../contexts/NotificationContext"
 import ConfirmDialog from "./ConfirmDialog"
+import { Bell, X, Check, Eye, MoreVertical, Trash2, BarChart2, Settings, CircleUser, CameraLogo } from "./Icons"
 
 interface SidebarProps {
   username?: string
@@ -81,9 +82,7 @@ function NotificationItem({
         className="text-gray-500 hover:text-gray-300 flex-shrink-0 mt-0.5"
         title="Excluir"
       >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
+        <X className="w-3.5 h-3.5" />
       </button>
     </div>
   )
@@ -136,9 +135,7 @@ function SidebarInjectedItem({ item }: { item: SidebarItem }) {
               >
                 <span>{opt.label}</span>
                 {opt.active && (
-                  <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
+                  <Check className="w-3 h-3 shrink-0" />
                 )}
               </button>
             ))}
@@ -306,16 +303,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
         title="os-camera"
       >
         <h1 className="sr-only">os-camera</h1>
-        <svg className="w-8 h-8" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-          <rect width="512" height="512" rx="112" fill="#18181b"/>
-          <rect x="68" y="172" width="376" height="252" rx="36" fill="#09090b" stroke="#f59e0b" strokeWidth="20"/>
-          <path d="M188 172 L188 132 Q188 112 208 112 L304 112 Q324 112 324 132 L324 172"
-                fill="#09090b" stroke="#f59e0b" strokeWidth="20" strokeLinejoin="round"/>
-          <circle cx="256" cy="298" r="90" fill="#09090b" stroke="#f59e0b" strokeWidth="20"/>
-          <circle cx="256" cy="298" r="56" fill="#09090b" stroke="#f59e0b" strokeWidth="12"/>
-          <circle cx="256" cy="298" r="26" fill="#f59e0b"/>
-          <circle cx="394" cy="216" r="18" fill="#ef4444"/>
-        </svg>
+        <CameraLogo className="w-8 h-8" />
       </Link>
 
 
@@ -330,11 +318,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             }`}
             title="Notificações"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-              />
-            </svg>
+            <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
               <span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-red-600 text-white rounded-full">
                 {unreadCount > 99 ? "99+" : unreadCount}
@@ -370,11 +354,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
                     className="flex items-center gap-0.5 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     title="Ações"
                   >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                      <circle cx="12" cy="5" r="1.5" />
-                      <circle cx="12" cy="12" r="1.5" />
-                      <circle cx="12" cy="19" r="1.5" />
-                    </svg>
+                    <MoreVertical className="w-4 h-4" />
                   </button>
 
                   {kebabOpen && (
@@ -389,9 +369,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
                           })}
                           className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700"
                         >
-                          <svg className="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
+                          <Check className="w-3.5 h-3.5 text-blue-400" />
                           Marcar como lidas
                         </button>
                       )}
@@ -405,10 +383,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
                           })}
                           className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700"
                         >
-                          <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
+                          <Eye className="w-3.5 h-3.5 text-gray-400" />
                           Marcar como não lidas
                         </button>
                       )}
@@ -426,9 +401,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
                         })}
                         className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-gray-700"
                       >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
+                        <Trash2 className="w-3.5 h-3.5" />
                         Excluir
                       </button>
                     </div>
@@ -504,11 +477,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
         {/* Stats */}
         <NavIcon to="/stats" title="Estatísticas">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-            />
-          </svg>
+          <BarChart2 className="w-5 h-5" />
         </NavIcon>
 
         {/* Settings */}
@@ -529,12 +498,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
                 : 'text-gray-400 hover:bg-gray-800 hover:text-white'
             }`}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-              />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+            <Settings className="w-5 h-5" />
           </button>
         </div>
         {settingsOpen && createPortal(
@@ -569,9 +533,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             className="flex items-center justify-center w-10 h-10 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
             title={username}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-            </svg>
+            <CircleUser className="w-6 h-6" />
           </button>
 
           {userOpen && (

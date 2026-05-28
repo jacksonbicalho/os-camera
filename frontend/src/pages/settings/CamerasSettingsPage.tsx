@@ -5,6 +5,7 @@ import ConfirmDialog from '../../components/ConfirmDialog'
 import CameraForm from '../../components/CameraForm'
 import { type Camera, type CameraFormData, formToPayload } from '../../components/cameraFormUtils'
 import { authHeaders, onUnauthorized, getRole, getToken } from '../../auth'
+import { Plus, GripVertical, ChevronRight, Pencil, Trash2 } from '../../components/Icons'
 
 export default function CamerasSettingsPage() {
   const navigate = useNavigate()
@@ -132,9 +133,7 @@ export default function CamerasSettingsPage() {
                     <StatusBadges cam={cam} />
                   </div>
                 </div>
-                <svg className="w-4 h-4 text-gray-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
+                <ChevronRight className="w-4 h-4 text-gray-600 shrink-0" />
               </Link>
             ))}
           </div>
@@ -152,9 +151,7 @@ export default function CamerasSettingsPage() {
             onClick={() => { setCreating(true); setError(null) }}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
+            <Plus className="w-3.5 h-3.5" />
             Nova câmera
           </button>
         )}
@@ -204,9 +201,7 @@ export default function CamerasSettingsPage() {
               className={`group bg-gray-900 border rounded-lg px-3 py-3 flex items-center gap-3 transition-colors ${dragOverId === cam.id ? 'border-blue-500' : 'border-gray-800 hover:border-gray-700'}`}
             >
               {/* drag handle */}
-              <svg className="w-4 h-4 text-gray-700 group-hover:text-gray-500 shrink-0 cursor-grab active:cursor-grabbing transition-colors" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M7 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm6 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM7 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm6 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-6 5a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm6 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" />
-              </svg>
+              <GripVertical className="w-4 h-4 text-gray-700 group-hover:text-gray-500 shrink-0 cursor-grab active:cursor-grabbing transition-colors" />
 
               {/* thumbnail */}
               <Thumbnail cameraId={cam.id} name={cam.name} />
@@ -232,18 +227,14 @@ export default function CamerasSettingsPage() {
                   title="Editar"
                   className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700 rounded transition-colors"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
+                  <Pencil className="w-4 h-4" />
                 </Link>
                 <button
                   onClick={() => setDeleteId(cam.id)}
                   title="Remover"
                   className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
+                  <Trash2 className="w-4 h-4" />
                 </button>
               </div>
             </div>

@@ -6,6 +6,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { Notification } from "../contexts/NotificationContext";
 import ConfirmDialog from "./ConfirmDialog";
+import { Bell, X, Check, Eye, MoreVertical, Trash2, ChevronDown } from "./Icons";
 
 interface HeaderProps {
   username?: string;
@@ -81,9 +82,7 @@ function NotificationItem({
         className="text-gray-500 hover:text-gray-300 flex-shrink-0 mt-0.5"
         title="Excluir"
       >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
+        <X className="w-3.5 h-3.5" />
       </button>
     </div>
   );
@@ -177,14 +176,7 @@ export default function Header({ username = "usuário" }: HeaderProps) {
             className={`relative transition-colors ${unreadCount > 0 ? "text-white animate-pulse" : "text-gray-400 hover:text-white"}`}
             title="Notificações"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-              />
-            </svg>
+            <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-red-600 text-white rounded-full">
                 {unreadCount > 99 ? "99+" : unreadCount}
@@ -222,11 +214,7 @@ export default function Header({ username = "usuário" }: HeaderProps) {
                     className="flex items-center gap-0.5 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     title="Ações"
                   >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                      <circle cx="12" cy="5" r="1.5" />
-                      <circle cx="12" cy="12" r="1.5" />
-                      <circle cx="12" cy="19" r="1.5" />
-                    </svg>
+                    <MoreVertical className="w-4 h-4" />
                   </button>
 
                   {kebabOpen && (
@@ -243,9 +231,7 @@ export default function Header({ username = "usuário" }: HeaderProps) {
                           }
                           className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700"
                         >
-                          <svg className="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
+                          <Check className="w-3.5 h-3.5 text-blue-400" />
                           Marcar como lidas
                         </button>
                       )}
@@ -262,10 +248,7 @@ export default function Header({ username = "usuário" }: HeaderProps) {
                           }
                           className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700"
                         >
-                          <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
+                          <Eye className="w-3.5 h-3.5 text-gray-400" />
                           Marcar como não lidas
                         </button>
                       )}
@@ -291,9 +274,7 @@ export default function Header({ username = "usuário" }: HeaderProps) {
                         }
                         className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-gray-700"
                       >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
+                        <Trash2 className="w-3.5 h-3.5" />
                         Excluir
                       </button>
                     </div>
@@ -382,19 +363,7 @@ export default function Header({ username = "usuário" }: HeaderProps) {
             className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-colors"
           >
             {username}
-            <svg
-              className={`w-4 h-4 transition-transform ${userOpen ? "rotate-180" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
+            <ChevronDown className={`w-4 h-4 transition-transform ${userOpen ? "rotate-180" : ""}`} />
           </button>
           {userOpen && (
             <div className="absolute right-0 mt-2 w-44 bg-gray-800 border border-gray-700 rounded shadow-lg z-10">

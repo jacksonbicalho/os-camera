@@ -1,5 +1,6 @@
 import React, { useRef, useCallback, useEffect, useState } from 'react'
 import type { Recording, MotionEvent } from '../pages/cameraUtils'
+import { ZoomIn, ZoomOut } from './Icons'
 
 interface VerticalTimelineProps {
   recordings: Recording[]
@@ -166,11 +167,7 @@ export default function VerticalTimeline({
           className="w-7 h-7 flex items-center justify-center text-amber-400 hover:text-amber-200 disabled:opacity-25 disabled:cursor-not-allowed transition-colors rounded hover:bg-zinc-800"
           title="Diminuir zoom"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <circle cx="11" cy="11" r="6" />
-            <line x1="7" y1="11" x2="15" y2="11" />
-            <line x1="16.5" y1="16.5" x2="21" y2="21" />
-          </svg>
+          <ZoomOut className="w-4 h-4" />
         </button>
         <span className="text-[9px] text-amber-400/60 tabular-nums font-medium">{zoom}×</span>
         <button
@@ -179,12 +176,7 @@ export default function VerticalTimeline({
           className="w-7 h-7 flex items-center justify-center text-amber-400 hover:text-amber-200 disabled:opacity-25 disabled:cursor-not-allowed transition-colors rounded hover:bg-zinc-800"
           title="Aumentar zoom"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <circle cx="11" cy="11" r="6" />
-            <line x1="11" y1="8" x2="11" y2="14" />
-            <line x1="8" y1="11" x2="14" y2="11" />
-            <line x1="16.5" y1="16.5" x2="21" y2="21" />
-          </svg>
+          <ZoomIn className="w-4 h-4" />
         </button>
       </div>
 

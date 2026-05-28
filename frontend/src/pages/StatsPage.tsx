@@ -6,6 +6,7 @@ import { useStats } from '../hooks/useStats'
 import { formatBytes, formatDuration } from './statsUtils'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { ChevronDown } from '../components/Icons'
 
 interface CameraInfo {
   id: string
@@ -20,14 +21,7 @@ function StatusDot({ online }: { online: boolean }) {
 }
 
 function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}
-      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-    </svg>
-  )
+  return <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`} />
 }
 
 export default function StatsPage() {
