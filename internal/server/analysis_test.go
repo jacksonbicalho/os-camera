@@ -91,6 +91,66 @@ func TestGetCameraAnalysisConfig_Default(t *testing.T) {
 	}
 }
 
+func TestGetAnalysisConfig_HasCustomModelDefault(t *testing.T) {
+	srv, token := setupDrivesServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/analysis", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	var cfg db.VideoAnalysisConfig
+	json.Unmarshal(w.Body.Bytes(), &cfg)
+	if cfg.HasCustomModel {
+		t.Error("HasCustomModel should be false by default")
+	}
+}
+
+func TestFinetuneStatus_SetsHasCustomModelOnCompletion(t *testing.T) {
+	// Mock YOLO service that returns status=completed.
+	yolo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"done","epoch":20,"total_epochs":20}`))
+	}))
+	defer yolo.Close()
+
+	srv, token := setupDrivesServer(t)
+
+	// Configure the analysis service URL to point to our mock.
+	cfgBody, _ := json.Marshal(map[string]any{
+		"enabled":     true,
+		"service_url": yolo.URL,
+		"model":       "yolov8n",
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/settings/analysis", bytes.NewReader(cfgBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	httptest.NewRecorder() // discard
+	srv.ServeHTTP(httptest.NewRecorder(), req)
+
+	// Call finetune status — should set has_custom_model=true.
+	req2 := httptest.NewRequest(http.MethodGet, "/api/settings/analysis/finetune/status/job123", nil)
+	req2.Header.Set("Authorization", "Bearer "+token)
+	w2 := httptest.NewRecorder()
+	srv.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	// Config should now have has_custom_model=true.
+	req3 := httptest.NewRequest(http.MethodGet, "/api/settings/analysis", nil)
+	req3.Header.Set("Authorization", "Bearer "+token)
+	w3 := httptest.NewRecorder()
+	srv.ServeHTTP(w3, req3)
+
+	var cfg db.VideoAnalysisConfig
+	json.Unmarshal(w3.Body.Bytes(), &cfg)
+	if !cfg.HasCustomModel {
+		t.Error("HasCustomModel should be true after finetune completes")
+	}
+}
+
 func TestUpdateCameraAnalysisConfig(t *testing.T) {
 	srv, token := setupWithCamera(t)
 

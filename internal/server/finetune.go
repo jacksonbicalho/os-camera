@@ -49,10 +49,14 @@ func (s *Server) handleStartFinetune(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	baseModel := cfg.Model
+	if baseModel == "custom" {
+		baseModel = "yolov8n"
+	}
 	client := analysis.NewClient(cfg.ServiceURL)
 	resp, err := client.Finetune(context.Background(), analysis.FinetuneRequest{
 		Annotations: items,
-		BaseModel:   cfg.Model,
+		BaseModel:   baseModel,
 		Epochs:      20,
 	})
 	if err != nil {
@@ -79,6 +83,9 @@ func (s *Server) handleFinetuneStatus(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
+	}
+	if status.Status == "done" || status.Status == "completed" {
+		_ = db.SetHasCustomModel(s.db, true)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)

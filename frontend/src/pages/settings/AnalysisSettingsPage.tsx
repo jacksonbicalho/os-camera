@@ -8,6 +8,7 @@ interface AnalysisConfig {
   service_url: string
   model: string
   confidence_threshold: number
+  has_custom_model?: boolean
 }
 
 const MODELS = [
@@ -61,6 +62,12 @@ export default function AnalysisSettingsPage() {
           pollRef.current = null
           localStorage.removeItem('ft_job_id')
           if (s.status === 'error') setFtError(s.error || 'Erro no treino')
+          if (s.status === 'done') {
+            fetch('/api/settings/analysis', { headers: authHeaders() })
+              .then(r => r.json())
+              .then(data => setCfg(data))
+              .catch(() => {})
+          }
         }
       } catch { /* ignore poll errors */ }
     }, 3000)
@@ -149,6 +156,11 @@ export default function AnalysisSettingsPage() {
                   value={cfg.model}
                   onChange={e => setCfg(c => ({ ...c, model: e.target.value }))}
                 >
+                  {cfg.has_custom_model && (
+                    <optgroup label="Custom">
+                      <option value="custom">custom ✓ (treinado)</option>
+                    </optgroup>
+                  )}
                   {MODELS.map(({ group, names }) => (
                     <optgroup key={group} label={group}>
                       {names.map(m => (
