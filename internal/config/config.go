@@ -48,7 +48,6 @@ type ServerConfig struct {
 	Port           int    `yaml:"port"`
 	SegmentsPath   string `yaml:"segments_path"`
 	RecordingsPath string `yaml:"recordings_path"`
-	HLSDVRSeconds  int    `yaml:"hls_dvr_seconds"`
 	JWTSecret      string `yaml:"jwt_secret"`
 }
 
@@ -84,6 +83,7 @@ type CameraConfig struct {
 	RecordVideoMode   string        `yaml:"record_video_mode"`
 	HLSSegmentSeconds *int          `yaml:"hls_segment_seconds"`
 	HLSListSize       *int          `yaml:"hls_list_size"`
+	HLSDVRSeconds     *int          `yaml:"hls_dvr_seconds"`
 	Motion            *MotionConfig `yaml:"motion"`
 	RecordingEnabled  bool          `yaml:"recording_enabled"`
 }
@@ -100,6 +100,13 @@ func (c CameraConfig) HLSListSizeOrDefault() int {
 		return *c.HLSListSize
 	}
 	return 5
+}
+
+func (c CameraConfig) HLSDVRSecondsOrDefault() int {
+	if c.HLSDVRSeconds != nil {
+		return *c.HLSDVRSeconds
+	}
+	return 0
 }
 
 func (c CameraConfig) EffectiveMotionConfig() MotionConfig {

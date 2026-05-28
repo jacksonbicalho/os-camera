@@ -44,8 +44,7 @@ func bootstrapConfigPairs(cfg config.Config) map[string]string {
 
 		"server.port":            strconv.Itoa(cfg.Server.Port),
 		"server.segments_path":   cfg.Server.SegmentsPath,
-		"server.hls_dvr_seconds": strconv.Itoa(cfg.Server.HLSDVRSeconds),
-		"server.jwt_secret":      cfg.Server.JWTSecret,
+		"server.jwt_secret": cfg.Server.JWTSecret,
 
 		"storage.path": cfg.Storage.Path,
 	}

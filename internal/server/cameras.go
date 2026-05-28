@@ -80,6 +80,7 @@ type cameraConfigDTO struct {
 	RecordVideoMode   string           `json:"record_video_mode"`
 	HLSSegmentSeconds *int             `json:"hls_segment_seconds"`
 	HLSListSize       *int             `json:"hls_list_size"`
+	HLSDVRSeconds     *int             `json:"hls_dvr_seconds"`
 	RecordingEnabled  bool             `json:"recording_enabled"`
 	Motion            *motionConfigDTO `json:"motion"`
 }
@@ -100,6 +101,7 @@ func cameraToDTO(cam config.CameraConfig) cameraConfigDTO {
 		RecordVideoMode:   cam.RecordVideoMode,
 		HLSSegmentSeconds: cam.HLSSegmentSeconds,
 		HLSListSize:       cam.HLSListSize,
+		HLSDVRSeconds:     cam.HLSDVRSeconds,
 		RecordingEnabled:  cam.RecordingEnabled,
 	}
 	if cam.Motion != nil {
@@ -159,6 +161,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		RecordVideoMode   string           `json:"record_video_mode"`
 		HLSSegmentSeconds *int             `json:"hls_segment_seconds"`
 		HLSListSize       *int             `json:"hls_list_size"`
+		HLSDVRSeconds     *int             `json:"hls_dvr_seconds"`
 		RecordingEnabled  *bool            `json:"recording_enabled"`
 		Motion            *motionConfigDTO `json:"motion"`
 	}
@@ -189,6 +192,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		RecordVideoMode:   req.RecordVideoMode,
 		HLSSegmentSeconds: req.HLSSegmentSeconds,
 		HLSListSize:       req.HLSListSize,
+		HLSDVRSeconds:     req.HLSDVRSeconds,
 		RecordingEnabled:  recEnabled,
 	}
 	if req.ChunkDuration != "" {
@@ -273,6 +277,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		RecordVideoMode   string           `json:"record_video_mode"`
 		HLSSegmentSeconds *int             `json:"hls_segment_seconds"`
 		HLSListSize       *int             `json:"hls_list_size"`
+		HLSDVRSeconds     *int             `json:"hls_dvr_seconds"`
 		RecordingEnabled  *bool            `json:"recording_enabled"`
 		Motion            *motionConfigDTO `json:"motion"`
 	}
@@ -321,6 +326,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		RecordVideoMode:   req.RecordVideoMode,
 		HLSSegmentSeconds: req.HLSSegmentSeconds,
 		HLSListSize:       req.HLSListSize,
+		HLSDVRSeconds:     req.HLSDVRSeconds,
 		RecordingEnabled:  recEnabled,
 	}
 	if req.ChunkDuration != "" {

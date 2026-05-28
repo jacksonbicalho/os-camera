@@ -23,6 +23,7 @@ export interface Camera {
   record_video_mode: string
   hls_segment_seconds: number | null
   hls_list_size: number | null
+  hls_dvr_seconds: number | null
   recording_enabled: boolean
   motion: MotionConfig | null
 }
@@ -37,10 +38,11 @@ export interface CameraFormData {
   resolution: string
   hls_video_mode: string
   record_video_mode: string
-  hls_segment_seconds_default: boolean  // true = usar padrão (null no banco)
+  hls_segment_seconds_default: boolean
   hls_segment_seconds: string
-  hls_list_size_default: boolean        // true = usar padrão (null no banco)
+  hls_list_size_default: boolean
   hls_list_size: string
+  hls_dvr_seconds: string
   recording_enabled: boolean
   motion_enabled: boolean
   motion_threshold: string
@@ -89,6 +91,7 @@ export function emptyForm(cam?: Camera): CameraFormData {
       record_video_mode: 'auto',
       hls_segment_seconds_default: true, hls_segment_seconds: '2',
       hls_list_size_default: true, hls_list_size: '5',
+      hls_dvr_seconds: '0',
       recording_enabled: true,
       motion_enabled: false, motion_threshold: '0.02', motion_fps: '2', motion_cooldown: '30',
       motion_capture_auto: true, motion_capture_pct: 25, motion_playback_lead: '10', motion_playback_trail: '10',
@@ -110,6 +113,7 @@ export function emptyForm(cam?: Camera): CameraFormData {
     hls_segment_seconds: String(cam.hls_segment_seconds ?? 2),
     hls_list_size_default: cam.hls_list_size == null,
     hls_list_size: String(cam.hls_list_size ?? 5),
+    hls_dvr_seconds: String(cam.hls_dvr_seconds ?? 0),
     recording_enabled: cam.recording_enabled ?? true,
     motion_enabled: cam.motion?.enabled ?? false,
     motion_threshold: String(cam.motion?.threshold ?? 0.02),
@@ -137,6 +141,7 @@ export function formToPayload(f: CameraFormData) {
     record_video_mode: f.record_video_mode || 'auto',
     hls_segment_seconds: f.hls_segment_seconds_default ? null : (parseInt(f.hls_segment_seconds) || 2),
     hls_list_size: f.hls_list_size_default ? null : (parseInt(f.hls_list_size) || 5),
+    hls_dvr_seconds: parseInt(f.hls_dvr_seconds) || null,
     recording_enabled: f.recording_enabled,
     motion: {
       enabled: f.motion_enabled,

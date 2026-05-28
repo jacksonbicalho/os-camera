@@ -541,6 +541,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		RecordVideoMode   string     `json:"record_video_mode"`
 		HLSSegmentSeconds *int       `json:"hls_segment_seconds"`
 		HLSListSize       *int       `json:"hls_list_size"`
+		HLSDVRSeconds     *int       `json:"hls_dvr_seconds"`
 		RecordingEnabled  bool       `json:"recording_enabled"`
 		Motion            *motionDTO `json:"motion"`
 	}
@@ -595,6 +596,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			RecordVideoMode:   c.RecordVideoMode,
 			HLSSegmentSeconds: c.HLSSegmentSeconds,
 			HLSListSize:       c.HLSListSize,
+			HLSDVRSeconds:     c.HLSDVRSeconds,
 			RecordingEnabled:  c.RecordingEnabled,
 			Motion:            motion,
 		}
@@ -610,7 +612,6 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			"port":            s.cfg.Port,
 			"segments_path":   s.cfg.SegmentsPath,
 			"recordings_path": s.cfg.RecordingsPath,
-			"hls_dvr_seconds": s.cfg.HLSDVRSeconds,
 		},
 		"storage": func() map[string]any {
 			wm, wom, interval, maxGB, warnPct := s.effectiveStorageSettings()
