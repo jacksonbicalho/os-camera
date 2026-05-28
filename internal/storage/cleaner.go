@@ -689,6 +689,10 @@ func (c *Cleaner) analyzeNewRecordings() {
 		if (i+1)%10 == 0 {
 			c.log.Info("analyzeNewRecordings: progress", "done", i+1, "total", total)
 		}
+		if _, err := os.Stat(p.path); err != nil {
+			c.log.Warn("analyzeNewRecordings: file not found, skipping", "path", p.path)
+			continue
+		}
 		enabled, err := db.GetCameraAnalysisEnabled(c.db, p.cameraID)
 		if err != nil || !enabled {
 			continue

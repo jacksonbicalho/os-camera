@@ -948,3 +948,40 @@ func TestAnalyzeNewRecordings_SkipsAfterAnalyzeError(t *testing.T) {
 		t.Errorf("failed recording should not be retried, analyzer called %d times total", fake.Called)
 	}
 }
+
+func TestAnalyzeNewRecordings_SkipsWhenFileNotOnDisk(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCameraWithMotion(t, database, "cam1", 10, 10)
+
+	if err := db.UpdateVideoAnalysisConfig(database, db.VideoAnalysisConfig{
+		Enabled:    true,
+		ServiceURL: "http://yolo:8000",
+		Model:      "yolov8n",
+	}); err != nil {
+		t.Fatalf("UpdateVideoAnalysisConfig: %v", err)
+	}
+
+	// Insert a recording that exists in the DB but NOT on disk.
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	missingPath := mp4WithTimestamp(dir, "cam1", base)
+	if err := db.InsertRecording(database, db.Recording{
+		CameraID:  "cam1",
+		StartedAt: base,
+		EndedAt:   base.Add(5 * time.Minute),
+		Path:      missingPath,
+		SizeBytes: 1024,
+		HasMotion: true,
+	}); err != nil {
+		t.Fatalf("InsertRecording: %v", err)
+	}
+
+	fake := &analysis.FakeAnalyzer{Results: []analysis.Detection{{Label: "person", Confidence: 0.9}}}
+	storage.New(dir, 0, 0, 5*time.Minute, 0, 0, database, discardLogger()).
+		WithAnalyzer(fake).
+		Clean()
+
+	if fake.Called != 0 {
+		t.Errorf("analyzer must not be called when file does not exist on disk, called %d times", fake.Called)
+	}
+}
