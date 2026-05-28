@@ -38,6 +38,7 @@ services:
       context: ./services/yolo
     volumes:
       - ./storage:/data:ro
+      - ./models:/models
     ports:
       - "8001:8001"
     restart: unless-stopped
