@@ -60,7 +60,7 @@ func (s *HLSStreamer) Start() error {
 	}
 
 	segmentSeconds := s.camera.HLSSegmentSecondsOrDefault()
-	listSize, hlsFlags := hlsListSizeAndFlags(s.server.HLSDVRSeconds, segmentSeconds, s.camera.HLSListSizeOrDefault())
+	listSize, hlsFlags := hlsListSizeAndFlags(s.camera.HLSDVRSecondsOrDefault(), segmentSeconds, s.camera.HLSListSizeOrDefault())
 	args = append(args,
 		"-f", "hls",
 		"-hls_time", strconv.Itoa(segmentSeconds),

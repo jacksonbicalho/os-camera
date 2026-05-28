@@ -260,7 +260,7 @@ func TestHLSStreamerUsesWideSegmentPattern(t *testing.T) {
 func TestHLSStreamerDVRDisabledUsesListSizeFiveWithDeleteSegments(t *testing.T) {
 	tmpDir := t.TempDir()
 	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream"}
-	server := config.ServerConfig{SegmentsPath: tmpDir, HLSDVRSeconds: 0}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
 
 	cmd := &fakeCommander{}
 	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())
@@ -285,8 +285,9 @@ func TestHLSStreamerDVRDisabledUsesListSizeFiveWithDeleteSegments(t *testing.T) 
 
 func TestHLSStreamerDVREnabledUsesCalculatedListSizeAndNoDeleteSegments(t *testing.T) {
 	tmpDir := t.TempDir()
-	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream"}
-	server := config.ServerConfig{SegmentsPath: tmpDir, HLSDVRSeconds: 1200} // 20 min
+	dvrSeconds := 1200
+	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream", HLSDVRSeconds: &dvrSeconds} // 20 min
+	server := config.ServerConfig{SegmentsPath: tmpDir}
 
 	cmd := &fakeCommander{}
 	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())
@@ -473,7 +474,7 @@ func TestHLSStreamerCustomSegmentSeconds(t *testing.T) {
 func TestHLSStreamerCustomListSize(t *testing.T) {
 	tmpDir := t.TempDir()
 	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://host/stream", HLSListSize: intPtr(3)}
-	server := config.ServerConfig{SegmentsPath: tmpDir, HLSDVRSeconds: 0}
+	server := config.ServerConfig{SegmentsPath: tmpDir}
 
 	cmd := &fakeCommander{}
 	s := streaming.NewHLSStreamer(camera, server, ffprobe.StreamInfo{}, cmd, discardLogger())

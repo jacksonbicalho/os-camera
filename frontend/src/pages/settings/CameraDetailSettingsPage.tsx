@@ -171,47 +171,44 @@ export default function CameraDetailSettingsPage() {
           <SettingsSection
             title="Identificação"
             fields={[
-              { label: 'ID', value: cam.id },
               { label: 'Nome', value: cam.name },
+              { label: 'ID', value: cam.id },
               { label: 'URL RTSP', value: cam.rtsp_url },
             ]}
           />
           <SettingsSection
-            title="Stream"
-            fields={[
-              { label: 'Codec de vídeo', value: cam.video_codec || 'auto' },
-              { label: 'Modo HLS', value: cam.hls_video_mode || 'auto' },
-              { label: 'Modo gravação', value: cam.record_video_mode || 'auto' },
-              { label: 'Áudio', value: fmtHasAudio(cam.has_audio) },
-              { label: 'Resolução', value: fmtResolution(cam.width, cam.height) },
-              {
-                label: 'Segmento HLS',
-                value: cam.hls_segment_seconds != null ? `${cam.hls_segment_seconds} s` : 'padrão (2 s)',
-              },
-              {
-                label: 'Janela HLS',
-                value: cam.hls_list_size != null ? `${cam.hls_list_size} segmentos` : 'padrão (5 segmentos)',
-              },
+            title="Vídeo"
+            groups={[
+              [{ label: 'Codec', value: cam.video_codec || 'auto' }, { label: 'Resolução', value: fmtResolution(cam.width, cam.height) }],
+              [{ label: 'Áudio', value: fmtHasAudio(cam.has_audio) }, { label: 'Modo HLS', value: cam.hls_video_mode || 'auto' }],
+              [{ label: 'Modo gravação', value: cam.record_video_mode || 'auto' }],
+            ]}
+          />
+          <SettingsSection
+            title="Transmissão ao vivo"
+            groups={[
+              [
+                { label: 'Duração do segmento', value: cam.hls_segment_seconds != null ? `${cam.hls_segment_seconds} s` : 'padrão (2 s)' },
+                { label: 'Janela de reprodução', value: cam.hls_list_size != null ? `${cam.hls_list_size} segmentos` : 'padrão (5 segmentos)' },
+                { label: 'Retenção DVR', value: cam.hls_dvr_seconds ? `${cam.hls_dvr_seconds} s` : 'desativado' },
+              ],
             ]}
           />
           <SettingsSection
             title="Gravação"
-            fields={[
-              { label: 'Gravar em disco', value: cam.recording_enabled ? 'Sim' : 'Não' },
-              { label: 'Duração do chunk', value: cam.chunk_duration },
-              { label: 'Intervalo de reconexão', value: cam.reconnect_interval },
+            groups={[
+              [{ label: 'Gravar em disco', value: cam.recording_enabled ? 'Sim' : 'Não' }],
+              [{ label: 'Duração do chunk', value: cam.chunk_duration }, { label: 'Intervalo de reconexão', value: cam.reconnect_interval }],
             ]}
           />
           <SettingsSection
             title="Estatísticas"
-            fields={
+            groups={
               stats == null
-                ? [{ label: 'Carregando...', value: '' }]
+                ? [[{ label: 'Carregando...', value: '' }]]
                 : [
-                    { label: 'Total gravado', value: fmtDuration(stats.total_seconds) },
-                    { label: 'Segmentos MP4', value: String(stats.total_chunks) },
-                    { label: 'Espaço em disco', value: fmtBytes(stats.total_bytes) },
-                    { label: 'Eventos de movimento', value: String(stats.total_motion_events) },
+                    [{ label: 'Total gravado', value: fmtDuration(stats.total_seconds) }, { label: 'Segmentos MP4', value: String(stats.total_chunks) }],
+                    [{ label: 'Espaço em disco', value: fmtBytes(stats.total_bytes) }, { label: 'Eventos de movimento', value: String(stats.total_motion_events) }],
                   ]
             }
           />

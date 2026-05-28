@@ -56,12 +56,12 @@ export default function CameraForm({ initial, prefillRtsp, prefillName, onSave, 
         <div>
           <label className={labelClass}>Duração do chunk</label>
           <input value={form.chunk_duration} onChange={e => set('chunk_duration', e.target.value)} className={inputClass} placeholder="5m" />
-          <p className="text-xs text-gray-600 mt-0.5">ex: 30s, 5m, 1h</p>
+          <p className="text-xs text-gray-400 mt-0.5">ex: 30s, 5m, 1h</p>
         </div>
         <div>
           <label className={labelClass}>Intervalo de reconexão</label>
           <input value={form.reconnect_interval} onChange={e => set('reconnect_interval', e.target.value)} className={inputClass} placeholder="30s" />
-          <p className="text-xs text-gray-600 mt-0.5">ex: 10s, 1m, 5m</p>
+          <p className="text-xs text-gray-400 mt-0.5">ex: 10s, 1m, 5m</p>
         </div>
         <div>
           <label className={labelClass}>Codec de vídeo</label>
@@ -110,7 +110,7 @@ export default function CameraForm({ initial, prefillRtsp, prefillName, onSave, 
         </div>
 
         <div>
-          <label className={labelClass}>Duração do segmento HLS (s)</label>
+          <label className={labelClass}>Duração do segmento (s)</label>
           <select
             value={form.hls_segment_seconds}
             onChange={e => set('hls_segment_seconds', e.target.value)}
@@ -128,12 +128,13 @@ export default function CameraForm({ initial, prefillRtsp, prefillName, onSave, 
               onChange={e => set('hls_segment_seconds_default', e.target.checked)}
               className="accent-blue-500"
             />
-            <span className="text-xs text-gray-500">Usar valor padrão (2 s)</span>
+            <span className="text-xs text-gray-500">Usar padrão (2 s)</span>
           </label>
+          <p className="text-xs text-gray-400 mt-0.5">Cada segmento de vídeo ao vivo tem essa duração. Valores menores reduzem a latência, mas aumentam o processamento.</p>
         </div>
 
         <div>
-          <label className={labelClass}>Tamanho da janela HLS</label>
+          <label className={labelClass}>Janela de reprodução (segmentos)</label>
           <select
             value={form.hls_list_size}
             onChange={e => set('hls_list_size', e.target.value)}
@@ -152,9 +153,23 @@ export default function CameraForm({ initial, prefillRtsp, prefillName, onSave, 
               onChange={e => set('hls_list_size_default', e.target.checked)}
               className="accent-blue-500"
             />
-            <span className="text-xs text-gray-500">Usar valor padrão (5 segmentos)</span>
+            <span className="text-xs text-gray-500">Usar padrão (5 segmentos)</span>
           </label>
-          <p className="text-xs text-gray-600 mt-0.5">Segmento menor + janela menor = menos latência ao vivo</p>
+          <p className="text-xs text-gray-400 mt-0.5">Quantidade de segmentos mantidos na playlist ao vivo. A latência aproximada é duração × janela (padrão ≈ 10 s).</p>
+        </div>
+
+        <div>
+          <label className={labelClass}>Retenção DVR (s)</label>
+          <input
+            type="number"
+            min={0}
+            step={60}
+            value={form.hls_dvr_seconds}
+            onChange={e => set('hls_dvr_seconds', e.target.value)}
+            className={inputClass}
+            placeholder="0"
+          />
+          <p className="text-xs text-gray-400 mt-0.5">Tempo máximo, em segundos, que o histórico ao vivo fica disponível para consulta. Permite buscar eventos recentes sem gravação em disco. <span className="text-gray-400">0 = desativado.</span></p>
         </div>
       </div>
 
@@ -171,7 +186,7 @@ export default function CameraForm({ initial, prefillRtsp, prefillName, onSave, 
           <span className="text-xs text-gray-400">Gravar em disco</span>
         </label>
         {!form.recording_enabled && (
-          <p className="text-xs text-gray-600 mt-1">HLS e detecção de movimento continuam funcionando</p>
+          <p className="text-xs text-gray-400 mt-1">HLS e detecção de movimento continuam funcionando</p>
         )}
       </div>
 

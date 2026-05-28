@@ -1192,7 +1192,7 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 			VideoCodec: "h264",
 		},
 	}
-	serverCfg := config.ServerConfig{Port: 8080, HLSDVRSeconds: 30}
+	serverCfg := config.ServerConfig{Port: 8080}
 	storageCfg := config.StorageConfig{Path: "/data"}
 	srv := server.NewServer(serverCfg, "America/Sao_Paulo", cameras, discardLogger(), nil).
 		WithStorageConfig(storageCfg)
@@ -1211,8 +1211,7 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 	var resp struct {
 		Timezone string `json:"timezone"`
 		Server   struct {
-			Port          int `json:"port"`
-			HLSDVRSeconds int `json:"hls_dvr_seconds"`
+			Port int `json:"port"`
 		} `json:"server"`
 		Storage struct {
 			Path                 string  `json:"path"`
@@ -1241,9 +1240,6 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 	}
 	if resp.Server.Port != 8080 {
 		t.Errorf("expected port 8080, got %d", resp.Server.Port)
-	}
-	if resp.Server.HLSDVRSeconds != 30 {
-		t.Errorf("expected hls_dvr_seconds 30, got %d", resp.Server.HLSDVRSeconds)
 	}
 	if resp.Storage.WithMotionMinutes != 10080 {
 		t.Errorf("expected with_motion_minutes 10080, got %d", resp.Storage.WithMotionMinutes)
