@@ -19,18 +19,17 @@ const VIEWER_NAV_LINKS = BASE_NAV_LINKS.filter(l =>
 
 interface SettingsLayoutProps {
   children: React.ReactNode;
-  wide?: boolean;
 }
 
-export default function SettingsLayout({ children, wide }: SettingsLayoutProps) {
+export default function SettingsLayout({ children }: SettingsLayoutProps) {
   const navLinks = getRole() === "admin" ? BASE_NAV_LINKS : VIEWER_NAV_LINKS;
 
   return (
-    <AppLayout mainClassName={`${wide ? 'max-w-7xl' : 'max-w-4xl'} mx-auto w-full`}>
-      <h2 className="text-2xl font-bold text-white mb-6">Configurações</h2>
-      <div className="flex gap-10">
+    <AppLayout mainClassName="w-full h-full flex flex-col">
+      <h2 className="text-2xl font-bold text-white mb-6 shrink-0">Configurações</h2>
+      <div className="flex gap-10 flex-1 min-h-0">
         <SettingsSidebar NAV_LINKS={navLinks} />
-        <div className="flex-1 min-w-0">{children}</div>
+        <div className="flex-1 min-w-0 overflow-y-auto pb-6">{children}</div>
       </div>
     </AppLayout>
   );
