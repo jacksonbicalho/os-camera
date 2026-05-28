@@ -3,7 +3,7 @@ import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import UserForm, { type UserFormData } from '../../components/UserForm'
-import { authHeaders, clearToken } from '../../auth'
+import { authHeaders, onUnauthorized } from '../../auth'
 
 interface Camera {
   id: string
@@ -36,7 +36,7 @@ export default function UserDetailSettingsPage() {
       fetch('/api/users', { headers: authHeaders() }),
       fetch('/api/cameras', { headers: authHeaders() }),
     ]).then(async ([ur, cr]) => {
-      if (ur.status === 401 || cr.status === 401) { clearToken(); navigate('/login', { replace: true }); return }
+      if (ur.status === 401 || cr.status === 401) { onUnauthorized(); return }
       if (ur.status === 403) { navigate('/', { replace: true }); return }
       const users: User[] = await ur.json()
       const found = users.find(u => String(u.id) === id)

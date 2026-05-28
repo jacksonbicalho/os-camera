@@ -5,7 +5,7 @@ import { getRole } from '../../auth'
 
 export default function ServerSettingsPage() {
   const isAdmin = getRole() === 'admin'
-  const { settings } = useSettings('/settings/server')
+  const { settings } = useSettings()
   const s = settings?.server
 
   return (

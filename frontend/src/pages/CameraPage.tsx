@@ -4,7 +4,7 @@ import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import 'react-day-picker/style.css'
-import { authHeaders, clearToken, getToken, getRole } from '../auth'
+import { authHeaders, onUnauthorized, getToken, getRole } from '../auth'
 import AppLayout from '../components/AppLayout'
 import ConfirmDialog from '../components/ConfirmDialog'
 import HLSPlayer, { type HLSPlayerHandle } from '../components/HLSPlayer'
@@ -393,7 +393,7 @@ export default function CameraPage() {
         loadMotionEvents(id!, selectedDate),
       ])
       if (cancelled) return
-      if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
+      if (result === 401) { onUnauthorized(); return }
       setRecordingsDisplayPage(1)
       setActiveRecording(null)
       setRecordings(result.recordings)
@@ -427,7 +427,7 @@ export default function CameraPage() {
         loadRecordingsData(id!, selectedDate, 1, sortOrder, ALL_RECORDINGS_LIMIT),
         loadMotionEvents(id!, selectedDate),
       ])
-      if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
+      if (result === 401) { onUnauthorized(); return }
       setRecordings(prev => mergeRecordings(prev, result.recordings, sortOrder, result.hasMore))
       setRecordingsTotal(result.total)
       setMotionEvents(events)
@@ -459,7 +459,7 @@ export default function CameraPage() {
       loadRecordingsData(id!, selectedDate, 1, sortOrder, ALL_RECORDINGS_LIMIT),
       loadMotionEvents(id!, selectedDate),
     ])
-    if (result === 401) { clearToken(); navigate('/login', { state: { from: `/cameras/${id}` }, replace: true }); return }
+    if (result === 401) { onUnauthorized(); return }
     setRecordings(result.recordings)
     setRecordingsTotal(result.total)
     setMotionEvents(events)
@@ -557,8 +557,8 @@ export default function CameraPage() {
     setScrollNonce(n => n + 1)
   }
 
-  const { settings } = useSettings(`/cameras/${id}`)
-  const motionPeak = useMotionPeak(id, `/cameras/${id}`)
+  const { settings } = useSettings()
+  const motionPeak = useMotionPeak(id)
   const { markRead } = useNotifications()
   const setItems = useSetSidebarItems()
   const cam = settings?.cameras.find(c => c.id === id) ?? viewerCam

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { authHeaders, clearToken, getRole } from '../auth'
+import { authHeaders, onUnauthorized, getRole } from '../auth'
 import AppLayout from '../components/AppLayout'
 import HLSPlayer from '../components/HLSPlayer'
 
@@ -16,7 +16,7 @@ export default function DashboardPage() {
   useEffect(() => {
     fetch('/api/cameras', { headers: authHeaders() })
       .then(res => {
-        if (res.status === 401) { clearToken(); navigate('/login'); return [] }
+        if (res.status === 401) { onUnauthorized(); return [] }
         return res.json()
       })
       .then(data => {

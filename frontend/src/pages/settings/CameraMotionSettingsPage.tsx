@@ -325,8 +325,8 @@ function MotionFormContent({ cam, id, peak, reload }: MotionFormContentProps) {
 export default function CameraMotionSettingsPage() {
   const { id } = useParams<{ id: string }>()
   const isAdmin = getRole() === 'admin'
-  const { settings, reload } = useSettings(`/settings/cameras/${id}/motion`)
-  const peak = useMotionPeak(id, `/settings/cameras/${id}/motion`)
+  const { settings, reload } = useSettings()
+  const peak = useMotionPeak(id)
   const cam = settings?.cameras.find(c => c.id === id) as Camera | undefined
 
   const [viewerCam, setViewerCam] = useState<CameraSettings | null>(null)

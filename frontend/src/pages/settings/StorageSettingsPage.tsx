@@ -89,7 +89,7 @@ const emptyDriveForm = () => ({
 
 export default function StorageSettingsPage() {
   const isAdmin = getRole() === 'admin'
-  const { settings, reload } = useSettings('/settings/storage')
+  const { settings, reload } = useSettings()
   const s = settings?.storage
 
   const [drives, setDrives] = useState<Drive[]>([])

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { authHeaders, clearToken } from '../auth'
+import { authHeaders, onUnauthorized } from '../auth'
 
 export interface MotionSettings {
   enabled: boolean
@@ -68,39 +67,37 @@ export interface AboutInfo {
   go_version: string
 }
 
-export function useSettings(redirectTo: string) {
-  const navigate = useNavigate()
+export function useSettings() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [key, setKey] = useState(0)
 
   useEffect(() => {
     fetch('/api/settings', { headers: authHeaders() })
       .then(res => {
-        if (res.status === 401) { clearToken(); navigate('/login', { state: { from: redirectTo }, replace: true }); return null }
+        if (res.status === 401) { onUnauthorized(); return null }
         return res.json()
       })
       .then(data => { if (data) setSettings(data) })
       .catch(() => {})
-  }, [navigate, redirectTo, key])
+  }, [key])
 
   const reload = () => setKey(k => k + 1)
 
   return { settings, reload }
 }
 
-export function useAbout(redirectTo: string) {
-  const navigate = useNavigate()
+export function useAbout() {
   const [about, setAbout] = useState<AboutInfo | null>(null)
 
   useEffect(() => {
     fetch('/api/about', { headers: authHeaders() })
       .then(res => {
-        if (res.status === 401) { clearToken(); navigate('/login', { state: { from: redirectTo }, replace: true }); return null }
+        if (res.status === 401) { onUnauthorized(); return null }
         return res.json()
       })
       .then(data => { if (data) setAbout(data) })
       .catch(() => {})
-  }, [navigate, redirectTo])
+  }, [])
 
   return about
 }

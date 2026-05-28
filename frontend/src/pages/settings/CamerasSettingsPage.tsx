@@ -4,7 +4,7 @@ import SettingsLayout from '../../components/SettingsLayout'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import CameraForm from '../../components/CameraForm'
 import { type Camera, type CameraFormData, formToPayload } from '../../components/cameraFormUtils'
-import { authHeaders, clearToken, getRole, getToken } from '../../auth'
+import { authHeaders, onUnauthorized, getRole, getToken } from '../../auth'
 
 export default function CamerasSettingsPage() {
   const navigate = useNavigate()
@@ -27,16 +27,16 @@ export default function CamerasSettingsPage() {
 
   const reloadCameras = useCallback(async () => {
     const res = await fetch('/api/settings/cameras', { headers: authHeaders() })
-    if (res.status === 401) { clearToken(); navigate('/login', { replace: true }); return }
+    if (res.status === 401) { onUnauthorized(); return }
     if (res.status === 503) { setNoDb(true); return }
     if (res.ok) setCameras(await res.json())
-  }, [navigate])
+  }, [])
 
   useEffect(() => {
     if (!isAdmin) return
     fetch('/api/settings/cameras', { headers: authHeaders() })
       .then(async res => {
-        if (res.status === 401) { clearToken(); navigate('/login', { replace: true }); return }
+        if (res.status === 401) { onUnauthorized(); return }
         if (res.status === 503) { setNoDb(true); return }
         if (res.ok) setCameras(await res.json())
       })
@@ -48,7 +48,7 @@ export default function CamerasSettingsPage() {
     if (isAdmin) return
     fetch('/api/cameras', { headers: authHeaders() })
       .then(async res => {
-        if (res.status === 401) { clearToken(); navigate('/login', { replace: true }); return }
+        if (res.status === 401) { onUnauthorized(); return }
         if (res.ok) setCameras(await res.json())
       })
       .catch(() => {})

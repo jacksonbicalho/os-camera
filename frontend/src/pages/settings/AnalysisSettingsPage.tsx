@@ -18,7 +18,7 @@ const MODELS = [
 ]
 
 export default function AnalysisSettingsPage() {
-  useSettings('/login')
+  useSettings()
   const [cfg, setCfg] = useState<AnalysisConfig>({
     enabled: false,
     service_url: '',

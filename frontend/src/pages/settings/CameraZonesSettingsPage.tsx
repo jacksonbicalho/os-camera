@@ -324,7 +324,7 @@ function relPos(e: React.MouseEvent<HTMLCanvasElement>): [number, number] {
 export default function CameraZonesSettingsPage() {
   const { id } = useParams<{ id: string }>()
   const isAdmin = getRole() === 'admin'
-  const { settings } = useSettings(`/settings/cameras/${id}/zones`)
+  const { settings } = useSettings()
   const cam = settings?.cameras.find(c => c.id === id)
 
   const capW = cam
