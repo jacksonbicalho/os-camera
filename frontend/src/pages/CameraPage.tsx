@@ -438,7 +438,7 @@ export default function CameraPage() {
     load()
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, id, navigate, sortOrder])
+  }, [selectedDate, id, sortOrder])
 
   useEffect(() => {
     const today = new Date()
@@ -459,7 +459,7 @@ export default function CameraPage() {
     }, isToday ? 5_000 : 30_000)
 
     return () => clearInterval(interval)
-  }, [selectedDate, id, navigate, sortOrder])
+  }, [selectedDate, id, sortOrder])
 
   const today = new Date()
   const isToday =
