@@ -81,7 +81,7 @@ function formatRecordingDateTime(isoString: string, timezone: string): string {
 }
 
 export default function CameraPage() {
-  const { id, date: urlDate, filename: urlFilename } = useParams<{ id: string; date?: string; filename?: string }>()
+  const { id, recording_id: recordingId } = useParams<{ id: string; recording_id?: string }>()
   const navigate = useNavigate()
   const location = useLocation()
   const isLiveRoute = location.pathname.startsWith('/camera/live/')
@@ -89,10 +89,6 @@ export default function CameraPage() {
   const [timezone, setTimezone] = useState('UTC')
   const [playbackLeadSeconds, setPlaybackLeadSeconds] = useState(10)
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
-    if (urlDate) {
-      const [y, m, d] = urlDate.split('-').map(Number)
-      return new Date(y, m - 1, d)
-    }
     const state = isLiveRoute ? null : (location.state as { eventTime?: string } | null)
     if (state?.eventTime) {
       const t = new Date(state.eventTime)
@@ -101,10 +97,6 @@ export default function CameraPage() {
     return new Date()
   })
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
-    if (urlDate) {
-      const [y, m] = urlDate.split('-').map(Number)
-      return new Date(y, m - 1, 1)
-    }
     const state = isLiveRoute ? null : (location.state as { eventTime?: string } | null)
     if (state?.eventTime) {
       const t = new Date(state.eventTime)
@@ -119,7 +111,7 @@ export default function CameraPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [motionEvents, setMotionEvents] = useState<MotionEvent[]>([])
   const [activePanel, setActivePanel] = useState<null | 'recordings' | 'events' | 'calendar'>(() => {
-    if (urlFilename) return 'recordings'
+    if (recordingId) return 'recordings'
     if (isLiveRoute) return null
     const state = location.state as { eventTime?: string } | null
     return state?.eventTime ? 'events' : null
@@ -172,6 +164,7 @@ export default function CameraPage() {
   const activeEventTimeRef = useRef(activeEventTime)
   const activeEventIdRef = useRef(activeEventId)
   const allMotionEventsRef = useRef(motionEvents)
+  const selectedDateRef = useRef(selectedDate)
   const visibleEventsRef = useRef<typeof visibleEvents>([])
   const continuousPlayRef = useRef(continuousPlay)
   const recordingsDisplayPageRef = useRef(recordingsDisplayPage)
@@ -182,11 +175,13 @@ export default function CameraPage() {
   )
   // Tracks the eventTime already handled on mount so we skip re-processing it
   const handledEventRef = useRef<string | null>(pendingEventRef.current)
-  const isFirstLoadRef = useRef(true)
+  const pendingRecordingRef = useRef<{ filename: string } | null>(null)
+  const mountRecordingIdRef = useRef(recordingId)
 
   useEffect(() => { recordingsRef.current = recordings }, [recordings])
   useEffect(() => { allMotionEventsRef.current = motionEvents }, [motionEvents])
   useEffect(() => { activeEventIdRef.current = activeEventId }, [activeEventId])
+  useEffect(() => { selectedDateRef.current = selectedDate }, [selectedDate])
 
   useEffect(() => {
     if (!speedMenuOpen) return
@@ -380,6 +375,27 @@ export default function CameraPage() {
     setActivePanel('events')
   }, [location.state, isLiveRoute])
 
+  // Runs only on mount: loads the recording indicated by the URL param so that
+  // a direct navigation / page refresh restores the correct recording.
+  // Must NOT re-run on internal navigations (openRecording calls replace: true
+  // and changes recordingId, which would re-trigger a full reload mid-session).
+  useEffect(() => {
+    const recId = mountRecordingIdRef.current
+    if (!recId || !id) return
+    fetch(`/api/cameras/${id}/recordings/by-id/${recId}`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: { filename: string; date: string } | null) => {
+        if (!data) return
+        pendingRecordingRef.current = { filename: data.filename }
+        const [y, m, d] = data.date.split('-').map(Number)
+        const date = new Date(y, m - 1, d)
+        setSelectedDate(date)
+        setCalendarMonth(new Date(y, m - 1, 1))
+      })
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     fetch('/api/config')
       .then(r => r.json())
@@ -400,9 +416,6 @@ export default function CameraPage() {
   }, [id])
 
   useEffect(() => {
-    const isFirst = isFirstLoadRef.current
-    isFirstLoadRef.current = false
-
     let cancelled = false
 
     async function load() {
@@ -419,8 +432,10 @@ export default function CameraPage() {
       setEventsPage(1)
       setActiveEventTime(null)
 
-      if (isFirst && urlFilename) {
-        const rec = result.recordings.find(r => r.filename === urlFilename)
+      const pendingRec = pendingRecordingRef.current
+      if (pendingRec) {
+        pendingRecordingRef.current = null
+        const rec = result.recordings.find(r => r.filename === pendingRec.filename)
         if (rec && !rec.is_recording) setActiveRecording(rec)
         else setActiveRecording(null)
       } else {
@@ -438,7 +453,7 @@ export default function CameraPage() {
     load()
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, id, navigate, sortOrder])
+  }, [selectedDate, id, sortOrder])
 
   useEffect(() => {
     const today = new Date()
@@ -459,7 +474,7 @@ export default function CameraPage() {
     }, isToday ? 5_000 : 30_000)
 
     return () => clearInterval(interval)
-  }, [selectedDate, id, navigate, sortOrder])
+  }, [selectedDate, id, sortOrder])
 
   const today = new Date()
   const isToday =
@@ -471,8 +486,8 @@ export default function CameraPage() {
     calendarMonth.getMonth() === today.getMonth()
 
   const handleLiveMotion = useCallback(() => {
-    loadMotionEvents(id!, selectedDate).then(setMotionEvents)
-  }, [id, selectedDate])
+    loadMotionEvents(id!, selectedDateRef.current).then(setMotionEvents)
+  }, [id])
 
   useEventSource(
     isToday && id ? `/api/cameras/${id}/motion/live` : null,
@@ -492,7 +507,7 @@ export default function CameraPage() {
 
   function openRecording(rec: Recording) {
     setActiveRecording(rec)
-    navigate(`/camera/recording/${id}/${format(selectedDate, 'yyyy-MM-dd')}/${rec.filename}`, { replace: true })
+    if (rec.id) navigate(`/camera/recording/${id}/${rec.id}`, { replace: true })
   }
 
   function handleTimelineSeek(recording: Recording, offsetSeconds: number) {
@@ -623,7 +638,7 @@ export default function CameraPage() {
   })()
 
 
-  const isLive = !urlFilename && (isLiveRoute || activeRecording === null)
+  const isLive = activeRecording === null && !recordingId
 
   useEffect(() => {
     setItems([])
@@ -1212,7 +1227,7 @@ function toggleFullscreen() {
                           return (
                             <div
                               key={rec.filename}
-                              ref={isActive ? el => { activeRecordingItemRef.current = el } : null}
+                              ref={isActive ? el => { if (el) activeRecordingItemRef.current = el } : null}
                               className={`group flex items-center justify-between px-3 py-2 transition-colors ${
                                 rec.is_recording
                                   ? 'opacity-50'
@@ -1270,7 +1285,7 @@ function toggleFullscreen() {
                         return (
                           <button
                             key={ev.id ?? `${ev.time}-${i}`}
-                            ref={isActive ? (el) => { activeEventItemRef.current = el } : null}
+                            ref={isActive ? (el) => { if (el) activeEventItemRef.current = el } : null}
                             onClick={() => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) }}
                             className={`w-full flex flex-col px-3 py-2 transition-colors text-left ${
                               isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-gray-800'

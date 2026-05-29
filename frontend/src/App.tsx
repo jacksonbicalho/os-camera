@@ -58,7 +58,7 @@ export default function App() {
       <Route path="/" element={<RequireAuth><DashboardPage /></RequireAuth>} />
       <Route path="/cameras/:id" element={<Lazy><CameraPage /></Lazy>} />
       <Route path="/camera/live/:id" element={<Lazy><CameraPage /></Lazy>} />
-      <Route path="/camera/recording/:id/:date/:filename" element={<Lazy><CameraPage /></Lazy>} />
+      <Route path="/camera/recording/:id/:recording_id" element={<Lazy><CameraPage /></Lazy>} />
       <Route path="/stats" element={<Lazy><StatsPage /></Lazy>} />
       <Route path="/settings/cameras" element={<Lazy><CamerasSettingsPage /></Lazy>} />
       <Route path="/settings/cameras/new" element={<Lazy><CamerasSettingsPage /></Lazy>} />
