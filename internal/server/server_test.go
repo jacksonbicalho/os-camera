@@ -2109,6 +2109,68 @@ func TestDeleteRecordingCleansMotionEvents(t *testing.T) {
 	}
 }
 
+func TestDeleteRecordingCleansMotionEventsUsingActualEndedAt(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	filename := "20260511100000.mp4"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "05", "11")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dateDir, filename), []byte("fake"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	database := openServerTestDB(t)
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	chunkStart := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
+	chunkActualEnd := chunkStart.Add(6 * time.Minute) // longer than default 5 min
+
+	// Insert recording row with actual ended_at
+	if err := db.InsertRecording(database, db.Recording{
+		CameraID:  cameraID,
+		StartedAt: chunkStart,
+		EndedAt:   chunkActualEnd,
+		Path:      filepath.Join(dateDir, filename),
+		HasMotion: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Event beyond the default chunk duration — would be missed without actual ended_at
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID:   cameraID,
+		OccurredAt: chunkStart.Add(5*time.Minute + 30*time.Second),
+		Score:      0.05,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.CreateUser(database, "u", "p", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/"+cameraID+"/recordings/"+filename, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+	count, err := db.CountMotionEvents(database, cameraID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 motion events after recording deletion, got %d", count)
+	}
+}
+
 func TestConfiguredJWTSecretSurvivesReinit(t *testing.T) {
 	cfg := config.ServerConfig{JWTSecret: "fixed-secret-for-testing-32chars!"}
 

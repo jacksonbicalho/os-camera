@@ -1018,6 +1018,9 @@ func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.db != nil {
+		if actualEnd, err := db.EndedAtByStartedAt(s.db, id, chunkStart); err == nil && !actualEnd.IsZero() {
+			chunkEnd = actualEnd
+		}
 		if err := db.DeleteMotionEventsInRange(s.db, id, chunkStart, chunkEnd); err != nil {
 			s.log.Warn("failed to clean motion events after recording deletion", "camera", id, "err", err)
 		}

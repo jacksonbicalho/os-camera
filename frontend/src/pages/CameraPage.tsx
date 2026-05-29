@@ -538,6 +538,19 @@ export default function CameraPage() {
     await reloadRecordingsAndEvents()
   }
 
+  function findRecordingForEvent(ev: MotionEvent, recs: Recording[]): Recording | null {
+    const evTime = new Date(ev.time).getTime()
+    const asc = [...recs].sort((a, b) => a.filename.localeCompare(b.filename))
+    for (let i = 0; i < asc.length; i++) {
+      const recStart = new Date(asc[i].start).getTime()
+      const nextStart = i + 1 < asc.length
+        ? new Date(asc[i + 1].start).getTime()
+        : recStart + 5 * 60 * 1000
+      if (evTime >= recStart && evTime < nextStart) return asc[i]
+    }
+    return null
+  }
+
   function playEventAt(ev: MotionEvent, recs: Recording[] = recordings, skipScroll = false) {
     const evTime = new Date(ev.time).getTime()
     const asc = [...recs].sort((a, b) => a.filename.localeCompare(b.filename))
@@ -743,10 +756,12 @@ function toggleFullscreen() {
     return () => { clearInterval(timer); setDebugStats(null) }
   }, [showDebug, isLive])
 
-  const sortedEvents = [...motionEvents].sort((a, b) => {
-    const diff = new Date(a.time).getTime() - new Date(b.time).getTime()
-    return eventsSortOrder === 'asc' ? diff : -diff
-  })
+  const sortedEvents = [...motionEvents]
+    .filter(ev => findRecordingForEvent(ev, recordings) !== null)
+    .sort((a, b) => {
+      const diff = new Date(a.time).getTime() - new Date(b.time).getTime()
+      return eventsSortOrder === 'asc' ? diff : -diff
+    })
   const visibleEvents = sortedEvents.slice(0, eventsPage * PAGE_SIZE)
   const hasMoreEvents = sortedEvents.length > eventsPage * PAGE_SIZE
   const activeEventIdx = activeEventId !== null
@@ -798,7 +813,7 @@ function toggleFullscreen() {
                   {/* Voltar ao vivo — visível só durante reprodução */}
                   {!isLive && (
                     <button
-                      onClick={() => { navigate(`/camera/live/${id}`, { replace: true }); setActivePanel(null) }}
+                      onClick={() => { setActiveRecording(null); navigate(`/camera/live/${id}`, { replace: true }); setActivePanel(null) }}
                       title="Voltar ao vivo"
                       className="p-1 transition-colors cursor-pointer text-gray-400 hover:text-gray-200"
                     >
@@ -861,8 +876,9 @@ function toggleFullscreen() {
                   {(cam?.recording_enabled !== false) && (recordingsTotal > 0 || recordings.length > 0) && (
                     <button
                       onClick={() => {
+                        const opening = activePanel !== 'recordings'
                         setActivePanel(p => p === 'recordings' ? null : 'recordings')
-                        if (isLive && recordings.length > 0) openRecording(recordings[0])
+                        if (opening && recordings.length > 0) openRecording(recordings[0])
                       }}
                       title="Gravações"
                       className={`relative p-1 transition-colors cursor-pointer ${activePanel === 'recordings' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
@@ -878,7 +894,14 @@ function toggleFullscreen() {
                   {/* Events */}
                   {motionEvents.length > 0 && (
                     <button
-                      onClick={() => setActivePanel(p => p === 'events' ? null : 'events')}
+                      onClick={() => {
+                        const opening = activePanel !== 'events'
+                        setActivePanel(p => p === 'events' ? null : 'events')
+                        if (opening && sortedEvents.length > 0) {
+                          playEventAt(sortedEvents[0])
+                          setScrollNonce(n => n + 1)
+                        }
+                      }}
                       title="Eventos de movimento"
                       className={`relative p-1 transition-colors cursor-pointer ${activePanel === 'events' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                     >

@@ -155,6 +155,22 @@ func DeleteRecording(db *DB, path string) error {
 	return err
 }
 
+// EndedAtByStartedAt returns the ended_at for a recording identified by camera and started_at.
+// Returns a zero time if the row does not exist or ended_at is NULL.
+func EndedAtByStartedAt(db *DB, cameraID string, startedAt time.Time) (time.Time, error) {
+	var s sql.NullString
+	err := db.QueryRow(`SELECT ended_at FROM recordings WHERE camera_id=? AND started_at=?`,
+		cameraID, startedAt.UTC().Format(time.RFC3339),
+	).Scan(&s)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !s.Valid || s.String == "" {
+		return time.Time{}, nil
+	}
+	return time.Parse(time.RFC3339, s.String)
+}
+
 // DeleteRecordingByStartedAt removes the recording row for a camera that started at the given time.
 func DeleteRecordingByStartedAt(db *DB, cameraID string, startedAt time.Time) error {
 	_, err := db.Exec(`DELETE FROM recordings WHERE camera_id=? AND started_at=?`,
