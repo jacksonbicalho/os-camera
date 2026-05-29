@@ -70,6 +70,56 @@ func HasMotionInRangeDB(db *DB, cameraID string, start, end time.Time) (found bo
 	return count > 0, motion != 0, nil
 }
 
+// IDsByPaths returns a map of path → recording ID for the given file paths.
+// Paths not found in the DB are absent from the map.
+func IDsByPaths(db *DB, paths []string) (map[string]int64, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	placeholders := strings.Repeat("?,", len(paths))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(paths))
+	for i, p := range paths {
+		args[i] = p
+	}
+	rows, err := db.Query(`SELECT id, path FROM recordings WHERE path IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]int64, len(paths))
+	for rows.Next() {
+		var id int64
+		var path string
+		if err := rows.Scan(&id, &path); err != nil {
+			return nil, err
+		}
+		result[path] = id
+	}
+	return result, rows.Err()
+}
+
+// GetRecordingByID returns the recording row for the given ID, or an error if not found.
+func GetRecordingByID(database *DB, id int64) (*Recording, error) {
+	var r Recording
+	var startedAt, endedAt string
+	err := database.QueryRow(
+		`SELECT id, camera_id, started_at, COALESCE(ended_at,''), path, size_bytes, has_motion
+		 FROM recordings WHERE id=?`, id,
+	).Scan(&r.ID, &r.CameraID, &startedAt, &endedAt, &r.Path, &r.SizeBytes, &r.HasMotion)
+	if err != nil {
+		return nil, err
+	}
+	r.StartedAt, err = time.Parse(time.RFC3339, startedAt)
+	if err != nil {
+		return nil, err
+	}
+	if endedAt != "" {
+		r.EndedAt, _ = time.Parse(time.RFC3339, endedAt)
+	}
+	return &r, nil
+}
+
 // HasMotionByPaths returns a map of path → has_motion for the given file paths.
 // Paths not found in the DB are absent from the map (caller may treat as false).
 func HasMotionByPaths(db *DB, paths []string) (map[string]bool, error) {
@@ -103,6 +153,22 @@ func HasMotionByPaths(db *DB, paths []string) (map[string]bool, error) {
 func DeleteRecording(db *DB, path string) error {
 	_, err := db.Exec(`DELETE FROM recordings WHERE path=?`, path)
 	return err
+}
+
+// EndedAtByStartedAt returns the ended_at for a recording identified by camera and started_at.
+// Returns a zero time if the row does not exist or ended_at is NULL.
+func EndedAtByStartedAt(db *DB, cameraID string, startedAt time.Time) (time.Time, error) {
+	var s sql.NullString
+	err := db.QueryRow(`SELECT ended_at FROM recordings WHERE camera_id=? AND started_at=?`,
+		cameraID, startedAt.UTC().Format(time.RFC3339),
+	).Scan(&s)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !s.Valid || s.String == "" {
+		return time.Time{}, nil
+	}
+	return time.Parse(time.RFC3339, s.String)
 }
 
 // DeleteRecordingByStartedAt removes the recording row for a camera that started at the given time.

@@ -1,4 +1,5 @@
 export interface Recording {
+  id?: number
   filename: string
   start: string
   url: string

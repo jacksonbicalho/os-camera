@@ -307,6 +307,7 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.Handle("/recordings/", s.requireRecordingsAccess(recHandler))
 
 	s.mux.HandleFunc("GET /api/cameras/{id}/recordings", s.requireCameraAccess(s.handleRecordings))
+	s.mux.HandleFunc("GET /api/cameras/{id}/recordings/by-id/{recording_id}", s.requireCameraAccess(s.handleRecordingByID))
 	s.mux.HandleFunc("DELETE /api/cameras/{id}/recordings/{filename}", s.requireAdmin(s.handleDeleteRecording))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion", s.requireCameraAccess(s.handleMotionEvents))
 	s.mux.HandleFunc("GET /api/motion/live", s.requireFullAuth(s.handleAllMotionLive))
@@ -779,6 +780,7 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 		FrameCount int     `json:"frame_count"`
 	}
 	type recording struct {
+		ID          int64                `json:"id,omitempty"`
 		Filename    string               `json:"filename"`
 		Start       string               `json:"start"`
 		URL         string               `json:"url"`
@@ -835,7 +837,7 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 			all[latest].IsRecording = true
 		}
 	}
-	// Enrich has_motion from DB so lead/trail recordings are also marked.
+	// Enrich has_motion and DB id from DB.
 	if s.db != nil && len(all) > 0 {
 		paths := make([]string, len(all))
 		for i, r := range all {
@@ -846,6 +848,11 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 				if motionByPath[all[i].path] {
 					all[i].HasMotion = true
 				}
+			}
+		}
+		if idsByPath, err := db.IDsByPaths(s.db, paths); err == nil {
+			for i := range all {
+				all[i].ID = idsByPath[all[i].path]
 			}
 		}
 	}
@@ -891,6 +898,62 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"recordings": all[startIdx:endIdx], "hasMore": hasMore, "total": len(all)})
+}
+
+func (s *Server) handleRecordingByID(w http.ResponseWriter, r *http.Request) {
+	cameraID := r.PathValue("id")
+	recIDStr := r.PathValue("recording_id")
+	recID, err := strconv.ParseInt(recIDStr, 10, 64)
+	if err != nil || recID <= 0 {
+		http.Error(w, "invalid recording id", http.StatusBadRequest)
+		return
+	}
+	if s.db == nil {
+		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	rec, err := db.GetRecordingByID(s.db, recID)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if rec.CameraID != cameraID {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	loc, err := time.LoadLocation(s.timezone)
+	if err != nil {
+		loc = time.UTC
+	}
+	localStart := rec.StartedAt.In(loc)
+	dateStr := localStart.Format("2006-01-02")
+
+	// Derive the URL from the path relative to the recordings root.
+	rel, err := filepath.Rel(s.cfg.RecordingsPath, rec.Path)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	url := "/recordings/" + filepath.ToSlash(rel)
+
+	// Check if this is the actively-recording file (mtime < 30s).
+	isRecording := false
+	if info, err := os.Stat(rec.Path); err == nil {
+		isRecording = time.Since(info.ModTime()) < 30*time.Second
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"id":           rec.ID,
+		"filename":     filepath.Base(rec.Path),
+		"date":         dateStr,
+		"start":        rec.StartedAt.UTC().Format(time.RFC3339),
+		"url":          url,
+		"is_recording": isRecording,
+		"has_motion":   rec.HasMotion,
+	})
 }
 
 // utcDaysInRange returns the distinct UTC calendar days that overlap [start, end).
@@ -955,6 +1018,9 @@ func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.db != nil {
+		if actualEnd, err := db.EndedAtByStartedAt(s.db, id, chunkStart); err == nil && !actualEnd.IsZero() {
+			chunkEnd = actualEnd
+		}
 		if err := db.DeleteMotionEventsInRange(s.db, id, chunkStart, chunkEnd); err != nil {
 			s.log.Warn("failed to clean motion events after recording deletion", "camera", id, "err", err)
 		}

@@ -77,3 +77,80 @@ func TestHasMotionByPaths_EmptyInput(t *testing.T) {
 		t.Errorf("expected nil, got %v", result)
 	}
 }
+
+func TestIDsByPaths(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+
+	base := time.Date(2026, 5, 28, 10, 0, 0, 0, time.UTC)
+	db.InsertRecording(database, db.Recording{CameraID: "cam1", StartedAt: base, Path: "/storage/cam1/a.mp4"})
+	db.InsertRecording(database, db.Recording{CameraID: "cam1", StartedAt: base.Add(time.Minute), Path: "/storage/cam1/b.mp4"})
+
+	ids, err := db.IDsByPaths(database, []string{"/storage/cam1/a.mp4", "/storage/cam1/b.mp4", "/storage/cam1/missing.mp4"})
+	if err != nil {
+		t.Fatalf("IDsByPaths: %v", err)
+	}
+	if ids["/storage/cam1/a.mp4"] == 0 {
+		t.Error("a.mp4: expected non-zero ID")
+	}
+	if ids["/storage/cam1/b.mp4"] == 0 {
+		t.Error("b.mp4: expected non-zero ID")
+	}
+	if ids["/storage/cam1/a.mp4"] == ids["/storage/cam1/b.mp4"] {
+		t.Error("expected distinct IDs for distinct recordings")
+	}
+	if _, ok := ids["/storage/cam1/missing.mp4"]; ok {
+		t.Error("missing.mp4: expected absent from map")
+	}
+}
+
+func TestIDsByPaths_EmptyInput(t *testing.T) {
+	database := openTestDB(t)
+	ids, err := db.IDsByPaths(database, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ids != nil {
+		t.Errorf("expected nil, got %v", ids)
+	}
+}
+
+func TestGetRecordingByID(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+
+	base := time.Date(2026, 5, 28, 22, 54, 26, 0, time.UTC)
+	db.InsertRecording(database, db.Recording{
+		CameraID:  "cam1",
+		StartedAt: base,
+		Path:      "/storage/cam1/2026/05/28/20260528225426.mp4",
+	})
+
+	ids, _ := db.IDsByPaths(database, []string{"/storage/cam1/2026/05/28/20260528225426.mp4"})
+	id := ids["/storage/cam1/2026/05/28/20260528225426.mp4"]
+
+	rec, err := db.GetRecordingByID(database, id)
+	if err != nil {
+		t.Fatalf("GetRecordingByID: %v", err)
+	}
+	if rec.ID != id {
+		t.Errorf("ID: want %d, got %d", id, rec.ID)
+	}
+	if rec.CameraID != "cam1" {
+		t.Errorf("CameraID: want cam1, got %s", rec.CameraID)
+	}
+	if !rec.StartedAt.Equal(base) {
+		t.Errorf("StartedAt: want %v, got %v", base, rec.StartedAt)
+	}
+	if rec.Path != "/storage/cam1/2026/05/28/20260528225426.mp4" {
+		t.Errorf("Path: want expected path, got %s", rec.Path)
+	}
+}
+
+func TestGetRecordingByID_NotFound(t *testing.T) {
+	database := openTestDB(t)
+	_, err := db.GetRecordingByID(database, 9999)
+	if err == nil {
+		t.Error("expected error for missing ID, got nil")
+	}
+}

@@ -3,6 +3,7 @@ package server_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -505,6 +506,145 @@ func TestRecordingsHasMotionFromDB(t *testing.T) {
 	}
 	if resp.Recordings[1].HasMotion {
 		t.Error("20260524150000.mp4: expected has_motion=false")
+	}
+}
+
+func TestRecordingsIncludesDBID(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "05", "28")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dateDir, "20260528225426.mp4"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "admin", "pw", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	db.InsertRecording(database, db.Recording{
+		CameraID:  cameraID,
+		StartedAt: time.Date(2026, 5, 28, 22, 54, 26, 0, time.UTC),
+		Path:      filepath.Join(tmpDir, cameraID, "2026", "05", "28", "20260528225426.mp4"),
+	})
+
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "admin", "pw")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-05-28&page=1&limit=10", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Recordings []struct {
+			Filename string `json:"filename"`
+			ID       int64  `json:"id"`
+		} `json:"recordings"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if len(resp.Recordings) != 1 {
+		t.Fatalf("expected 1 recording, got %d", len(resp.Recordings))
+	}
+	if resp.Recordings[0].ID == 0 {
+		t.Error("expected non-zero DB id in recording listing")
+	}
+}
+
+func TestGetRecordingByIDReturnsDetails(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "05", "28")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(dateDir, "20260528225426.mp4")
+	if err := os.WriteFile(filePath, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "admin", "pw", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	db.InsertRecording(database, db.Recording{
+		CameraID:  cameraID,
+		StartedAt: time.Date(2026, 5, 28, 22, 54, 26, 0, time.UTC),
+		Path:      filePath,
+	})
+	ids, _ := db.IDsByPaths(database, []string{filePath})
+	recID := ids[filePath]
+
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "admin", "pw")
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/cameras/%s/recordings/by-id/%d", cameraID, recID), nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		ID          int64  `json:"id"`
+		Filename    string `json:"filename"`
+		Date        string `json:"date"`
+		Start       string `json:"start"`
+		URL         string `json:"url"`
+		IsRecording bool   `json:"is_recording"`
+		HasMotion   bool   `json:"has_motion"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.ID != recID {
+		t.Errorf("id: want %d, got %d", recID, resp.ID)
+	}
+	if resp.Filename != "20260528225426.mp4" {
+		t.Errorf("filename: want 20260528225426.mp4, got %s", resp.Filename)
+	}
+	if resp.Date != "2026-05-28" {
+		t.Errorf("date: want 2026-05-28, got %s", resp.Date)
+	}
+	wantURL := "/recordings/" + cameraID + "/2026/05/28/20260528225426.mp4"
+	if resp.URL != wantURL {
+		t.Errorf("url: want %s, got %s", wantURL, resp.URL)
+	}
+}
+
+func TestGetRecordingByIDReturns404ForUnknownID(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "admin", "pw", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "admin", "pw")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings/by-id/9999", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
 	}
 }
 
@@ -1940,6 +2080,68 @@ func TestDeleteRecordingCleansMotionEvents(t *testing.T) {
 	if err := db.InsertMotionEvent(database, db.MotionEvent{
 		CameraID:   cameraID,
 		OccurredAt: chunkStart.Add(time.Minute),
+		Score:      0.05,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.CreateUser(database, "u", "p", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/cameras/"+cameraID+"/recordings/"+filename, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+	count, err := db.CountMotionEvents(database, cameraID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 motion events after recording deletion, got %d", count)
+	}
+}
+
+func TestDeleteRecordingCleansMotionEventsUsingActualEndedAt(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	filename := "20260511100000.mp4"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "05", "11")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dateDir, filename), []byte("fake"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	database := openServerTestDB(t)
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	chunkStart := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
+	chunkActualEnd := chunkStart.Add(6 * time.Minute) // longer than default 5 min
+
+	// Insert recording row with actual ended_at
+	if err := db.InsertRecording(database, db.Recording{
+		CameraID:  cameraID,
+		StartedAt: chunkStart,
+		EndedAt:   chunkActualEnd,
+		Path:      filepath.Join(dateDir, filename),
+		HasMotion: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Event beyond the default chunk duration — would be missed without actual ended_at
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID:   cameraID,
+		OccurredAt: chunkStart.Add(5*time.Minute + 30*time.Second),
 		Score:      0.05,
 	}); err != nil {
 		t.Fatal(err)
