@@ -251,6 +251,19 @@ export default function AnalysisSettingsPage() {
     setFtStatus({ status: 'pending', epoch: 0, total_epochs: 20, error: '' })
   }
 
+  async function handleCancelFinetune() {
+    if (!ftJobID) return
+    await fetch(`/api/settings/analysis/finetune/${ftJobID}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+    localStorage.removeItem('ft_job_id')
+    setFtJobID(null)
+    setFtStatus(null)
+    setFtError('')
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setError('')
@@ -423,9 +436,18 @@ export default function AnalysisSettingsPage() {
             <div className="p-4 space-y-2">
               {(ftStatus.status === 'running' || ftStatus.status === 'pending') && (
                 <>
-                  <div className="flex justify-between text-xs text-gray-400">
+                  <div className="flex items-center justify-between text-xs text-gray-400">
                     <span>{ftStatus.status === 'pending' ? 'Iniciando…' : `Época ${ftStatus.epoch} / ${ftStatus.total_epochs}`}</span>
-                    <span>{ftStatus.status === 'running' ? `${Math.round((ftStatus.epoch / ftStatus.total_epochs) * 100)}%` : ''}</span>
+                    <div className="flex items-center gap-3">
+                      <span>{ftStatus.status === 'running' ? `${Math.round((ftStatus.epoch / ftStatus.total_epochs) * 100)}%` : ''}</span>
+                      <button
+                        type="button"
+                        onClick={handleCancelFinetune}
+                        className="px-2 py-0.5 text-xs bg-gray-700 hover:bg-red-900/60 text-gray-400 hover:text-red-300 border border-gray-600 hover:border-red-700/50 rounded transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
                   </div>
                   <div className="w-full bg-gray-700 rounded-full h-2">
                     <div
