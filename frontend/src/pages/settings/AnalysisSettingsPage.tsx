@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import SettingsLayout from '../../components/SettingsLayout'
+import BboxCanvas, { type BboxRect } from '../../components/BboxCanvas'
 import { useSettings, type CameraSettings } from '../../hooks/useSettings'
 import { authHeaders, getToken } from '../../auth'
 
@@ -52,8 +53,14 @@ export default function AnalysisSettingsPage() {
   const [labelTotal, setLabelTotal] = useState(0)
   const [labelInputs, setLabelInputs] = useState<Record<number, string>>({})
   const [labelSaveState, setLabelSaveState] = useState<Record<number, 'saved' | 'error'>>({})
-  const [zoomSrc, setZoomSrc] = useState<string | null>(null)
+  const [zoomEvent, setZoomEvent] = useState<{ src: string; id: number } | null>(null)
   const labelLoading = labelCamID !== '' && labelEvents === null
+
+  // bbox drawing state for zoom modal
+  const [annBox, setAnnBox] = useState<BboxRect | null>(null)
+  const [annLabel, setAnnLabel] = useState('')
+  const [annSaveOk, setAnnSaveOk] = useState(false)
+  const [existingAnn, setExistingAnn] = useState<BboxRect | null>(null)
 
   const [annCount, setAnnCount] = useState<number | null>(null)
   const [labelCount, setLabelCount] = useState<number | null>(null)
@@ -81,6 +88,76 @@ export default function AnalysisSettingsPage() {
         }
       })
       .catch(() => {})
+  }
+
+  useEffect(() => {
+    if (!zoomEvent) return
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') closeZoomModal() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [zoomEvent])
+
+  useEffect(() => {
+    if (!zoomEvent) return
+    fetch(`/api/events/${zoomEvent.id}/annotations`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then((list: Array<{ label: string; bbox_x: number; bbox_y: number; bbox_w: number; bbox_h: number; rotation_deg?: number }>) => {
+        const a = list[0]
+        setExistingAnn(a ? {
+          x: a.bbox_x - a.bbox_w / 2,
+          y: a.bbox_y - a.bbox_h / 2,
+          w: a.bbox_w,
+          h: a.bbox_h,
+          rotation_deg: a.rotation_deg ?? 0,
+        } : null)
+      })
+      .catch(() => {})
+  }, [zoomEvent])
+
+  function openZoomModal(src: string, id: number) {
+    setAnnBox(null)
+    setAnnLabel('')
+    setAnnSaveOk(false)
+    setExistingAnn(null)
+    setZoomEvent({ src, id })
+  }
+
+  function closeZoomModal() {
+    setZoomEvent(null)
+    setAnnBox(null)
+    setAnnLabel('')
+    setAnnSaveOk(false)
+    setExistingAnn(null)
+  }
+
+  function handleAnnBoxChange(box: BboxRect | null) {
+    setAnnBox(box)
+    setAnnLabel('')
+    setAnnSaveOk(false)
+  }
+
+  async function saveAnnotation() {
+    if (!annBox || !zoomEvent || annBox.w < 0.01 || annBox.h < 0.01) return
+    const res = await fetch(`/api/events/${zoomEvent.id}/annotations`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        label: annLabel,
+        bbox_x: annBox.x + annBox.w / 2,
+        bbox_y: annBox.y + annBox.h / 2,
+        bbox_w: annBox.w,
+        bbox_h: annBox.h,
+        rotation_deg: annBox.rotation_deg ?? 0,
+      }),
+    })
+    if (res.ok) {
+      setExistingAnn({ ...annBox })
+      setAnnBox(null)
+      setAnnLabel('')
+      setAnnSaveOk(true)
+      refreshCounts()
+      setTimeout(() => setAnnSaveOk(false), 1500)
+    }
   }
 
   useEffect(() => {
@@ -424,7 +501,7 @@ export default function AnalysisSettingsPage() {
                         {ev.frame ? (
                           <button
                             type="button"
-                            onClick={() => setZoomSrc(frameURL(labelCamID, ev.time, ev.frame!))}
+                            onClick={() => openZoomModal(frameURL(labelCamID, ev.time, ev.frame!), ev.id)}
                             className="flex-shrink-0 rounded overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 hover:opacity-80 transition-opacity"
                           >
                             <img
@@ -484,20 +561,72 @@ export default function AnalysisSettingsPage() {
         </div>
       </div>
 
-      {zoomSrc && (
+      {zoomEvent && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-          onClick={() => setZoomSrc(null)}
-          onKeyDown={e => e.key === 'Escape' && setZoomSrc(null)}
-          tabIndex={-1}
-          ref={el => el?.focus()}
+          onClick={() => closeZoomModal()}
         >
-          <img
-            src={zoomSrc}
-            className="max-w-[90vw] max-h-[90vh] rounded shadow-2xl"
-            alt=""
-            onClick={e => e.stopPropagation()}
-          />
+          <div className="flex flex-col gap-3 items-center" onClick={e => e.stopPropagation()}>
+            <div className="relative rounded overflow-hidden shadow-2xl" style={{ maxWidth: '90vw', maxHeight: '75vh' }}>
+              <img
+                src={zoomEvent.src}
+                className="block max-w-full max-h-full"
+                alt=""
+                draggable={false}
+              />
+              <BboxCanvas
+                box={annBox ?? (annSaveOk ? null : existingAnn)}
+                onChange={handleAnnBoxChange}
+                readonly={annSaveOk}
+                className="absolute inset-0 w-full h-full select-none"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full max-w-md">
+              {annSaveOk && (
+                <span className="text-xs text-emerald-400">Anotação salva</span>
+              )}
+              {!annSaveOk && annBox && annBox.w > 0.01 && annBox.h > 0.01 && (
+                <>
+                  <input
+                    type="text"
+                    placeholder="label da região…"
+                    value={annLabel}
+                    onChange={e => setAnnLabel(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && saveAnnotation()}
+                    autoFocus
+                    className="flex-1 bg-gray-800 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    onClick={saveAnnotation}
+                    className="px-3 py-1.5 text-sm bg-emerald-700 hover:bg-emerald-600 text-white rounded"
+                  >
+                    Salvar
+                  </button>
+                  <button
+                    onClick={() => { setAnnBox(null); setAnnLabel('') }}
+                    className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded"
+                  >
+                    Cancelar
+                  </button>
+                </>
+              )}
+              {!annSaveOk && !annBox && existingAnn && (
+                <span className="text-xs text-gray-400">
+                  Região salva · Arraste para substituir
+                </span>
+              )}
+              {!annSaveOk && !annBox && !existingAnn && (
+                <span className="text-xs text-gray-500">Arraste para marcar · mova · redimensione · rotacione</span>
+              )}
+              <button
+                onClick={() => closeZoomModal()}
+                className="ml-auto px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </SettingsLayout>

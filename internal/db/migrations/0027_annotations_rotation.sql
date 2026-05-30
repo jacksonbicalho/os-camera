@@ -1,0 +1,1 @@
+ALTER TABLE annotations ADD COLUMN rotation_deg REAL NOT NULL DEFAULT 0;
