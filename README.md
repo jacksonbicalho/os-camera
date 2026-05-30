@@ -161,14 +161,9 @@ db_path: /var/camera/data/camera.db
 server:
   port: 8080
   segments_path: /var/camera/data/hls
-  hls_dvr_seconds: 0
 
 storage:
   path: /var/camera/data/recordings
-  retention:
-    with_motion_minutes: 10080   # 7 dias — gravações com movimento
-    without_motion_minutes: 1440 # 1 dia  — cenas paradas
-  max_size_gb: 20
 
 admin:
   username: admin
@@ -182,11 +177,7 @@ admin:
 | `db_path` | — | Caminho do banco SQLite |
 | `timezone` | `UTC` | Fuso horário para logs e nomes de arquivo |
 | `server.port` | — | Porta HTTP da interface web |
-| `server.hls_dvr_seconds` | `0` | Janela DVR do HLS em segundos (0 = desabilitado) |
 | `storage.path` | — | Diretório raiz das gravações |
-| `storage.retention.with_motion_minutes` | `0` | Retenção de gravações COM movimento (0 = nunca apaga) |
-| `storage.retention.without_motion_minutes` | `0` | Retenção de gravações SEM movimento (0 = desabilitado) |
-| `storage.max_size_gb` | `0` | Limite de disco em GB (0 = desabilitado) |
 | `admin.username` | `admin` | Usuário administrador criado na primeira execução |
 | `admin.password` | — | Senha inicial; obrigatório trocar no primeiro login |
 

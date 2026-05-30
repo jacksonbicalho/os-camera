@@ -12,7 +12,6 @@ func TestInitWizardDefaultInputs(t *testing.T) {
 		"",         // port: 8080
 		"",         // db_path
 		"",         // segments_path
-		"",         // hls_dvr: 0
 		"",         // storage path
 		"",         // timezone: America/Sao_Paulo
 		"",         // admin username: admin
@@ -40,7 +39,6 @@ func TestInitWizardDefaultInputs(t *testing.T) {
 		"port: 8080",
 		dbPath,
 		segPath,
-		"hls_dvr_seconds: 0",
 		storagePath,
 		"timezone: America/Sao_Paulo",
 		"username: admin",
@@ -69,7 +67,6 @@ func TestInitWizardCustomValues(t *testing.T) {
 		"9000",           // port
 		"/var/camera.db", // db_path
 		"/var/hls",       // segments_path
-		"1200",           // hls_dvr
 		"/mnt/cams",      // storage path
 		"America/Recife", // timezone
 		"master",         // admin username
@@ -86,7 +83,6 @@ func TestInitWizardCustomValues(t *testing.T) {
 		"port: 9000",
 		"db_path: /var/camera.db",
 		"segments_path: /var/hls",
-		"hls_dvr_seconds: 1200",
 		"path: /mnt/cams",
 		"timezone: America/Recife",
 		"username: master",
@@ -104,7 +100,6 @@ func TestInitWizardNoCamerasIsNotError(t *testing.T) {
 		"", // port
 		"", // db_path
 		"", // segments_path
-		"", // hls_dvr
 		"", // storage path
 		"", // timezone
 		"", // admin username

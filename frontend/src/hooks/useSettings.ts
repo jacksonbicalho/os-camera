@@ -41,7 +41,6 @@ export interface Settings {
     port: number
     segments_path: string
     recordings_path: string
-    hls_dvr_seconds: number
     username: string
   }
   storage: {

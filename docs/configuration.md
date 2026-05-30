@@ -32,7 +32,6 @@ log:
 server:
   port: 8080
   segments_path: /var/camera/data/hls
-  hls_dvr_seconds: 0
   jwt_secret: ""        # env: CAMERA_SERVER_JWT_SECRET
 
 storage:
@@ -70,7 +69,6 @@ admin:
 |---|---|---|
 | `port` | — | Porta HTTP da interface web e API |
 | `segments_path` | — | Diretório para os segmentos HLS do streaming ao vivo |
-| `hls_dvr_seconds` | `0` | Janela DVR em segundos; `0` desabilita (HLS ao vivo sem seek) |
 | `jwt_secret` | `""` | Segredo JWT fixo; vazio = gerado aleatoriamente a cada boot (tokens não sobrevivem a reinicializações) |
 
 ### `storage`
