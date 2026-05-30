@@ -1200,34 +1200,40 @@ function toggleFullscreen() {
                 <>
                   <div className="flex items-center border-b border-gray-800 shrink-0">
                     <button
+                      id="tab-recordings"
                       onClick={() => setActivePanel('recordings')}
-                      className={`flex-1 px-2 py-2 text-xs font-medium transition-colors ${
+                      className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
                         activePanel === 'recordings'
                           ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
                           : 'text-gray-500 hover:text-gray-300'
                       }`}
                     >
-                      Gravações <span className="ml-1 text-gray-500">{recordingsTotal || recordings.length}</span>
+                      <span>Gravações</span>
+                      <span className="tabular-nums">{recordingsTotal || recordings.length}</span>
                     </button>
                     <button
+                      id="tab-events"
                       onClick={() => setActivePanel('events')}
-                      className={`flex-1 px-2 py-2 text-xs font-medium transition-colors ${
+                      className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
                         activePanel === 'events'
                           ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
                           : 'text-gray-500 hover:text-gray-300'
                       }`}
                     >
-                      Eventos <span className="ml-1 text-gray-500">{sortedEvents.length}</span>
+                      <span>Eventos</span>
+                      <span className="tabular-nums">{sortedEvents.length}</span>
                     </button>
                     <button
+                      id="tab-calendar"
                       onClick={() => setActivePanel('calendar')}
-                      className={`flex-1 px-2 py-2 text-xs font-medium transition-colors ${
+                      className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
                         activePanel === 'calendar'
                           ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
                           : 'text-gray-500 hover:text-gray-300'
                       }`}
                     >
-                      {isToday ? 'Calendário' : format(selectedDate, "d MMM", { locale: ptBR })}
+                      <span>{format(selectedDate, "MMM", { locale: ptBR })}</span>
+                      <span className="tabular-nums">{format(selectedDate, "d")}</span>
                     </button>
                     <button
                       onClick={() => setActivePanel(null)}
@@ -1360,16 +1366,6 @@ function toggleFullscreen() {
                     </ListPanel>
                   ) : (
                     <div className="flex flex-col overflow-y-auto">
-                      {(!isToday || !calendarOnCurrentMonth) && (
-                        <div className="flex justify-end px-3 pt-2">
-                          <button
-                            onClick={() => { setSelectedDate(new Date()); setCalendarMonth(new Date()) }}
-                            className="px-1.5 py-0.5 text-[10px] font-medium text-blue-400 hover:text-blue-300 transition-colors"
-                          >
-                            Hoje
-                          </button>
-                        </div>
-                      )}
                       <div className="p-3">
                         <DayPicker
                           mode="single"
@@ -1378,10 +1374,22 @@ function toggleFullscreen() {
                           onMonthChange={setCalendarMonth}
                           onSelect={d => { if (d) { setSelectedDate(d); setCalendarMonth(d) } }}
                           locale={ptBR}
+                          style={{ '--rdp-nav_button-width': '1.5rem', '--rdp-nav_button-height': '1.5rem', '--rdp-accent-color': '#94a3b8' } as React.CSSProperties}
+                          components={{ Chevron: ({ orientation, disabled }) => {
+                            const d = `M${orientation === 'left' ? '10 6 4 12 10 18' : orientation === 'right' ? '6 6 12 12 6 18' : orientation === 'up' ? '6 14 12 8 18 14' : '6 10 12 16 18 10'}`
+                            return <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity={disabled ? 0.5 : 1}><path d={d} /></svg>
+                          }}}
+                          footer={(!isToday || !calendarOnCurrentMonth) && (
+                            <div className="flex justify-center pt-1">
+                              <button onClick={() => { setSelectedDate(new Date()); setCalendarMonth(new Date()) }} className="text-xs font-medium text-blue-400 hover:text-blue-300 transition-colors">
+                                Hoje
+                              </button>
+                            </div>
+                          )}
                           classNames={{
                             root: 'text-gray-200 text-sm',
-                            month_caption: 'text-gray-200 font-medium',
-                            nav: 'text-gray-400',
+                            month_caption: 'text-base text-gray-200 font-medium',
+                            month_grid: 'mt-2',
                             day: 'text-gray-300 hover:bg-gray-700 rounded',
                             day_button: 'w-8 h-8 flex items-center justify-center rounded',
                             selected: 'bg-blue-600 text-white rounded',
