@@ -206,6 +206,23 @@ func (c *Cleaner) syncRecordings() {
 			}
 			cameraID := parts[0]
 
+			// A segment with a known successor must have been closed by ffmpeg.
+			// If the moov atom is absent the file is corrupt (ffmpeg was killed
+			// mid-write). Remove the file and its DB record so it never appears
+			// in the UI as a valid recording.
+			if !chunkEnd.IsZero() && !isValidMP4(fullPath) {
+				c.log.Warn("removing corrupt recording (moov atom missing)", "path", fullPath)
+				if err := os.Remove(fullPath); err != nil {
+					c.log.Warn("failed to remove corrupt recording", "path", fullPath, "err", err)
+				}
+				if c.db != nil {
+					if err := db.DeleteRecording(c.db, fullPath); err != nil {
+						c.log.Warn("failed to delete corrupt recording from db", "path", fullPath, "err", err)
+					}
+				}
+				continue
+			}
+
 			rec := db.Recording{
 				CameraID:  cameraID,
 				StartedAt: chunkStart,
@@ -687,10 +704,11 @@ func (c *Cleaner) analyzeNewRecordings() {
 			_ = db.MarkAnalysisSkipped(c.db, p.id)
 			continue
 		}
+		customModel := cfg.Model == "custom"
 		if len(dets) == 0 {
 			c.log.Debug("analyzeNewRecordings: result", "path", p.path, "labels", "none")
 			// Insert a sentinel (label="") so this recording is not retried.
-			_ = db.InsertDetections(c.db, p.path, []db.Detection{{Label: "", Confidence: 0, FrameCount: 0}})
+			_ = db.InsertDetections(c.db, p.path, []db.Detection{{Label: "", Confidence: 0, FrameCount: 0}}, customModel)
 			analyzed++
 			continue
 		}
@@ -701,7 +719,7 @@ func (c *Cleaner) analyzeNewRecordings() {
 			dbDets[j] = db.Detection{Label: d.Label, Confidence: d.Confidence, FrameCount: d.FrameCount}
 		}
 		c.log.Debug("analyzeNewRecordings: result", "path", p.path, "labels", labels)
-		if err := db.InsertDetections(c.db, p.path, dbDets); err != nil {
+		if err := db.InsertDetections(c.db, p.path, dbDets, customModel); err != nil {
 			c.log.Warn("analyzeNewRecordings: insert detections failed", "path", p.path, "err", err)
 		} else {
 			analyzed++

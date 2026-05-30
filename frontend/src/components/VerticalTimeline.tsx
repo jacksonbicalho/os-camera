@@ -8,6 +8,7 @@ interface VerticalTimelineProps {
   activeRecording: Recording | null
   activeTime: string | null
   timezone: string
+  sortOrder?: 'asc' | 'desc'
   onSeek: (recording: Recording, offsetSeconds: number) => void
   onEventClick?: (ev: MotionEvent) => void
   className?: string
@@ -25,6 +26,7 @@ export default function VerticalTimeline({
   activeRecording,
   activeTime,
   timezone,
+  sortOrder = 'desc',
   onSeek,
   onEventClick,
   className,
@@ -79,6 +81,11 @@ export default function VerticalTimeline({
     ? Math.floor(new Date(activeTime).getTime() / 60_000) - firstMin
     : null
 
+  const minToY = (min: number) =>
+    sortOrder === 'desc' ? (totalMinutes - 1 - min) * pxPerMin : min * pxPerMin
+  const rangeToY = (startMin: number, endMin: number) =>
+    sortOrder === 'desc' ? (totalMinutes - endMin) * pxPerMin : startMin * pxPerMin
+
   const fmt = new Intl.DateTimeFormat('pt-BR', {
     timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false,
   })
@@ -113,7 +120,8 @@ export default function VerticalTimeline({
     const y = clientY - rect.top
     if (y < 0) return
     const px = BASE_PX_PER_MIN * zoomRef.current
-    const clickedMin = Math.floor(y / px)
+    const rawMin = Math.floor(y / px)
+    const clickedMin = sortOrder === 'desc' ? totalMinutes - 1 - rawMin : rawMin
     const targetMs = (firstMin + clickedMin) * 60_000
     if (onEventClick) {
       if (motionEvents.length > 0) {
@@ -135,15 +143,15 @@ export default function VerticalTimeline({
         return
       }
     }
-  }, [firstMin, recRanges, motionEvents, onSeek, onEventClick])
+  }, [firstMin, totalMinutes, sortOrder, recRanges, motionEvents, onSeek, onEventClick])
 
   useEffect(() => {
     const el = scrollRef.current
     if (!el || activeMin === null) return
-    const targetY = activeMin * pxPerMin
+    const targetY = minToY(activeMin)
     const scrollTo = targetY - el.clientHeight / 2
     el.scrollTop = Math.max(0, Math.min(el.scrollHeight - el.clientHeight, scrollTo))
-  }, [activeMin, pxPerMin])
+  }, [activeMin, pxPerMin, totalMinutes, sortOrder])
 
 
   const outerStyle = { maxHeight: maxHeight ?? 'calc(100vh - 10rem)' } as React.CSSProperties
@@ -207,7 +215,7 @@ export default function VerticalTimeline({
                 key={rec.filename}
                 className="absolute left-0 right-0 pointer-events-none"
                 style={{
-                  top: startMin * pxPerMin,
+                  top: rangeToY(startMin, endMin),
                   height: (endMin - startMin) * pxPerMin,
                   backgroundColor: rec.is_recording
                     ? 'rgba(239,68,68,0.15)'
@@ -228,7 +236,7 @@ export default function VerticalTimeline({
                 className="absolute pointer-events-none"
                 style={{
                   left: LABEL_W,
-                  top: min * pxPerMin,
+                  top: minToY(min),
                   width: ratio * BAR_MAX_W,
                   height: pxPerMin,
                   backgroundColor: '#f97316',
@@ -245,7 +253,7 @@ export default function VerticalTimeline({
               <div
                 key={`tick-${type}-${min}`}
                 className="absolute right-0 pointer-events-none"
-                style={{ top: min * pxPerMin, left, height: 1, backgroundColor: color }}
+                style={{ top: minToY(min), left, height: 1, backgroundColor: color }}
               />
             )
           })}
@@ -257,7 +265,7 @@ export default function VerticalTimeline({
               className="absolute pointer-events-none leading-none select-none"
               style={{
                 fontSize: type === 'hour' ? 8 : 7,
-                top: min * pxPerMin + 1,
+                top: minToY(min) + 1,
                 left: 1,
                 width: LABEL_W - 2,
                 overflow: 'hidden',
@@ -274,7 +282,7 @@ export default function VerticalTimeline({
             <div
               className="absolute left-0 right-0 pointer-events-none z-20"
               style={{
-                top: activeMin * pxPerMin,
+                top: minToY(activeMin),
                 height: 2,
                 backgroundColor: '#3b82f6',
                 boxShadow: '0 0 4px 1px rgba(59,130,246,0.5)',
@@ -284,7 +292,8 @@ export default function VerticalTimeline({
 
           {/* Hover time indicator */}
           {hoverY !== null && (() => {
-            const hoverMin = Math.floor(hoverY / pxPerMin)
+            const rawMin = Math.floor(hoverY / pxPerMin)
+            const hoverMin = sortOrder === 'desc' ? totalMinutes - 1 - rawMin : rawMin
             if (hoverMin < 0 || hoverMin >= totalMinutes) return null
             const hoverMs = (firstMin + hoverMin) * 60_000
             const label = fmt.format(new Date(hoverMs))

@@ -10,11 +10,12 @@ const BASE_NAV_LINKS = [
   { to: "/settings/storage", label: "Armazenamento" },
   { to: "/settings/analysis", label: "Análise de vídeo" },
   { to: "/settings/system", label: "Sistema" },
+  { to: "/settings/appearance", label: "Aparência" },
   { to: "/settings/about", label: "Sobre" },
 ];
 
 const VIEWER_NAV_LINKS = BASE_NAV_LINKS.filter(l =>
-  l.to === "/settings/cameras" || l.to === "/settings/about"
+  l.to === "/settings/cameras" || l.to === "/settings/appearance" || l.to === "/settings/about"
 );
 
 interface SettingsLayoutProps {

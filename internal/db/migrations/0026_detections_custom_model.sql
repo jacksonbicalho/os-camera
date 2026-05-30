@@ -1,0 +1,1 @@
+ALTER TABLE detections ADD COLUMN custom_model INTEGER NOT NULL DEFAULT 0;

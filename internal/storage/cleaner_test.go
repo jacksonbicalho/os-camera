@@ -23,12 +23,44 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
+// minimalValidMP4Bytes returns bytes of a structurally valid MP4 (has moov atom).
+func minimalValidMP4Bytes() []byte {
+	return []byte{
+		0, 0, 0, 24, 'f', 't', 'y', 'p',
+		'i', 's', 'o', 'm', 0, 0, 0, 0,
+		'i', 's', 'o', 'm', 'm', 'p', '4', '1',
+		0, 0, 0, 8, 'm', 'd', 'a', 't',
+		0, 0, 0, 8, 'm', 'o', 'o', 'v',
+	}
+}
+
 func writeFile(t *testing.T, path string, mtime time.Time) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("data"), 0644); err != nil {
+	// MP4 files must contain a moov atom to pass syncRecordings validation.
+	var content []byte
+	if filepath.Ext(path) == ".mp4" {
+		content = minimalValidMP4Bytes()
+	} else {
+		content = []byte("data")
+	}
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, mtime, mtime); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeCorruptMP4(t *testing.T, path string, mtime time.Time) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Simulates an MP4 written by ffmpeg that was killed before finalizing (no moov).
+	if err := os.WriteFile(path, []byte("raw mdat data without moov atom"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chtimes(path, mtime, mtime); err != nil {
@@ -986,5 +1018,84 @@ func TestAnalyzeNewRecordings_SkipsWhenFileNotOnDisk(t *testing.T) {
 
 	if fake.Called != 0 {
 		t.Errorf("analyzer must not be called when file does not exist on disk, called %d times", fake.Called)
+	}
+}
+
+// Quando ffmpeg é morto abruptamente, o último segmento fica sem moov atom
+// (ilegível). syncRecordings deve detectar isso, deletar o arquivo do disco
+// e remover o registro do banco.
+func TestSyncRecordings_RemovesCorruptRecording(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCamera(t, database, "cam1")
+
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+
+	// pathA: arquivo corrompido (sem moov atom) — simula segmento interrompido
+	pathA := mp4WithTimestamp(dir, "cam1", base)
+	writeCorruptMP4(t, pathA, base)
+
+	// pathB: arquivo válido — segmento criado pelo ffmpeg após reconexão
+	pathB := mp4WithTimestamp(dir, "cam1", base.Add(30*time.Second))
+	writeFile(t, pathB, base.Add(30*time.Second))
+
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	// pathA deve ter sido deletado do disco
+	if _, err := os.Stat(pathA); !os.IsNotExist(err) {
+		t.Error("corrupt pathA should have been deleted from disk")
+	}
+
+	// pathA não deve estar no banco
+	ids, err := db.IDsByPaths(database, []string{pathA, pathB})
+	if err != nil {
+		t.Fatalf("IDsByPaths: %v", err)
+	}
+	if ids[pathA] != 0 {
+		t.Error("corrupt pathA should not be in database")
+	}
+
+	// pathB ainda deve existir (arquivo válido, mas sem sucessor → ended_at NULL)
+	if _, err := os.Stat(pathB); err != nil {
+		t.Errorf("valid pathB should still exist on disk: %v", err)
+	}
+}
+
+// Arquivo corrompido já inserido no banco (de antes do fix) também é limpo.
+func TestSyncRecordings_RemovesCorruptRecordingAlreadyInDB(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCamera(t, database, "cam1")
+
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	pathA := mp4WithTimestamp(dir, "cam1", base)
+	pathB := mp4WithTimestamp(dir, "cam1", base.Add(30*time.Second))
+
+	// Pré-insere pathA no banco com ended_at definido (estado pré-fix)
+	writeCorruptMP4(t, pathA, base)
+	if err := db.InsertRecording(database, db.Recording{
+		CameraID:  "cam1",
+		StartedAt: base,
+		EndedAt:   base.Add(30 * time.Second),
+		Path:      pathA,
+		SizeBytes: 31,
+	}); err != nil {
+		t.Fatalf("InsertRecording: %v", err)
+	}
+
+	writeFile(t, pathB, base.Add(30*time.Second))
+
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	// pathA deve ter sido removido do disco e do banco
+	if _, err := os.Stat(pathA); !os.IsNotExist(err) {
+		t.Error("pre-existing corrupt pathA should have been deleted from disk")
+	}
+	ids, err := db.IDsByPaths(database, []string{pathA, pathB})
+	if err != nil {
+		t.Fatalf("IDsByPaths: %v", err)
+	}
+	if ids[pathA] != 0 {
+		t.Error("pre-existing corrupt pathA should have been removed from database")
 	}
 }

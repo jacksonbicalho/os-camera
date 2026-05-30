@@ -64,6 +64,34 @@ func TestClient_Analyze_ServerError(t *testing.T) {
 	}
 }
 
+func TestClient_CancelFinetune_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/finetune/job-123" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	client := analysis.NewClient(srv.URL)
+	if err := client.CancelFinetune(context.Background(), "job-123"); err != nil {
+		t.Fatalf("CancelFinetune: %v", err)
+	}
+}
+
+func TestClient_CancelFinetune_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	client := analysis.NewClient(srv.URL)
+	if err := client.CancelFinetune(context.Background(), "missing"); err == nil {
+		t.Fatal("expected error on 404")
+	}
+}
+
 func TestFakeAnalyzer(t *testing.T) {
 	fake := &analysis.FakeAnalyzer{
 		Results: []analysis.Detection{{Label: "dog", Confidence: 0.88, FrameCount: 5}},

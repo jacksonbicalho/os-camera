@@ -20,6 +20,7 @@ import type { Recording, MotionEvent, Annotation } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useSetSidebarItems } from '../contexts/SidebarContext'
+import { useDisplayMode } from '../contexts/DisplayModeContext'
 import type { HLSStats } from '../components/HLSPlayer'
 
 interface RecordingsResponse {
@@ -133,13 +134,13 @@ export default function CameraPage() {
   const [recPlayBlocked, setRecPlayBlocked] = useState(false)
   const [lastFrameDataUrl, setLastFrameDataUrl] = useState<string | null>(null)
   const [snapshotEvent, setSnapshotEvent] = useState<MotionEvent | null>(null)
-  const [annotating, setAnnotating] = useState(false)
   const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [annLabel, setAnnLabel] = useState('')
+  const [annSaving, setAnnSaving] = useState(false)
   const [annDraft, setAnnDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const annDragRef = useRef<{ startX: number; startY: number } | null>(null)
   const annImgRef = useRef<HTMLImageElement>(null)
-  const [detectionModal, setDetectionModal] = useState<Array<{ label: string; confidence: number; frame_count: number }> | null>(null)
+  const [detectionModal, setDetectionModal] = useState<Array<{ label: string; confidence: number; frame_count: number; custom_model?: boolean }> | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [showDebug, setShowDebug] = useState(false)
@@ -194,7 +195,6 @@ export default function CameraPage() {
 
   function closeSnapshotModal() {
     setSnapshotEvent(null)
-    setAnnotating(false)
     setAnnotations([])
     setAnnLabel('')
     setAnnDraft(null)
@@ -215,12 +215,12 @@ export default function CameraPage() {
   }, [showDebug])
 
   useEffect(() => {
-    if (!annotating || !snapshotEvent?.id) return
+    if (!snapshotEvent?.id) return
     fetch(`/api/events/${snapshotEvent.id}/annotations`, { headers: authHeaders() })
       .then(r => r.json())
       .then((list: Annotation[]) => setAnnotations(list ?? []))
       .catch(() => {})
-  }, [annotating, snapshotEvent])
+  }, [snapshotEvent])
 
   function getImgRect(): DOMRect | null {
     return annImgRef.current?.getBoundingClientRect() ?? null
@@ -236,7 +236,6 @@ export default function CameraPage() {
   }
 
   function onAnnMouseDown(e: React.MouseEvent) {
-    if (!annotating) return
     const rel = toRelative(e.clientX, e.clientY)
     if (!rel) return
     annDragRef.current = { startX: rel.x, startY: rel.y }
@@ -271,17 +270,22 @@ export default function CameraPage() {
       bbox_w: annDraft.w,
       bbox_h: annDraft.h,
     }
-    const res = await fetch(`/api/events/${snapshotEvent.id}/annotations`, {
-      method: 'POST',
-      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) return
-    const fresh = await fetch(`/api/events/${snapshotEvent.id}/annotations`, { headers: authHeaders() })
-    const list: Annotation[] = await fresh.json()
-    setAnnotations(list ?? [])
-    setAnnDraft(null)
-    setAnnLabel('')
+    setAnnSaving(true)
+    try {
+      const res = await fetch(`/api/events/${snapshotEvent.id}/annotations`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) return
+      const fresh = await fetch(`/api/events/${snapshotEvent.id}/annotations`, { headers: authHeaders() })
+      const list: Annotation[] = await fresh.json()
+      setAnnotations(list ?? [])
+      setAnnDraft(null)
+      setAnnLabel('')
+    } finally {
+      setAnnSaving(false)
+    }
   }
 
   async function deleteAnnotation(annId: number) {
@@ -647,6 +651,15 @@ export default function CameraPage() {
   const motionPeak = useMotionPeak(id)
   const { markRead } = useNotifications()
   const setItems = useSetSidebarItems()
+  const { player: playerMode } = useDisplayMode()
+  const playerShowIcon = playerMode !== 'text-only'
+  const playerShowLabel = playerMode !== 'icons-only'
+  const playerBtn = (icon: React.ReactNode, label: string) => (
+    <>
+      {playerShowIcon && icon}
+      {playerShowLabel && <span className="text-[11px] leading-none">{label}</span>}
+    </>
+  )
   const cam = settings?.cameras.find(c => c.id === id) ?? viewerCam
   const effectiveThreshold = cam?.motion?.threshold ?? 0
 
@@ -852,12 +865,11 @@ function toggleFullscreen() {
                   <button
                     onClick={() => setVideoMuted(m => { const next = !m; if (videoRef.current) videoRef.current.muted = next; return next })}
                     title={videoMuted ? 'Ativar áudio' : 'Silenciar'}
-                    className={`p-1 transition-colors cursor-pointer ${!videoMuted ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${!videoMuted ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                   >
-                    {videoMuted ? (
-                      <VolumeX className="w-[18px] h-[18px]" />
-                    ) : (
-                      <Volume2 className="w-[18px] h-[18px]" />
+                    {playerBtn(
+                      videoMuted ? <VolumeX className="w-[18px] h-[18px]" /> : <Volume2 className="w-[18px] h-[18px]" />,
+                      videoMuted ? 'Mudo' : 'Áudio'
                     )}
                   </button>
                   {/* Speed dropdown — playback only */}
@@ -866,13 +878,18 @@ function toggleFullscreen() {
                       <button
                         onClick={() => setSpeedMenuOpen(o => !o)}
                         title={`Velocidade ${playbackRate}×`}
-                        className={`relative p-1 transition-colors cursor-pointer ${playbackRate > 1 ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                        className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${playbackRate > 1 ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                       >
-                        <Gauge className="w-4 h-4" />
-                        {playbackRate > 1 && (
-                          <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
-                            {playbackRate}×
-                          </span>
+                        {playerBtn(
+                          <>
+                            <Gauge className="w-4 h-4" />
+                            {playbackRate > 1 && (
+                              <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                                {playbackRate}×
+                              </span>
+                            )}
+                          </>,
+                          `${playbackRate}×`
                         )}
                       </button>
                       {speedMenuOpen && (
@@ -897,9 +914,9 @@ function toggleFullscreen() {
                     <button
                       onClick={() => setContinuousPlay(v => !v)}
                       title={continuousPlay ? 'Desativar reprodução contínua' : 'Ativar reprodução contínua'}
-                      className={`p-1 transition-colors cursor-pointer ${continuousPlay ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                      className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${continuousPlay ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                     >
-                      <Repeat className="w-4 h-4" />
+                      {playerBtn(<Repeat className="w-4 h-4" />, 'Contínua')}
                     </button>
                   )}
                   <div className="w-px h-4 bg-gray-700 mx-0.5" />
@@ -917,13 +934,23 @@ function toggleFullscreen() {
                         }
                       }}
                       title="Gravações"
-                      className={`relative p-1 transition-colors cursor-pointer ${activePanel === 'recordings' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'recordings' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                     >
-                      <Film className="w-4 h-4" />
-                      {(recordingsTotal || recordings.length) > 0 && (
+                      {playerShowIcon && <Film className="w-4 h-4" />}
+                      {!playerShowLabel && (recordingsTotal || recordings.length) > 0 && (
                         <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
                           {recordingsTotal || recordings.length}
                         </span>
+                      )}
+                      {playerShowLabel && (
+                        <>
+                          <span className="text-[11px] leading-none">Gravações</span>
+                          {(recordingsTotal || recordings.length) > 0 && (
+                            <span className="inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                              {recordingsTotal || recordings.length}
+                            </span>
+                          )}
+                        </>
                       )}
                     </button>
                   )}
@@ -939,38 +966,58 @@ function toggleFullscreen() {
                         }
                       }}
                       title="Eventos de movimento"
-                      className={`relative p-1 transition-colors cursor-pointer ${activePanel === 'events' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'events' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                     >
-                      <Zap className="w-4 h-4" />
-                      <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
-                        {sortedEvents.length}
-                      </span>
+                      {playerShowIcon && <Zap className="w-4 h-4" />}
+                      {!playerShowLabel && (
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                          {sortedEvents.length}
+                        </span>
+                      )}
+                      {playerShowLabel && (
+                        <>
+                          <span className="text-[11px] leading-none">Eventos</span>
+                          <span className="inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                            {sortedEvents.length}
+                          </span>
+                        </>
+                      )}
                     </button>
                   )}
                   {/* Calendar */}
                   <button
                     onClick={() => setActivePanel(p => p === 'calendar' ? null : 'calendar')}
                     title={isToday ? 'Calendário' : `Calendário · ${format(selectedDate, "d MMM", { locale: ptBR })}`}
-                    className={`p-1 transition-colors cursor-pointer ${activePanel === 'calendar' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'calendar' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                   >
-                    <CalendarDays className="w-4 h-4" />
+                    {playerBtn(<CalendarDays className="w-4 h-4" />, 'Calendário')}
                   </button>
                   <div className="w-px h-4 bg-gray-700 mx-0.5" />
                   {/* Debug */}
                   <button
                     onClick={() => setShowDebug(d => !d)}
                     title="Debug"
-                    className={`p-1 transition-colors cursor-pointer ${showDebug ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${showDebug ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                   >
-                    <Code2 className="w-4 h-4" />
+                    {playerBtn(<Code2 className="w-4 h-4" />, 'Debug')}
                   </button>
                   {/* Settings */}
-                  {isAdmin && <button onClick={() => navigate(`/settings/cameras/${id}`, { state: { from: `/cameras/${id}`, editing: true } })} title="Configurar câmera" className="p-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer">
-                    <Settings className="w-4 h-4" />
-                  </button>}
+                  {isAdmin && (
+                    <button
+                      onClick={() => navigate(`/settings/cameras/${id}`, { state: { from: `/cameras/${id}`, editing: true } })}
+                      title="Configurar câmera"
+                      className="flex items-center gap-1 px-1 py-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+                    >
+                      {playerBtn(<Settings className="w-4 h-4" />, 'Câmera')}
+                    </button>
+                  )}
                   {/* Fullscreen */}
-                  <button onClick={toggleFullscreen} title="Tela inteira" className="p-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer">
-                    <Maximize className="w-4 h-4" />
+                  <button
+                    onClick={toggleFullscreen}
+                    title="Tela inteira"
+                    className="flex items-center gap-1 px-1 py-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+                  >
+                    {playerBtn(<Maximize className="w-4 h-4" />, 'Expandir')}
                   </button>
                 </div>
               </div>
@@ -1368,18 +1415,23 @@ function toggleFullscreen() {
                                 {formatRecordingTime(ev.time, timezone)}
                               </span>
                               <div className="flex items-center gap-1.5 min-w-0">
-                                {ev.label && (
+                                {ev.label && ev.color && (
                                   <>
-                                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ev.color ?? '#fb923c' }} />
-                                    <span className="text-xs font-medium truncate" style={{ color: ev.color ?? '#f97316' }}>{ev.label}</span>
+                                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ev.color }} />
+                                    <span className="text-xs font-medium truncate" style={{ color: ev.color }}>{ev.label}</span>
                                   </>
+                                )}
+                                {ev.label && !ev.color && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 border border-blue-700/50 truncate">
+                                    {ev.label}
+                                  </span>
                                 )}
                                 <span className="text-xs text-gray-500 shrink-0">[{(ev.score * 100).toFixed(1)}%]</span>
                               </div>
                             </div>
                             <div className="flex items-center justify-between gap-2 mt-1">
                               <span className="text-xs text-gray-400 truncate">
-                                {ev.label ?? 'Movimento'}
+                                {ev.color ? ev.label : 'Movimento'}
                               </span>
                               {thumbURL && (
                                 <img
@@ -1393,7 +1445,7 @@ function toggleFullscreen() {
                             {recDets && recDets.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-1" onClick={e => { e.stopPropagation(); setDetectionModal(recDets) }}>
                                 {recDets.map(d => (
-                                  <span key={d.label} className="text-[10px] px-1.5 py-0.5 rounded bg-violet-900/60 text-violet-300 border border-violet-700/50 cursor-pointer hover:bg-violet-800/60">
+                                  <span key={d.label} className={`text-[10px] px-1.5 py-0.5 rounded border cursor-pointer ${d.custom_model ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700/50 hover:bg-emerald-800/60' : 'bg-violet-900/60 text-violet-300 border-violet-700/50 hover:bg-violet-800/60'}`}>
                                     {d.label}
                                   </span>
                                 ))}
@@ -1451,6 +1503,7 @@ function toggleFullscreen() {
             activeRecording={activeRecording}
             activeTime={activeEventTime ?? activeRecording?.start ?? null}
             timezone={timezone}
+            sortOrder={activePanel === 'events' ? eventsSortOrder : sortOrder}
             onSeek={handleTimelineSeek}
             onEventClick={activePanel === 'events' ? ev => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) } : undefined}
             maxHeight={playerHeight}
@@ -1476,7 +1529,7 @@ function toggleFullscreen() {
             <div className="space-y-2">
               {detectionModal.map(d => (
                 <div key={d.label} className="flex items-center justify-between">
-                  <span className="text-sm text-violet-300 font-medium">{d.label}</span>
+                  <span className={`text-sm font-medium ${d.custom_model ? 'text-emerald-300' : 'text-violet-300'}`}>{d.label}</span>
                   <div className="flex items-center gap-3 text-xs text-gray-400">
                     <span>{(d.confidence * 100).toFixed(1)}%</span>
                     <span>{d.frame_count} frames</span>
@@ -1494,13 +1547,7 @@ function toggleFullscreen() {
           onClick={closeSnapshotModal}
         >
           <div className="relative max-w-3xl w-full mx-4" onClick={e => e.stopPropagation()}>
-            <div className="absolute -top-8 left-0 right-0 flex justify-between items-center">
-              <button
-                className={`text-xs px-2 py-0.5 rounded border ${annotating ? 'border-blue-500 text-blue-400' : 'border-gray-600 text-gray-400 hover:text-white'}`}
-                onClick={() => setAnnotating(v => !v)}
-              >
-                {annotating ? 'Cancelar anotação' : 'Anotar'}
-              </button>
+            <div className="absolute -top-8 left-0 right-0 flex justify-end">
               <button
                 className="text-gray-400 hover:text-white text-sm"
                 onClick={closeSnapshotModal}
@@ -1512,15 +1559,15 @@ function toggleFullscreen() {
             {/* Image + annotation canvas */}
             <div
               className="relative select-none"
-              onMouseDown={annotating ? onAnnMouseDown : undefined}
-              onMouseMove={annotating ? onAnnMouseMove : undefined}
-              onMouseUp={annotating ? onAnnMouseUp : undefined}
+              onMouseDown={onAnnMouseDown}
+              onMouseMove={onAnnMouseMove}
+              onMouseUp={onAnnMouseUp}
             >
               <img
                 ref={annImgRef}
                 src={snapshotURL(id!, snapshotEvent.time, snapshotEvent.frame)}
                 alt="snapshot de movimento"
-                className={`w-full rounded-lg border border-gray-700 ${annotating ? 'cursor-crosshair' : ''}`}
+                className="w-full rounded-lg border border-gray-700 cursor-crosshair"
                 draggable={false}
               />
               {/* Saved annotations overlay */}
@@ -1557,47 +1604,45 @@ function toggleFullscreen() {
             </p>
 
             {/* Annotation controls */}
-            {annotating && (
-              <div className="mt-3 space-y-2">
-                {annDraft && annDraft.w > 0.01 && annDraft.h > 0.01 && (
-                  <div className="flex gap-2">
-                    <input
-                      className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                      placeholder="Label (ex: gato, pessoa…)"
-                      value={annLabel}
-                      onChange={e => setAnnLabel(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') saveAnnotation() }}
-                      autoFocus
-                    />
-                    <button
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded disabled:opacity-40"
-                      disabled={annLabel.trim() === ''}
-                      onClick={saveAnnotation}
-                    >
-                      Salvar
-                    </button>
-                  </div>
-                )}
-                {!annDraft && (
-                  <p className="text-xs text-gray-500 text-center">Arraste para desenhar a bounding box</p>
-                )}
-                {annotations.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {annotations.map(a => (
-                      <div key={a.id} className="flex items-center justify-between bg-gray-800 rounded px-2 py-1">
-                        <span className="text-sm text-green-300">{a.label}</span>
-                        <button
-                          className="text-gray-500 hover:text-red-400 text-xs"
-                          onClick={() => deleteAnnotation(a.id)}
-                        >
-                          remover
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <div className="mt-3 space-y-2">
+              {annDraft && annDraft.w > 0.01 && annDraft.h > 0.01 && (
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                    placeholder="Label (ex: gato, pessoa…)"
+                    value={annLabel}
+                    onChange={e => setAnnLabel(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveAnnotation() }}
+                    autoFocus
+                  />
+                  <button
+                    className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded disabled:opacity-40"
+                    disabled={annLabel.trim() === '' || annSaving}
+                    onClick={saveAnnotation}
+                  >
+                    {annSaving ? 'Salvando...' : 'Salvar'}
+                  </button>
+                </div>
+              )}
+              {!annDraft && (
+                <p className="text-xs text-gray-500 text-center">Arraste na imagem para marcar uma região</p>
+              )}
+              {annotations.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {annotations.map(a => (
+                    <div key={a.id} className="flex items-center justify-between bg-gray-800 rounded px-2 py-1">
+                      <span className="text-sm text-green-300">{a.label}</span>
+                      <button
+                        className="text-gray-500 hover:text-red-400 text-xs"
+                        onClick={() => deleteAnnotation(a.id)}
+                      >
+                        remover
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

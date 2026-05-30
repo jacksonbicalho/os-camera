@@ -146,6 +146,73 @@ func DeleteMotionEventsInRange(db *DB, cameraID string, start, end time.Time) er
 	return err
 }
 
+// UpdateMotionEventLabel sets or clears the label of a motion event.
+func UpdateMotionEventLabel(db *DB, id int64, label string) error {
+	_, err := db.Exec(`UPDATE motion_events SET label=? WHERE id=?`, nullStr(label), id)
+	if err != nil {
+		return fmt.Errorf("update motion event label: %w", err)
+	}
+	return nil
+}
+
+// PageMotionEvents returns a page of motion events for a camera, ordered by occurred_at DESC.
+// offset and limit control pagination; unlabeledOnly filters to events with no label;
+// labelSearch filters to events whose label contains the given string (case-insensitive, ignored when empty).
+// Returns the events, the total matching count, and any error.
+func PageMotionEvents(db *DB, cameraID string, offset, limit int, unlabeledOnly bool, labelSearch string) ([]MotionEvent, int, error) {
+	filter := ""
+	args := []any{cameraID}
+	if unlabeledOnly {
+		filter = " AND (label IS NULL OR label = '')"
+	} else if labelSearch != "" {
+		filter = " AND label LIKE ? COLLATE NOCASE"
+		args = append(args, "%"+labelSearch+"%")
+	}
+
+	countArgs := args
+	var total int
+	err := db.QueryRow(
+		`SELECT COUNT(*) FROM motion_events WHERE camera_id=?`+filter, countArgs...,
+	).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count motion events: %w", err)
+	}
+
+	queryArgs := append(args, limit, offset)
+	rows, err := db.Query(
+		`SELECT id, camera_id, occurred_at, score, frame_path, label, color, bbox_x, bbox_y, bbox_w, bbox_h
+		 FROM motion_events WHERE camera_id=?`+filter+`
+		 ORDER BY occurred_at DESC LIMIT ? OFFSET ?`,
+		queryArgs...,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("page motion events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []MotionEvent
+	for rows.Next() {
+		var ev MotionEvent
+		var occurredAt string
+		var framePath, label sql.NullString
+		var color string
+		var bboxX, bboxY, bboxW, bboxH sql.NullFloat64
+		if err := rows.Scan(&ev.ID, &ev.CameraID, &occurredAt, &ev.Score, &framePath, &label, &color, &bboxX, &bboxY, &bboxW, &bboxH); err != nil {
+			return nil, 0, fmt.Errorf("scan motion event: %w", err)
+		}
+		ev.OccurredAt, _ = time.Parse(time.RFC3339, occurredAt)
+		ev.FramePath = framePath.String
+		ev.Label = label.String
+		ev.Color = color
+		ev.BboxX = bboxX.Float64
+		ev.BboxY = bboxY.Float64
+		ev.BboxW = bboxW.Float64
+		ev.BboxH = bboxH.Float64
+		events = append(events, ev)
+	}
+	return events, total, rows.Err()
+}
+
 func nullFloat(f float64) sql.NullFloat64 {
 	return sql.NullFloat64{Float64: f, Valid: f != 0}
 }

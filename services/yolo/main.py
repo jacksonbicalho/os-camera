@@ -17,6 +17,7 @@ MODEL_DIR = Path("/models")
 # Fine-tune jobs: job_id -> {status, epoch, total_epochs, error}
 _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
+_cancel_events: dict[str, threading.Event] = {}
 
 
 def get_model(name: str) -> YOLO:
@@ -63,7 +64,7 @@ class FinetuneResponse(BaseModel):
 
 
 class FinetuneStatusResponse(BaseModel):
-    status: str   # pending | running | done | error
+    status: str   # pending | running | cancelling | cancelled | done | error
     epoch: int
     total_epochs: int
     error: str = ""
@@ -124,6 +125,7 @@ def _build_dataset(annotations: list[AnnotationItem], work_dir: Path) -> Path:
 def _run_finetune(job_id: str, req: FinetuneRequest):
     work_dir = Path(f"/tmp/finetune_{job_id}")
     work_dir.mkdir(parents=True, exist_ok=True)
+    cancel_event = _cancel_events[job_id]
 
     def set_job(**kwargs):
         with _jobs_lock:
@@ -139,6 +141,8 @@ def _run_finetune(job_id: str, req: FinetuneRequest):
             def __call__(self, trainer):
                 with _jobs_lock:
                     _jobs[job_id]["epoch"] = trainer.epoch + 1
+                if cancel_event.is_set():
+                    raise StopIteration("cancelled")
 
         model.add_callback("on_train_epoch_end", EpochCallback())
 
@@ -162,10 +166,14 @@ def _run_finetune(job_id: str, req: FinetuneRequest):
             _models.pop("custom", None)
 
         set_job(status="done")
+    except StopIteration:
+        set_job(status="cancelled")
     except Exception as e:
         set_job(status="error", error=str(e))
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
+        with _jobs_lock:
+            _cancel_events.pop(job_id, None)
 
 
 def _analyze_one(model: YOLO, cap, conf_threshold: float):
@@ -231,12 +239,28 @@ def finetune(req: FinetuneRequest):
         raise HTTPException(status_code=400, detail="annotations list is empty")
 
     job_id = str(uuid.uuid4())
+    cancel_event = threading.Event()
     with _jobs_lock:
         _jobs[job_id] = {"status": "pending", "epoch": 0, "total_epochs": req.epochs, "error": ""}
+        _cancel_events[job_id] = cancel_event
 
     t = threading.Thread(target=_run_finetune, args=(job_id, req), daemon=True)
     t.start()
     return FinetuneResponse(job_id=job_id)
+
+
+@app.delete("/finetune/{job_id}", status_code=204)
+def cancel_finetune(job_id: str):
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        event = _cancel_events.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if event is not None:
+        event.set()
+        with _jobs_lock:
+            if _jobs[job_id]["status"] in ("pending", "running"):
+                _jobs[job_id]["status"] = "cancelling"
 
 
 @app.get("/finetune/status/{job_id}", response_model=FinetuneStatusResponse)

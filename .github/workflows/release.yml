@@ -94,10 +94,25 @@ jobs:
           PREV_TAG=$(git describe --tags --abbrev=0 "${{ github.ref_name }}^" 2>/dev/null || echo "")
 
           if [[ -n "$PREV_TAG" ]]; then
-            LOG=$(git log "$PREV_TAG..${{ github.ref_name }}" --pretty=format:"%H|%s" --no-merges)
+            RAW_LOG=$(git log "$PREV_TAG..${{ github.ref_name }}" --pretty=format:"%H|%s" --no-merges)
           else
-            LOG=$(git log --pretty=format:"%H|%s" --no-merges)
+            RAW_LOG=$(git log --pretty=format:"%H|%s" --no-merges)
           fi
+
+          # Expande squash commits de release: extrai linhas "* feat/fix..." do body
+          LOG=""
+          while IFS="|" read -r hash msg; do
+            [[ -z "$hash" ]] && continue
+            if [[ "$msg" =~ ^release: ]]; then
+              while IFS= read -r bline; do
+                if [[ "$bline" =~ ^\*[[:space:]]+([a-z][^[:space:]].+) ]]; then
+                  LOG+="$hash|${BASH_REMATCH[1]}"$'\n'
+                fi
+              done < <(git show "$hash" --format="%b" -s)
+            else
+              LOG+="$hash|$msg"$'\n'
+            fi
+          done <<< "$RAW_LOG"
 
           declare -A SECTIONS=(
             [feat]="✨ Novidades"
