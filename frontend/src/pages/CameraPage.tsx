@@ -133,7 +133,6 @@ export default function CameraPage() {
   const [recPlayBlocked, setRecPlayBlocked] = useState(false)
   const [lastFrameDataUrl, setLastFrameDataUrl] = useState<string | null>(null)
   const [snapshotEvent, setSnapshotEvent] = useState<MotionEvent | null>(null)
-  const [annotating, setAnnotating] = useState(false)
   const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [annLabel, setAnnLabel] = useState('')
   const [annDraft, setAnnDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
@@ -194,7 +193,6 @@ export default function CameraPage() {
 
   function closeSnapshotModal() {
     setSnapshotEvent(null)
-    setAnnotating(false)
     setAnnotations([])
     setAnnLabel('')
     setAnnDraft(null)
@@ -215,12 +213,12 @@ export default function CameraPage() {
   }, [showDebug])
 
   useEffect(() => {
-    if (!annotating || !snapshotEvent?.id) return
+    if (!snapshotEvent?.id) return
     fetch(`/api/events/${snapshotEvent.id}/annotations`, { headers: authHeaders() })
       .then(r => r.json())
       .then((list: Annotation[]) => setAnnotations(list ?? []))
       .catch(() => {})
-  }, [annotating, snapshotEvent])
+  }, [snapshotEvent])
 
   function getImgRect(): DOMRect | null {
     return annImgRef.current?.getBoundingClientRect() ?? null
@@ -236,7 +234,6 @@ export default function CameraPage() {
   }
 
   function onAnnMouseDown(e: React.MouseEvent) {
-    if (!annotating) return
     const rel = toRelative(e.clientX, e.clientY)
     if (!rel) return
     annDragRef.current = { startX: rel.x, startY: rel.y }
@@ -1368,18 +1365,23 @@ function toggleFullscreen() {
                                 {formatRecordingTime(ev.time, timezone)}
                               </span>
                               <div className="flex items-center gap-1.5 min-w-0">
-                                {ev.label && (
+                                {ev.label && ev.color && (
                                   <>
-                                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ev.color ?? '#fb923c' }} />
-                                    <span className="text-xs font-medium truncate" style={{ color: ev.color ?? '#f97316' }}>{ev.label}</span>
+                                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ev.color }} />
+                                    <span className="text-xs font-medium truncate" style={{ color: ev.color }}>{ev.label}</span>
                                   </>
+                                )}
+                                {ev.label && !ev.color && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 border border-blue-700/50 truncate">
+                                    {ev.label}
+                                  </span>
                                 )}
                                 <span className="text-xs text-gray-500 shrink-0">[{(ev.score * 100).toFixed(1)}%]</span>
                               </div>
                             </div>
                             <div className="flex items-center justify-between gap-2 mt-1">
                               <span className="text-xs text-gray-400 truncate">
-                                {ev.label ?? 'Movimento'}
+                                {ev.color ? ev.label : 'Movimento'}
                               </span>
                               {thumbURL && (
                                 <img
@@ -1494,13 +1496,7 @@ function toggleFullscreen() {
           onClick={closeSnapshotModal}
         >
           <div className="relative max-w-3xl w-full mx-4" onClick={e => e.stopPropagation()}>
-            <div className="absolute -top-8 left-0 right-0 flex justify-between items-center">
-              <button
-                className={`text-xs px-2 py-0.5 rounded border ${annotating ? 'border-blue-500 text-blue-400' : 'border-gray-600 text-gray-400 hover:text-white'}`}
-                onClick={() => setAnnotating(v => !v)}
-              >
-                {annotating ? 'Cancelar anotação' : 'Anotar'}
-              </button>
+            <div className="absolute -top-8 left-0 right-0 flex justify-end">
               <button
                 className="text-gray-400 hover:text-white text-sm"
                 onClick={closeSnapshotModal}
@@ -1512,15 +1508,15 @@ function toggleFullscreen() {
             {/* Image + annotation canvas */}
             <div
               className="relative select-none"
-              onMouseDown={annotating ? onAnnMouseDown : undefined}
-              onMouseMove={annotating ? onAnnMouseMove : undefined}
-              onMouseUp={annotating ? onAnnMouseUp : undefined}
+              onMouseDown={onAnnMouseDown}
+              onMouseMove={onAnnMouseMove}
+              onMouseUp={onAnnMouseUp}
             >
               <img
                 ref={annImgRef}
                 src={snapshotURL(id!, snapshotEvent.time, snapshotEvent.frame)}
                 alt="snapshot de movimento"
-                className={`w-full rounded-lg border border-gray-700 ${annotating ? 'cursor-crosshair' : ''}`}
+                className="w-full rounded-lg border border-gray-700 cursor-crosshair"
                 draggable={false}
               />
               {/* Saved annotations overlay */}
@@ -1557,47 +1553,45 @@ function toggleFullscreen() {
             </p>
 
             {/* Annotation controls */}
-            {annotating && (
-              <div className="mt-3 space-y-2">
-                {annDraft && annDraft.w > 0.01 && annDraft.h > 0.01 && (
-                  <div className="flex gap-2">
-                    <input
-                      className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                      placeholder="Label (ex: gato, pessoa…)"
-                      value={annLabel}
-                      onChange={e => setAnnLabel(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') saveAnnotation() }}
-                      autoFocus
-                    />
-                    <button
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded disabled:opacity-40"
-                      disabled={annLabel.trim() === ''}
-                      onClick={saveAnnotation}
-                    >
-                      Salvar
-                    </button>
-                  </div>
-                )}
-                {!annDraft && (
-                  <p className="text-xs text-gray-500 text-center">Arraste para desenhar a bounding box</p>
-                )}
-                {annotations.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {annotations.map(a => (
-                      <div key={a.id} className="flex items-center justify-between bg-gray-800 rounded px-2 py-1">
-                        <span className="text-sm text-green-300">{a.label}</span>
-                        <button
-                          className="text-gray-500 hover:text-red-400 text-xs"
-                          onClick={() => deleteAnnotation(a.id)}
-                        >
-                          remover
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <div className="mt-3 space-y-2">
+              {annDraft && annDraft.w > 0.01 && annDraft.h > 0.01 && (
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                    placeholder="Label (ex: gato, pessoa…)"
+                    value={annLabel}
+                    onChange={e => setAnnLabel(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveAnnotation() }}
+                    autoFocus
+                  />
+                  <button
+                    className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded disabled:opacity-40"
+                    disabled={annLabel.trim() === ''}
+                    onClick={saveAnnotation}
+                  >
+                    Salvar
+                  </button>
+                </div>
+              )}
+              {!annDraft && (
+                <p className="text-xs text-gray-500 text-center">Arraste na imagem para marcar uma região</p>
+              )}
+              {annotations.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {annotations.map(a => (
+                    <div key={a.id} className="flex items-center justify-between bg-gray-800 rounded px-2 py-1">
+                      <span className="text-sm text-green-300">{a.label}</span>
+                      <button
+                        className="text-gray-500 hover:text-red-400 text-xs"
+                        onClick={() => deleteAnnotation(a.id)}
+                      >
+                        remover
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

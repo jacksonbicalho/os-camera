@@ -70,13 +70,21 @@ func (s *Server) handleAnnotationCount(w http.ResponseWriter, r *http.Request) {
 	if !s.requireDB(w) {
 		return
 	}
-	n, err := db.CountAnnotations(s.db)
+	bboxCount, err := db.CountAnnotations(s.db)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	labelCount, err := db.CountLabeledEvents(s.db)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]int{"count": n})
+	json.NewEncoder(w).Encode(map[string]int{
+		"count":        bboxCount,
+		"label_count":  labelCount,
+	})
 }
 
 func (s *Server) handleDeleteAnnotation(w http.ResponseWriter, r *http.Request) {
