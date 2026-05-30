@@ -244,6 +244,30 @@ func LastRecordingPerCamera(db *DB) (map[string]time.Time, error) {
 	return result, rows.Err()
 }
 
+// ListOrphanedRecordings returns recordings with ended_at IS NULL.
+// At startup, before any recorder starts, all such rows are incomplete files
+// left on disk when the system stopped mid-recording.
+func ListOrphanedRecordings(database *DB) ([]Recording, error) {
+	rows, err := database.Query(`
+		SELECT id, camera_id, started_at, path, size_bytes, has_motion
+		FROM recordings WHERE ended_at IS NULL`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []Recording
+	for rows.Next() {
+		var r Recording
+		var startedAt string
+		if err := rows.Scan(&r.ID, &r.CameraID, &startedAt, &r.Path, &r.SizeBytes, &r.HasMotion); err != nil {
+			return nil, err
+		}
+		r.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
 // MarkAnalysisSkipped sets analysis_skipped=1 for the recording with the given id.
 func MarkAnalysisSkipped(database *DB, id int64) error {
 	_, err := database.Exec(`UPDATE recordings SET analysis_skipped=1 WHERE id=?`, id)
