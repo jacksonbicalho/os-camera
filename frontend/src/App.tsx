@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import ChangePasswordPage from './pages/ChangePasswordPage'
 import { SidebarItemsProvider } from './contexts/SidebarContext'
+import { DisplayModeProvider } from './contexts/DisplayModeContext'
 
 const CameraPage = lazy(() => import('./pages/CameraPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
@@ -21,6 +22,7 @@ const UserDetailSettingsPage = lazy(() => import('./pages/settings/UserDetailSet
 const DiscoverPage = lazy(() => import('./pages/settings/DiscoverPage'))
 const AnalysisSettingsPage = lazy(() => import('./pages/settings/AnalysisSettingsPage'))
 const CameraAnalysisSettingsPage = lazy(() => import('./pages/settings/CameraAnalysisSettingsPage'))
+const AppearanceSettingsPage = lazy(() => import('./pages/settings/AppearanceSettingsPage'))
 
 function UnauthorizedHandler() {
   const navigate = useNavigate()
@@ -50,6 +52,7 @@ function Lazy({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <DisplayModeProvider>
     <SidebarItemsProvider>
     <UnauthorizedHandler />
     <Routes>
@@ -75,8 +78,10 @@ export default function App() {
       <Route path="/settings/users/:id" element={<Lazy><UserDetailSettingsPage /></Lazy>} />
       <Route path="/settings/discover" element={<Lazy><DiscoverPage /></Lazy>} />
       <Route path="/settings/analysis" element={<Lazy><AnalysisSettingsPage /></Lazy>} />
+      <Route path="/settings/appearance" element={<Lazy><AppearanceSettingsPage /></Lazy>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </SidebarItemsProvider>
+    </DisplayModeProvider>
   )
 }
