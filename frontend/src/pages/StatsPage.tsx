@@ -67,7 +67,7 @@ export default function StatsPage() {
   const sysMemUsed = (stats?.sys_mem_total_bytes ?? 0) - (stats?.sys_mem_free_bytes ?? 0)
 
   return (
-    <AppLayout mainClassName="max-w-4xl mx-auto w-full">
+    <AppLayout>
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-white">Estatísticas</h2>
       </div>

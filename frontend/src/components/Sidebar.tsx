@@ -1,14 +1,14 @@
 import { useState, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate, useLocation, Link, NavLink } from "react-router-dom"
-import { clearToken, getRole } from "../auth"
+import { clearToken, getRole, authHeaders, onUnauthorized } from "../auth"
 import { useNotifications } from "../contexts/NotificationContext"
 import { useSidebarItems, type SidebarItem, type SidebarDropdownOption } from "../contexts/SidebarContext"
 import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import type { Notification } from "../contexts/NotificationContext"
 import ConfirmDialog from "./ConfirmDialog"
-import { Bell, X, Check, Eye, MoreVertical, Trash2, BarChart2, Settings, CircleUser, CameraLogo } from "./Icons"
+import { Bell, X, Check, Eye, MoreVertical, Trash2, BarChart2, Settings, CircleUser, CameraLogo, Cctv } from "./Icons"
 
 interface SidebarProps {
   username?: string
@@ -180,11 +180,12 @@ function SidebarInjectedItem({ item }: { item: SidebarItem }) {
   )
 }
 
-function NavIcon({ to, title, children, end }: { to: string; title: string; children: React.ReactNode; end?: boolean }) {
+function NavIcon({ to, title, id, children, end }: { to: string; title: string; id?: string; children: React.ReactNode; end?: boolean }) {
   return (
     <NavLink
       to={to}
       end={end}
+      id={id}
       title={title}
       className={({ isActive }) =>
         `flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
@@ -224,6 +225,26 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
   const [settingsPos, setSettingsPos] = useState({ bottom: 0, left: 0 })
   const settingsLinks = getRole() === "admin" ? ADMIN_SETTINGS_LINKS : VIEWER_SETTINGS_LINKS
   const settingsActive = location.pathname.startsWith("/settings")
+
+  const camerasPanelRef = useRef<HTMLDivElement>(null)
+  const { open: camerasOpen, setOpen: setCamerasOpen, ref: camerasRef } = useDropdown(camerasPanelRef)
+  const camerasButtonRef = useRef<HTMLButtonElement>(null)
+  const [camerasPos, setCamerasPos] = useState({ bottom: 0, left: 0 })
+  const [cameraList, setCameraList] = useState<{ id: string; name: string }[]>([])
+  const camerasActive = location.pathname.startsWith("/camera")
+
+  function openCameras() {
+    if (camerasButtonRef.current) {
+      const r = camerasButtonRef.current.getBoundingClientRect()
+      setCamerasPos({ bottom: window.innerHeight - r.bottom, left: r.right + 8 })
+    }
+    if (!camerasOpen) {
+      fetch('/api/cameras', { headers: authHeaders() })
+        .then(res => { if (res.status === 401) { onUnauthorized(); return null } return res.json() })
+        .then(data => { if (Array.isArray(data)) setCameraList(data) })
+    }
+    setCamerasOpen(v => !v)
+  }
 
   const {
     notifications, unreadCount,
@@ -299,6 +320,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
       {/* Logo */}
       <Link
         to="/"
+        id="sidebar-logo"
         className="flex items-center justify-center h-14 hover:opacity-80 transition-opacity border-b border-gray-800 flex-none"
         title="os-camera"
       >
@@ -311,6 +333,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
       <div className="flex flex-col items-center py-1 border-b border-gray-800 flex-none">
         <div ref={bellRef}>
           <button
+            id="sidebar-notifications"
             ref={bellBtnRef}
             onClick={openBell}
             className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
@@ -476,13 +499,57 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
       <div className="flex flex-col items-center gap-1 pb-3 flex-none">
 
         {/* Stats */}
-        <NavIcon to="/stats" title="Estatísticas">
+        <NavIcon id="sidebar-stats" to="/stats" title="Estatísticas">
           <BarChart2 className="w-5 h-5" />
         </NavIcon>
+
+        {/* Cameras */}
+        <div ref={camerasRef}>
+          <button
+            id="sidebar-cameras"
+            ref={camerasButtonRef}
+            onClick={openCameras}
+            title="Câmeras"
+            className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
+              camerasActive || camerasOpen
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+            }`}
+          >
+            <Cctv className="w-5 h-5" />
+          </button>
+        </div>
+        {camerasOpen && createPortal(
+          <div
+            ref={camerasPanelRef}
+            style={{ position: 'fixed', bottom: camerasPos.bottom, left: camerasPos.left, zIndex: 9999 }}
+            className="w-48 bg-gray-800 border border-gray-700 rounded shadow-lg"
+          >
+            <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-700 font-medium">Câmeras</div>
+            {cameraList.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-gray-500">Nenhuma câmera</div>
+            ) : cameraList.map(cam => (
+              <Link
+                key={cam.id}
+                to={`/camera/live/${cam.id}`}
+                onClick={() => setCamerasOpen(false)}
+                className={`block px-3 py-2 text-sm transition-colors truncate ${
+                  location.pathname === `/camera/live/${cam.id}`
+                    ? 'bg-gray-700 text-white'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                }`}
+              >
+                {cam.name}
+              </Link>
+            ))}
+          </div>,
+          document.body
+        )}
 
         {/* Settings */}
         <div ref={settingsRef}>
           <button
+            id="sidebar-settings"
             ref={settingsButtonRef}
             onClick={() => {
               if (settingsButtonRef.current) {
@@ -529,6 +596,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
         {/* User */}
         <div className="relative" ref={userRef}>
           <button
+            id="sidebar-user"
             onClick={() => setUserOpen((v) => !v)}
             className="flex items-center justify-center w-10 h-10 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
             title={username}
