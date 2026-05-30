@@ -414,3 +414,76 @@ func TestComputeBBoxIgnoresMaskedPixels(t *testing.T) {
 		t.Errorf("expected %+v, got %+v", want, got)
 	}
 }
+
+// --- updateBackground ---
+
+func TestUpdateBackground(t *testing.T) {
+	bg := []byte{100}
+	cur := []byte{200}
+	updateBackground(bg, cur, 0.5)
+	// bg_new = 100*0.5 + 200*0.5 = 150
+	if bg[0] != 150 {
+		t.Errorf("expected 150, got %d", bg[0])
+	}
+}
+
+func TestUpdateBackgroundAlphaZeroNoChange(t *testing.T) {
+	bg := []byte{80}
+	cur := []byte{255}
+	updateBackground(bg, cur, 0)
+	if bg[0] != 80 {
+		t.Errorf("expected no change with alpha=0, got %d", bg[0])
+	}
+}
+
+func TestUpdateBackgroundAlphaOneBecomesCurrentFrame(t *testing.T) {
+	bg := []byte{50, 100, 150}
+	cur := []byte{10, 20, 30}
+	updateBackground(bg, cur, 1.0)
+	for i, want := range cur {
+		if bg[i] != want {
+			t.Errorf("bg[%d]: expected %d, got %d", i, want, bg[i])
+		}
+	}
+}
+
+// TestComputeBBoxBackgroundSubtractionLocalizesObject demonstrates that diffing
+// against a background frame (instead of prev) correctly localizes the object's
+// CURRENT position, eliminating the trailing bbox from the departure region.
+func TestComputeBBoxBackgroundSubtractionLocalizesObject(t *testing.T) {
+	// Frame 10×1: background is all gray (100)
+	w, h := 10, 1
+	bg := make([]byte, w*h)
+	for i := range bg {
+		bg[i] = 100
+	}
+	// Previous frame: object was at pixels 1-3 (left side)
+	prev := make([]byte, w*h)
+	copy(prev, bg)
+	prev[1], prev[2], prev[3] = 200, 200, 200
+	// Current frame: object is at pixels 7-9 (right side)
+	cur := make([]byte, w*h)
+	copy(cur, bg)
+	cur[7], cur[8], cur[9] = 200, 200, 200
+
+	// Old approach: diff(prev, cur) — spans departure + arrival (pixels 1-3 and 7-9)
+	bboxOld, _ := computeBBox(prev, cur, w, h, nil)
+	// New approach: diff(bg, cur) — only where object IS now (pixels 7-9)
+	bboxNew, _ := computeBBox(bg, cur, w, h, nil)
+
+	// Old bbox must span both regions (departure at left, arrival at right)
+	if bboxOld.X > 0.15 {
+		t.Errorf("old approach: expected bbox starting near left, got X=%.2f", bboxOld.X)
+	}
+	if bboxOld.W < 0.7 {
+		t.Errorf("old approach: expected wide bbox covering both regions, got W=%.2f", bboxOld.W)
+	}
+
+	// New bbox must be only on the right (where object IS)
+	if bboxNew.X < 0.65 {
+		t.Errorf("background subtraction: expected bbox on right side (X>=0.7), got X=%.2f", bboxNew.X)
+	}
+	if bboxNew.W > 0.35 {
+		t.Errorf("background subtraction: expected narrow bbox (W<=0.3), got W=%.2f", bboxNew.W)
+	}
+}
