@@ -828,49 +828,53 @@ function toggleFullscreen() {
                     className={`p-1 transition-colors cursor-pointer ${!videoMuted ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                   >
                     {videoMuted ? (
-                      <VolumeX className="w-4 h-4" />
+                      <VolumeX className="w-[18px] h-[18px]" />
                     ) : (
-                      <Volume2 className="w-4 h-4" />
+                      <Volume2 className="w-[18px] h-[18px]" />
                     )}
                   </button>
-                  {/* Speed dropdown */}
-                  <div ref={speedMenuRef} className="relative">
-                    <button
-                      onClick={() => !isLive && setSpeedMenuOpen(o => !o)}
-                      title={`Velocidade ${playbackRate}×`}
-                      className={`relative p-1 transition-colors ${isLive ? 'text-gray-600 cursor-default' : `cursor-pointer ${playbackRate > 1 ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}`}
-                    >
-                      <Gauge className="w-4 h-4" />
-                      {playbackRate > 1 && (
-                        <span className="absolute -bottom-0.5 -right-0.5 text-[8px] font-bold leading-none bg-blue-600 text-white rounded-full px-0.5 py-px">
-                          {playbackRate}×
-                        </span>
+                  {/* Speed dropdown — playback only */}
+                  {!isLive && (
+                    <div ref={speedMenuRef} className="relative">
+                      <button
+                        onClick={() => setSpeedMenuOpen(o => !o)}
+                        title={`Velocidade ${playbackRate}×`}
+                        className={`relative p-1 transition-colors cursor-pointer ${playbackRate > 1 ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                      >
+                        <Gauge className="w-4 h-4" />
+                        {playbackRate > 1 && (
+                          <span className="absolute -bottom-0.5 -right-0.5 text-[8px] font-bold leading-none bg-blue-600 text-white rounded-full px-0.5 py-px">
+                            {playbackRate}×
+                          </span>
+                        )}
+                      </button>
+                      {speedMenuOpen && (
+                        <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 py-1 min-w-[4rem]">
+                          {[1, 2, 4, 8, 16, 32]
+                            .filter(v => browserMaxRate === null || v <= browserMaxRate)
+                            .map(v => (
+                              <button
+                                key={v}
+                                onClick={() => { handleRateChange(v); setSpeedMenuOpen(false) }}
+                                className={`w-full text-left px-3 py-1 text-xs ${v === playbackRate ? 'text-blue-400 font-semibold' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
+                              >
+                                {v}×
+                              </button>
+                            ))}
+                        </div>
                       )}
+                    </div>
+                  )}
+                  {/* Continuous play — playback only */}
+                  {!isLive && (
+                    <button
+                      onClick={() => setContinuousPlay(v => !v)}
+                      title={continuousPlay ? 'Desativar reprodução contínua' : 'Ativar reprodução contínua'}
+                      className={`p-1 transition-colors cursor-pointer ${continuousPlay ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                    >
+                      <Repeat className="w-4 h-4" />
                     </button>
-                    {speedMenuOpen && (
-                      <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 py-1 min-w-[4rem]">
-                        {[1, 2, 4, 8, 16, 32]
-                          .filter(v => browserMaxRate === null || v <= browserMaxRate)
-                          .map(v => (
-                            <button
-                              key={v}
-                              onClick={() => { handleRateChange(v); setSpeedMenuOpen(false) }}
-                              className={`w-full text-left px-3 py-1 text-xs ${v === playbackRate ? 'text-blue-400 font-semibold' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
-                            >
-                              {v}×
-                            </button>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                  {/* Continuous play */}
-                  <button
-                    onClick={() => !isLive && setContinuousPlay(v => !v)}
-                    title={continuousPlay ? 'Desativar reprodução contínua' : 'Ativar reprodução contínua'}
-                    className={`p-1 transition-colors ${isLive ? 'text-gray-600 cursor-default' : `cursor-pointer ${continuousPlay ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}`}
-                  >
-                    <Repeat className="w-4 h-4" />
-                  </button>
+                  )}
                   <div className="w-px h-4 bg-gray-700 mx-0.5" />
                   {/* Recordings */}
                   {(cam?.recording_enabled !== false) && (recordingsTotal > 0 || recordings.length > 0) && (
