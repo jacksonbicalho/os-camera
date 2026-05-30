@@ -113,6 +113,18 @@ func TestHLSStreamerStartsFFmpegWithCorrectArguments(t *testing.T) {
 	if args[0] != "ffmpeg" {
 		t.Errorf("expected command %q, got %q", "ffmpeg", args[0])
 	}
+	if !containsSequence(args, "-fflags", "+nobuffer") {
+		t.Error("expected -fflags +nobuffer in args")
+	}
+	if !containsSequence(args, "-flags", "+low_delay") {
+		t.Error("expected -flags +low_delay in args")
+	}
+	if !containsSequence(args, "-analyzeduration", "500000") {
+		t.Error("expected -analyzeduration 500000 in args")
+	}
+	if !containsSequence(args, "-probesize", "32768") {
+		t.Error("expected -probesize 32768 in args")
+	}
 	if !containsSequence(args, "-i", "rtsp://192.168.1.10:554/stream") {
 		t.Error("expected -i <rtsp_url> in args")
 	}
