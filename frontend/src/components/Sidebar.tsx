@@ -180,11 +180,12 @@ function SidebarInjectedItem({ item }: { item: SidebarItem }) {
   )
 }
 
-function NavIcon({ to, title, children, end }: { to: string; title: string; children: React.ReactNode; end?: boolean }) {
+function NavIcon({ to, title, id, children, end }: { to: string; title: string; id?: string; children: React.ReactNode; end?: boolean }) {
   return (
     <NavLink
       to={to}
       end={end}
+      id={id}
       title={title}
       className={({ isActive }) =>
         `flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
@@ -319,6 +320,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
       {/* Logo */}
       <Link
         to="/"
+        id="sidebar-logo"
         className="flex items-center justify-center h-14 hover:opacity-80 transition-opacity border-b border-gray-800 flex-none"
         title="os-camera"
       >
@@ -331,6 +333,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
       <div className="flex flex-col items-center py-1 border-b border-gray-800 flex-none">
         <div ref={bellRef}>
           <button
+            id="sidebar-notifications"
             ref={bellBtnRef}
             onClick={openBell}
             className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
@@ -496,13 +499,14 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
       <div className="flex flex-col items-center gap-1 pb-3 flex-none">
 
         {/* Stats */}
-        <NavIcon to="/stats" title="Estatísticas">
+        <NavIcon id="sidebar-stats" to="/stats" title="Estatísticas">
           <BarChart2 className="w-5 h-5" />
         </NavIcon>
 
         {/* Cameras */}
         <div ref={camerasRef}>
           <button
+            id="sidebar-cameras"
             ref={camerasButtonRef}
             onClick={openCameras}
             title="Câmeras"
@@ -545,6 +549,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
         {/* Settings */}
         <div ref={settingsRef}>
           <button
+            id="sidebar-settings"
             ref={settingsButtonRef}
             onClick={() => {
               if (settingsButtonRef.current) {
@@ -591,6 +596,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
         {/* User */}
         <div className="relative" ref={userRef}>
           <button
+            id="sidebar-user"
             onClick={() => setUserOpen((v) => !v)}
             className="flex items-center justify-center w-10 h-10 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
             title={username}
