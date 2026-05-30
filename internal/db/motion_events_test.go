@@ -186,7 +186,7 @@ func TestPageMotionEvents_ReturnsPagedResults(t *testing.T) {
 		insertTestEvent(t, database, "cam1", base.Add(time.Duration(i)*time.Second), 0.5, "")
 	}
 
-	events, total, err := db.PageMotionEvents(database, "cam1", 0, 3, false)
+	events, total, err := db.PageMotionEvents(database, "cam1", 0, 3, false, "")
 	if err != nil {
 		t.Fatalf("PageMotionEvents: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestPageMotionEvents_ReturnsPagedResults(t *testing.T) {
 		t.Errorf("expected 3 events on page, got %d", len(events))
 	}
 
-	events2, _, _ := db.PageMotionEvents(database, "cam1", 3, 3, false)
+	events2, _, _ := db.PageMotionEvents(database, "cam1", 3, 3, false, "")
 	if len(events2) != 2 {
 		t.Errorf("expected 2 events on second page, got %d", len(events2))
 	}
@@ -215,7 +215,7 @@ func TestPageMotionEvents_UnlabeledFilter(t *testing.T) {
 	events, _ := db.ListMotionEvents(database, "cam1", base, base.Add(time.Minute))
 	_ = db.UpdateMotionEventLabel(database, events[0].ID, "pessoa")
 
-	unlabeled, total, err := db.PageMotionEvents(database, "cam1", 0, 10, true)
+	unlabeled, total, err := db.PageMotionEvents(database, "cam1", 0, 10, true, "")
 	if err != nil {
 		t.Fatalf("PageMotionEvents unlabeled: %v", err)
 	}
@@ -238,13 +238,47 @@ func TestPageMotionEvents_OrderedNewestFirst(t *testing.T) {
 	insertTestEvent(t, database, "cam1", base, 0.1, "")
 	insertTestEvent(t, database, "cam1", base.Add(time.Second), 0.2, "")
 
-	events, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false)
+	events, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "")
 	if len(events) != 2 {
 		t.Fatalf("expected 2 events, got %d", len(events))
 	}
 	if events[0].OccurredAt.Before(events[1].OccurredAt) {
 		t.Error("expected newest first ordering")
 	}
+}
+
+func TestPageMotionEvents_LabelSearch(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+
+	base := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
+	insertTestEvent(t, database, "cam1", base, 0.5, "")
+	insertTestEvent(t, database, "cam1", base.Add(time.Second), 0.5, "")
+	insertTestEvent(t, database, "cam1", base.Add(2*time.Second), 0.5, "")
+
+	events, _ := db.ListMotionEvents(database, "cam1", base, base.Add(time.Minute))
+	_ = db.UpdateMotionEventLabel(database, events[2].ID, "pessoa")
+	_ = db.UpdateMotionEventLabel(database, events[1].ID, "carro")
+	_ = db.UpdateMotionEventLabel(database, events[0].ID, "Pessoa com chapéu")
+
+	// search "pessoa" should match 2 events (case-insensitive)
+	results, total, err := db.PageMotionEvents(database, "cam1", 0, 10, false, "pessoa")
+	if err != nil {
+		t.Fatalf("PageMotionEvents label search: %v", err)
+	}
+	if total != 2 {
+		t.Errorf("expected total=2 for label search 'pessoa', got %d", total)
+	}
+	if len(results) != 2 {
+		t.Errorf("expected 2 results, got %d", len(results))
+	}
+
+	// empty search returns all
+	all, totalAll, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "")
+	if totalAll != 3 {
+		t.Errorf("expected total=3 for empty search, got %d", totalAll)
+	}
+	_ = all
 }
 
 func TestInsertMotionEvent_PersistsColor(t *testing.T) {

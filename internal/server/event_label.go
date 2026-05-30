@@ -50,9 +50,10 @@ func (s *Server) handlePageEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	unlabeled := r.URL.Query().Get("unlabeled") == "true"
+	labelSearch := r.URL.Query().Get("label")
 	offset := (page - 1) * limit
 
-	events, total, err := db.PageMotionEvents(s.db, cameraID, offset, limit, unlabeled)
+	events, total, err := db.PageMotionEvents(s.db, cameraID, offset, limit, unlabeled, labelSearch)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

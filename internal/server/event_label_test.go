@@ -196,6 +196,41 @@ func TestPageEvents_UnlabeledFilter(t *testing.T) {
 	}
 }
 
+func TestPageEvents_LabelSearch(t *testing.T) {
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: "cam1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
+	_ = db.InsertMotionEvent(database, db.MotionEvent{CameraID: "cam1", OccurredAt: base, Score: 0.5, Label: "pessoa"})
+	_ = db.InsertMotionEvent(database, db.MotionEvent{CameraID: "cam1", OccurredAt: base.Add(time.Second), Score: 0.5, Label: "carro"})
+	_ = db.InsertMotionEvent(database, db.MotionEvent{CameraID: "cam1", OccurredAt: base.Add(2 * time.Second), Score: 0.5, Label: "Pessoa com chapéu"})
+
+	cfg := config.ServerConfig{}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "master", "secret")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/events?label=pessoa", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Events []map[string]any `json:"events"`
+		Total  int              `json:"total"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Total != 2 {
+		t.Errorf("expected total=2 for label search 'pessoa', got %d", resp.Total)
+	}
+}
+
 func TestPageEvents_RequiresAuth(t *testing.T) {
 	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", nil, discardLogger(), nil)
