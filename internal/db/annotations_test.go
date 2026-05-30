@@ -25,7 +25,7 @@ func TestAnnotations_InsertAndList(t *testing.T) {
 	ensureCamera(t, database, "cam1")
 	evID := mustInsertMotionEvent(t, database, "cam1", time.Now().UTC())
 
-	ann := db.Annotation{EventID: evID, Label: "gato", BboxX: 10, BboxY: 20, BboxW: 100, BboxH: 80}
+	ann := db.Annotation{EventID: evID, Label: "gato", BboxX: 10, BboxY: 20, BboxW: 100, BboxH: 80, RotationDeg: 45.5}
 	id, err := db.InsertAnnotation(database, ann)
 	if err != nil {
 		t.Fatalf("InsertAnnotation: %v", err)
@@ -42,7 +42,7 @@ func TestAnnotations_InsertAndList(t *testing.T) {
 		t.Fatalf("expected 1 annotation, got %d", len(list))
 	}
 	got := list[0]
-	if got.Label != "gato" || got.BboxX != 10 || got.BboxY != 20 || got.BboxW != 100 || got.BboxH != 80 {
+	if got.Label != "gato" || got.BboxX != 10 || got.BboxY != 20 || got.BboxW != 100 || got.BboxH != 80 || got.RotationDeg != 45.5 {
 		t.Errorf("unexpected annotation: %+v", got)
 	}
 }
