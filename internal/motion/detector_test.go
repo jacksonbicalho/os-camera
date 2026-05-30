@@ -410,3 +410,45 @@ func TestDetectorGrabsHighResSnapshotOnMotionEvent(t *testing.T) {
 		t.Errorf("expected 1 recorded event after grab, got %d", n)
 	}
 }
+
+// TestDetectorBBoxUsesBackgroundSubtraction verifies that the bbox for a motion
+// event reflects where the object IS in the current frame (vs the background),
+// not where it moved from (departure region in prev).
+func TestDetectorBBoxUsesBackgroundSubtraction(t *testing.T) {
+	// Frame 4×1 (w=4, h=1).
+	// Frame 0 [init] : [100,100,100,100] — static background, no object
+	// Frame 1 [left] : [200,100,100,100] — object enters at pixel 0 (left)
+	// Frame 2 [right]: [100,100,100,200] — object moves to pixel 3 (right)
+	frame0 := []byte{100, 100, 100, 100}
+	frame1 := []byte{200, 100, 100, 100}
+	frame2 := []byte{100, 100, 100, 200}
+	frameData := append(append(frame0, frame1...), frame2...)
+
+	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
+	cmd := &fakeFrameCommander{process: proc}
+
+	var capturedBBoxes []BBox
+	st := newStore(t.TempDir(), func(_ string, _ time.Time, _ float64, _, _, _ string, bbox BBox) {
+		capturedBBoxes = append(capturedBBoxes, bbox)
+	})
+
+	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
+	det := newDetector("cam", "rtsp://fake", 4, 1, cfg, cmd, st, discardLogger(), nil, nil, nil)
+	det.processFrames(context.Background())
+
+	// Both frame1 and frame2 trigger motion (diff > 0.05 from their prev).
+	if len(capturedBBoxes) < 2 {
+		t.Fatalf("expected ≥2 motion events, got %d", len(capturedBBoxes))
+	}
+
+	// For frame2 (object at pixel 3): with background subtraction,
+	// bbox should cover only the right side (X≥0.5, W≤0.5).
+	// Without background subtraction (using prev): bbox would span pixels 0-3 (full width).
+	last := capturedBBoxes[len(capturedBBoxes)-1]
+	if last.X < 0.5 {
+		t.Errorf("bbox should be on right side (X>=0.5), got X=%.2f — background subtraction not working", last.X)
+	}
+	if last.W > 0.5 {
+		t.Errorf("bbox should be narrow (W<=0.5), got W=%.2f — background subtraction not working", last.W)
+	}
+}

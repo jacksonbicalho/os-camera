@@ -53,6 +53,8 @@ type detector struct {
 	lastEvent  time.Time
 	zoneLastEv []time.Time
 
+	bg         []byte // background model for bbox localization
+
 	inspMu     sync.Mutex
 	inspectors map[string]inspectorEntry
 }
@@ -133,13 +135,22 @@ func (d *detector) processFrames(ctx context.Context) {
 			if d.getZones != nil {
 				zs = d.getZones()
 			}
+
+			// Initialize background from the first prev frame seen.
+			if d.bg == nil {
+				d.bg = make([]byte, len(prev))
+				copy(d.bg, prev)
+			}
+
 			score := diffFramesMasked(prev, cur, d.width, d.height, zs)
 			ts := d.now()
 			if d.notifyRaw != nil {
 				d.notifyRaw(Event{Time: ts, Score: score})
 			}
 			if score >= d.cfg.Threshold && d.cooldownElapsed(ts) {
-				bbox, bboxFound := computeBBox(prev, cur, d.width, d.height, zs)
+				// Use background subtraction for bbox: localizes WHERE the object IS
+				// in cur, not the trail of where it moved from in prev.
+				bbox, bboxFound := computeBBox(d.bg, cur, d.width, d.height, zs)
 				d.lastEvent = ts // update cooldown immediately before goroutine
 				if d.grabber != nil {
 					lowRes := annotateFrame(cur, d.width, d.height, bbox, score, ColorGlobal, bboxFound)
@@ -158,15 +169,21 @@ func (d *detector) processFrames(ctx context.Context) {
 				}
 			}
 
-			d.evaluateDetectZones(prev, cur, zs, ts, frameCount)
+			d.evaluateDetectZones(d.bg, prev, cur, zs, ts, frameCount)
 			d.notifyInspectors(prev, cur)
+
+			// Advance background toward current frame only when idle (no motion),
+			// so moving objects are not absorbed into the background model.
+			if score < d.cfg.Threshold {
+				updateBackground(d.bg, cur, 0.05)
+			}
 		}
 		prev = cur
 		frameCount++
 	}
 }
 
-func (d *detector) evaluateDetectZones(prev, cur []byte, zs []zones.Zone, ts time.Time, frameCount int) {
+func (d *detector) evaluateDetectZones(bg, prev, cur []byte, zs []zones.Zone, ts time.Time, frameCount int) {
 	var detect []zones.Zone
 	for _, z := range zs {
 		if !z.IsExclude() {
@@ -194,7 +211,7 @@ func (d *detector) evaluateDetectZones(prev, cur []byte, zs []zones.Zone, ts tim
 		}
 		cooldownOk := cd <= 0 || ts.Sub(d.zoneLastEv[i]) >= time.Duration(cd)*time.Second
 		if zScore >= thr && cooldownOk {
-			bbox, bboxFound := computeBBoxInZone(prev, cur, d.width, d.height, dz)
+			bbox, bboxFound := computeBBoxInZone(bg, cur, d.width, d.height, dz)
 			zoneColor := ColorDetect
 			if dz.Color != "" {
 				zoneColor = hexToNRGBA(dz.Color)

@@ -252,6 +252,15 @@ func diffFramesForZoneScaled(a, b []byte, frameW, frameH int, z zones.Zone) floa
 	return diffFrames(za, zb)
 }
 
+// updateBackground advances the background model toward cur by alpha (0–1).
+// Call with a small alpha (~0.05) when no motion is detected so the background
+// adapts slowly to lighting changes without absorbing moving objects.
+func updateBackground(bg, cur []byte, alpha float64) {
+	for i := range bg {
+		bg[i] = byte(float64(bg[i])*(1-alpha) + float64(cur[i])*alpha + 0.5)
+	}
+}
+
 func isMasked(px, py, w, h int, zs []zones.Zone) bool {
 	for _, z := range zs {
 		x0 := int(math.Floor(z.X * float64(w)))
