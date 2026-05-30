@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"camera/internal/analysis"
 	"camera/internal/db"
@@ -78,9 +79,12 @@ func (s *Server) handleStartFinetune(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	baseModel := cfg.Model
-	if baseModel == "custom" {
-		baseModel = "yolov8n"
+	baseModel := "yolov8n"
+	for _, part := range strings.Split(cfg.Model, "+") {
+		if p := strings.TrimSpace(part); p != "custom" && p != "" {
+			baseModel = p
+			break
+		}
 	}
 	client := analysis.NewClient(cfg.ServiceURL)
 	resp, err := client.Finetune(context.Background(), analysis.FinetuneRequest{
