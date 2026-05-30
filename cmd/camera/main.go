@@ -104,6 +104,10 @@ func main() {
 		slog.Warn("ensure storage defaults failed", "error", err)
 	}
 
+	if n := storage.CleanOrphanedRecordings(database, slog); n > 0 {
+		slog.Info("startup: orphaned recordings removed", "count", n)
+	}
+
 	cameras, err := db.ListCameras(database)
 	if err != nil {
 		log.Fatalf("failed to load cameras from database: %v", err)
