@@ -4,6 +4,7 @@ import { useNavigate, useLocation, Link, NavLink } from "react-router-dom"
 import { clearToken, getRole, authHeaders, onUnauthorized } from "../auth"
 import { useNotifications } from "../contexts/NotificationContext"
 import { useSidebarItems, type SidebarItem, type SidebarDropdownOption } from "../contexts/SidebarContext"
+import { useDisplayMode } from "../contexts/DisplayModeContext"
 import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import type { Notification } from "../contexts/NotificationContext"
@@ -88,7 +89,10 @@ function NotificationItem({
   )
 }
 
-function SidebarInjectedItem({ item }: { item: SidebarItem }) {
+function SidebarInjectedItem({ item, displayMode }: {
+  item: SidebarItem
+  displayMode: 'icons-only' | 'icons-text' | 'text-only'
+}) {
   const [dropOpen, setDropOpen] = useState(false)
   const dropRef = useRef<HTMLDivElement>(null)
 
@@ -102,23 +106,28 @@ function SidebarInjectedItem({ item }: { item: SidebarItem }) {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [item.type])
 
-  if (item.type === 'separator') {
-    return <div className="w-8 border-t border-gray-700 my-1" />
-  }
+  const showIcon = displayMode !== 'text-only'
+  const showLabel = displayMode !== 'icons-only'
+  const base = showLabel
+    ? `relative flex items-center gap-2 w-full px-3 h-9 rounded-lg transition-colors`
+    : `relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors`
 
-  const base = `relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors`
+  if (item.type === 'separator') {
+    return <div className={showLabel ? 'w-full border-t border-gray-700 my-1' : 'w-8 border-t border-gray-700 my-1'} />
+  }
 
   if (item.type === 'dropdown') {
     const isActive = item.active || dropOpen
     return (
-      <div className="relative" ref={dropRef}>
+      <div className={showLabel ? 'relative w-full' : 'relative'} ref={dropRef}>
         <button
           onClick={() => { if (!item.disabled) setDropOpen(v => !v) }}
           disabled={item.disabled}
           title={item.title}
           className={`${base} ${isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'} ${item.disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
         >
-          {item.icon}
+          {showIcon && item.icon}
+          {showLabel && <span className="text-sm truncate">{item.title}</span>}
         </button>
         {dropOpen && (
           <div className="absolute left-full top-0 ml-2 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 py-1 min-w-[72px]">
@@ -162,7 +171,8 @@ function SidebarInjectedItem({ item }: { item: SidebarItem }) {
           `${base} ${linkActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`
         }
       >
-        {item.icon}
+        {showIcon && item.icon}
+        {showLabel && <span className="text-sm truncate">{item.title}</span>}
         {badge}
       </NavLink>
     )
@@ -174,13 +184,20 @@ function SidebarInjectedItem({ item }: { item: SidebarItem }) {
       title={item.title}
       className={`${base} ${activeClass} ${disabledClass}`}
     >
-      {item.icon}
+      {showIcon && item.icon}
+      {showLabel && <span className="text-sm truncate">{item.title}</span>}
       {badge}
     </button>
   )
 }
 
-function NavIcon({ to, title, id, children, end }: { to: string; title: string; id?: string; children: React.ReactNode; end?: boolean }) {
+function NavIcon({ to, title, id, label, children, end, displayMode }: {
+  to: string; title: string; id?: string; label?: string
+  children: React.ReactNode; end?: boolean
+  displayMode: 'icons-only' | 'icons-text' | 'text-only'
+}) {
+  const showIcon = displayMode !== 'text-only'
+  const showLabel = displayMode !== 'icons-only'
   return (
     <NavLink
       to={to}
@@ -188,29 +205,31 @@ function NavIcon({ to, title, id, children, end }: { to: string; title: string; 
       id={id}
       title={title}
       className={({ isActive }) =>
-        `flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
-          isActive ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"
-        }`
+        `flex items-center gap-2 rounded-lg transition-colors ${
+          showLabel ? 'w-full px-3 h-9' : 'justify-center w-10 h-10'
+        } ${isActive ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`
       }
     >
-      {children}
+      {showIcon && children}
+      {showLabel && label && <span className="text-sm truncate">{label}</span>}
     </NavLink>
   )
 }
 
 const ADMIN_SETTINGS_LINKS = [
-  { to: "/settings/cameras",  label: "Câmeras" },
-  { to: "/settings/discover", label: "Rastrear câmeras" },
-  { to: "/settings/users",    label: "Usuários" },
-  { to: "/settings/server",   label: "Servidor" },
-  { to: "/settings/storage",  label: "Armazenamento" },
-  { to: "/settings/analysis", label: "Análise de vídeo" },
-  { to: "/settings/system",   label: "Sistema" },
-  { to: "/settings/about",    label: "Sobre" },
+  { to: "/settings/cameras",    label: "Câmeras" },
+  { to: "/settings/discover",   label: "Rastrear câmeras" },
+  { to: "/settings/users",      label: "Usuários" },
+  { to: "/settings/server",     label: "Servidor" },
+  { to: "/settings/storage",    label: "Armazenamento" },
+  { to: "/settings/analysis",   label: "Análise de vídeo" },
+  { to: "/settings/system",     label: "Sistema" },
+  { to: "/settings/appearance", label: "Aparência" },
+  { to: "/settings/about",      label: "Sobre" },
 ]
 
 const VIEWER_SETTINGS_LINKS = ADMIN_SETTINGS_LINKS.filter(
-  l => l.to === "/settings/cameras" || l.to === "/settings/about"
+  l => l.to === "/settings/cameras" || l.to === "/settings/appearance" || l.to === "/settings/about"
 )
 
 export default function Sidebar({ username = "usuário" }: SidebarProps) {
@@ -315,33 +334,42 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
   }
 
   const items = useSidebarItems()
+  const { sidebar: sidebarMode } = useDisplayMode()
+  const showIcon = sidebarMode !== 'text-only'
+  const showLabel = sidebarMode !== 'icons-only'
+  const sidebarWidth = sidebarMode === 'icons-only' ? 'w-14' : sidebarMode === 'icons-text' ? 'w-48' : 'w-40'
+  const itemsAlign = showLabel ? 'items-stretch px-2' : 'items-center'
+  const btnBase = showLabel
+    ? 'relative flex items-center gap-2 w-full px-3 h-9 rounded-lg transition-colors'
+    : 'relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors'
+
   return (
-    <aside className="w-14 flex-none flex flex-col bg-gray-900 border-r border-gray-800">
+    <aside className={`${sidebarWidth} flex-none flex flex-col bg-gray-900 border-r border-gray-800`}>
       {/* Logo */}
       <Link
         to="/"
         id="sidebar-logo"
-        className="flex items-center justify-center h-14 hover:opacity-80 transition-opacity border-b border-gray-800 flex-none"
+        className={`flex items-center ${showLabel ? 'gap-2 px-4' : 'justify-center'} h-14 hover:opacity-80 transition-opacity border-b border-gray-800 flex-none`}
         title="os-camera"
       >
         <h1 className="sr-only">os-camera</h1>
-        <CameraLogo className="w-8 h-8" />
+        {showIcon && <CameraLogo className="w-8 h-8" />}
+        {showLabel && <span className="text-sm font-semibold text-gray-200 truncate">os-camera</span>}
       </Link>
 
 
       {/* Bell — logo abaixo da logo */}
-      <div className="flex flex-col items-center py-1 border-b border-gray-800 flex-none">
-        <div ref={bellRef}>
+      <div className={`flex flex-col ${itemsAlign} py-1 border-b border-gray-800 flex-none`}>
+        <div ref={bellRef} className={showLabel ? 'w-full' : undefined}>
           <button
             id="sidebar-notifications"
             ref={bellBtnRef}
             onClick={openBell}
-            className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
-              unreadCount > 0 ? "text-white animate-pulse" : "text-gray-400 hover:bg-gray-800 hover:text-white"
-            }`}
+            className={`${btnBase} ${unreadCount > 0 ? "text-white animate-pulse" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
             title="Notificações"
           >
-            <Bell className="w-5 h-5" />
+            {showIcon && <Bell className="w-5 h-5" />}
+            {showLabel && <span className="text-sm truncate">Notificações</span>}
             {unreadCount > 0 && (
               <span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-red-600 text-white rounded-full">
                 {unreadCount > 99 ? "99+" : unreadCount}
@@ -487,8 +515,8 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
       {/* Injected camera items */}
       {items.length > 0 && (
-        <div className="flex flex-col items-center gap-1 py-2 border-b border-gray-800 flex-none">
-          {items.map(item => <SidebarInjectedItem key={item.id} item={item} />)}
+        <div className={`flex flex-col ${itemsAlign} gap-1 py-2 border-b border-gray-800 flex-none`}>
+          {items.map(item => <SidebarInjectedItem key={item.id} item={item} displayMode={sidebarMode} />)}
         </div>
       )}
 
@@ -496,27 +524,28 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
       <div className="flex-1" />
 
       {/* Bottom: Stats + Settings + User */}
-      <div className="flex flex-col items-center gap-1 pb-3 flex-none">
+      <div className={`flex flex-col ${itemsAlign} gap-1 pb-3 flex-none`}>
 
         {/* Stats */}
-        <NavIcon id="sidebar-stats" to="/stats" title="Estatísticas">
+        <NavIcon id="sidebar-stats" to="/stats" title="Estatísticas" label="Estatísticas" displayMode={sidebarMode}>
           <BarChart2 className="w-5 h-5" />
         </NavIcon>
 
         {/* Cameras */}
-        <div ref={camerasRef}>
+        <div ref={camerasRef} className={showLabel ? 'w-full' : undefined}>
           <button
             id="sidebar-cameras"
             ref={camerasButtonRef}
             onClick={openCameras}
             title="Câmeras"
-            className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
+            className={`${btnBase} ${
               camerasActive || camerasOpen
                 ? 'bg-blue-600 text-white'
                 : 'text-gray-400 hover:bg-gray-800 hover:text-white'
             }`}
           >
-            <Cctv className="w-5 h-5" />
+            {showIcon && <Cctv className="w-5 h-5" />}
+            {showLabel && <span className="text-sm truncate">Câmeras</span>}
           </button>
         </div>
         {camerasOpen && createPortal(
@@ -547,7 +576,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
         )}
 
         {/* Settings */}
-        <div ref={settingsRef}>
+        <div ref={settingsRef} className={showLabel ? 'w-full' : undefined}>
           <button
             id="sidebar-settings"
             ref={settingsButtonRef}
@@ -559,13 +588,14 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
               setSettingsOpen(v => !v)
             }}
             title="Configurações"
-            className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
+            className={`${btnBase} ${
               settingsActive || settingsOpen
                 ? 'bg-blue-600 text-white'
                 : 'text-gray-400 hover:bg-gray-800 hover:text-white'
             }`}
           >
-            <Settings className="w-5 h-5" />
+            {showIcon && <Settings className="w-5 h-5" />}
+            {showLabel && <span className="text-sm truncate">Configurações</span>}
           </button>
         </div>
         {settingsOpen && createPortal(
@@ -594,14 +624,15 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
         )}
 
         {/* User */}
-        <div className="relative" ref={userRef}>
+        <div className={`relative ${showLabel ? 'w-full' : ''}`} ref={userRef}>
           <button
             id="sidebar-user"
             onClick={() => setUserOpen((v) => !v)}
-            className="flex items-center justify-center w-10 h-10 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+            className={`${btnBase} text-gray-400 hover:bg-gray-800 hover:text-white`}
             title={username}
           >
-            <CircleUser className="w-6 h-6" />
+            {showIcon && <CircleUser className="w-6 h-6" />}
+            {showLabel && <span className="text-sm truncate">{username}</span>}
           </button>
 
           {userOpen && (

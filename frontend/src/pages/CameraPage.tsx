@@ -20,6 +20,7 @@ import type { Recording, MotionEvent, Annotation } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useSetSidebarItems } from '../contexts/SidebarContext'
+import { useDisplayMode } from '../contexts/DisplayModeContext'
 import type { HLSStats } from '../components/HLSPlayer'
 
 interface RecordingsResponse {
@@ -644,6 +645,15 @@ export default function CameraPage() {
   const motionPeak = useMotionPeak(id)
   const { markRead } = useNotifications()
   const setItems = useSetSidebarItems()
+  const { player: playerMode } = useDisplayMode()
+  const playerShowIcon = playerMode !== 'text-only'
+  const playerShowLabel = playerMode !== 'icons-only'
+  const playerBtn = (icon: React.ReactNode, label: string) => (
+    <>
+      {playerShowIcon && icon}
+      {playerShowLabel && <span className="text-[11px] leading-none">{label}</span>}
+    </>
+  )
   const cam = settings?.cameras.find(c => c.id === id) ?? viewerCam
   const effectiveThreshold = cam?.motion?.threshold ?? 0
 
@@ -849,12 +859,11 @@ function toggleFullscreen() {
                   <button
                     onClick={() => setVideoMuted(m => { const next = !m; if (videoRef.current) videoRef.current.muted = next; return next })}
                     title={videoMuted ? 'Ativar áudio' : 'Silenciar'}
-                    className={`p-1 transition-colors cursor-pointer ${!videoMuted ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${!videoMuted ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                   >
-                    {videoMuted ? (
-                      <VolumeX className="w-[18px] h-[18px]" />
-                    ) : (
-                      <Volume2 className="w-[18px] h-[18px]" />
+                    {playerBtn(
+                      videoMuted ? <VolumeX className="w-[18px] h-[18px]" /> : <Volume2 className="w-[18px] h-[18px]" />,
+                      videoMuted ? 'Mudo' : 'Áudio'
                     )}
                   </button>
                   {/* Speed dropdown — playback only */}
@@ -863,13 +872,18 @@ function toggleFullscreen() {
                       <button
                         onClick={() => setSpeedMenuOpen(o => !o)}
                         title={`Velocidade ${playbackRate}×`}
-                        className={`relative p-1 transition-colors cursor-pointer ${playbackRate > 1 ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                        className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${playbackRate > 1 ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                       >
-                        <Gauge className="w-4 h-4" />
-                        {playbackRate > 1 && (
-                          <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
-                            {playbackRate}×
-                          </span>
+                        {playerBtn(
+                          <>
+                            <Gauge className="w-4 h-4" />
+                            {playbackRate > 1 && (
+                              <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                                {playbackRate}×
+                              </span>
+                            )}
+                          </>,
+                          `${playbackRate}×`
                         )}
                       </button>
                       {speedMenuOpen && (
@@ -894,9 +908,9 @@ function toggleFullscreen() {
                     <button
                       onClick={() => setContinuousPlay(v => !v)}
                       title={continuousPlay ? 'Desativar reprodução contínua' : 'Ativar reprodução contínua'}
-                      className={`p-1 transition-colors cursor-pointer ${continuousPlay ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                      className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${continuousPlay ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                     >
-                      <Repeat className="w-4 h-4" />
+                      {playerBtn(<Repeat className="w-4 h-4" />, 'Contínua')}
                     </button>
                   )}
                   <div className="w-px h-4 bg-gray-700 mx-0.5" />
@@ -914,13 +928,23 @@ function toggleFullscreen() {
                         }
                       }}
                       title="Gravações"
-                      className={`relative p-1 transition-colors cursor-pointer ${activePanel === 'recordings' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'recordings' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                     >
-                      <Film className="w-4 h-4" />
-                      {(recordingsTotal || recordings.length) > 0 && (
+                      {playerShowIcon && <Film className="w-4 h-4" />}
+                      {!playerShowLabel && (recordingsTotal || recordings.length) > 0 && (
                         <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
                           {recordingsTotal || recordings.length}
                         </span>
+                      )}
+                      {playerShowLabel && (
+                        <>
+                          <span className="text-[11px] leading-none">Gravações</span>
+                          {(recordingsTotal || recordings.length) > 0 && (
+                            <span className="inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                              {recordingsTotal || recordings.length}
+                            </span>
+                          )}
+                        </>
                       )}
                     </button>
                   )}
@@ -936,38 +960,58 @@ function toggleFullscreen() {
                         }
                       }}
                       title="Eventos de movimento"
-                      className={`relative p-1 transition-colors cursor-pointer ${activePanel === 'events' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'events' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                     >
-                      <Zap className="w-4 h-4" />
-                      <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
-                        {sortedEvents.length}
-                      </span>
+                      {playerShowIcon && <Zap className="w-4 h-4" />}
+                      {!playerShowLabel && (
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                          {sortedEvents.length}
+                        </span>
+                      )}
+                      {playerShowLabel && (
+                        <>
+                          <span className="text-[11px] leading-none">Eventos</span>
+                          <span className="inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                            {sortedEvents.length}
+                          </span>
+                        </>
+                      )}
                     </button>
                   )}
                   {/* Calendar */}
                   <button
                     onClick={() => setActivePanel(p => p === 'calendar' ? null : 'calendar')}
                     title={isToday ? 'Calendário' : `Calendário · ${format(selectedDate, "d MMM", { locale: ptBR })}`}
-                    className={`p-1 transition-colors cursor-pointer ${activePanel === 'calendar' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'calendar' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                   >
-                    <CalendarDays className="w-4 h-4" />
+                    {playerBtn(<CalendarDays className="w-4 h-4" />, 'Calendário')}
                   </button>
                   <div className="w-px h-4 bg-gray-700 mx-0.5" />
                   {/* Debug */}
                   <button
                     onClick={() => setShowDebug(d => !d)}
                     title="Debug"
-                    className={`p-1 transition-colors cursor-pointer ${showDebug ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${showDebug ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
                   >
-                    <Code2 className="w-4 h-4" />
+                    {playerBtn(<Code2 className="w-4 h-4" />, 'Debug')}
                   </button>
                   {/* Settings */}
-                  {isAdmin && <button onClick={() => navigate(`/settings/cameras/${id}`, { state: { from: `/cameras/${id}`, editing: true } })} title="Configurar câmera" className="p-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer">
-                    <Settings className="w-4 h-4" />
-                  </button>}
+                  {isAdmin && (
+                    <button
+                      onClick={() => navigate(`/settings/cameras/${id}`, { state: { from: `/cameras/${id}`, editing: true } })}
+                      title="Configurar câmera"
+                      className="flex items-center gap-1 px-1 py-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+                    >
+                      {playerBtn(<Settings className="w-4 h-4" />, 'Câmera')}
+                    </button>
+                  )}
                   {/* Fullscreen */}
-                  <button onClick={toggleFullscreen} title="Tela inteira" className="p-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer">
-                    <Maximize className="w-4 h-4" />
+                  <button
+                    onClick={toggleFullscreen}
+                    title="Tela inteira"
+                    className="flex items-center gap-1 px-1 py-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+                  >
+                    {playerBtn(<Maximize className="w-4 h-4" />, 'Expandir')}
                   </button>
                 </div>
               </div>
