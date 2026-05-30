@@ -53,6 +53,7 @@ export function useBrowserNotifications(): BrowserNotificationsHook {
       const n = new Notification(`Movimento — ${cameraName ?? cameraId}`, {
         body,
         tag: `motion-${cameraId}`,
+        icon: '/icon-192.png',
       })
       activeRef.current.set(cameraId, n)
       n.onclose = () => activeRef.current.delete(cameraId)
