@@ -3,8 +3,11 @@ package motion
 import (
 	"bytes"
 	"context"
+	"image"
+	"image/jpeg"
 	"io"
 	"log/slog"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -330,6 +333,93 @@ func TestDetectorExclusionZoneSuppressesEvent(t *testing.T) {
 
 	if len(captured) != 0 {
 		t.Fatalf("expected 0 events with full exclusion zone, got %d", len(captured))
+	}
+}
+
+// fakeGrabberWithJPEG writes a real JPEG to destPath so recordWithHighRes can
+// decode and re-compute the bbox from the grabbed frame content.
+type fakeGrabberWithJPEG struct {
+	mu    sync.Mutex
+	calls int
+	frame []byte
+	w, h  int
+	err   error
+}
+
+func (g *fakeGrabberWithJPEG) Grab(_ context.Context, _, destPath string) error {
+	g.mu.Lock()
+	g.calls++
+	g.mu.Unlock()
+	if g.err != nil {
+		return g.err
+	}
+	img := image.NewGray(image.Rect(0, 0, g.w, g.h))
+	copy(img.Pix, g.frame)
+	f, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return jpeg.Encode(f, img, &jpeg.Options{Quality: 95})
+}
+
+// TestDetectorHighResBboxRefreshesFromGrabbedFrame verifies that when a
+// high-res JPEG is grabbed, the bbox is re-computed from the grabbed frame
+// (not reused from the stale detection-frame bbox).
+func TestDetectorHighResBboxRefreshesFromGrabbedFrame(t *testing.T) {
+	// 4×1 frame: bg=[100,100,100,100], detection frame has object on LEFT (pixel 0).
+	w, h := 4, 1
+	frameSize := w * h
+	bgFrame := bytes.Repeat([]byte{100}, frameSize)
+	detectionFrame := []byte{200, 100, 100, 100} // object at pixel 0 (left)
+	frameData := append(bgFrame, detectionFrame...)
+
+	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
+	cmd := &fakeFrameCommander{process: proc}
+
+	// Grabbed JPEG has object at pixel 3 (right side).
+	grabbedFrame := []byte{100, 100, 100, 200}
+	grabber := &fakeGrabberWithJPEG{frame: grabbedFrame, w: w, h: h}
+
+	var mu sync.Mutex
+	var capturedBBoxes []BBox
+	st := newStore(t.TempDir(), func(_ string, _ time.Time, _ float64, _, _, _ string, bbox BBox) {
+		mu.Lock()
+		capturedBBoxes = append(capturedBBoxes, bbox)
+		mu.Unlock()
+	})
+
+	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
+	det := newDetector("cam", "rtsp://fake", w, h, cfg, cmd, st, discardLogger(), nil, nil, nil)
+	det.grabber = grabber
+
+	det.processFrames(context.Background())
+
+	// Wait for async recordWithHighRes to finish.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(capturedBBoxes)
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	mu.Lock()
+	bboxes := capturedBBoxes
+	mu.Unlock()
+
+	if len(bboxes) != 1 {
+		t.Fatalf("expected 1 recorded event, got %d", len(bboxes))
+	}
+
+	// Grabbed frame had object on right (pixel 3/4 → X≥0.5).
+	// If bbox were stale from detection frame it would have X<0.5 (object was on left).
+	bbox := bboxes[0]
+	if bbox.X < 0.5 {
+		t.Errorf("bbox should reflect grabbed frame (object on right, X≥0.5), got X=%.2f — stale detection bbox was used", bbox.X)
 	}
 }
 
