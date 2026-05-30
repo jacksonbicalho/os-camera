@@ -206,6 +206,23 @@ func (c *Cleaner) syncRecordings() {
 			}
 			cameraID := parts[0]
 
+			// A segment with a known successor must have been closed by ffmpeg.
+			// If the moov atom is absent the file is corrupt (ffmpeg was killed
+			// mid-write). Remove the file and its DB record so it never appears
+			// in the UI as a valid recording.
+			if !chunkEnd.IsZero() && !isValidMP4(fullPath) {
+				c.log.Warn("removing corrupt recording (moov atom missing)", "path", fullPath)
+				if err := os.Remove(fullPath); err != nil {
+					c.log.Warn("failed to remove corrupt recording", "path", fullPath, "err", err)
+				}
+				if c.db != nil {
+					if err := db.DeleteRecording(c.db, fullPath); err != nil {
+						c.log.Warn("failed to delete corrupt recording from db", "path", fullPath, "err", err)
+					}
+				}
+				continue
+			}
+
 			rec := db.Recording{
 				CameraID:  cameraID,
 				StartedAt: chunkStart,
