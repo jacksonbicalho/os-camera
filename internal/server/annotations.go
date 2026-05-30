@@ -18,23 +18,25 @@ func (s *Server) handleCreateAnnotation(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var body struct {
-		Label string  `json:"label"`
-		BboxX float64 `json:"bbox_x"`
-		BboxY float64 `json:"bbox_y"`
-		BboxW float64 `json:"bbox_w"`
-		BboxH float64 `json:"bbox_h"`
+		Label       string  `json:"label"`
+		BboxX       float64 `json:"bbox_x"`
+		BboxY       float64 `json:"bbox_y"`
+		BboxW       float64 `json:"bbox_w"`
+		BboxH       float64 `json:"bbox_h"`
+		RotationDeg float64 `json:"rotation_deg"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
 	id, err := db.InsertAnnotation(s.db, db.Annotation{
-		EventID: eventID,
-		Label:   body.Label,
-		BboxX:   body.BboxX,
-		BboxY:   body.BboxY,
-		BboxW:   body.BboxW,
-		BboxH:   body.BboxH,
+		EventID:     eventID,
+		Label:       body.Label,
+		BboxX:       body.BboxX,
+		BboxY:       body.BboxY,
+		BboxW:       body.BboxW,
+		BboxH:       body.BboxH,
+		RotationDeg: body.RotationDeg,
 	})
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
