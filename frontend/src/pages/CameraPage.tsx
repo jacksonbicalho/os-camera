@@ -878,7 +878,11 @@ function toggleFullscreen() {
                       onClick={() => {
                         const opening = activePanel !== 'recordings'
                         setActivePanel(p => p === 'recordings' ? null : 'recordings')
-                        if (opening && recordings.length > 0) openRecording(recordings[0])
+                        if (opening && recordings.length > 0) {
+                          setActiveEventTime(null)
+                          setActiveEventId(null)
+                          openRecording(recordings[0])
+                        }
                       }}
                       title="Gravações"
                       className={`relative p-1 transition-colors cursor-pointer ${activePanel === 'recordings' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
@@ -1261,7 +1265,7 @@ function toggleFullscreen() {
                             >
                               <button
                                 disabled={rec.is_recording}
-                                onClick={() => !rec.is_recording && openRecording(rec)}
+                                onClick={() => { if (!rec.is_recording) { setActiveEventTime(null); setActiveEventId(null); openRecording(rec) } }}
                                 className="flex-1 flex items-center justify-between text-left disabled:cursor-not-allowed"
                               >
                                 <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
