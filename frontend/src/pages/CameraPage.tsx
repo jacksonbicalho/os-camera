@@ -757,7 +757,7 @@ function toggleFullscreen() {
   }, [showDebug, isLive])
 
   const sortedEvents = [...motionEvents]
-    .filter(ev => findRecordingForEvent(ev, recordings) !== null)
+    .filter(ev => recordings.length === 0 || findRecordingForEvent(ev, recordings) !== null)
     .sort((a, b) => {
       const diff = new Date(a.time).getTime() - new Date(b.time).getTime()
       return eventsSortOrder === 'asc' ? diff : -diff
@@ -892,7 +892,7 @@ function toggleFullscreen() {
                     </button>
                   )}
                   {/* Events */}
-                  {motionEvents.length > 0 && (
+                  {sortedEvents.length > 0 && (
                     <button
                       onClick={() => {
                         const opening = activePanel !== 'events'
@@ -907,7 +907,7 @@ function toggleFullscreen() {
                     >
                       <Zap className="w-4 h-4" />
                       <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
-                        {motionEvents.length}
+                        {sortedEvents.length}
                       </span>
                     </button>
                   )}
@@ -1213,7 +1213,7 @@ function toggleFullscreen() {
                           : 'text-gray-500 hover:text-gray-300'
                       }`}
                     >
-                      Eventos <span className="ml-1 text-gray-500">{motionEvents.length}</span>
+                      Eventos <span className="ml-1 text-gray-500">{sortedEvents.length}</span>
                     </button>
                     <button
                       onClick={() => setActivePanel('calendar')}

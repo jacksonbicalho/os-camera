@@ -700,7 +700,7 @@ func TestSyncRecordings_DoesNotMarkNullEndedAtAsHasMotion(t *testing.T) {
 // TestCleanFromDB_PurgesOrphanedMotionEvents verifica que eventos de movimento
 // sem cobertura de nenhuma gravação (órfãos) são removidos após a gravação
 // relacionada ser deletada pela regra de retenção.
-func TestCleanFromDB_PurgesOrphanedMotionEvents(t *testing.T) {
+func TestCleanFromDB_KeepsMotionEventsOutsideRecordingRange(t *testing.T) {
 	dir := t.TempDir()
 	database := openTestDB(t)
 	// lead=30s: evento 5s antes de A começa cobre A pelo lead
@@ -732,12 +732,15 @@ func TestCleanFromDB_PurgesOrphanedMotionEvents(t *testing.T) {
 		t.Fatal("pathA deveria ter sido deletado")
 	}
 
-	// Após deletar as gravações, o evento órfão (base-5s, sem cobertura de
-	// nenhuma gravação) deve ser removido pelo purgeOrphanedEvents.
+	// O evento fora do intervalo da gravação ([base-5s]) não é deletado pelo cleaner:
+	// purgeOrphanedEvents foi removido pois não é possível distinguir eventos de
+	// câmeras com gravação desabilitada de eventos cujas gravações foram limpas.
+	// A limpeza de eventos acontece apenas quando a gravação é explicitamente deletada
+	// via handleDeleteRecording ou cleanFromDB (purgeMotionAssets).
 	var count int
 	database.QueryRow(`SELECT COUNT(*) FROM motion_events WHERE camera_id='cam1'`).Scan(&count)
-	if count != 0 {
-		t.Errorf("evento órfão deve ser removido após todas as gravações serem deletadas, mas restaram %d", count)
+	if count != 1 {
+		t.Errorf("evento fora do range da gravação deve persistir no banco, mas count=%d", count)
 	}
 }
 

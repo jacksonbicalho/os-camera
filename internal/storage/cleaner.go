@@ -597,33 +597,11 @@ func (c *Cleaner) cleanFromFS() {
 	}
 }
 
-// purgeOrphanedEvents removes motion_events whose occurred_at is not covered by
-// any recording's exact time range [started_at, ended_at). A 10-minute grace
-// window protects events that belong to an in-progress chunk (ended_at IS NULL).
-func (c *Cleaner) purgeOrphanedEvents() {
-	if c.db == nil {
-		return
-	}
-	_, err := c.db.Exec(`
-		DELETE FROM motion_events
-		WHERE occurred_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-10 minutes')
-		AND NOT EXISTS (
-			SELECT 1 FROM recordings r
-			WHERE r.camera_id = motion_events.camera_id
-			AND r.started_at <= motion_events.occurred_at
-			AND (r.ended_at IS NULL OR r.ended_at > motion_events.occurred_at)
-		)`)
-	if err != nil {
-		c.log.Warn("failed to purge orphaned motion events", "err", err)
-	}
-}
-
 func (c *Cleaner) Clean() {
 	if c.db != nil {
 		c.syncRecordings()
 		c.analyzeNewRecordings()
 		c.cleanFromDB()
-		c.purgeOrphanedEvents()
 	} else {
 		c.cleanFromFS()
 	}
