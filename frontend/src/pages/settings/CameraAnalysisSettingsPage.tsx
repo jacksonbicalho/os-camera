@@ -12,6 +12,7 @@ export default function CameraAnalysisSettingsPage() {
 
   const [enabled, setEnabled] = useState(true)
   const [globalEnabled, setGlobalEnabled] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
@@ -30,16 +31,21 @@ export default function CameraAnalysisSettingsPage() {
 
   async function handleSave() {
     setError('')
-    const res = await fetch(`/api/settings/cameras/${id}/analysis`, {
-      method: 'PUT',
-      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
-    })
-    if (res.ok) {
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    } else {
-      setError('Erro ao salvar')
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/settings/cameras/${id}/analysis`, {
+        method: 'PUT',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      })
+      if (res.ok) {
+        setSaved(true)
+        setTimeout(() => setSaved(false), 2000)
+      } else {
+        setError('Erro ao salvar')
+      }
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -82,9 +88,10 @@ export default function CameraAnalysisSettingsPage() {
             {!error && !saved && <span />}
             <button
               onClick={handleSave}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
+              disabled={saving}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Salvar
+              {saving ? 'Salvando...' : 'Salvar'}
             </button>
           </div>
         </div>

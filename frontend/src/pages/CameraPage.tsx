@@ -136,6 +136,7 @@ export default function CameraPage() {
   const [snapshotEvent, setSnapshotEvent] = useState<MotionEvent | null>(null)
   const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [annLabel, setAnnLabel] = useState('')
+  const [annSaving, setAnnSaving] = useState(false)
   const [annDraft, setAnnDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const annDragRef = useRef<{ startX: number; startY: number } | null>(null)
   const annImgRef = useRef<HTMLImageElement>(null)
@@ -269,17 +270,22 @@ export default function CameraPage() {
       bbox_w: annDraft.w,
       bbox_h: annDraft.h,
     }
-    const res = await fetch(`/api/events/${snapshotEvent.id}/annotations`, {
-      method: 'POST',
-      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) return
-    const fresh = await fetch(`/api/events/${snapshotEvent.id}/annotations`, { headers: authHeaders() })
-    const list: Annotation[] = await fresh.json()
-    setAnnotations(list ?? [])
-    setAnnDraft(null)
-    setAnnLabel('')
+    setAnnSaving(true)
+    try {
+      const res = await fetch(`/api/events/${snapshotEvent.id}/annotations`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) return
+      const fresh = await fetch(`/api/events/${snapshotEvent.id}/annotations`, { headers: authHeaders() })
+      const list: Annotation[] = await fresh.json()
+      setAnnotations(list ?? [])
+      setAnnDraft(null)
+      setAnnLabel('')
+    } finally {
+      setAnnSaving(false)
+    }
   }
 
   async function deleteAnnotation(annId: number) {
@@ -1611,10 +1617,10 @@ function toggleFullscreen() {
                   />
                   <button
                     className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded disabled:opacity-40"
-                    disabled={annLabel.trim() === ''}
+                    disabled={annLabel.trim() === '' || annSaving}
                     onClick={saveAnnotation}
                   >
-                    Salvar
+                    {annSaving ? 'Salvando...' : 'Salvar'}
                   </button>
                 </div>
               )}
