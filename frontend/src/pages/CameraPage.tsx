@@ -146,7 +146,7 @@ export default function CameraPage() {
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false)
   const [debugStats, setDebugStats] = useState<{ fps: number; dropped: number; hlsStats: HLSStats | null; lagMs: number } | null>(null)
   const [showDebugChart, setShowDebugChart] = useState(false)
-  const [debugPos, setDebugPos] = useState({ x: 8, y: 48 })
+  const [debugPos, setDebugPos] = useState({ x: 8, y: 8 })
   const [playerHeight, setPlayerHeight] = useState<number | undefined>(undefined)
   const debugDragRef = useRef<{ startMouseX: number; startMouseY: number; startPosX: number; startPosY: number } | null>(null)
   const speedMenuRef = useRef<HTMLDivElement>(null)
@@ -206,6 +206,13 @@ export default function CameraPage() {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [snapshotEvent])
+
+  useEffect(() => {
+    if (!showDebug) return
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setShowDebug(false) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [showDebug])
 
   useEffect(() => {
     if (!annotating || !snapshotEvent?.id) return
@@ -689,7 +696,7 @@ function toggleFullscreen() {
     function onMove(ev: MouseEvent) {
       if (!debugDragRef.current) return
       setDebugPos({
-        x: debugDragRef.current.startPosX + (ev.clientX - debugDragRef.current.startMouseX),
+        x: debugDragRef.current.startPosX - (ev.clientX - debugDragRef.current.startMouseX),
         y: debugDragRef.current.startPosY + (ev.clientY - debugDragRef.current.startMouseY),
       })
     }
@@ -1082,7 +1089,7 @@ function toggleFullscreen() {
 
             {showDebug && (
               <div
-                style={{ left: debugPos.x, top: debugPos.y }}
+                style={{ right: debugPos.x, top: debugPos.y }}
                 className="absolute z-30 bg-gray-900 border border-gray-700 rounded-lg shadow-xl select-none flex flex-col"
               >
                 {/* Header — drag handle */}
