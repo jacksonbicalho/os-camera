@@ -43,6 +43,7 @@ export default function AnalysisSettingsPage() {
     model: 'yolov8n',
     confidence_threshold: 0.4,
   })
+  const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   // label section state — null means "not yet loaded / loading"
@@ -59,6 +60,7 @@ export default function AnalysisSettingsPage() {
   // bbox drawing state for zoom modal
   const [annBox, setAnnBox] = useState<BboxRect | null>(null)
   const [annLabel, setAnnLabel] = useState('')
+  const [annSaving, setAnnSaving] = useState(false)
   const [annSaveOk, setAnnSaveOk] = useState(false)
   const [existingAnn, setExistingAnn] = useState<BboxRect | null>(null)
 
@@ -138,25 +140,30 @@ export default function AnalysisSettingsPage() {
 
   async function saveAnnotation() {
     if (!annBox || !zoomEvent || annBox.w < 0.01 || annBox.h < 0.01) return
-    const res = await fetch(`/api/events/${zoomEvent.id}/annotations`, {
-      method: 'POST',
-      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        label: annLabel,
-        bbox_x: annBox.x + annBox.w / 2,
-        bbox_y: annBox.y + annBox.h / 2,
-        bbox_w: annBox.w,
-        bbox_h: annBox.h,
-        rotation_deg: annBox.rotation_deg ?? 0,
-      }),
-    })
-    if (res.ok) {
-      setExistingAnn({ ...annBox })
-      setAnnBox(null)
-      setAnnLabel('')
-      setAnnSaveOk(true)
-      refreshCounts()
-      setTimeout(() => setAnnSaveOk(false), 1500)
+    setAnnSaving(true)
+    try {
+      const res = await fetch(`/api/events/${zoomEvent.id}/annotations`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: annLabel,
+          bbox_x: annBox.x + annBox.w / 2,
+          bbox_y: annBox.y + annBox.h / 2,
+          bbox_w: annBox.w,
+          bbox_h: annBox.h,
+          rotation_deg: annBox.rotation_deg ?? 0,
+        }),
+      })
+      if (res.ok) {
+        setExistingAnn({ ...annBox })
+        setAnnBox(null)
+        setAnnLabel('')
+        setAnnSaveOk(true)
+        refreshCounts()
+        setTimeout(() => setAnnSaveOk(false), 1500)
+      }
+    } finally {
+      setAnnSaving(false)
     }
   }
 
@@ -267,16 +274,21 @@ export default function AnalysisSettingsPage() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    const res = await fetch('/api/settings/analysis', {
-      method: 'PUT',
-      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify(cfg),
-    })
-    if (res.ok) {
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    } else {
-      setError('Erro ao salvar')
+    setSaving(true)
+    try {
+      const res = await fetch('/api/settings/analysis', {
+        method: 'PUT',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(cfg),
+      })
+      if (res.ok) {
+        setSaved(true)
+        setTimeout(() => setSaved(false), 2000)
+      } else {
+        setError('Erro ao salvar')
+      }
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -369,9 +381,10 @@ export default function AnalysisSettingsPage() {
             {!error && !saved && <span />}
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
+              disabled={saving}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Salvar
+              {saving ? 'Salvando...' : 'Salvar'}
             </button>
           </div>
         </form>
@@ -621,9 +634,10 @@ export default function AnalysisSettingsPage() {
                   />
                   <button
                     onClick={saveAnnotation}
-                    className="px-3 py-1.5 text-sm bg-emerald-700 hover:bg-emerald-600 text-white rounded"
+                    disabled={annSaving}
+                    className="px-3 py-1.5 text-sm bg-emerald-700 hover:bg-emerald-600 text-white rounded disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    Salvar
+                    {annSaving ? 'Salvando...' : 'Salvar'}
                   </button>
                   <button
                     onClick={() => { setAnnBox(null); setAnnLabel('') }}
