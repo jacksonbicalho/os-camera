@@ -43,7 +43,14 @@ func (s *HLSStreamer) Start() error {
 	playlist := filepath.Join(dir, "index.m3u8")
 	segmentPattern := filepath.Join(dir, "%06d.ts")
 	s.log.Debug("starting hls ffmpeg", "camera", s.camera.ID, "playlist", playlist)
-	args := []string{"-rtsp_transport", "tcp", "-i", s.camera.RTSPURL}
+	args := []string{
+		"-rtsp_transport", "tcp",
+		"-fflags", "+nobuffer",
+		"-flags", "+low_delay",
+		"-analyzeduration", "500000",
+		"-probesize", "32768",
+		"-i", s.camera.RTSPURL,
+	}
 	if s.needsTranscode() {
 		s.log.Warn("transcoding video to h264", "camera", s.camera.ID, "source_codec", s.stream.VideoCodec, "mode", s.camera.HLSVideoMode)
 		args = append(args, "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency")
