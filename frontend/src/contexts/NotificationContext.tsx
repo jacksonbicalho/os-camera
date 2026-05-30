@@ -64,10 +64,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     requestAndEnable: enableBrowserNotifications,
     disable: disableBrowserNotifications,
     notify: browserNotify,
+    closeBrowserNotification,
+    closeAllBrowserNotifications,
   } = useBrowserNotifications()
 
   const browserNotifyRef = useRef(browserNotify)
   useEffect(() => { browserNotifyRef.current = browserNotify }, [browserNotify])
+  const closeBrowserRef = useRef(closeBrowserNotification)
+  useEffect(() => { closeBrowserRef.current = closeBrowserNotification }, [closeBrowserNotification])
+  const closeAllBrowserRef = useRef(closeAllBrowserNotifications)
+  useEffect(() => { closeAllBrowserRef.current = closeAllBrowserNotifications }, [closeAllBrowserNotifications])
 
   function update(next: Notification[]) {
     setNotifications(next)
@@ -127,15 +133,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }, [navigate])
 
   function markRead(id: string) {
+    const n = notifications.find(n => n.id === id)
+    if (n && !n.read) closeBrowserRef.current(n.cameraId)
     update(notifications.map((n) => (n.id === id ? { ...n, read: true } : n)))
   }
 
   function markAllRead() {
+    closeAllBrowserRef.current()
     update(notifications.map((n) => ({ ...n, read: true })))
   }
 
   function markSelectedRead(ids: string[]) {
     const idSet = new Set(ids)
+    notifications.filter(n => idSet.has(n.id) && !n.read).forEach(n => closeBrowserRef.current(n.cameraId))
     update(notifications.map((n) => idSet.has(n.id) ? { ...n, read: true } : n))
   }
 
@@ -145,15 +155,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }
 
   function remove(id: string) {
+    const n = notifications.find(n => n.id === id)
+    if (n) closeBrowserRef.current(n.cameraId)
     update(notifications.filter((n) => n.id !== id))
   }
 
   function removeAll() {
+    closeAllBrowserRef.current()
     update([])
   }
 
   function removeSelected(ids: string[]) {
     const idSet = new Set(ids)
+    notifications.filter(n => idSet.has(n.id)).forEach(n => closeBrowserRef.current(n.cameraId))
     update(notifications.filter((n) => !idSet.has(n.id)))
   }
 
