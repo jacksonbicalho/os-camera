@@ -777,9 +777,10 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	utcDays := utcDaysInRange(dayStart, dayEnd)
 
 	type recordingDetection struct {
-		Label      string  `json:"label"`
-		Confidence float64 `json:"confidence"`
-		FrameCount int     `json:"frame_count"`
+		Label       string  `json:"label"`
+		Confidence  float64 `json:"confidence"`
+		FrameCount  int     `json:"frame_count"`
+		CustomModel bool    `json:"custom_model,omitempty"`
 	}
 	type recording struct {
 		ID          int64                `json:"id,omitempty"`
@@ -870,7 +871,7 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 				if dets := detsByPath[all[i].path]; len(dets) > 0 {
 					rd := make([]recordingDetection, len(dets))
 					for j, d := range dets {
-						rd[j] = recordingDetection{Label: d.Label, Confidence: d.Confidence, FrameCount: d.FrameCount}
+						rd[j] = recordingDetection{Label: d.Label, Confidence: d.Confidence, FrameCount: d.FrameCount, CustomModel: d.CustomModel}
 					}
 					all[i].Detections = rd
 				}

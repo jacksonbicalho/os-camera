@@ -138,7 +138,7 @@ export default function CameraPage() {
   const [annDraft, setAnnDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const annDragRef = useRef<{ startX: number; startY: number } | null>(null)
   const annImgRef = useRef<HTMLImageElement>(null)
-  const [detectionModal, setDetectionModal] = useState<Array<{ label: string; confidence: number; frame_count: number }> | null>(null)
+  const [detectionModal, setDetectionModal] = useState<Array<{ label: string; confidence: number; frame_count: number; custom_model?: boolean }> | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [showDebug, setShowDebug] = useState(false)
@@ -1395,7 +1395,7 @@ function toggleFullscreen() {
                             {recDets && recDets.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-1" onClick={e => { e.stopPropagation(); setDetectionModal(recDets) }}>
                                 {recDets.map(d => (
-                                  <span key={d.label} className="text-[10px] px-1.5 py-0.5 rounded bg-violet-900/60 text-violet-300 border border-violet-700/50 cursor-pointer hover:bg-violet-800/60">
+                                  <span key={d.label} className={`text-[10px] px-1.5 py-0.5 rounded border cursor-pointer ${d.custom_model ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700/50 hover:bg-emerald-800/60' : 'bg-violet-900/60 text-violet-300 border-violet-700/50 hover:bg-violet-800/60'}`}>
                                     {d.label}
                                   </span>
                                 ))}
@@ -1478,7 +1478,7 @@ function toggleFullscreen() {
             <div className="space-y-2">
               {detectionModal.map(d => (
                 <div key={d.label} className="flex items-center justify-between">
-                  <span className="text-sm text-violet-300 font-medium">{d.label}</span>
+                  <span className={`text-sm font-medium ${d.custom_model ? 'text-emerald-300' : 'text-violet-300'}`}>{d.label}</span>
                   <div className="flex items-center gap-3 text-xs text-gray-400">
                     <span>{(d.confidence * 100).toFixed(1)}%</span>
                     <span>{d.frame_count} frames</span>
