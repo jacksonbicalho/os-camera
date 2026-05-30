@@ -301,9 +301,10 @@ export default function CameraPage() {
       const idx = activeRecording ? sorted.findIndex(r => r.filename === activeRecording.filename) : -1
       const nextIdx = e.key === 'ArrowDown' ? idx + 1 : idx - 1
       if (nextIdx < 0 || nextIdx >= sorted.length) return
+      const labeledEv = firstLabeledEventForRecording(sorted[nextIdx], recordingsRef.current, sortedEventsRef.current)
+      setActiveEventTime(labeledEv?.time ?? null)
+      setActiveEventId(labeledEv?.id ?? null)
       openRecording(sorted[nextIdx])
-      setActiveEventTime(null)
-      setActiveEventId(null)
       setScrollNonce(n => n + 1)
     }
     document.addEventListener('keydown', onKey)
@@ -436,8 +437,12 @@ export default function CameraPage() {
       if (pendingRec) {
         pendingRecordingRef.current = null
         const rec = result.recordings.find(r => r.filename === pendingRec.filename)
-        if (rec && !rec.is_recording) setActiveRecording(rec)
-        else setActiveRecording(null)
+        if (rec && !rec.is_recording) {
+          const labeledEv = firstLabeledEventForRecording(rec, result.recordings, events)
+          setActiveEventTime(labeledEv?.time ?? null)
+          setActiveEventId(labeledEv?.id ?? null)
+          setActiveRecording(rec)
+        } else setActiveRecording(null)
       } else {
         setActiveRecording(null)
       }
@@ -536,6 +541,21 @@ export default function CameraPage() {
     if (ok && activeRecording?.filename === target.rec.filename) setActiveRecording(null)
     if (serverError) setDeleteError('Erro ao excluir gravação. Tente novamente.')
     await reloadRecordingsAndEvents()
+  }
+
+  function firstLabeledEventForRecording(rec: Recording, allRecs: Recording[], events: MotionEvent[]): MotionEvent | null {
+    if (!rec.has_motion) return null
+    const asc = [...allRecs].sort((a, b) => a.filename.localeCompare(b.filename))
+    const idx = asc.findIndex(r => r.filename === rec.filename)
+    if (idx === -1) return null
+    const recStart = new Date(rec.start).getTime()
+    const nextStart = idx + 1 < asc.length
+      ? new Date(asc[idx + 1].start).getTime()
+      : recStart + 5 * 60 * 1000
+    return events.find(ev => {
+      const t = new Date(ev.time).getTime()
+      return t >= recStart && t < nextStart && !!ev.label
+    }) ?? null
   }
 
   function findRecordingForEvent(ev: MotionEvent, recs: Recording[]): Recording | null {
@@ -879,8 +899,9 @@ function toggleFullscreen() {
                         const opening = activePanel !== 'recordings'
                         setActivePanel(p => p === 'recordings' ? null : 'recordings')
                         if (opening && recordings.length > 0) {
-                          setActiveEventTime(null)
-                          setActiveEventId(null)
+                          const labeledEv = firstLabeledEventForRecording(recordings[0], recordings, sortedEventsRef.current)
+                          setActiveEventTime(labeledEv?.time ?? null)
+                          setActiveEventId(labeledEv?.id ?? null)
                           openRecording(recordings[0])
                         }
                       }}
@@ -1271,7 +1292,14 @@ function toggleFullscreen() {
                             >
                               <button
                                 disabled={rec.is_recording}
-                                onClick={() => { if (!rec.is_recording) { setActiveEventTime(null); setActiveEventId(null); openRecording(rec) } }}
+                                onClick={() => {
+                                  if (!rec.is_recording) {
+                                    const labeledEv = firstLabeledEventForRecording(rec, recordings, sortedEventsRef.current)
+                                    setActiveEventTime(labeledEv?.time ?? null)
+                                    setActiveEventId(labeledEv?.id ?? null)
+                                    openRecording(rec)
+                                  }
+                                }}
                                 className="flex-1 flex items-center justify-between text-left disabled:cursor-not-allowed"
                               >
                                 <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
