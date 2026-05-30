@@ -1,6 +1,9 @@
 package db
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
 type Annotation struct {
 	ID        int64     `json:"id"`
@@ -54,6 +57,46 @@ func CountAnnotations(d *DB) (int, error) {
 	var n int
 	err := d.QueryRow(`SELECT COUNT(*) FROM annotations`).Scan(&n)
 	return n, err
+}
+
+// CountLabeledEvents returns the number of motion_events with a non-empty label.
+func CountLabeledEvents(d *DB) (int, error) {
+	var n int
+	err := d.QueryRow(`SELECT COUNT(*) FROM motion_events WHERE label IS NOT NULL AND label != ''`).Scan(&n)
+	return n, err
+}
+
+// ListLabeledEvents returns motion events that have a non-empty label and a frame_path.
+// Events that already have a bounding-box annotation are excluded to avoid duplicates.
+func ListLabeledEvents(d *DB) ([]MotionEvent, error) {
+	rows, err := d.Query(`
+		SELECT id, camera_id, occurred_at, score, frame_path, label, color, bbox_x, bbox_y, bbox_w, bbox_h
+		FROM motion_events
+		WHERE label IS NOT NULL AND label != ''
+		  AND frame_path IS NOT NULL AND frame_path != ''
+		  AND id NOT IN (SELECT DISTINCT event_id FROM annotations)
+		ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []MotionEvent
+	for rows.Next() {
+		var ev MotionEvent
+		var occurredAt string
+		var framePath, label sql.NullString
+		var color string
+		var bboxX, bboxY, bboxW, bboxH sql.NullFloat64
+		if err := rows.Scan(&ev.ID, &ev.CameraID, &occurredAt, &ev.Score, &framePath, &label, &color, &bboxX, &bboxY, &bboxW, &bboxH); err != nil {
+			return nil, err
+		}
+		ev.OccurredAt, _ = time.Parse(time.RFC3339, occurredAt)
+		ev.FramePath = framePath.String
+		ev.Label = label.String
+		events = append(events, ev)
+	}
+	return events, rows.Err()
 }
 
 func ListAllAnnotations(d *DB) ([]Annotation, error) {

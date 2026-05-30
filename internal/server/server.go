@@ -320,6 +320,8 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("POST /api/events/{id}/annotations", s.requireFullAuth(s.handleCreateAnnotation))
 	s.mux.HandleFunc("GET /api/events/{id}/annotations", s.requireFullAuth(s.handleListAnnotations))
 	s.mux.HandleFunc("DELETE /api/annotations/{id}", s.requireFullAuth(s.handleDeleteAnnotation))
+	s.mux.HandleFunc("PATCH /api/events/{id}/label", s.requireFullAuth(s.handleUpdateEventLabel))
+	s.mux.HandleFunc("GET /api/cameras/{id}/events", s.requireCameraAccess(s.handlePageEvents))
 	s.mux.HandleFunc("GET /api/settings/analysis/annotation-count", s.requireAdmin(s.handleAnnotationCount))
 
 	s.mux.HandleFunc("GET /api/cameras/{id}/snapshot", s.requireCameraAccess(s.handleSnapshot))
