@@ -187,6 +187,27 @@ func drawText(img draw.Image, text string, x, y int, c color.Color) {
 	d.DrawString(text)
 }
 
+// jpegToGray decodes a JPEG and downscales it to w×h grayscale using
+// nearest-neighbor sampling. Returns the raw pixel bytes (length w*h).
+func jpegToGray(data []byte, w, h int) ([]byte, error) {
+	src, err := jpeg.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	dst := image.NewGray(image.Rect(0, 0, w, h))
+	sb := src.Bounds()
+	srcW, srcH := sb.Dx(), sb.Dy()
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			sx := x * srcW / w
+			sy := y * srcH / h
+			c := src.At(sb.Min.X+sx, sb.Min.Y+sy)
+			dst.SetGray(x, y, color.GrayModel.Convert(c).(color.Gray))
+		}
+	}
+	return dst.Pix, nil
+}
+
 // hexToNRGBA converte uma cor hexadecimal (com ou sem "#") em color.NRGBA.
 // Retorna ColorGlobal como fallback para entradas inválidas.
 func hexToNRGBA(hex string) color.NRGBA {

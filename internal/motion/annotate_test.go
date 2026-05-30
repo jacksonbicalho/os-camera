@@ -138,3 +138,59 @@ func TestAnnotateJPEGBytesTextScaleProportional(t *testing.T) {
 		t.Errorf("expected scale 4 at height 1080, got %d", textScale(1920, 1080))
 	}
 }
+
+// TestJpegToGrayDecodeAndDownscale verifies that jpegToGray correctly decodes a
+// JPEG and downscales it to the requested resolution while preserving relative
+// brightness differences (object vs background).
+func TestJpegToGrayDecodeAndDownscale(t *testing.T) {
+	// 16×8 source: left half = 50 (background), right half = 230 (object)
+	srcW, srcH := 16, 8
+	src := image.NewGray(image.Rect(0, 0, srcW, srcH))
+	for y := 0; y < srcH; y++ {
+		for x := 0; x < srcW; x++ {
+			if x >= srcW/2 {
+				src.SetGray(x, y, color.Gray{Y: 230})
+			} else {
+				src.SetGray(x, y, color.Gray{Y: 50})
+			}
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, src, &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+
+	// Downscale to 8×4
+	dstW, dstH := 8, 4
+	out, err := jpegToGray(buf.Bytes(), dstW, dstH)
+	if err != nil {
+		t.Fatalf("jpegToGray: %v", err)
+	}
+	if len(out) != dstW*dstH {
+		t.Fatalf("expected %d pixels, got %d", dstW*dstH, len(out))
+	}
+
+	// Right half (x=4..7) should be substantially brighter than left (x=0..3)
+	var leftSum, rightSum int
+	for y := 0; y < dstH; y++ {
+		for x := 0; x < dstW; x++ {
+			v := int(out[y*dstW+x])
+			if x < dstW/2 {
+				leftSum += v
+			} else {
+				rightSum += v
+			}
+		}
+	}
+	if rightSum <= leftSum {
+		t.Errorf("right half should be brighter than left: rightSum=%d leftSum=%d", rightSum, leftSum)
+	}
+}
+
+// TestJpegToGrayInvalidDataReturnsError verifies that corrupt input is rejected.
+func TestJpegToGrayInvalidDataReturnsError(t *testing.T) {
+	_, err := jpegToGray([]byte("not a jpeg"), 4, 4)
+	if err == nil {
+		t.Error("expected error for invalid JPEG data")
+	}
+}

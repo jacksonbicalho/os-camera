@@ -154,7 +154,9 @@ func (d *detector) processFrames(ctx context.Context) {
 				d.lastEvent = ts // update cooldown immediately before goroutine
 				if d.grabber != nil {
 					lowRes := annotateFrame(cur, d.width, d.height, bbox, score, ColorGlobal, bboxFound)
-					go d.recordWithHighRes(ctx, ts, score, bbox, lowRes, "", "")
+					bgSnap := make([]byte, len(d.bg))
+					copy(bgSnap, d.bg)
+					go d.recordWithHighRes(ctx, ts, score, bbox, lowRes, "", "", bgSnap, zs)
 				} else {
 					jpegData := annotateFrame(cur, d.width, d.height, bbox, score, ColorGlobal, bboxFound)
 					frameName, _, saveErr := d.st.saveJPEG(d.cameraID, ts, jpegData)
@@ -219,7 +221,9 @@ func (d *detector) evaluateDetectZones(bg, prev, cur []byte, zs []zones.Zone, ts
 			d.zoneLastEv[i] = ts // update cooldown immediately before goroutine
 			if d.grabber != nil {
 				lowRes := annotateFrame(cur, d.width, d.height, bbox, zScore, zoneColor, bboxFound)
-				go d.recordWithHighRes(context.Background(), ts, zScore, bbox, lowRes, dz.Label, dz.Color)
+				bgSnap := make([]byte, len(bg))
+				copy(bgSnap, bg)
+				go d.recordWithHighRes(context.Background(), ts, zScore, bbox, lowRes, dz.Label, dz.Color, bgSnap, zs)
 			} else {
 				jpegData := annotateFrame(cur, d.width, d.height, bbox, zScore, zoneColor, bboxFound)
 				frameName, _, saveErr := d.st.saveJPEG(d.cameraID, ts, jpegData)
@@ -240,7 +244,12 @@ func (d *detector) evaluateDetectZones(bg, prev, cur []byte, zs []zones.Zone, ts
 // (falling back to the provided low-res data on failure), then records the event
 // and fires the notify callback. Running in a goroutine so the detector loop is
 // not blocked.
-func (d *detector) recordWithHighRes(ctx context.Context, ts time.Time, score float64, bbox BBox, lowRes []byte, label, zoneColor string) {
+//
+// bgSnap is a frozen copy of the background model at detection time; it is used
+// to re-compute the bbox from the grabbed frame, avoiding the stale-bbox problem
+// that arises because the RTSP grab happens asynchronously (the subject may have
+// moved between the detection frame and the grabbed frame).
+func (d *detector) recordWithHighRes(ctx context.Context, ts time.Time, score float64, bbox BBox, lowRes []byte, label, zoneColor string, bgSnap []byte, zs []zones.Zone) {
 	grabCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
@@ -270,6 +279,17 @@ func (d *detector) recordWithHighRes(ctx context.Context, ts time.Time, score fl
 			d.log.Warn("motion: failed to read high-res grab", "camera", d.cameraID, "err", readErr)
 			frameName, _, _ = d.st.saveJPEG(d.cameraID, ts, lowRes)
 		} else {
+			// Re-compute bbox from grabbed frame vs frozen background so the
+			// annotation reflects where the object IS in the grabbed image, not
+			// where it was when the detection frame was processed.
+			if bgSnap != nil {
+				freshGray, grayErr := jpegToGray(raw, d.width, d.height)
+				if grayErr == nil {
+					if freshBBox, freshFound := computeBBox(bgSnap, freshGray, d.width, d.height, zs); freshFound {
+						bbox = freshBBox
+					}
+				}
+			}
 			annotated, annErr := annotateJPEGBytes(raw, bbox, score, c, true)
 			if annErr != nil {
 				d.log.Warn("motion: failed to annotate high-res JPEG, using raw grab", "camera", d.cameraID, "err", annErr)
