@@ -29,8 +29,9 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-950">
       <div className="w-full max-w-sm bg-gray-900 rounded-lg p-8 shadow-xl border border-gray-800">
-        <div className="flex justify-center mb-6">
+        <div className="flex flex-col items-center gap-2 mb-6">
           <CameraLogo className="w-12 h-12" />
+          <span className="text-white font-semibold text-lg tracking-wide">os-camera</span>
         </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
