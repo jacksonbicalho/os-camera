@@ -29,10 +29,10 @@ Todo PR para `master` ou `develop` dispara `.github/workflows/ci.yml` com dois j
 - **Backend**: `go test ./...` + `go build ./...`
 - **Frontend**: `yarn lint` + `yarn test --run` + `yarn build`
 
-Ambos os branches estão protegidos: push direto bloqueado, PR obrigatório, 1 aprovação humana obrigatória, checks `Backend` e `Frontend` obrigatórios. Para reaplicar as regras (ex: em novo repositório):
+Ambos os branches estão protegidos: push direto bloqueado, PR obrigatório, checks `Backend` e `Frontend` obrigatórios. `master` exige 1 aprovação humana; `develop` não exige aprovação (projeto solo — CI já é a barreira de qualidade). Para reaplicar as regras (ex: em novo repositório):
 
 ```bash
-# master — só aceita PRs vindos de develop (releases)
+# master — só aceita PRs vindos de develop (releases); exige 1 aprovação humana
 gh api repos/{owner}/{repo}/branches/master/protection \
   --method PUT \
   --header "Accept: application/vnd.github+json" \
@@ -45,15 +45,15 @@ gh api repos/{owner}/{repo}/branches/master/protection \
 }
 EOF
 
-# develop — aceita PRs de feature branches
+# develop — aceita PRs de feature branches; CI obrigatório, sem aprovação humana
 gh api repos/{owner}/{repo}/branches/develop/protection \
   --method PUT \
   --header "Accept: application/vnd.github+json" \
   --input - <<'EOF'
 {
   "required_status_checks": { "strict": true, "contexts": ["Backend", "Frontend"] },
-  "enforce_admins": true,
-  "required_pull_request_reviews": { "dismiss_stale_reviews": true, "required_approving_review_count": 1 },
+  "enforce_admins": false,
+  "required_pull_request_reviews": { "dismiss_stale_reviews": true, "required_approving_review_count": 0 },
   "restrictions": null
 }
 EOF
