@@ -48,6 +48,7 @@ export default function AnalysisSettingsPage() {
   // label section state — null means "not yet loaded / loading"
   const [labelCamID, setLabelCamID] = useState('')
   const [unlabeledOnly, setUnlabeledOnly] = useState(true)
+  const [labelSearch, setLabelSearch] = useState('')
   const [labelPage, setLabelPage] = useState(1)
   const [labelEvents, setLabelEvents] = useState<EventItem[] | null>(null)
   const [labelTotal, setLabelTotal] = useState(0)
@@ -196,7 +197,8 @@ export default function AnalysisSettingsPage() {
     const params = new URLSearchParams({
       page: String(labelPage),
       limit: String(LIMIT),
-      ...(unlabeledOnly ? { unlabeled: 'true' } : {}),
+      ...(unlabeledOnly && !labelSearch ? { unlabeled: 'true' } : {}),
+      ...(labelSearch ? { label: labelSearch } : {}),
     })
     fetch(`/api/cameras/${labelCamID}/events?${params}`, {
       headers: authHeaders(),
@@ -213,7 +215,7 @@ export default function AnalysisSettingsPage() {
       })
       .catch(err => { if (err.name !== 'AbortError') setLabelEvents([]) })
     return () => controller.abort()
-  }, [labelCamID, unlabeledOnly, labelPage])
+  }, [labelCamID, unlabeledOnly, labelSearch, labelPage])
 
   function handleLabelBlur(eventId: number) {
     const label = labelInputs[eventId] ?? ''
@@ -487,11 +489,19 @@ export default function AnalysisSettingsPage() {
                 <option value="">Selecionar câmera…</option>
                 {cameras.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer select-none">
+              <input
+                type="text"
+                placeholder="Buscar label…"
+                value={labelSearch}
+                onChange={e => { setLabelSearch(e.target.value); setLabelPage(1); setLabelEvents(null) }}
+                className="bg-gray-700 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500 w-40"
+              />
+              <label className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${labelSearch ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400'}`}>
                 <input
                   type="checkbox"
                   className="accent-blue-500"
-                  checked={unlabeledOnly}
+                  checked={unlabeledOnly && !labelSearch}
+                  disabled={!!labelSearch}
                   onChange={e => { setUnlabeledOnly(e.target.checked); setLabelPage(1); setLabelEvents(null) }}
                 />
                 Sem label
