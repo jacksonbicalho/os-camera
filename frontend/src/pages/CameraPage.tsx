@@ -850,7 +850,7 @@ function toggleFullscreen() {
                       >
                         <Gauge className="w-4 h-4" />
                         {playbackRate > 1 && (
-                          <span className="absolute -bottom-0.5 -right-0.5 text-[8px] font-bold leading-none bg-blue-600 text-white rounded-full px-0.5 py-px">
+                          <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
                             {playbackRate}×
                           </span>
                         )}
