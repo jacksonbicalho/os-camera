@@ -1453,6 +1453,7 @@ function toggleFullscreen() {
             activeRecording={activeRecording}
             activeTime={activeEventTime ?? activeRecording?.start ?? null}
             timezone={timezone}
+            sortOrder={activePanel === 'events' ? eventsSortOrder : sortOrder}
             onSeek={handleTimelineSeek}
             onEventClick={activePanel === 'events' ? ev => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) } : undefined}
             maxHeight={playerHeight}

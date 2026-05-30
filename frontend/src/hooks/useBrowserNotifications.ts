@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 
 const PREF_KEY = 'camera_browser_notifications_enabled'
 
@@ -17,6 +17,8 @@ export interface BrowserNotificationsHook {
   requestAndEnable(): Promise<void>
   disable(): void
   notify(cameraId: string, score: number, label?: string, onClick?: () => void, cameraName?: string): void
+  closeBrowserNotification(cameraId: string): void
+  closeAllBrowserNotifications(): void
 }
 
 export function useBrowserNotifications(): BrowserNotificationsHook {
@@ -25,6 +27,7 @@ export function useBrowserNotifications(): BrowserNotificationsHook {
     () => (supported ? Notification.permission : 'unavailable'),
   )
   const [enabled, setEnabled] = useState<boolean>(() => supported && loadPref())
+  const activeRef = useRef<Map<string, Notification>>(new Map())
 
   const requestAndEnable = useCallback(async () => {
     if (!supported) return
@@ -50,16 +53,28 @@ export function useBrowserNotifications(): BrowserNotificationsHook {
       const n = new Notification(`Movimento — ${cameraName ?? cameraId}`, {
         body,
         tag: `motion-${cameraId}`,
+        icon: '/icon-192.png',
       })
-      if (onClick) {
-        n.onclick = () => {
-          window.focus()
-          onClick()
-        }
+      activeRef.current.set(cameraId, n)
+      n.onclose = () => activeRef.current.delete(cameraId)
+      n.onclick = () => {
+        window.focus()
+        onClick?.()
+        n.close()
       }
     },
     [supported, enabled, permission],
   )
 
-  return { supported, permission, enabled, requestAndEnable, disable, notify }
+  const closeBrowserNotification = useCallback((cameraId: string) => {
+    const n = activeRef.current.get(cameraId)
+    if (n) { n.close(); activeRef.current.delete(cameraId) }
+  }, [])
+
+  const closeAllBrowserNotifications = useCallback(() => {
+    activeRef.current.forEach(n => n.close())
+    activeRef.current.clear()
+  }, [])
+
+  return { supported, permission, enabled, requestAndEnable, disable, notify, closeBrowserNotification, closeAllBrowserNotifications }
 }
