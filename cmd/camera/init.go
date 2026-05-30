@@ -76,7 +76,6 @@ type initParams struct {
 	dbPath        string
 	timezone      string
 	segmentsPath  string
-	hlsDVR        int
 	storagePath   string
 	adminUsername string
 	adminPassword string
@@ -99,7 +98,6 @@ func initWizard(input io.Reader, output io.Writer) (string, error) {
 	port := wi.askInt("Porta HTTP", 8080)
 	dbPath := wi.ask("Caminho do banco de dados", defaultBase("camera.db"))
 	segmentsPath := wi.ask("Caminho dos segmentos HLS", defaultBase("hls"))
-	hlsDVR := wi.askInt("Segundos de janela DVR (0 = desabilitado)", 0)
 
 	fmt.Fprintln(output, "\n--- Storage ---")
 	storagePath := wi.ask("Caminho de gravações", defaultBase("recordings"))
@@ -116,7 +114,6 @@ func initWizard(input io.Reader, output io.Writer) (string, error) {
 		dbPath:        dbPath,
 		timezone:      timezone,
 		segmentsPath:  segmentsPath,
-		hlsDVR:        hlsDVR,
 		storagePath:   storagePath,
 		adminUsername: adminUsername,
 		adminPassword: adminPassword,
@@ -133,7 +130,6 @@ func buildInitYAML(p initParams) string {
 	fmt.Fprintf(&sb, "\nserver:\n")
 	fmt.Fprintf(&sb, "  port: %d\n", p.port)
 	fmt.Fprintf(&sb, "  segments_path: %s\n", p.segmentsPath)
-	fmt.Fprintf(&sb, "  hls_dvr_seconds: %d\n", p.hlsDVR)
 	fmt.Fprintf(&sb, "  jwt_secret: \"\"\n")
 	fmt.Fprintf(&sb, "\nstorage:\n")
 	fmt.Fprintf(&sb, "  path: %s\n", p.storagePath)

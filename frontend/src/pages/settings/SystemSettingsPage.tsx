@@ -36,7 +36,6 @@ export default function SystemSettingsPage() {
             fields={[
               { label: 'Segmentos HLS', value: settings.server.segments_path || '—' },
               { label: 'Gravações', value: settings.server.recordings_path || '—' },
-              { label: 'Janela DVR (segundos)', value: settings.server.hls_dvr_seconds === 0 ? 'desativado' : settings.server.hls_dvr_seconds },
             ]}
           />
           <SettingsSection
