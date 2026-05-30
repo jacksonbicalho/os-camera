@@ -96,6 +96,18 @@ func (s *Server) handleStartFinetune(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+func (s *Server) handleCancelFinetune(w http.ResponseWriter, r *http.Request) {
+	cfg, err := db.GetVideoAnalysisConfig(s.db)
+	if err != nil || cfg.ServiceURL == "" {
+		http.Error(w, "analysis service not configured", http.StatusServiceUnavailable)
+		return
+	}
+	jobID := r.PathValue("job_id")
+	client := analysis.NewClient(cfg.ServiceURL)
+	_ = client.CancelFinetune(r.Context(), jobID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleFinetuneStatus(w http.ResponseWriter, r *http.Request) {
 	if !s.requireDB(w) {
 		return

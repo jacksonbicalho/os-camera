@@ -140,6 +140,22 @@ func (c *Client) FinetuneStatus(ctx context.Context, jobID string) (FinetuneStat
 	return result, nil
 }
 
+func (c *Client) CancelFinetune(ctx context.Context, jobID string) error {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/finetune/"+jobID, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("yolo service returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // --- Fake ---
 
 type FakeAnalyzer struct {
