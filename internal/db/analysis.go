@@ -14,11 +14,12 @@ type VideoAnalysisConfig struct {
 }
 
 type Detection struct {
-	ID         int64     `json:"id"`
-	Label      string    `json:"label"`
-	Confidence float64   `json:"confidence"`
-	FrameCount int       `json:"frame_count"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID          int64     `json:"id"`
+	Label       string    `json:"label"`
+	Confidence  float64   `json:"confidence"`
+	FrameCount  int       `json:"frame_count"`
+	CustomModel bool      `json:"custom_model"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 func GetVideoAnalysisConfig(d *DB) (VideoAnalysisConfig, error) {
@@ -80,17 +81,21 @@ func SetCameraAnalysisEnabled(d *DB, cameraID string, enabled bool) error {
 	return err
 }
 
-func InsertDetections(d *DB, path string, detections []Detection) error {
+func InsertDetections(d *DB, path string, detections []Detection, customModel bool) error {
 	var recordingID int64
 	err := d.QueryRow(`SELECT id FROM recordings WHERE path=?`, path).Scan(&recordingID)
 	if err != nil {
 		return err
 	}
+	cm := 0
+	if customModel {
+		cm = 1
+	}
 	for _, det := range detections {
 		_, err := d.Exec(`
-			INSERT INTO detections (recording_id, label, confidence, frame_count)
-			VALUES (?, ?, ?, ?)`,
-			recordingID, det.Label, det.Confidence, det.FrameCount)
+			INSERT INTO detections (recording_id, label, confidence, frame_count, custom_model)
+			VALUES (?, ?, ?, ?, ?)`,
+			recordingID, det.Label, det.Confidence, det.FrameCount, cm)
 		if err != nil {
 			return err
 		}
@@ -109,7 +114,7 @@ func DetectionsByPaths(d *DB, paths []string) (map[string][]Detection, error) {
 		args[i] = p
 	}
 	rows, err := d.Query(`
-		SELECT rec.path, det.label, det.confidence, det.frame_count
+		SELECT rec.path, det.label, det.confidence, det.frame_count, det.custom_model
 		FROM detections det
 		JOIN recordings rec ON rec.id = det.recording_id
 		WHERE rec.path IN (`+strings.Join(placeholders, ",")+`)
@@ -124,9 +129,11 @@ func DetectionsByPaths(d *DB, paths []string) (map[string][]Detection, error) {
 	for rows.Next() {
 		var path string
 		var det Detection
-		if err := rows.Scan(&path, &det.Label, &det.Confidence, &det.FrameCount); err != nil {
+		var cm int
+		if err := rows.Scan(&path, &det.Label, &det.Confidence, &det.FrameCount, &cm); err != nil {
 			return nil, err
 		}
+		det.CustomModel = cm != 0
 		if seen[path] == nil {
 			seen[path] = map[string]bool{}
 		}

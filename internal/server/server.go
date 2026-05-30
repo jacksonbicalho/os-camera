@@ -296,6 +296,7 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("GET /api/settings/analysis", s.requireAdmin(s.handleGetAnalysisConfig))
 	s.mux.HandleFunc("PUT /api/settings/analysis", s.requireAdmin(s.handleUpdateAnalysisConfig))
 	s.mux.HandleFunc("POST /api/settings/analysis/finetune", s.requireAdmin(s.handleStartFinetune))
+	s.mux.HandleFunc("DELETE /api/settings/analysis/finetune/{job_id}", s.requireAdmin(s.handleCancelFinetune))
 	s.mux.HandleFunc("GET /api/settings/analysis/finetune/status/{job_id}", s.requireAdmin(s.handleFinetuneStatus))
 	s.mux.HandleFunc("GET /api/settings/cameras/{id}/analysis", s.requireAdmin(s.handleGetCameraAnalysisConfig))
 	s.mux.HandleFunc("PUT /api/settings/cameras/{id}/analysis", s.requireAdmin(s.handleUpdateCameraAnalysisConfig))
@@ -320,6 +321,8 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("POST /api/events/{id}/annotations", s.requireFullAuth(s.handleCreateAnnotation))
 	s.mux.HandleFunc("GET /api/events/{id}/annotations", s.requireFullAuth(s.handleListAnnotations))
 	s.mux.HandleFunc("DELETE /api/annotations/{id}", s.requireFullAuth(s.handleDeleteAnnotation))
+	s.mux.HandleFunc("PATCH /api/events/{id}/label", s.requireFullAuth(s.handleUpdateEventLabel))
+	s.mux.HandleFunc("GET /api/cameras/{id}/events", s.requireCameraAccess(s.handlePageEvents))
 	s.mux.HandleFunc("GET /api/settings/analysis/annotation-count", s.requireAdmin(s.handleAnnotationCount))
 
 	s.mux.HandleFunc("GET /api/cameras/{id}/snapshot", s.requireCameraAccess(s.handleSnapshot))
@@ -775,9 +778,10 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	utcDays := utcDaysInRange(dayStart, dayEnd)
 
 	type recordingDetection struct {
-		Label      string  `json:"label"`
-		Confidence float64 `json:"confidence"`
-		FrameCount int     `json:"frame_count"`
+		Label       string  `json:"label"`
+		Confidence  float64 `json:"confidence"`
+		FrameCount  int     `json:"frame_count"`
+		CustomModel bool    `json:"custom_model,omitempty"`
 	}
 	type recording struct {
 		ID          int64                `json:"id,omitempty"`
@@ -868,7 +872,7 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 				if dets := detsByPath[all[i].path]; len(dets) > 0 {
 					rd := make([]recordingDetection, len(dets))
 					for j, d := range dets {
-						rd[j] = recordingDetection{Label: d.Label, Confidence: d.Confidence, FrameCount: d.FrameCount}
+						rd[j] = recordingDetection{Label: d.Label, Confidence: d.Confidence, FrameCount: d.FrameCount, CustomModel: d.CustomModel}
 					}
 					all[i].Detections = rd
 				}

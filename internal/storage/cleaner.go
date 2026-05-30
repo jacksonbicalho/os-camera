@@ -704,10 +704,11 @@ func (c *Cleaner) analyzeNewRecordings() {
 			_ = db.MarkAnalysisSkipped(c.db, p.id)
 			continue
 		}
+		customModel := cfg.Model == "custom"
 		if len(dets) == 0 {
 			c.log.Debug("analyzeNewRecordings: result", "path", p.path, "labels", "none")
 			// Insert a sentinel (label="") so this recording is not retried.
-			_ = db.InsertDetections(c.db, p.path, []db.Detection{{Label: "", Confidence: 0, FrameCount: 0}})
+			_ = db.InsertDetections(c.db, p.path, []db.Detection{{Label: "", Confidence: 0, FrameCount: 0}}, customModel)
 			analyzed++
 			continue
 		}
@@ -718,7 +719,7 @@ func (c *Cleaner) analyzeNewRecordings() {
 			dbDets[j] = db.Detection{Label: d.Label, Confidence: d.Confidence, FrameCount: d.FrameCount}
 		}
 		c.log.Debug("analyzeNewRecordings: result", "path", p.path, "labels", labels)
-		if err := db.InsertDetections(c.db, p.path, dbDets); err != nil {
+		if err := db.InsertDetections(c.db, p.path, dbDets, customModel); err != nil {
 			c.log.Warn("analyzeNewRecordings: insert detections failed", "path", p.path, "err", err)
 		} else {
 			analyzed++

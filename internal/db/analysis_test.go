@@ -100,7 +100,7 @@ func TestDetections_InsertAndList(t *testing.T) {
 		{Label: "person", Confidence: 0.92, FrameCount: 10},
 		{Label: "car", Confidence: 0.78, FrameCount: 3},
 	}
-	if err := db.InsertDetections(database, "cam1/2024/01/01/120000.mp4", detections); err != nil {
+	if err := db.InsertDetections(database, "cam1/2024/01/01/120000.mp4", detections, false); err != nil {
 		t.Fatalf("InsertDetections: %v", err)
 	}
 
@@ -139,12 +139,12 @@ func TestDetectionLabelsByPaths_ReturnsBatchLabels(t *testing.T) {
 	if err := db.InsertDetections(database, "cam1/2024/01/01/120000.mp4", []db.Detection{
 		{Label: "person", Confidence: 0.9, FrameCount: 3},
 		{Label: "car", Confidence: 0.7, FrameCount: 1},
-	}); err != nil {
+	}, false); err != nil {
 		t.Fatalf("InsertDetections: %v", err)
 	}
 	if err := db.InsertDetections(database, "cam1/2024/01/01/120500.mp4", []db.Detection{
 		{Label: "dog", Confidence: 0.8, FrameCount: 2},
-	}); err != nil {
+	}, false); err != nil {
 		t.Fatalf("InsertDetections: %v", err)
 	}
 
@@ -182,7 +182,7 @@ func TestDetections_DeleteCascade(t *testing.T) {
 	}
 	if err := db.InsertDetections(database, "cam1/2024/01/01/120001.mp4", []db.Detection{
 		{Label: "dog", Confidence: 0.85, FrameCount: 2},
-	}); err != nil {
+	}, false); err != nil {
 		t.Fatalf("InsertDetections: %v", err)
 	}
 
@@ -196,5 +196,46 @@ func TestDetections_DeleteCascade(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("expected 0 detections after cascade delete, got %d", len(got))
+	}
+}
+
+func TestDetectionsByPaths_CustomModelFlag(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+
+	for _, path := range []string{"cam1/2024/01/01/120000.mp4", "cam1/2024/01/01/120500.mp4"} {
+		if err := db.InsertRecording(database, db.Recording{
+			CameraID:  "cam1",
+			StartedAt: time.Now().Add(-5 * time.Minute),
+			EndedAt:   time.Now(),
+			Path:      path,
+			SizeBytes: 512,
+		}); err != nil {
+			t.Fatalf("InsertRecording(%s): %v", path, err)
+		}
+	}
+	if err := db.InsertDetections(database, "cam1/2024/01/01/120000.mp4", []db.Detection{
+		{Label: "person", Confidence: 0.9, FrameCount: 3},
+	}, false); err != nil {
+		t.Fatalf("InsertDetections base: %v", err)
+	}
+	if err := db.InsertDetections(database, "cam1/2024/01/01/120500.mp4", []db.Detection{
+		{Label: "dog", Confidence: 0.8, FrameCount: 2},
+	}, true); err != nil {
+		t.Fatalf("InsertDetections custom: %v", err)
+	}
+
+	result, err := db.DetectionsByPaths(database, []string{
+		"cam1/2024/01/01/120000.mp4",
+		"cam1/2024/01/01/120500.mp4",
+	})
+	if err != nil {
+		t.Fatalf("DetectionsByPaths: %v", err)
+	}
+	if d := result["cam1/2024/01/01/120000.mp4"]; len(d) != 1 || d[0].CustomModel {
+		t.Errorf("expected base model detection (custom_model=false), got %+v", d)
+	}
+	if d := result["cam1/2024/01/01/120500.mp4"]; len(d) != 1 || !d[0].CustomModel {
+		t.Errorf("expected custom model detection (custom_model=true), got %+v", d)
 	}
 }
