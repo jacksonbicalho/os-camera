@@ -46,7 +46,25 @@ fi
 # ── commits desde a última tag ────────────────────────────────────────────────
 LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
 RANGE="${LAST_TAG:+${LAST_TAG}..}HEAD"
-COMMITS="$(git log "$RANGE" --format="%H %s" --no-merges)"
+
+# Commits squash de release têm subject "release: vX.Y.Z (#N)" e carregam no
+# body todas as linhas "* feat(...):" / "* fix(...):" dos PRs individuais.
+# Expandimos essas linhas para que bump detection e changelog fiquem corretos.
+COMMITS=""
+while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    hash="${line%% *}"
+    subject="${line#* }"
+    if [[ "$subject" =~ ^release: ]]; then
+        while IFS= read -r bline; do
+            if [[ "$bline" =~ ^\*[[:space:]]+([a-z][^[:space:]].+) ]]; then
+                COMMITS+="$hash ${BASH_REMATCH[1]}"$'\n'
+            fi
+        done < <(git show "$hash" --format="%b" -s)
+    else
+        COMMITS+="$line"$'\n'
+    fi
+done < <(git log "$RANGE" --format="%H %s" --no-merges)
 
 if [[ -z "$COMMITS" ]]; then
     echo -e "${YELLOW}Nenhum commit desde ${LAST_TAG:-o início}. Nada para versionar.${RESET}"
