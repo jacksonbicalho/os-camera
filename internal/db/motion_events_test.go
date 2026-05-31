@@ -299,3 +299,108 @@ func TestInsertMotionEvent_PersistsColor(t *testing.T) {
 		t.Errorf("expected color #3b82f6, got %q", events[0].Color)
 	}
 }
+
+func TestBulkDeleteMotionEvents_DeletesAndReturnsFramePaths(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+
+	base := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		ev := db.MotionEvent{
+			CameraID:   "cam1",
+			OccurredAt: base.Add(time.Duration(i) * time.Second),
+			Score:      0.5,
+			FramePath:  "frame_" + time.Duration(i).String() + ".jpg",
+		}
+		if err := db.InsertMotionEvent(database, ev); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+
+	events, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "")
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(events))
+	}
+	ids := []int64{events[0].ID, events[1].ID}
+
+	deleted, snaps, err := db.BulkDeleteMotionEvents(database, ids)
+	if err != nil {
+		t.Fatalf("BulkDeleteMotionEvents: %v", err)
+	}
+	if deleted != 2 {
+		t.Errorf("expected deleted=2, got %d", deleted)
+	}
+	if len(snaps) != 2 {
+		t.Errorf("expected 2 snapshots, got %d", len(snaps))
+	}
+	for _, sn := range snaps {
+		if sn.CameraID != "cam1" || sn.FramePath == "" {
+			t.Errorf("missing fields in snapshot: %+v", sn)
+		}
+	}
+
+	remaining, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "")
+	if len(remaining) != 1 {
+		t.Errorf("expected 1 remaining, got %d", len(remaining))
+	}
+}
+
+func TestBulkDeleteMotionEvents_EmptyIDsReturnsZero(t *testing.T) {
+	database := openTestDB(t)
+	deleted, snaps, err := db.BulkDeleteMotionEvents(database, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if deleted != 0 || len(snaps) != 0 {
+		t.Errorf("expected zero results, got deleted=%d snaps=%d", deleted, len(snaps))
+	}
+}
+
+func TestBulkUpdateMotionEventLabels_AppliesAndClears(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+
+	base := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		insertTestEvent(t, database, "cam1", base.Add(time.Duration(i)*time.Second), 0.5, "")
+	}
+	events, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "")
+	ids := []int64{events[0].ID, events[1].ID}
+
+	updated, err := db.BulkUpdateMotionEventLabels(database, ids, "cat")
+	if err != nil {
+		t.Fatalf("BulkUpdateMotionEventLabels: %v", err)
+	}
+	if updated != 2 {
+		t.Errorf("expected updated=2, got %d", updated)
+	}
+
+	results, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "cat")
+	if len(results) != 2 {
+		t.Errorf("expected 2 events labeled cat, got %d", len(results))
+	}
+
+	// clear labels
+	cleared, err := db.BulkUpdateMotionEventLabels(database, ids, "")
+	if err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if cleared != 2 {
+		t.Errorf("expected cleared=2, got %d", cleared)
+	}
+	results, _, _ = db.PageMotionEvents(database, "cam1", 0, 10, true, "")
+	if len(results) != 3 {
+		t.Errorf("expected all 3 to be unlabeled, got %d", len(results))
+	}
+}
+
+func TestBulkUpdateMotionEventLabels_EmptyIDsReturnsZero(t *testing.T) {
+	database := openTestDB(t)
+	updated, err := db.BulkUpdateMotionEventLabels(database, nil, "cat")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if updated != 0 {
+		t.Errorf("expected updated=0, got %d", updated)
+	}
+}

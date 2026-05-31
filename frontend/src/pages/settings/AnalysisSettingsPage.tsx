@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import SettingsLayout from '../../components/SettingsLayout'
 import BboxCanvas, { type BboxRect } from '../../components/BboxCanvas'
+import ConfirmDialog from '../../components/ConfirmDialog'
 import { useSettings, type CameraSettings } from '../../hooks/useSettings'
 import { authHeaders, getToken } from '../../auth'
 
@@ -56,7 +57,78 @@ export default function AnalysisSettingsPage() {
   const [labelInputs, setLabelInputs] = useState<Record<number, string>>({})
   const [labelSaveState, setLabelSaveState] = useState<Record<number, 'saved' | 'error'>>({})
   const [zoomEvent, setZoomEvent] = useState<{ src: string; id: number } | null>(null)
+  const [labelRefreshTick, setLabelRefreshTick] = useState(0)
   const labelLoading = labelCamID !== '' && labelEvents === null
+
+  // bulk selection state
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [bulkLabel, setBulkLabel] = useState('')
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkConfirm, setBulkConfirm] = useState<null | { action: 'delete' | 'label'; label?: string }>(null)
+  const [bulkError, setBulkError] = useState('')
+
+  function toggleSelect(id: number) {
+    setSelected(s => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id); else n.add(id)
+      return n
+    })
+  }
+  function selectAllOnPage() {
+    setSelected(new Set((labelEvents ?? []).map(e => e.id)))
+  }
+  function clearSelection() {
+    setSelected(new Set())
+    setBulkLabel('')
+    setBulkError('')
+  }
+  async function executeBulkDelete() {
+    const ids = Array.from(selected)
+    setBulkBusy(true)
+    setBulkError('')
+    try {
+      const r = await fetch('/api/events/bulk', {
+        method: 'DELETE',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      if (!r.ok) { setBulkError('Erro ao excluir'); return }
+      clearSelection()
+      setBulkConfirm(null)
+      // refresh page; back off if it became empty
+      const newTotal = labelTotal - ids.length
+      const lastPage = Math.max(1, Math.ceil(newTotal / LIMIT))
+      if (labelPage > lastPage) {
+        setLabelPage(lastPage)
+      }
+      setLabelEvents(null)
+      setLabelRefreshTick(t => t + 1)
+      refreshCounts()
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+  async function executeBulkLabel() {
+    const ids = Array.from(selected)
+    const label = bulkLabel
+    setBulkBusy(true)
+    setBulkError('')
+    try {
+      const r = await fetch('/api/events/bulk/label', {
+        method: 'PATCH',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, label }),
+      })
+      if (!r.ok) { setBulkError('Erro ao aplicar label'); return }
+      clearSelection()
+      setBulkConfirm(null)
+      setLabelEvents(null)
+      setLabelRefreshTick(t => t + 1)
+      refreshCounts()
+    } finally {
+      setBulkBusy(false)
+    }
+  }
 
   // bbox drawing state for zoom modal
   const [annBox, setAnnBox] = useState<BboxRect | null>(null)
@@ -222,7 +294,7 @@ export default function AnalysisSettingsPage() {
       })
       .catch(err => { if (err.name !== 'AbortError') setLabelEvents([]) })
     return () => controller.abort()
-  }, [labelCamID, unlabeledOnly, labelSearch, labelPage])
+  }, [labelCamID, unlabeledOnly, labelSearch, labelPage, labelRefreshTick])
 
   function handleLabelBlur(eventId: number) {
     const label = labelInputs[eventId] ?? ''
@@ -497,7 +569,7 @@ export default function AnalysisSettingsPage() {
               <select
                 className="bg-gray-700 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500"
                 value={labelCamID}
-                onChange={e => { setLabelCamID(e.target.value); setLabelPage(1); setLabelEvents(null) }}
+                onChange={e => { setLabelCamID(e.target.value); setLabelPage(1); setLabelEvents(null); clearSelection() }}
               >
                 <option value="">Selecionar câmera…</option>
                 {cameras.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -506,7 +578,7 @@ export default function AnalysisSettingsPage() {
                 type="text"
                 placeholder="Buscar label…"
                 value={labelSearch}
-                onChange={e => { setLabelSearch(e.target.value); setLabelPage(1); setLabelEvents(null) }}
+                onChange={e => { setLabelSearch(e.target.value); setLabelPage(1); setLabelEvents(null); clearSelection() }}
                 className="bg-gray-700 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500 w-40"
               />
               <label className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${labelSearch ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400'}`}>
@@ -515,7 +587,7 @@ export default function AnalysisSettingsPage() {
                   className="accent-blue-500"
                   checked={unlabeledOnly && !labelSearch}
                   disabled={!!labelSearch}
-                  onChange={e => { setUnlabeledOnly(e.target.checked); setLabelPage(1); setLabelEvents(null) }}
+                  onChange={e => { setUnlabeledOnly(e.target.checked); setLabelPage(1); setLabelEvents(null); clearSelection() }}
                 />
                 Sem label
               </label>
@@ -533,51 +605,110 @@ export default function AnalysisSettingsPage() {
                 </div>
               )}
               {!labelLoading && (labelEvents?.length ?? 0) > 0 && (
-                <ul className="divide-y divide-gray-700">
-                  {labelEvents!.map(ev => {
-                    const state = labelSaveState[ev.id]
-                    const borderCls = state === 'saved'
-                      ? 'border-green-500'
-                      : state === 'error'
-                      ? 'border-red-500'
-                      : 'border-gray-600'
-                    return (
-                      <li key={ev.id} className="flex items-center gap-3 px-4 py-2">
-                        {ev.frame ? (
-                          <button
-                            type="button"
-                            onClick={() => openZoomModal(frameURL(labelCamID, ev.time, ev.frame!), ev.id)}
-                            className="flex-shrink-0 rounded overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 hover:opacity-80 transition-opacity"
-                          >
-                            <img
-                              src={frameURL(labelCamID, ev.time, ev.frame)}
-                              className="w-40 h-24 object-cover bg-gray-900"
-                              alt=""
-                            />
-                          </button>
-                        ) : (
-                          <div className="w-40 h-24 rounded bg-gray-900 flex-shrink-0 flex items-center justify-center text-gray-600 text-xs">
-                            sem frame
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-gray-500 mb-1">
-                            {new Date(ev.time).toLocaleString()}
-                            <span className="ml-2 text-gray-600">score: {ev.score.toFixed(2)}</span>
-                          </p>
+                <>
+                  <div className="flex items-center gap-3 px-4 py-2 bg-gray-900/40 border-b border-gray-700 text-xs text-gray-400">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="accent-blue-500"
+                        checked={(labelEvents?.length ?? 0) > 0 && labelEvents!.every(e => selected.has(e.id))}
+                        onChange={e => e.target.checked ? selectAllOnPage() : clearSelection()}
+                      />
+                      Selecionar todos da página
+                    </label>
+                    {selected.size > 0 && (
+                      <span className="text-blue-400">{selected.size} selecionado{selected.size !== 1 ? 's' : ''}</span>
+                    )}
+                  </div>
+                  {selected.size > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 px-4 py-2 bg-blue-900/20 border-b border-blue-700/40 sticky top-0 z-10">
+                      <input
+                        type="text"
+                        placeholder="label para aplicar em lote…"
+                        value={bulkLabel}
+                        onChange={e => setBulkLabel(e.target.value)}
+                        className="flex-1 min-w-[10rem] bg-gray-800 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500"
+                      />
+                      <button
+                        type="button"
+                        disabled={bulkBusy}
+                        onClick={() => setBulkConfirm({ action: 'label', label: bulkLabel })}
+                        className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-40"
+                      >
+                        Aplicar label
+                      </button>
+                      <button
+                        type="button"
+                        disabled={bulkBusy}
+                        onClick={() => setBulkConfirm({ action: 'delete' })}
+                        className="px-3 py-1 text-xs bg-red-600 hover:bg-red-500 text-white rounded disabled:opacity-40"
+                      >
+                        Excluir
+                      </button>
+                      <button
+                        type="button"
+                        disabled={bulkBusy}
+                        onClick={clearSelection}
+                        className="px-3 py-1 text-xs text-gray-400 hover:text-white border border-gray-600 rounded disabled:opacity-40"
+                      >
+                        Limpar
+                      </button>
+                      {bulkError && <span className="text-xs text-red-400">{bulkError}</span>}
+                    </div>
+                  )}
+                  <ul className="divide-y divide-gray-700">
+                    {labelEvents!.map(ev => {
+                      const state = labelSaveState[ev.id]
+                      const borderCls = state === 'saved'
+                        ? 'border-green-500'
+                        : state === 'error'
+                        ? 'border-red-500'
+                        : 'border-gray-600'
+                      const isSelected = selected.has(ev.id)
+                      return (
+                        <li key={ev.id} className={`flex items-center gap-3 px-4 py-2 ${isSelected ? 'bg-blue-900/10' : ''}`}>
                           <input
-                            type="text"
-                            placeholder="label…"
-                            value={labelInputs[ev.id] ?? ''}
-                            onChange={e => setLabelInputs(s => ({ ...s, [ev.id]: e.target.value }))}
-                            onBlur={() => handleLabelBlur(ev.id)}
-                            className={`w-full bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border ${borderCls} focus:outline-none focus:border-blue-500 transition-colors`}
+                            type="checkbox"
+                            className="accent-blue-500 flex-shrink-0"
+                            checked={isSelected}
+                            onChange={() => toggleSelect(ev.id)}
                           />
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
+                          {ev.frame ? (
+                            <button
+                              type="button"
+                              onClick={() => openZoomModal(frameURL(labelCamID, ev.time, ev.frame!), ev.id)}
+                              className="flex-shrink-0 rounded overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 hover:opacity-80 transition-opacity"
+                            >
+                              <img
+                                src={frameURL(labelCamID, ev.time, ev.frame)}
+                                className="w-40 h-24 object-cover bg-gray-900"
+                                alt=""
+                              />
+                            </button>
+                          ) : (
+                            <div className="w-40 h-24 rounded bg-gray-900 flex-shrink-0 flex items-center justify-center text-gray-600 text-xs">
+                              sem frame
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-gray-500 mb-1">
+                              {new Date(ev.time).toLocaleString()}
+                              <span className="ml-2 text-gray-600">score: {ev.score.toFixed(2)}</span>
+                            </p>
+                            <input
+                              type="text"
+                              placeholder="label…"
+                              value={labelInputs[ev.id] ?? ''}
+                              onChange={e => setLabelInputs(s => ({ ...s, [ev.id]: e.target.value }))}
+                              onBlur={() => handleLabelBlur(ev.id)}
+                              className={`w-full bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border ${borderCls} focus:outline-none focus:border-blue-500 transition-colors`}
+                            />
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </>
               )}
 
               {labelTotal > LIMIT && (
@@ -585,14 +716,14 @@ export default function AnalysisSettingsPage() {
                   <span className="text-xs text-gray-500">{labelTotal} eventos · página {labelPage} de {Math.ceil(labelTotal / LIMIT)}</span>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => { setLabelPage(p => Math.max(1, p - 1)); setLabelEvents(null) }}
+                      onClick={() => { setLabelPage(p => Math.max(1, p - 1)); setLabelEvents(null); clearSelection() }}
                       disabled={labelPage === 1}
                       className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       ← anterior
                     </button>
                     <button
-                      onClick={() => { setLabelPage(p => p + 1); setLabelEvents(null) }}
+                      onClick={() => { setLabelPage(p => p + 1); setLabelEvents(null); clearSelection() }}
                       disabled={labelPage >= Math.ceil(labelTotal / LIMIT)}
                       className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded disabled:opacity-40 disabled:cursor-not-allowed"
                     >
@@ -675,6 +806,28 @@ export default function AnalysisSettingsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={bulkConfirm?.action === 'delete'}
+        title="Excluir eventos"
+        message={`Excluir ${selected.size} evento${selected.size !== 1 ? 's' : ''}? Esta ação não pode ser desfeita.`}
+        confirmLabel={bulkBusy ? 'Excluindo…' : 'Excluir'}
+        danger
+        onConfirm={executeBulkDelete}
+        onCancel={() => { if (!bulkBusy) setBulkConfirm(null) }}
+      />
+      <ConfirmDialog
+        open={bulkConfirm?.action === 'label'}
+        title={bulkLabel ? 'Aplicar label' : 'Remover label'}
+        message={
+          bulkLabel
+            ? `Aplicar label "${bulkLabel}" em ${selected.size} evento${selected.size !== 1 ? 's' : ''}?`
+            : `Remover label de ${selected.size} evento${selected.size !== 1 ? 's' : ''}?`
+        }
+        confirmLabel={bulkBusy ? 'Aplicando…' : 'Aplicar'}
+        onConfirm={executeBulkLabel}
+        onCancel={() => { if (!bulkBusy) setBulkConfirm(null) }}
+      />
     </SettingsLayout>
   )
 }
