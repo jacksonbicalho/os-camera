@@ -22,6 +22,12 @@ const bboxPixelThreshold = 25
 // bordas do objeto têm diff de ~15–20 unidades.
 const zoneBboxPixelThreshold = 12
 
+// minBBoxDensity é a fração mínima de pixels acima do threshold dentro do bbox
+// para considerá-lo válido. Filtra o caso em que pixels esparsos espalhados pelo
+// frame (ruído de IR/JPEG/iluminação em texturas) inflam o bbox via min/max
+// ingênuo. Objeto real tem densidade ≥ 5–25% no bbox; ruído esparso fica < 1%.
+const minBBoxDensity = 0.03
+
 // computeBBox retorna o bounding box normalizado (0.0–1.0) da região com maior
 // diferença entre os frames. Pixels mascarados pelas zones são ignorados.
 // Retorna (bbox, true) quando pixels acima do threshold foram encontrados,
@@ -29,6 +35,7 @@ const zoneBboxPixelThreshold = 12
 func computeBBox(prev, cur []byte, w, h int, zs []zones.Zone) (BBox, bool) {
 	minX, minY := w, h
 	maxX, maxY := -1, -1
+	diffCount := 0
 	for i := range prev {
 		px := i % w
 		py := i / w
@@ -40,6 +47,7 @@ func computeBBox(prev, cur []byte, w, h int, zs []zones.Zone) (BBox, bool) {
 			d = -d
 		}
 		if d >= bboxPixelThreshold {
+			diffCount++
 			if px < minX {
 				minX = px
 			}
@@ -57,12 +65,17 @@ func computeBBox(prev, cur []byte, w, h int, zs []zones.Zone) (BBox, bool) {
 	if maxX < 0 {
 		return BBox{0, 0, 1, 1}, false
 	}
+	bw := maxX - minX + 1
+	bh := maxY - minY + 1
+	if float64(diffCount)/float64(bw*bh) < minBBoxDensity {
+		return BBox{0, 0, 1, 1}, false
+	}
 	fw, fh := float64(w), float64(h)
 	return BBox{
 		X: float64(minX) / fw,
 		Y: float64(minY) / fh,
-		W: float64(maxX-minX+1) / fw,
-		H: float64(maxY-minY+1) / fh,
+		W: float64(bw) / fw,
+		H: float64(bh) / fh,
 	}, true
 }
 
@@ -78,6 +91,7 @@ func computeBBoxInZone(prev, cur []byte, w, h int, dz zones.Zone) (BBox, bool) {
 
 	minX, minY := w, h
 	maxX, maxY := -1, -1
+	diffCount := 0
 	for y := y0z; y < y1z; y++ {
 		for x := x0z; x < x1z; x++ {
 			i := y*w + x
@@ -86,6 +100,7 @@ func computeBBoxInZone(prev, cur []byte, w, h int, dz zones.Zone) (BBox, bool) {
 				d = -d
 			}
 			if d >= zoneBboxPixelThreshold {
+				diffCount++
 				if x < minX {
 					minX = x
 				}
@@ -104,12 +119,17 @@ func computeBBoxInZone(prev, cur []byte, w, h int, dz zones.Zone) (BBox, bool) {
 	if maxX < 0 {
 		return BBox{dz.X, dz.Y, dz.W, dz.H}, false
 	}
+	bw := maxX - minX + 1
+	bh := maxY - minY + 1
+	if float64(diffCount)/float64(bw*bh) < minBBoxDensity {
+		return BBox{dz.X, dz.Y, dz.W, dz.H}, false
+	}
 	fw, fh := float64(w), float64(h)
 	return BBox{
 		X: float64(minX) / fw,
 		Y: float64(minY) / fh,
-		W: float64(maxX-minX+1) / fw,
-		H: float64(maxY-minY+1) / fh,
+		W: float64(bw) / fw,
+		H: float64(bh) / fh,
 	}, true
 }
 
