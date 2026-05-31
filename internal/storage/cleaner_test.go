@@ -597,6 +597,36 @@ func TestSyncRecordings_UpdatesEndedAtWhenSuccessorAppears(t *testing.T) {
 	}
 }
 
+// Quando um chunk começa no fim de um dia UTC e o sucessor cai no dia
+// seguinte (pastas YYYY/MM/DD diferentes), o syncRecordings ainda precisa
+// linkar os dois — usa cameraID, não diretório, pra agrupar.
+func TestSyncRecordings_LinksChunksAcrossMidnight(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCamera(t, database, "cam1")
+
+	// 23:58:00 UTC do dia 2026-05-30
+	beforeMidnight := time.Date(2026, 5, 30, 23, 58, 0, 0, time.UTC)
+	// 00:03:00 UTC do dia 2026-05-31
+	afterMidnight := time.Date(2026, 5, 31, 0, 3, 0, 0, time.UTC)
+
+	pathA := mp4WithTimestamp(dir, "cam1", beforeMidnight)
+	pathB := mp4WithTimestamp(dir, "cam1", afterMidnight)
+	writeFile(t, pathA, beforeMidnight)
+	writeFile(t, pathB, afterMidnight)
+
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	got := queryEndedAt(t, database, pathA)
+	if !got.Valid {
+		t.Fatal("ended_at de pathA continua NULL: syncRecordings não linkou chunks que cruzam meia-noite UTC")
+	}
+	want := afterMidnight.Format(time.RFC3339)
+	if got.String != want {
+		t.Errorf("ended_at de pathA = %s, want %s", got.String, want)
+	}
+}
+
 // createTestCameraWithMotion cria câmera com lead e trail configurados.
 func createTestCameraWithMotion(t *testing.T, database *db.DB, id string, lead, trail int) {
 	t.Helper()

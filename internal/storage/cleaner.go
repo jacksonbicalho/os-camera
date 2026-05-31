@@ -158,53 +158,53 @@ func RemoveEventsInRange(ndjsonPath string, start, end time.Time) error {
 }
 
 func (c *Cleaner) syncRecordings() {
-	// Collect MP4 files grouped by directory so we can determine each chunk's
-	// real end time from the next file's start time.
-	byDir := map[string][]string{}
+	// Collect MP4 files grouped by cameraID (not by directory) so the
+	// successor lookup crosses day-folder boundaries — a chunk that starts
+	// at 23:58 needs to be linked to the next one that may live in the
+	// following day's folder.
+	byCamera := map[string][]string{}
 	filepath.WalkDir(c.storagePath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || filepath.Ext(path) != ".mp4" {
 			return nil
 		}
-		dir := filepath.Dir(path)
-		byDir[dir] = append(byDir[dir], filepath.Base(path))
+		rel, err := filepath.Rel(c.storagePath, path)
+		if err != nil {
+			return nil
+		}
+		parts := strings.SplitN(rel, string(filepath.Separator), 2)
+		if len(parts) < 1 || parts[0] == "" {
+			return nil
+		}
+		byCamera[parts[0]] = append(byCamera[parts[0]], path)
 		return nil
 	})
 
-	for dir, files := range byDir {
+	for cameraID, files := range byCamera {
+		// Full paths are lexicographically ordered because the directory
+		// layout encodes the timestamp: {camera}/YYYY/MM/DD/HHMMSS.mp4.
 		sort.Strings(files)
 
-		for i, name := range files {
+		for i, fullPath := range files {
+			name := filepath.Base(fullPath)
 			chunkStart, err := ChunkStartFromName(name)
 			if err != nil {
 				continue
 			}
 
-			// Use next file's start as chunkEnd; fall back to configured duration
-			// for the last file in the directory.
+			// Use next file's start as chunkEnd; the last file in the camera's
+			// sorted list keeps chunkEnd zero (open recording).
 			var chunkEnd time.Time
 			if i+1 < len(files) {
-				next, err := ChunkStartFromName(files[i+1])
+				next, err := ChunkStartFromName(filepath.Base(files[i+1]))
 				if err == nil {
 					chunkEnd = next
 				}
 			}
 
-			fullPath := filepath.Join(dir, name)
 			info, err := os.Stat(fullPath)
 			if err != nil {
 				continue
 			}
-
-			// Extract cameraID: first path component relative to storagePath.
-			rel, err := filepath.Rel(c.storagePath, fullPath)
-			if err != nil {
-				continue
-			}
-			parts := strings.SplitN(rel, string(filepath.Separator), 2)
-			if len(parts) == 0 {
-				continue
-			}
-			cameraID := parts[0]
 
 			// A segment with a known successor must have been closed by ffmpeg.
 			// If the moov atom is absent the file is corrupt (ffmpeg was killed

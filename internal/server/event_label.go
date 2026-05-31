@@ -3,10 +3,14 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"camera/internal/db"
 )
+
+const bulkEventMaxIDs = 500
 
 func (s *Server) handleUpdateEventLabel(w http.ResponseWriter, r *http.Request) {
 	if !s.requireDB(w) {
@@ -83,4 +87,77 @@ func (s *Server) handlePageEvents(w http.ResponseWriter, r *http.Request) {
 		"events": items,
 		"total":  total,
 	})
+}
+
+func (s *Server) handleBulkDeleteEvents(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
+	var body struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if len(body.IDs) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"deleted": 0})
+		return
+	}
+	if len(body.IDs) > bulkEventMaxIDs {
+		http.Error(w, "too many ids", http.StatusBadRequest)
+		return
+	}
+	deleted, snaps, err := db.BulkDeleteMotionEvents(s.db, body.IDs)
+	if err != nil {
+		s.log.Error("bulk delete events", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if s.storageCfg.Path != "" {
+		for _, ev := range snaps {
+			if ev.FramePath == "" {
+				continue
+			}
+			day := ev.OccurredAt.UTC().Format("2006/01/02")
+			p := filepath.Join(s.storageCfg.Path, ev.CameraID, filepath.FromSlash(day), ev.FramePath)
+			if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+				s.log.Warn("delete motion jpeg", "path", p, "err", err)
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"deleted": deleted})
+}
+
+func (s *Server) handleBulkUpdateEventLabels(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
+	var body struct {
+		IDs   []int64 `json:"ids"`
+		Label string  `json:"label"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if len(body.IDs) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"updated": 0})
+		return
+	}
+	if len(body.IDs) > bulkEventMaxIDs {
+		http.Error(w, "too many ids", http.StatusBadRequest)
+		return
+	}
+	updated, err := db.BulkUpdateMotionEventLabels(s.db, body.IDs, body.Label)
+	if err != nil {
+		s.log.Error("bulk update labels", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"updated": updated})
 }
