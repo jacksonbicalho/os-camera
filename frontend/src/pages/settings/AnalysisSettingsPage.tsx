@@ -67,6 +67,10 @@ export default function AnalysisSettingsPage() {
   const [bulkConfirm, setBulkConfirm] = useState<null | { action: 'delete' | 'label'; label?: string }>(null)
   const [bulkError, setBulkError] = useState('')
 
+  // per-row inline delete state
+  const [rowDeleteConfirm, setRowDeleteConfirm] = useState<EventItem | null>(null)
+  const [rowDeleteBusy, setRowDeleteBusy] = useState(false)
+
   function toggleSelect(id: number) {
     setSelected(s => {
       const n = new Set(s)
@@ -106,6 +110,30 @@ export default function AnalysisSettingsPage() {
       refreshCounts()
     } finally {
       setBulkBusy(false)
+    }
+  }
+  async function executeRowDelete() {
+    if (!rowDeleteConfirm) return
+    const id = rowDeleteConfirm.id
+    setRowDeleteBusy(true)
+    try {
+      const r = await fetch('/api/events/bulk', {
+        method: 'DELETE',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [id] }),
+      })
+      if (!r.ok) return
+      setRowDeleteConfirm(null)
+      const newTotal = labelTotal - 1
+      const lastPage = Math.max(1, Math.ceil(newTotal / LIMIT))
+      if (labelPage > lastPage) {
+        setLabelPage(lastPage)
+      }
+      setLabelEvents(null)
+      setLabelRefreshTick(t => t + 1)
+      refreshCounts()
+    } finally {
+      setRowDeleteBusy(false)
     }
   }
   async function executeBulkLabel() {
@@ -704,6 +732,16 @@ export default function AnalysisSettingsPage() {
                               className={`w-full bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border ${borderCls} focus:outline-none focus:border-blue-500 transition-colors`}
                             />
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => setRowDeleteConfirm(ev)}
+                            title="Excluir este evento"
+                            className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
+                            </svg>
+                          </button>
                         </li>
                       )
                     })}
@@ -815,6 +853,19 @@ export default function AnalysisSettingsPage() {
         danger
         onConfirm={executeBulkDelete}
         onCancel={() => { if (!bulkBusy) setBulkConfirm(null) }}
+      />
+      <ConfirmDialog
+        open={!!rowDeleteConfirm}
+        title="Excluir evento"
+        message={
+          rowDeleteConfirm
+            ? `Excluir o evento de ${new Date(rowDeleteConfirm.time).toLocaleString()}? Esta ação não pode ser desfeita.`
+            : ''
+        }
+        confirmLabel={rowDeleteBusy ? 'Excluindo…' : 'Excluir'}
+        danger
+        onConfirm={executeRowDelete}
+        onCancel={() => { if (!rowDeleteBusy) setRowDeleteConfirm(null) }}
       />
       <ConfirmDialog
         open={bulkConfirm?.action === 'label'}
