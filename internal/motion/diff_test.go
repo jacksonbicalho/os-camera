@@ -415,6 +415,61 @@ func TestComputeBBoxIgnoresMaskedPixels(t *testing.T) {
 	}
 }
 
+// --- density filtering (anti-sparse-noise) ---
+
+// 16×16 frame with diff at 4 corner pixels only. Without density filtering the
+// bbox spans the entire frame; the density check should reject it as noise.
+func TestComputeBBoxRejectsSparseNoise(t *testing.T) {
+	a := make([]byte, 256)
+	b := make([]byte, 256)
+	b[0] = 200          // (0,0)
+	b[15] = 200         // (15,0)
+	b[15*16] = 200      // (0,15)
+	b[15*16+15] = 200   // (15,15)
+	got, found := computeBBox(a, b, 16, 16, nil)
+	if found {
+		t.Errorf("expected found=false for sparse corner noise, got bbox %+v", got)
+	}
+}
+
+// 16×16 frame with 4×4 dense cluster in center. Density inside bbox is 100% so
+// the bbox is preserved with correct dimensions.
+func TestComputeBBoxKeepsDenseCluster(t *testing.T) {
+	a := make([]byte, 256)
+	b := make([]byte, 256)
+	for y := 6; y < 10; y++ {
+		for x := 6; x < 10; x++ {
+			b[y*16+x] = 200
+		}
+	}
+	got, found := computeBBox(a, b, 16, 16, nil)
+	if !found {
+		t.Fatal("expected found=true for dense 4×4 cluster")
+	}
+	// bbox should hug the cluster: x=6/16=0.375, w=4/16=0.25
+	if got.X < 0.36 || got.X > 0.39 {
+		t.Errorf("expected X≈0.375, got %.3f", got.X)
+	}
+	if got.W < 0.24 || got.W > 0.26 {
+		t.Errorf("expected W≈0.25, got %.3f", got.W)
+	}
+}
+
+// Sparse noise inside a zone should also be rejected.
+func TestComputeBBoxInZoneRejectsSparseNoise(t *testing.T) {
+	a := make([]byte, 256)
+	b := make([]byte, 256)
+	b[0] = 200
+	b[15] = 200
+	b[15*16] = 200
+	b[15*16+15] = 200
+	z := zones.Zone{X: 0, Y: 0, W: 1, H: 1}
+	got, found := computeBBoxInZone(a, b, 16, 16, z)
+	if found {
+		t.Errorf("expected found=false for sparse corner noise in zone, got bbox %+v", got)
+	}
+}
+
 // --- updateBackground ---
 
 func TestUpdateBackground(t *testing.T) {
