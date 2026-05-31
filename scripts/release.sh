@@ -80,7 +80,9 @@ while IFS= read -r line; do
             # Aceita só linhas top-level com formato "<tipo>(<escopo>)?: <desc> (#NNN)"
             # Linhas internas de squash-de-squash (sem #NNN) são descartadas — elas
             # pertencem a PRs já capturados pela linha top-level correspondente.
-            if [[ "$bline" =~ ^\*[[:space:]]+([a-z]+(\([^)]+\))?:.+\(#[0-9]+\))[[:space:]]*$ ]]; then
+            # Regex em variável: bash 5.3 trava com parens aninhados inline.
+            RE_RELEASE_LINE='^\*[[:space:]]+([a-z]+(\([^)]+\))?:.+\(#[0-9]+\))[[:space:]]*$'
+            if [[ "$bline" =~ $RE_RELEASE_LINE ]]; then
                 text="${BASH_REMATCH[1]}"
                 pr="$(echo "$text" | grep -oE '#[0-9]+' | tail -1)"
                 if pr_already_released "$pr"; then

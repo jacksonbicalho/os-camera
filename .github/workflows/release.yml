@@ -113,12 +113,14 @@ jobs:
           # Expande squash commits de release: extrai linhas "* feat/fix..." do body.
           # Aceita só linhas top-level com PR (#NNN) no final — descarta lixo
           # interno de squash-de-squash.
+          # Regex em variável: bash 5.3 trava com parens aninhados inline.
+          RE_RELEASE_LINE='^\*[[:space:]]+([a-z]+(\([^)]+\))?:.+\(#[0-9]+\))[[:space:]]*$'
           LOG=""
           while IFS="|" read -r hash msg; do
             [[ -z "$hash" ]] && continue
             if [[ "$msg" =~ ^release: ]]; then
               while IFS= read -r bline; do
-                if [[ "$bline" =~ ^\*[[:space:]]+([a-z]+(\([^)]+\))?:.+\(#[0-9]+\))[[:space:]]*$ ]]; then
+                if [[ "$bline" =~ $RE_RELEASE_LINE ]]; then
                   text="${BASH_REMATCH[1]}"
                   pr=$(echo "$text" | grep -oE '#[0-9]+' | tail -1)
                   if [[ -n "$pr" && -n "$PREV_PRS" ]] && echo "$PREV_PRS" | grep -qx "$pr"; then
