@@ -55,6 +55,21 @@ RANGE="${LAST_TAG:+${LAST_TAG}..}HEAD"
 # Commits squash de release têm subject "release: vX.Y.Z (#N)" e carregam no
 # body todas as linhas "* feat(...):" / "* fix(...):" dos PRs individuais.
 # Expandimos essas linhas para que bump detection e changelog fiquem corretos.
+#
+# Develop preserva os commits originais dos PRs; quando GitHub faz squash de
+# develop → master, a body do squash inclui PRs que já saíram em releases
+# anteriores. Extraímos os PRs já presentes em LAST_TAG e filtramos pra
+# manter só os novos.
+PREV_PRS=""
+if [[ -n "$LAST_TAG" ]]; then
+    PREV_PRS="$(git show "$LAST_TAG^{commit}" --format="%B" -s 2>/dev/null | grep -oE '#[0-9]+' | sort -u)"
+fi
+pr_already_released() {
+    local pr="$1"
+    [[ -z "$pr" || -z "$PREV_PRS" ]] && return 1
+    echo "$PREV_PRS" | grep -qx "$pr"
+}
+
 COMMITS=""
 while IFS= read -r line; do
     [[ -z "$line" ]] && continue
@@ -62,8 +77,16 @@ while IFS= read -r line; do
     subject="${line#* }"
     if [[ "$subject" =~ ^release: ]]; then
         while IFS= read -r bline; do
-            if [[ "$bline" =~ ^\*[[:space:]]+([a-z][^[:space:]].+) ]]; then
-                COMMITS+="$hash ${BASH_REMATCH[1]}"$'\n'
+            # Aceita só linhas top-level com formato "<tipo>(<escopo>)?: <desc> (#NNN)"
+            # Linhas internas de squash-de-squash (sem #NNN) são descartadas — elas
+            # pertencem a PRs já capturados pela linha top-level correspondente.
+            if [[ "$bline" =~ ^\*[[:space:]]+([a-z]+(\([^)]+\))?:.+\(#[0-9]+\))[[:space:]]*$ ]]; then
+                text="${BASH_REMATCH[1]}"
+                pr="$(echo "$text" | grep -oE '#[0-9]+' | tail -1)"
+                if pr_already_released "$pr"; then
+                    continue
+                fi
+                COMMITS+="$hash $text"$'\n'
             fi
         done < <(git show "$hash" --format="%b" -s)
     else

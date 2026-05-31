@@ -102,14 +102,29 @@ jobs:
             RAW_LOG=$(git log --pretty=format:"%H|%s" --no-merges)
           fi
 
-          # Expande squash commits de release: extrai linhas "* feat/fix..." do body
+          # Develop preserva commits originais; o squash de develop → master
+          # inclui PRs que já saíram em releases anteriores. Extrai PRs já
+          # publicados em PREV_TAG e filtra pra manter só os novos.
+          PREV_PRS=""
+          if [[ -n "$PREV_TAG" ]]; then
+            PREV_PRS=$(git show "$PREV_TAG^{commit}" --format="%B" -s 2>/dev/null | grep -oE '#[0-9]+' | sort -u)
+          fi
+
+          # Expande squash commits de release: extrai linhas "* feat/fix..." do body.
+          # Aceita só linhas top-level com PR (#NNN) no final — descarta lixo
+          # interno de squash-de-squash.
           LOG=""
           while IFS="|" read -r hash msg; do
             [[ -z "$hash" ]] && continue
             if [[ "$msg" =~ ^release: ]]; then
               while IFS= read -r bline; do
-                if [[ "$bline" =~ ^\*[[:space:]]+([a-z][^[:space:]].+) ]]; then
-                  LOG+="$hash|${BASH_REMATCH[1]}"$'\n'
+                if [[ "$bline" =~ ^\*[[:space:]]+([a-z]+(\([^)]+\))?:.+\(#[0-9]+\))[[:space:]]*$ ]]; then
+                  text="${BASH_REMATCH[1]}"
+                  pr=$(echo "$text" | grep -oE '#[0-9]+' | tail -1)
+                  if [[ -n "$pr" && -n "$PREV_PRS" ]] && echo "$PREV_PRS" | grep -qx "$pr"; then
+                    continue
+                  fi
+                  LOG+="$hash|$text"$'\n'
                 fi
               done < <(git show "$hash" --format="%b" -s)
             else
