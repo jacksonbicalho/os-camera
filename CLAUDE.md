@@ -235,9 +235,21 @@ Ao iniciar uma nova história:
 - Ao concluir a implementação, adicionar uma seção `## Revisão` no arquivo com checklist do que foi feito.
 - **Só proceder com PR após o navigator aprovar marcando `[x] Aprovado` na seção Revisão.**
 
+### Slash commands
+
+O fluxo abaixo é automatizado pelos slash commands em `.claude/commands/`:
+
+| Comando | O que faz |
+|---|---|
+| `/story <tipo>(<escopo>): <descrição>` | Cria story file + branch a partir de develop (passo 1 do fluxo). |
+| `/release-pr [vX.Y.Z]` | Valida release file e abre PR develop → master (após todas as histórias `[✓]`). |
+| `/release-tag` | Roda `./scripts/release.sh` em master após o PR de release ser mergeado. |
+
+Use os commands em vez de executar os passos manualmente — eles validam pré-condições e evitam erros (branch errada, working tree suja, status incompleto).
+
 ### Fluxo por história
 
-> ⚠️ **OBRIGATÓRIO:** Antes de escrever qualquer linha de código ou teste, o driver DEVE criar o arquivo de história E abrir a branch. Sem exceção — nem para bugs simples, nem para "pequenas correções".
+> ⚠️ **OBRIGATÓRIO:** Antes de escrever qualquer linha de código ou teste, o driver DEVE criar o arquivo de história E abrir a branch (use `/story`). Sem exceção — nem para bugs simples, nem para "pequenas correções".
 
 1. Criar `stories/YYYYMMDDHHmm_<descricao>.md` e abrir uma branch a partir de `develop`: `git checkout -b <tipo>/<descricao-curta> develop`. Se a história cobrir mais de um assunto independente, questionar o navigator antes de continuar — histórias devem ser pequenas e focadas.
 2. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.

@@ -44,7 +44,12 @@ if [[ -n "$(git status --porcelain | grep -v '^??')" ]]; then
 fi
 
 # ── commits desde a última tag ────────────────────────────────────────────────
-LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
+# Fetch tags explicitamente — git fetch origin master não traz tags por padrão
+# e tags locais ausentes fazem o describe abaixo retornar uma tag antiga.
+git fetch origin --tags --force --quiet
+# Ordena por versão semântica (v0.10 > v0.2) em vez de cronologia/topologia do
+# grafo, que pode pular tags em squash merges sequenciais.
+LAST_TAG="$(git tag --list 'v*' --sort=-version:refname | head -1)"
 RANGE="${LAST_TAG:+${LAST_TAG}..}HEAD"
 
 # Commits squash de release têm subject "release: vX.Y.Z (#N)" e carregam no
