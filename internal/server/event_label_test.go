@@ -245,3 +245,124 @@ func TestPageEvents_RequiresAuth(t *testing.T) {
 }
 
 func itoa(n int64) string { return fmt.Sprintf("%d", n) }
+
+func setupBulkTest(t *testing.T) (*server.Server, *db.DB, string, []int64) {
+	t.Helper()
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: "cam1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		_ = db.InsertMotionEvent(database, db.MotionEvent{
+			CameraID:   "cam1",
+			OccurredAt: base.Add(time.Duration(i) * time.Second),
+			Score:      0.5,
+		})
+	}
+	events, _ := db.ListMotionEvents(database, "cam1", base, base.Add(time.Hour))
+	ids := []int64{}
+	for _, ev := range events {
+		ids = append(ids, ev.ID)
+	}
+	cfg := config.ServerConfig{}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "master", "secret")
+	return srv, database, token, ids
+}
+
+func TestBulkDeleteEvents_DeletesRows(t *testing.T) {
+	srv, database, token, ids := setupBulkTest(t)
+	body := fmt.Sprintf(`{"ids":[%d,%d]}`, ids[0], ids[1])
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/events/bulk", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct{ Deleted int64 }
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Deleted != 2 {
+		t.Errorf("expected deleted=2, got %d", resp.Deleted)
+	}
+	n, _ := db.CountMotionEvents(database, "cam1")
+	if n != 1 {
+		t.Errorf("expected 1 remaining, got %d", n)
+	}
+}
+
+func TestBulkDeleteEvents_EmptyIDsReturnsZero(t *testing.T) {
+	srv, _, token, _ := setupBulkTest(t)
+	req := httptest.NewRequest(http.MethodDelete, "/api/events/bulk", strings.NewReader(`{"ids":[]}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct{ Deleted int64 }
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Deleted != 0 {
+		t.Errorf("expected 0, got %d", resp.Deleted)
+	}
+}
+
+func TestBulkDeleteEvents_RequiresAdmin(t *testing.T) {
+	cfg := config.ServerConfig{}
+	srv := server.NewServer(cfg, "UTC", nil, discardLogger(), nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/events/bulk", strings.NewReader(`{"ids":[1]}`))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestBulkUpdateEventLabels_AppliesLabel(t *testing.T) {
+	srv, database, token, ids := setupBulkTest(t)
+	body := fmt.Sprintf(`{"ids":[%d,%d],"label":"cat"}`, ids[0], ids[1])
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/events/bulk/label", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct{ Updated int64 }
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Updated != 2 {
+		t.Errorf("expected updated=2, got %d", resp.Updated)
+	}
+	ev, _ := db.GetMotionEventByID(database, ids[0])
+	if ev.Label != "cat" {
+		t.Errorf("expected label cat, got %q", ev.Label)
+	}
+}
+
+func TestBulkUpdateEventLabels_TooManyIDs(t *testing.T) {
+	srv, _, token, _ := setupBulkTest(t)
+	parts := make([]string, 501)
+	for i := range parts {
+		parts[i] = "1"
+	}
+	body := `{"ids":[` + strings.Join(parts, ",") + `],"label":"x"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/events/bulk/label", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
