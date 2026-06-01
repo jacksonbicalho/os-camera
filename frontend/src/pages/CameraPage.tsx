@@ -15,6 +15,7 @@ import { useScrollToPlayer } from '../hooks/useScrollToPlayer'
 import { useEventSource } from '../hooks/useEventSource'
 import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { mergeRecordings } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
@@ -205,19 +206,9 @@ export default function CameraPage() {
     setExistingAnnLabel('')
   }
 
-  useEffect(() => {
-    if (!snapshotEvent) return
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') closeSnapshotModal() }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [snapshotEvent])
-
-  useEffect(() => {
-    if (!showDebug) return
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setShowDebug(false) }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [showDebug])
+  useEscapeKey(closeSnapshotModal, !!snapshotEvent)
+  useEscapeKey(() => setShowDebug(false), showDebug)
+  useEscapeKey(() => setDetectionModal(null), detectionModal !== null)
 
   function openSnapshotModal(ev: MotionEvent) {
     setAnnBox(null)
