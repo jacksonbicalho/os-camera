@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
-import HLSPlayer from './HLSPlayer'
+import { createRef } from 'react'
+import HLSPlayer, { type HLSPlayerHandle } from './HLSPlayer'
 
 type HlsEventHandler = () => void
 
@@ -43,6 +44,13 @@ describe('HLSPlayer', () => {
     HTMLVideoElement.prototype.play = vi.fn().mockRejectedValue(new Error('blocked'))
     render(<HLSPlayer src="/stream/cam/index.m3u8" />)
     expect(screen.queryByRole('button', { name: /reproduzir/i })).toBeNull()
+  })
+
+  it('exposes getVideoElement via handle', () => {
+    const ref = createRef<HLSPlayerHandle>()
+    const { container } = render(<HLSPlayer src="/stream/cam/index.m3u8" ref={ref} />)
+    const video = container.querySelector('video')
+    expect(ref.current?.getVideoElement()).toBe(video)
   })
 
   it('respects muted=false prop after MANIFEST_PARSED — not hardcoded to muted', async () => {

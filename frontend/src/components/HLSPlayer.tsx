@@ -13,6 +13,7 @@ export interface HLSPlayerHandle {
   seekTo: (isoTime: string) => void
   getStats: () => HLSStats | null
   getVideoQuality: () => VideoPlaybackQuality | null
+  getVideoElement: () => HTMLVideoElement | null
 }
 
 interface HLSPlayerProps {
@@ -140,7 +141,11 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
     return videoRef.current?.getVideoPlaybackQuality?.() ?? null
   }, [])
 
-  useImperativeHandle(ref, () => ({ seekTo: handleSeekToEvent, getStats, getVideoQuality }), [handleSeekToEvent, getStats, getVideoQuality])
+  const getVideoElement = useCallback((): HTMLVideoElement | null => {
+    return videoRef.current
+  }, [])
+
+  useImperativeHandle(ref, () => ({ seekTo: handleSeekToEvent, getStats, getVideoQuality, getVideoElement }), [handleSeekToEvent, getStats, getVideoQuality, getVideoElement])
 
   useEffect(() => {
     if (!fatalError) return

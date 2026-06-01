@@ -79,6 +79,11 @@ O script lê os commits convencionais desde a última tag, determina o bump (`fe
 4. Quando todas estiverem `[x]`, o navigator diz **"pode mergear a release"** — Claude itera a lista, mergeia cada PR em `develop` em sequência e marca `[✓]`.
 5. Após todos os merges em `develop`, Claude abre um PR `develop → master` com título `release: vX.Y.Z`.
 6. Após aprovação e merge do PR de release, Claude roda `./scripts/release.sh` para gerar a tag.
+7. **Após a tag ser criada**, mergear `master` de volta em `develop` para que `git describe` retorne a versão correta no modo dev:
+   ```bash
+   git checkout develop && git fetch origin master && git merge origin/master --no-edit && git push origin develop
+   ```
+   Sem este passo, `git describe` não encontra a tag (que vive no merge commit de master) e retorna a versão anterior.
 
 **Estrutura do arquivo de release:**
 
