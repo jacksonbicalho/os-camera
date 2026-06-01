@@ -245,8 +245,8 @@ export default function AnalysisSettingsPage() {
   }
 
   async function deleteAnnotation() {
-    if (!existingAnnId) return
-    const r = await fetch(`/api/annotations/${existingAnnId}`, {
+    if (!zoomEvent) return
+    const r = await fetch(`/api/events/${zoomEvent.id}/annotations`, {
       method: 'DELETE',
       headers: authHeaders(),
     })

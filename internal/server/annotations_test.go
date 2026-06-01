@@ -133,6 +133,29 @@ func TestAnnotations_Update(t *testing.T) {
 	}
 }
 
+func TestAnnotations_DeleteAllByEvent(t *testing.T) {
+	srv, database, token := setupAnnotationsServer(t)
+	insertAnnotationTestCamera(t, database)
+	evID := insertAnnotationTestEvent(t, database)
+
+	// Insert two annotations (duplicates) for the same event
+	db.InsertAnnotation(database, db.Annotation{EventID: evID, Label: "a", BboxX: 1, BboxY: 1, BboxW: 1, BboxH: 1})
+	db.InsertAnnotation(database, db.Annotation{EventID: evID, Label: "b", BboxX: 2, BboxY: 2, BboxW: 2, BboxH: 2})
+
+	req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/events/%d/annotations", evID), nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("DELETE event annotations: got %d", rr.Code)
+	}
+
+	list, _ := db.ListAnnotationsByEvent(database, evID)
+	if len(list) != 0 {
+		t.Errorf("expected 0 annotations after delete-all, got %d", len(list))
+	}
+}
+
 func TestAnnotations_RequiresAuth(t *testing.T) {
 	srv, database, _ := setupAnnotationsServer(t)
 	insertAnnotationTestCamera(t, database)
