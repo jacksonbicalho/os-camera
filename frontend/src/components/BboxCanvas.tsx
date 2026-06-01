@@ -32,6 +32,8 @@ const CORNER_CURSORS = ['nw-resize', 'ne-resize', 'se-resize', 'sw-resize']
 const HANDLE_R = 6
 const ROT_R = 8
 const ROT_OFFSET = 26
+const DEL_R = 9
+const DEL_OFFSET = DEL_R + 2
 
 function cornerWorld(b: BboxRect, c: number, cw: number, ch: number): [number, number] {
   const [cx, cy] = boxCenter(b, cw, ch)
@@ -51,6 +53,36 @@ function rotHandleWorld(b: BboxRect, cw: number, ch: number): [number, number] {
 function rotHandleVisible(b: BboxRect, cw: number, ch: number): [number, number] {
   const [hx, hy] = rotHandleWorld(b, cw, ch)
   return [clamp(hx, ROT_R + 4, cw - ROT_R - 4), clamp(hy, ROT_R + 4, ch - ROT_R - 4)]
+}
+
+function delBtnWorld(b: BboxRect, cw: number, ch: number): [number, number] {
+  const [cx, cy] = boxCenter(b, cw, ch)
+  const hw = (b.w * cw) / 2, hh = (b.h * ch) / 2
+  const a = deg2rad(b.rotation_deg ?? 0)
+  const off = DEL_OFFSET / Math.SQRT2
+  return toWorld(cx, cy, hw + off, -hh - off, a)
+}
+
+function hitDelBtn(b: BboxRect, px: number, py: number, cw: number, ch: number): boolean {
+  const [bx, by] = delBtnWorld(b, cw, ch)
+  return Math.hypot(px - bx, py - by) <= DEL_R + 3
+}
+
+function drawDeleteButton(ctx: CanvasRenderingContext2D, bx: number, by: number, strokeColor: string) {
+  ctx.beginPath()
+  ctx.arc(bx, by, DEL_R, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(30,30,30,0.85)'
+  ctx.fill()
+  ctx.strokeStyle = strokeColor
+  ctx.lineWidth = 1.2
+  ctx.stroke()
+  const d = 3.5
+  ctx.beginPath()
+  ctx.moveTo(bx - d, by - d); ctx.lineTo(bx + d, by + d)
+  ctx.moveTo(bx + d, by - d); ctx.lineTo(bx - d, by + d)
+  ctx.strokeStyle = strokeColor
+  ctx.lineWidth = 1.8
+  ctx.stroke()
 }
 
 function hitBox(b: BboxRect, px: number, py: number, cw: number, ch: number): boolean {
@@ -177,6 +209,9 @@ function paintCanvas(
   ctx.arc(hx, hy, ROT_R, 0, Math.PI * 2)
   ctx.fillStyle = handle
   ctx.fill()
+
+  const [dbx, dby] = delBtnWorld(display, cw, ch)
+  drawDeleteButton(ctx, dbx, dby, stroke)
 }
 
 // ── component ─────────────────────────────────────────────────────────────────
@@ -242,6 +277,7 @@ export default function BboxCanvas({
     const cw = canvas.width, ch = canvas.height
     const bx = boxRef.current
     if (!bx) { setCursor('crosshair'); return }
+    if (hitDelBtn(bx, px, py, cw, ch)) { setCursor('pointer'); return }
     if (hitRotHandle(bx, px, py, cw, ch)) { setCursor('alias'); return }
     const c = hitCorner(bx, px, py, cw, ch)
     if (c >= 0) { setCursor(CORNER_CURSORS[c]); return }
@@ -287,6 +323,11 @@ export default function BboxCanvas({
     const bx = boxRef.current
 
     if (bx) {
+      if (hitDelBtn(bx, x, y, cw, ch)) {
+        onChange(null)
+        setCursor('crosshair')
+        return
+      }
       if (hitRotHandle(bx, x, y, cw, ch)) {
         setInteraction({ mode: 'rotating', x1: x, y1: y })
         setCursor('alias')

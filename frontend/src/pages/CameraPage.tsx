@@ -16,8 +16,9 @@ import { useEventSource } from '../hooks/useEventSource'
 import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { mergeRecordings } from './cameraUtils'
-import type { Recording, MotionEvent, Annotation } from './cameraUtils'
+import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
+import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useSetSidebarItems } from '../contexts/SidebarContext'
 import { useDisplayMode } from '../contexts/DisplayModeContext'
@@ -134,12 +135,13 @@ export default function CameraPage() {
   const [recPlayBlocked, setRecPlayBlocked] = useState(false)
   const [lastFrameDataUrl, setLastFrameDataUrl] = useState<string | null>(null)
   const [snapshotEvent, setSnapshotEvent] = useState<MotionEvent | null>(null)
-  const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [annLabel, setAnnLabel] = useState('')
   const [annSaving, setAnnSaving] = useState(false)
-  const [annDraft, setAnnDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
-  const annDragRef = useRef<{ startX: number; startY: number } | null>(null)
-  const annImgRef = useRef<HTMLImageElement>(null)
+  const [annSaveOk, setAnnSaveOk] = useState(false)
+  const [annBox, setAnnBox] = useState<BboxRect | null>(null)
+  const [existingAnn, setExistingAnn] = useState<BboxRect | null>(null)
+  const [existingAnnId, setExistingAnnId] = useState<number | null>(null)
+  const [existingAnnLabel, setExistingAnnLabel] = useState('')
   const [detectionModal, setDetectionModal] = useState<Array<{ label: string; confidence: number; frame_count: number; custom_model?: boolean }> | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -195,9 +197,12 @@ export default function CameraPage() {
 
   function closeSnapshotModal() {
     setSnapshotEvent(null)
-    setAnnotations([])
     setAnnLabel('')
-    setAnnDraft(null)
+    setAnnBox(null)
+    setAnnSaveOk(false)
+    setExistingAnn(null)
+    setExistingAnnId(null)
+    setExistingAnnLabel('')
   }
 
   useEffect(() => {
@@ -214,83 +219,87 @@ export default function CameraPage() {
     return () => document.removeEventListener('keydown', onKey)
   }, [showDebug])
 
+  function openSnapshotModal(ev: MotionEvent) {
+    setAnnBox(null)
+    setAnnSaveOk(false)
+    setExistingAnn(null)
+    setExistingAnnId(null)
+    setExistingAnnLabel('')
+    setAnnLabel(ev.label ?? '')
+    setSnapshotEvent(ev)
+  }
+
   useEffect(() => {
     if (!snapshotEvent?.id) return
     fetch(`/api/events/${snapshotEvent.id}/annotations`, { headers: authHeaders() })
       .then(r => r.json())
-      .then((list: Annotation[]) => setAnnotations(list ?? []))
+      .then((list: Array<{ id: number; label: string; bbox_x: number; bbox_y: number; bbox_w: number; bbox_h: number; rotation_deg?: number }>) => {
+        const a = list[0]
+        if (a) {
+          setExistingAnnId(a.id)
+          setExistingAnnLabel(a.label ?? '')
+          setExistingAnn({ x: a.bbox_x - a.bbox_w / 2, y: a.bbox_y - a.bbox_h / 2, w: a.bbox_w, h: a.bbox_h, rotation_deg: a.rotation_deg })
+          if (a.label) setAnnLabel(a.label)
+        }
+      })
       .catch(() => {})
   }, [snapshotEvent])
 
-  function getImgRect(): DOMRect | null {
-    return annImgRef.current?.getBoundingClientRect() ?? null
-  }
-
-  function toRelative(clientX: number, clientY: number): { x: number; y: number } | null {
-    const rect = getImgRect()
-    if (!rect) return null
-    return {
-      x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
-      y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
-    }
-  }
-
-  function onAnnMouseDown(e: React.MouseEvent) {
-    const rel = toRelative(e.clientX, e.clientY)
-    if (!rel) return
-    annDragRef.current = { startX: rel.x, startY: rel.y }
-    setAnnDraft({ x: rel.x, y: rel.y, w: 0, h: 0 })
-  }
-
-  function onAnnMouseMove(e: React.MouseEvent) {
-    if (!annDragRef.current) return
-    const rel = toRelative(e.clientX, e.clientY)
-    if (!rel) return
-    const { startX, startY } = annDragRef.current
-    setAnnDraft({
-      x: Math.min(startX, rel.x),
-      y: Math.min(startY, rel.y),
-      w: Math.abs(rel.x - startX),
-      h: Math.abs(rel.y - startY),
-    })
-  }
-
-  function onAnnMouseUp() {
-    annDragRef.current = null
+  function handleAnnBoxChange(box: BboxRect | null) {
+    setAnnBox(box)
+    setAnnSaveOk(false)
   }
 
   async function saveAnnotation() {
-    if (!snapshotEvent?.id || !annDraft || annLabel.trim() === '') return
-    const rect = getImgRect()
-    if (!rect) return
-    const body = {
-      label: annLabel.trim(),
-      bbox_x: annDraft.x,
-      bbox_y: annDraft.y,
-      bbox_w: annDraft.w,
-      bbox_h: annDraft.h,
-    }
+    if (!snapshotEvent?.id || !annBox || annBox.w < 0.01 || annBox.h < 0.01) return
     setAnnSaving(true)
     try {
       const res = await fetch(`/api/events/${snapshotEvent.id}/annotations`, {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          label: annLabel.trim(),
+          bbox_x: annBox.x + annBox.w / 2,
+          bbox_y: annBox.y + annBox.h / 2,
+          bbox_w: annBox.w,
+          bbox_h: annBox.h,
+          rotation_deg: annBox.rotation_deg ?? 0,
+        }),
       })
       if (!res.ok) return
+      const currentEventLabel = snapshotEvent.label ?? ''
+      if (annLabel.trim() && annLabel.trim() !== currentEventLabel) {
+        await fetch(`/api/events/${snapshotEvent.id}/label`, {
+          method: 'PATCH',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label: annLabel.trim() }),
+        })
+      }
       const fresh = await fetch(`/api/events/${snapshotEvent.id}/annotations`, { headers: authHeaders() })
-      const list: Annotation[] = await fresh.json()
-      setAnnotations(list ?? [])
-      setAnnDraft(null)
-      setAnnLabel('')
+      const list: Array<{ id: number; label: string; bbox_x: number; bbox_y: number; bbox_w: number; bbox_h: number; rotation_deg?: number }> = await fresh.json()
+      const a = list[0]
+      if (a) {
+        setExistingAnnId(a.id)
+        setExistingAnnLabel(a.label ?? '')
+        setExistingAnn({ x: a.bbox_x - a.bbox_w / 2, y: a.bbox_y - a.bbox_h / 2, w: a.bbox_w, h: a.bbox_h, rotation_deg: a.rotation_deg })
+      }
+      setAnnBox(null)
+      setAnnSaveOk(true)
     } finally {
       setAnnSaving(false)
     }
   }
 
-  async function deleteAnnotation(annId: number) {
-    await fetch(`/api/annotations/${annId}`, { method: 'DELETE', headers: authHeaders() })
-    setAnnotations(prev => prev.filter(a => a.id !== annId))
+  async function deleteAnnotation(annId?: number) {
+    const id = annId ?? existingAnnId
+    if (!id) return
+    await fetch(`/api/annotations/${id}`, { method: 'DELETE', headers: authHeaders() })
+    if (id === existingAnnId) {
+      setExistingAnn(null)
+      setExistingAnnId(null)
+      setExistingAnnLabel('')
+      setAnnLabel('')
+    }
   }
 
   useEffect(() => {
@@ -1438,7 +1447,7 @@ function toggleFullscreen() {
                                   src={thumbURL}
                                   alt="snapshot"
                                   className="w-16 h-10 object-cover rounded cursor-zoom-in border border-gray-700 shrink-0"
-                                  onClick={e => { e.stopPropagation(); setSnapshotEvent(ev) }}
+                                  onClick={e => { e.stopPropagation(); openSnapshotModal(ev) }}
                                 />
                               )}
                             </div>
@@ -1546,102 +1555,81 @@ function toggleFullscreen() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
           onClick={closeSnapshotModal}
         >
-          <div className="relative max-w-3xl w-full mx-4" onClick={e => e.stopPropagation()}>
-            <div className="absolute -top-8 left-0 right-0 flex justify-end">
-              <button
-                className="text-gray-400 hover:text-white text-sm"
-                onClick={closeSnapshotModal}
-              >
-                Fechar ✕
-              </button>
-            </div>
-
-            {/* Image + annotation canvas */}
-            <div
-              className="relative select-none"
-              onMouseDown={onAnnMouseDown}
-              onMouseMove={onAnnMouseMove}
-              onMouseUp={onAnnMouseUp}
-            >
+          <div className="flex flex-col gap-3 items-center" onClick={e => e.stopPropagation()}>
+            <div className="relative rounded overflow-hidden shadow-2xl" style={{ maxWidth: '90vw', maxHeight: '75vh' }}>
               <img
-                ref={annImgRef}
                 src={snapshotURL(id!, snapshotEvent.time, snapshotEvent.frame)}
                 alt="snapshot de movimento"
-                className="w-full rounded-lg border border-gray-700 cursor-crosshair"
+                className="block max-w-full max-h-full"
                 draggable={false}
               />
-              {/* Saved annotations overlay */}
-              {annotations.map(a => (
-                  <div
-                    key={a.id}
-                    className="absolute border-2 border-green-400 pointer-events-none"
-                    style={{
-                      left: `${a.bbox_x * 100}%`,
-                      top: `${a.bbox_y * 100}%`,
-                      width: `${a.bbox_w * 100}%`,
-                      height: `${a.bbox_h * 100}%`,
-                    }}
-                  >
-                    <span className="absolute -top-5 left-0 text-xs text-green-300 bg-black/60 px-1">{a.label}</span>
-                  </div>
-              ))}
-              {/* Draft bbox */}
-              {annDraft && annDraft.w > 0 && annDraft.h > 0 && (
-                <div
-                  className="absolute border-2 border-blue-400 bg-blue-400/10 pointer-events-none"
-                  style={{
-                    left: `${annDraft.x * 100}%`,
-                    top: `${annDraft.y * 100}%`,
-                    width: `${annDraft.w * 100}%`,
-                    height: `${annDraft.h * 100}%`,
-                  }}
-                />
-              )}
+              <BboxCanvas
+                box={annBox ?? (annSaveOk ? null : existingAnn)}
+                onChange={handleAnnBoxChange}
+                readonly={annSaveOk}
+                className="absolute inset-0 w-full h-full select-none"
+              />
             </div>
 
-            <p className="mt-2 text-xs text-gray-400 text-center">
+            <p className="text-xs text-gray-400">
               {formatRecordingTime(snapshotEvent.time, timezone)} — score: {(snapshotEvent.score * 100).toFixed(1)}%
             </p>
 
-            {/* Annotation controls */}
-            <div className="mt-3 space-y-2">
-              {annDraft && annDraft.w > 0.01 && annDraft.h > 0.01 && (
-                <div className="flex gap-2">
+            <div className="flex items-center gap-2 w-full max-w-md">
+              {annSaveOk && (
+                <span className="text-xs text-emerald-400">Anotação salva</span>
+              )}
+              {!annSaveOk && annBox && annBox.w > 0.01 && annBox.h > 0.01 && (
+                <>
                   <input
-                    className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                    placeholder="Label (ex: gato, pessoa…)"
+                    type="text"
+                    placeholder="label da região…"
                     value={annLabel}
                     onChange={e => setAnnLabel(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') saveAnnotation() }}
+                    onKeyDown={e => e.key === 'Enter' && saveAnnotation()}
                     autoFocus
+                    className="flex-1 bg-gray-800 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-emerald-500"
                   />
                   <button
-                    className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded disabled:opacity-40"
-                    disabled={annLabel.trim() === '' || annSaving}
                     onClick={saveAnnotation}
+                    disabled={annSaving}
+                    className="px-3 py-1.5 text-sm bg-emerald-700 hover:bg-emerald-600 text-white rounded disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {annSaving ? 'Salvando...' : 'Salvar'}
                   </button>
-                </div>
+                  <button
+                    onClick={() => setAnnBox(null)}
+                    className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded"
+                  >
+                    Cancelar
+                  </button>
+                </>
               )}
-              {!annDraft && (
-                <p className="text-xs text-gray-500 text-center">Arraste na imagem para marcar uma região</p>
+              {!annSaveOk && !annBox && existingAnn && (
+                <span className="text-xs text-gray-400 flex items-center gap-2">
+                  {existingAnnLabel
+                    ? <><span className="font-medium text-gray-300">{existingAnnLabel}</span> · Arraste para substituir</>
+                    : 'Região salva · Arraste para substituir'
+                  }
+                  {existingAnnId && (
+                    <button
+                      onClick={() => deleteAnnotation()}
+                      className="px-2 py-0.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-900/30 border border-red-700/40 rounded transition-colors"
+                    >
+                      Excluir anotação
+                    </button>
+                  )}
+                </span>
               )}
-              {annotations.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {annotations.map(a => (
-                    <div key={a.id} className="flex items-center justify-between bg-gray-800 rounded px-2 py-1">
-                      <span className="text-sm text-green-300">{a.label}</span>
-                      <button
-                        className="text-gray-500 hover:text-red-400 text-xs"
-                        onClick={() => deleteAnnotation(a.id)}
-                      >
-                        remover
-                      </button>
-                    </div>
-                  ))}
-                </div>
+              {!annSaveOk && !annBox && !existingAnn && (
+                <span className="text-xs text-gray-500">Arraste para marcar · mova · redimensione · rotacione</span>
               )}
+              <button
+                onClick={closeSnapshotModal}
+                className="ml-auto px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>
