@@ -164,6 +164,8 @@ export default function AnalysisSettingsPage() {
   const [annSaving, setAnnSaving] = useState(false)
   const [annSaveOk, setAnnSaveOk] = useState(false)
   const [existingAnn, setExistingAnn] = useState<BboxRect | null>(null)
+  const [existingAnnId, setExistingAnnId] = useState<number | null>(null)
+  const [existingAnnLabel, setExistingAnnLabel] = useState('')
 
   const [annCount, setAnnCount] = useState<number | null>(null)
   const [labelCount, setLabelCount] = useState<number | null>(null)
@@ -204,8 +206,10 @@ export default function AnalysisSettingsPage() {
     if (!zoomEvent) return
     fetch(`/api/events/${zoomEvent.id}/annotations`, { headers: authHeaders() })
       .then(r => r.ok ? r.json() : [])
-      .then((list: Array<{ label: string; bbox_x: number; bbox_y: number; bbox_w: number; bbox_h: number; rotation_deg?: number }>) => {
+      .then((list: Array<{ id: number; label: string; bbox_x: number; bbox_y: number; bbox_w: number; bbox_h: number; rotation_deg?: number }>) => {
         const a = list[0]
+        setExistingAnnId(a?.id ?? null)
+        setExistingAnnLabel(a?.label ?? '')
         setExistingAnn(a ? {
           x: a.bbox_x - a.bbox_w / 2,
           y: a.bbox_y - a.bbox_h / 2,
@@ -213,15 +217,19 @@ export default function AnalysisSettingsPage() {
           h: a.bbox_h,
           rotation_deg: a.rotation_deg ?? 0,
         } : null)
+        // annotation label takes priority over event label
+        if (a?.label) setAnnLabel(a.label)
       })
       .catch(() => {})
   }, [zoomEvent])
 
-  function openZoomModal(src: string, id: number) {
+  function openZoomModal(src: string, id: number, eventLabel = '') {
     setAnnBox(null)
-    setAnnLabel('')
+    setAnnLabel(eventLabel)
     setAnnSaveOk(false)
     setExistingAnn(null)
+    setExistingAnnId(null)
+    setExistingAnnLabel('')
     setZoomEvent({ src, id })
   }
 
@@ -231,12 +239,28 @@ export default function AnalysisSettingsPage() {
     setAnnLabel('')
     setAnnSaveOk(false)
     setExistingAnn(null)
+    setExistingAnnId(null)
+    setExistingAnnLabel('')
   }
 
   function handleAnnBoxChange(box: BboxRect | null) {
     setAnnBox(box)
-    setAnnLabel('')
     setAnnSaveOk(false)
+  }
+
+  async function deleteAnnotation() {
+    if (!existingAnnId) return
+    const r = await fetch(`/api/annotations/${existingAnnId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    if (r.ok) {
+      setExistingAnn(null)
+      setExistingAnnId(null)
+      setExistingAnnLabel('')
+      setAnnLabel('')
+      refreshCounts()
+    }
   }
 
   async function saveAnnotation() {
@@ -256,9 +280,21 @@ export default function AnalysisSettingsPage() {
         }),
       })
       if (res.ok) {
+        // sync event label with annotation label if they differ
+        const currentEventLabel = labelInputs[zoomEvent.id] ?? ''
+        if (annLabel !== currentEventLabel) {
+          await fetch(`/api/events/${zoomEvent.id}/label`, {
+            method: 'PATCH',
+            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ label: annLabel }),
+          })
+          setLabelInputs(s => ({ ...s, [zoomEvent.id]: annLabel }))
+          setLabelEvents(prev => prev?.map(e => e.id === zoomEvent.id ? { ...e, label: annLabel || undefined } : e) ?? null)
+        }
         setExistingAnn({ ...annBox })
+        setExistingAnnLabel(annLabel)
         setAnnBox(null)
-        setAnnLabel('')
+        setAnnLabel(annLabel)
         setAnnSaveOk(true)
         refreshCounts()
         setTimeout(() => setAnnSaveOk(false), 1500)
@@ -704,7 +740,7 @@ export default function AnalysisSettingsPage() {
                           {ev.frame ? (
                             <button
                               type="button"
-                              onClick={() => openZoomModal(frameURL(labelCamID, ev.time, ev.frame!), ev.id)}
+                              onClick={() => openZoomModal(frameURL(labelCamID, ev.time, ev.frame!), ev.id, labelInputs[ev.id] ?? ev.label ?? '')}
                               className="flex-shrink-0 rounded overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 hover:opacity-80 transition-opacity"
                             >
                               <img
@@ -819,7 +855,7 @@ export default function AnalysisSettingsPage() {
                     {annSaving ? 'Salvando...' : 'Salvar'}
                   </button>
                   <button
-                    onClick={() => { setAnnBox(null); setAnnLabel('') }}
+                    onClick={() => setAnnBox(null)}
                     className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded"
                   >
                     Cancelar
@@ -827,8 +863,19 @@ export default function AnalysisSettingsPage() {
                 </>
               )}
               {!annSaveOk && !annBox && existingAnn && (
-                <span className="text-xs text-gray-400">
-                  Região salva · Arraste para substituir
+                <span className="text-xs text-gray-400 flex items-center gap-2">
+                  {existingAnnLabel
+                    ? <><span className="font-medium text-gray-300">{existingAnnLabel}</span> · Arraste para substituir</>
+                    : 'Região salva · Arraste para substituir'
+                  }
+                  {existingAnnId && (
+                    <button
+                      onClick={deleteAnnotation}
+                      className="px-2 py-0.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-900/30 border border-red-700/40 rounded transition-colors"
+                    >
+                      Excluir anotação
+                    </button>
+                  )}
                 </span>
               )}
               {!annSaveOk && !annBox && !existingAnn && (
