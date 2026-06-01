@@ -89,6 +89,41 @@ func (s *Server) handleAnnotationCount(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleUpdateAnnotation(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	var body struct {
+		Label       string  `json:"label"`
+		BboxX       float64 `json:"bbox_x"`
+		BboxY       float64 `json:"bbox_y"`
+		BboxW       float64 `json:"bbox_w"`
+		BboxH       float64 `json:"bbox_h"`
+		RotationDeg float64 `json:"rotation_deg"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if err := db.UpdateAnnotation(s.db, id, db.Annotation{
+		Label:       body.Label,
+		BboxX:       body.BboxX,
+		BboxY:       body.BboxY,
+		BboxW:       body.BboxW,
+		BboxH:       body.BboxH,
+		RotationDeg: body.RotationDeg,
+	}); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleDeleteAnnotation(w http.ResponseWriter, r *http.Request) {
 	if !s.requireDB(w) {
 		return
