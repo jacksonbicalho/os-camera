@@ -126,6 +126,14 @@ func (s *Server) handleFinetuneStatus(w http.ResponseWriter, r *http.Request) {
 	client := analysis.NewClient(cfg.ServiceURL)
 	status, err := client.FinetuneStatus(context.Background(), jobID)
 	if err != nil {
+		if err.Error() == "job not found" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(analysis.FinetuneStatus{
+				Status: "error",
+				Error:  "Job perdido: o serviço YOLO reiniciou durante o treino. Modelo muito grande para a memória disponível — tente um modelo menor (ex: yolov8n).",
+			})
+			return
+		}
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
