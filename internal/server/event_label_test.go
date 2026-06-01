@@ -366,3 +366,99 @@ func TestBulkUpdateEventLabels_TooManyIDs(t *testing.T) {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
 }
+
+func TestBulkDismissEvents_SetsDismissedFlag(t *testing.T) {
+	srv, database, token, ids := setupBulkTest(t)
+
+	body := fmt.Sprintf(`{"ids":[%d,%d]}`, ids[0], ids[1])
+	req := httptest.NewRequest(http.MethodPatch, "/api/events/bulk/dismiss", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct{ Dismissed int64 }
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Dismissed != 2 {
+		t.Errorf("expected dismissed=2, got %d", resp.Dismissed)
+	}
+
+	ev, _ := db.GetMotionEventByID(database, ids[0])
+	if !ev.Dismissed {
+		t.Error("evento deve estar dismissed após PATCH")
+	}
+	// evento não dismissado continua no banco
+	n, _ := db.CountMotionEvents(database, "cam1")
+	if n != 3 {
+		t.Errorf("dismiss não deve deletar eventos: esperado 3, got %d", n)
+	}
+}
+
+func TestBulkDismissEvents_RequiresAdmin(t *testing.T) {
+	cfg := config.ServerConfig{}
+	srv := server.NewServer(cfg, "UTC", nil, discardLogger(), nil)
+	req := httptest.NewRequest(http.MethodPatch, "/api/events/bulk/dismiss", strings.NewReader(`{"ids":[1]}`))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestPageEvents_ExcludesDismissedByDefault(t *testing.T) {
+	srv, database, token, ids := setupBulkTest(t)
+
+	// Dismiss o primeiro evento
+	body := fmt.Sprintf(`{"ids":[%d]}`, ids[0])
+	req := httptest.NewRequest(http.MethodPatch, "/api/events/bulk/dismiss", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("dismiss: expected 200, got %d", w.Code)
+	}
+
+	// Lista padrão deve excluir o dismissed
+	req2 := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/events", nil)
+	req2.Header.Set("Authorization", "Bearer "+token)
+	w2 := httptest.NewRecorder()
+	srv.ServeHTTP(w2, req2)
+
+	var resp struct {
+		Events []map[string]any `json:"events"`
+		Total  int              `json:"total"`
+	}
+	json.NewDecoder(w2.Body).Decode(&resp)
+	if resp.Total != 2 {
+		t.Errorf("listagem padrão deve excluir dismissed: esperado total=2, got %d", resp.Total)
+	}
+	_ = database
+}
+
+func TestPageEvents_ShowsDismissedWhenRequested(t *testing.T) {
+	srv, _, token, ids := setupBulkTest(t)
+
+	body := fmt.Sprintf(`{"ids":[%d]}`, ids[0])
+	req := httptest.NewRequest(http.MethodPatch, "/api/events/bulk/dismiss", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	srv.ServeHTTP(httptest.NewRecorder(), req)
+
+	req2 := httptest.NewRequest(http.MethodGet, "/api/cameras/cam1/events?dismissed=true", nil)
+	req2.Header.Set("Authorization", "Bearer "+token)
+	w2 := httptest.NewRecorder()
+	srv.ServeHTTP(w2, req2)
+
+	var resp struct {
+		Events []map[string]any `json:"events"`
+		Total  int              `json:"total"`
+	}
+	json.NewDecoder(w2.Body).Decode(&resp)
+	if resp.Total != 1 {
+		t.Errorf("dismissed=true deve retornar só ignorados: esperado total=1, got %d", resp.Total)
+	}
+}

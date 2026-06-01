@@ -186,7 +186,7 @@ func TestPageMotionEvents_ReturnsPagedResults(t *testing.T) {
 		insertTestEvent(t, database, "cam1", base.Add(time.Duration(i)*time.Second), 0.5, "")
 	}
 
-	events, total, err := db.PageMotionEvents(database, "cam1", 0, 3, false, "")
+	events, total, err := db.PageMotionEvents(database, "cam1", 0, 3, false, "", false)
 	if err != nil {
 		t.Fatalf("PageMotionEvents: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestPageMotionEvents_ReturnsPagedResults(t *testing.T) {
 		t.Errorf("expected 3 events on page, got %d", len(events))
 	}
 
-	events2, _, _ := db.PageMotionEvents(database, "cam1", 3, 3, false, "")
+	events2, _, _ := db.PageMotionEvents(database, "cam1", 3, 3, false, "", false)
 	if len(events2) != 2 {
 		t.Errorf("expected 2 events on second page, got %d", len(events2))
 	}
@@ -215,7 +215,7 @@ func TestPageMotionEvents_UnlabeledFilter(t *testing.T) {
 	events, _ := db.ListMotionEvents(database, "cam1", base, base.Add(time.Minute))
 	_ = db.UpdateMotionEventLabel(database, events[0].ID, "pessoa")
 
-	unlabeled, total, err := db.PageMotionEvents(database, "cam1", 0, 10, true, "")
+	unlabeled, total, err := db.PageMotionEvents(database, "cam1", 0, 10, true, "", false)
 	if err != nil {
 		t.Fatalf("PageMotionEvents unlabeled: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestPageMotionEvents_OrderedNewestFirst(t *testing.T) {
 	insertTestEvent(t, database, "cam1", base, 0.1, "")
 	insertTestEvent(t, database, "cam1", base.Add(time.Second), 0.2, "")
 
-	events, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "")
+	events, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "", false)
 	if len(events) != 2 {
 		t.Fatalf("expected 2 events, got %d", len(events))
 	}
@@ -262,7 +262,7 @@ func TestPageMotionEvents_LabelSearch(t *testing.T) {
 	_ = db.UpdateMotionEventLabel(database, events[0].ID, "Pessoa com chapéu")
 
 	// search "pessoa" should match 2 events (case-insensitive)
-	results, total, err := db.PageMotionEvents(database, "cam1", 0, 10, false, "pessoa")
+	results, total, err := db.PageMotionEvents(database, "cam1", 0, 10, false, "pessoa", false)
 	if err != nil {
 		t.Fatalf("PageMotionEvents label search: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestPageMotionEvents_LabelSearch(t *testing.T) {
 	}
 
 	// empty search returns all
-	all, totalAll, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "")
+	all, totalAll, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "", false)
 	if totalAll != 3 {
 		t.Errorf("expected total=3 for empty search, got %d", totalAll)
 	}
@@ -317,7 +317,7 @@ func TestBulkDeleteMotionEvents_DeletesAndReturnsFramePaths(t *testing.T) {
 		}
 	}
 
-	events, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "")
+	events, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "", false)
 	if len(events) != 3 {
 		t.Fatalf("expected 3 events, got %d", len(events))
 	}
@@ -339,7 +339,7 @@ func TestBulkDeleteMotionEvents_DeletesAndReturnsFramePaths(t *testing.T) {
 		}
 	}
 
-	remaining, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "")
+	remaining, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "", false)
 	if len(remaining) != 1 {
 		t.Errorf("expected 1 remaining, got %d", len(remaining))
 	}
@@ -364,7 +364,7 @@ func TestBulkUpdateMotionEventLabels_AppliesAndClears(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		insertTestEvent(t, database, "cam1", base.Add(time.Duration(i)*time.Second), 0.5, "")
 	}
-	events, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "")
+	events, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "", false)
 	ids := []int64{events[0].ID, events[1].ID}
 
 	updated, err := db.BulkUpdateMotionEventLabels(database, ids, "cat")
@@ -375,7 +375,7 @@ func TestBulkUpdateMotionEventLabels_AppliesAndClears(t *testing.T) {
 		t.Errorf("expected updated=2, got %d", updated)
 	}
 
-	results, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "cat")
+	results, _, _ := db.PageMotionEvents(database, "cam1", 0, 10, false, "cat", false)
 	if len(results) != 2 {
 		t.Errorf("expected 2 events labeled cat, got %d", len(results))
 	}
@@ -388,7 +388,7 @@ func TestBulkUpdateMotionEventLabels_AppliesAndClears(t *testing.T) {
 	if cleared != 2 {
 		t.Errorf("expected cleared=2, got %d", cleared)
 	}
-	results, _, _ = db.PageMotionEvents(database, "cam1", 0, 10, true, "")
+	results, _, _ = db.PageMotionEvents(database, "cam1", 0, 10, true, "", false)
 	if len(results) != 3 {
 		t.Errorf("expected all 3 to be unlabeled, got %d", len(results))
 	}
@@ -402,5 +402,95 @@ func TestBulkUpdateMotionEventLabels_EmptyIDsReturnsZero(t *testing.T) {
 	}
 	if updated != 0 {
 		t.Errorf("expected updated=0, got %d", updated)
+	}
+}
+
+func TestBulkDismissMotionEvents_SetsDismissed(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+
+	base := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
+	insertTestEvent(t, database, "cam1", base, 0.5, "")
+	insertTestEvent(t, database, "cam1", base.Add(time.Second), 0.5, "")
+	insertTestEvent(t, database, "cam1", base.Add(2*time.Second), 0.5, "")
+
+	events, _ := db.ListMotionEvents(database, "cam1", base, base.Add(time.Hour))
+	ids := []int64{events[0].ID, events[1].ID}
+
+	n, err := db.BulkDismissMotionEvents(database, ids)
+	if err != nil {
+		t.Fatalf("BulkDismissMotionEvents: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("expected dismissed=2, got %d", n)
+	}
+
+	ev0, _ := db.GetMotionEventByID(database, events[0].ID)
+	if !ev0.Dismissed {
+		t.Error("event[0] deve estar dismissed=true")
+	}
+	ev2, _ := db.GetMotionEventByID(database, events[2].ID)
+	if ev2.Dismissed {
+		t.Error("event[2] não deve estar dismissed")
+	}
+}
+
+func TestBulkDismissMotionEvents_EmptyIDsReturnsZero(t *testing.T) {
+	database := openTestDB(t)
+	n, err := db.BulkDismissMotionEvents(database, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0, got %d", n)
+	}
+}
+
+func TestPageMotionEvents_ExcludesDismissedByDefault(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+
+	base := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
+	insertTestEvent(t, database, "cam1", base, 0.5, "")
+	insertTestEvent(t, database, "cam1", base.Add(time.Second), 0.5, "")
+
+	events, _ := db.ListMotionEvents(database, "cam1", base, base.Add(time.Hour))
+	db.BulkDismissMotionEvents(database, []int64{events[0].ID})
+
+	got, total, err := db.PageMotionEvents(database, "cam1", 0, 10, false, "", false)
+	if err != nil {
+		t.Fatalf("PageMotionEvents: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("default view deve excluir dismissed: esperado total=1, got %d", total)
+	}
+	if len(got) != 1 {
+		t.Fatalf("esperado 1 evento, got %d", len(got))
+	}
+	if got[0].ID == events[0].ID {
+		t.Error("evento dismissed não deve aparecer na listagem padrão")
+	}
+}
+
+func TestPageMotionEvents_ShowsDismissedWhenFiltered(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+
+	base := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
+	insertTestEvent(t, database, "cam1", base, 0.5, "")
+	insertTestEvent(t, database, "cam1", base.Add(time.Second), 0.5, "")
+
+	events, _ := db.ListMotionEvents(database, "cam1", base, base.Add(time.Hour))
+	db.BulkDismissMotionEvents(database, []int64{events[0].ID})
+
+	got, total, err := db.PageMotionEvents(database, "cam1", 0, 10, false, "", true)
+	if err != nil {
+		t.Fatalf("PageMotionEvents dismissed: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("esperado total=1 dismissed, got %d", total)
+	}
+	if len(got) != 1 || got[0].ID != events[0].ID {
+		t.Error("deve retornar o evento dismissed")
 	}
 }

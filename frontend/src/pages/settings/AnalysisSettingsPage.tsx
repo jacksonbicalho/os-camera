@@ -65,12 +65,14 @@ export default function AnalysisSettingsPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [bulkLabel, setBulkLabel] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
-  const [bulkConfirm, setBulkConfirm] = useState<null | { action: 'delete' | 'label'; label?: string }>(null)
+  const [bulkConfirm, setBulkConfirm] = useState<null | { action: 'dismiss' | 'label'; label?: string }>(null)
   const [bulkError, setBulkError] = useState('')
 
-  // per-row inline delete state
-  const [rowDeleteConfirm, setRowDeleteConfirm] = useState<EventItem | null>(null)
-  const [rowDeleteBusy, setRowDeleteBusy] = useState(false)
+  // per-row inline dismiss state
+  const [rowDismissConfirm, setRowDismissConfirm] = useState<EventItem | null>(null)
+  const [rowDismissBusy, setRowDismissBusy] = useState(false)
+
+  const [showDismissed, setShowDismissed] = useState(false)
 
   function toggleSelect(id: number) {
     setSelected(s => {
@@ -87,54 +89,47 @@ export default function AnalysisSettingsPage() {
     setBulkLabel('')
     setBulkError('')
   }
-  async function executeBulkDelete() {
+  async function executeBulkDismiss() {
     const ids = Array.from(selected)
     setBulkBusy(true)
     setBulkError('')
     try {
-      const r = await fetch('/api/events/bulk', {
-        method: 'DELETE',
+      const r = await fetch('/api/events/bulk/dismiss', {
+        method: 'PATCH',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids }),
       })
-      if (!r.ok) { setBulkError('Erro ao excluir'); return }
+      if (!r.ok) { setBulkError('Erro ao ignorar'); return }
       clearSelection()
       setBulkConfirm(null)
-      // refresh page; back off if it became empty
       const newTotal = labelTotal - ids.length
       const lastPage = Math.max(1, Math.ceil(newTotal / labelLimit))
-      if (labelPage > lastPage) {
-        setLabelPage(lastPage)
-      }
+      if (labelPage > lastPage) setLabelPage(lastPage)
       setLabelEvents(null)
       setLabelRefreshTick(t => t + 1)
-      refreshCounts()
     } finally {
       setBulkBusy(false)
     }
   }
-  async function executeRowDelete() {
-    if (!rowDeleteConfirm) return
-    const id = rowDeleteConfirm.id
-    setRowDeleteBusy(true)
+  async function executeRowDismiss() {
+    if (!rowDismissConfirm) return
+    const id = rowDismissConfirm.id
+    setRowDismissBusy(true)
     try {
-      const r = await fetch('/api/events/bulk', {
-        method: 'DELETE',
+      const r = await fetch('/api/events/bulk/dismiss', {
+        method: 'PATCH',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: [id] }),
       })
       if (!r.ok) return
-      setRowDeleteConfirm(null)
+      setRowDismissConfirm(null)
       const newTotal = labelTotal - 1
       const lastPage = Math.max(1, Math.ceil(newTotal / labelLimit))
-      if (labelPage > lastPage) {
-        setLabelPage(lastPage)
-      }
+      if (labelPage > lastPage) setLabelPage(lastPage)
       setLabelEvents(null)
       setLabelRefreshTick(t => t + 1)
-      refreshCounts()
     } finally {
-      setRowDeleteBusy(false)
+      setRowDismissBusy(false)
     }
   }
   async function executeBulkLabel() {
@@ -341,8 +336,9 @@ export default function AnalysisSettingsPage() {
     const params = new URLSearchParams({
       page: String(labelPage),
       limit: String(labelLimit),
-      ...(unlabeledOnly && !labelSearch ? { unlabeled: 'true' } : {}),
-      ...(labelSearch ? { label: labelSearch } : {}),
+      ...(showDismissed ? { dismissed: 'true' } : {}),
+      ...(!showDismissed && unlabeledOnly && !labelSearch ? { unlabeled: 'true' } : {}),
+      ...(!showDismissed && labelSearch ? { label: labelSearch } : {}),
     })
     fetch(`/api/cameras/${labelCamID}/events?${params}`, {
       headers: authHeaders(),
@@ -359,7 +355,7 @@ export default function AnalysisSettingsPage() {
       })
       .catch(err => { if (err.name !== 'AbortError') setLabelEvents([]) })
     return () => controller.abort()
-  }, [labelCamID, unlabeledOnly, labelSearch, labelPage, labelLimit, labelRefreshTick])
+  }, [labelCamID, unlabeledOnly, labelSearch, labelPage, labelLimit, labelRefreshTick, showDismissed])
 
   function handleLabelBlur(eventId: number) {
     const label = labelInputs[eventId] ?? ''
@@ -646,15 +642,26 @@ export default function AnalysisSettingsPage() {
                 onChange={e => { setLabelSearch(e.target.value); setLabelPage(1); setLabelEvents(null); clearSelection() }}
                 className="bg-gray-700 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500 w-40"
               />
-              <label className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${labelSearch ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400'}`}>
+              {!showDismissed && (
+                <label className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${labelSearch ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400'}`}>
+                  <input
+                    type="checkbox"
+                    className="accent-blue-500"
+                    checked={unlabeledOnly && !labelSearch}
+                    disabled={!!labelSearch}
+                    onChange={e => { setUnlabeledOnly(e.target.checked); setLabelPage(1); setLabelEvents(null); clearSelection() }}
+                  />
+                  Sem label
+                </label>
+              )}
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none text-gray-400">
                 <input
                   type="checkbox"
-                  className="accent-blue-500"
-                  checked={unlabeledOnly && !labelSearch}
-                  disabled={!!labelSearch}
-                  onChange={e => { setUnlabeledOnly(e.target.checked); setLabelPage(1); setLabelEvents(null); clearSelection() }}
+                  className="accent-yellow-500"
+                  checked={showDismissed}
+                  onChange={e => { setShowDismissed(e.target.checked); setLabelPage(1); setLabelEvents(null); clearSelection() }}
                 />
-                Sem label
+                Ignorados
               </label>
             </div>
           </div>
@@ -666,7 +673,7 @@ export default function AnalysisSettingsPage() {
               )}
               {!labelLoading && labelEvents?.length === 0 && (
                 <div className="p-6 text-center text-xs text-gray-500">
-                  {unlabeledOnly ? 'Nenhum evento sem label.' : 'Nenhum evento encontrado.'}
+                  {showDismissed ? 'Nenhum evento ignorado.' : unlabeledOnly ? 'Nenhum evento sem label.' : 'Nenhum evento encontrado.'}
                 </div>
               )}
               {!labelLoading && (labelEvents?.length ?? 0) > 0 && (
@@ -712,14 +719,16 @@ export default function AnalysisSettingsPage() {
                       >
                         Aplicar label
                       </button>
-                      <button
-                        type="button"
-                        disabled={bulkBusy}
-                        onClick={() => setBulkConfirm({ action: 'delete' })}
-                        className="px-3 py-1 text-xs bg-red-600 hover:bg-red-500 text-white rounded disabled:opacity-40"
-                      >
-                        Excluir
-                      </button>
+                      {!showDismissed && (
+                        <button
+                          type="button"
+                          disabled={bulkBusy}
+                          onClick={() => setBulkConfirm({ action: 'dismiss' })}
+                          className="px-3 py-1 text-xs bg-yellow-700 hover:bg-yellow-600 text-white rounded disabled:opacity-40"
+                        >
+                          Ignorar
+                        </button>
+                      )}
                       <button
                         type="button"
                         disabled={bulkBusy}
@@ -779,16 +788,18 @@ export default function AnalysisSettingsPage() {
                               className={`w-full bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border ${borderCls} focus:outline-none focus:border-blue-500 transition-colors`}
                             />
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setRowDeleteConfirm(ev)}
-                            title="Excluir este evento"
-                            className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
-                            </svg>
-                          </button>
+                          {!showDismissed && (
+                            <button
+                              type="button"
+                              onClick={() => setRowDismissConfirm(ev)}
+                              title="Ignorar este evento"
+                              className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-gray-500 hover:text-yellow-400 hover:bg-yellow-500/10 rounded transition-colors"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
+                              </svg>
+                            </button>
+                          )}
                         </li>
                       )
                     })}
@@ -904,26 +915,24 @@ export default function AnalysisSettingsPage() {
       )}
 
       <ConfirmDialog
-        open={bulkConfirm?.action === 'delete'}
-        title="Excluir eventos"
-        message={`Excluir ${selected.size} evento${selected.size !== 1 ? 's' : ''}? Esta ação não pode ser desfeita.`}
-        confirmLabel={bulkBusy ? 'Excluindo…' : 'Excluir'}
-        danger
-        onConfirm={executeBulkDelete}
+        open={bulkConfirm?.action === 'dismiss'}
+        title="Ignorar eventos"
+        message={`Ignorar ${selected.size} evento${selected.size !== 1 ? 's' : ''}? Eles não aparecerão mais na lista de rotulagem.`}
+        confirmLabel={bulkBusy ? 'Ignorando…' : 'Ignorar'}
+        onConfirm={executeBulkDismiss}
         onCancel={() => { if (!bulkBusy) setBulkConfirm(null) }}
       />
       <ConfirmDialog
-        open={!!rowDeleteConfirm}
-        title="Excluir evento"
+        open={!!rowDismissConfirm}
+        title="Ignorar evento"
         message={
-          rowDeleteConfirm
-            ? `Excluir o evento de ${new Date(rowDeleteConfirm.time).toLocaleString()}? Esta ação não pode ser desfeita.`
+          rowDismissConfirm
+            ? `Ignorar o evento de ${new Date(rowDismissConfirm.time).toLocaleString()}? Ele não aparecerá mais na lista de rotulagem.`
             : ''
         }
-        confirmLabel={rowDeleteBusy ? 'Excluindo…' : 'Excluir'}
-        danger
-        onConfirm={executeRowDelete}
-        onCancel={() => { if (!rowDeleteBusy) setRowDeleteConfirm(null) }}
+        confirmLabel={rowDismissBusy ? 'Ignorando…' : 'Ignorar'}
+        onConfirm={executeRowDismiss}
+        onCancel={() => { if (!rowDismissBusy) setRowDismissConfirm(null) }}
       />
       <ConfirmDialog
         open={bulkConfirm?.action === 'label'}

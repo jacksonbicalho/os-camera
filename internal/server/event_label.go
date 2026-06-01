@@ -49,15 +49,16 @@ func (s *Server) handlePageEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	limit := 20
 	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 100 {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 500 {
 			limit = n
 		}
 	}
 	unlabeled := r.URL.Query().Get("unlabeled") == "true"
 	labelSearch := r.URL.Query().Get("label")
+	dismissedOnly := r.URL.Query().Get("dismissed") == "true"
 	offset := (page - 1) * limit
 
-	events, total, err := db.PageMotionEvents(s.db, cameraID, offset, limit, unlabeled, labelSearch)
+	events, total, err := db.PageMotionEvents(s.db, cameraID, offset, limit, unlabeled, labelSearch, dismissedOnly)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -87,6 +88,36 @@ func (s *Server) handlePageEvents(w http.ResponseWriter, r *http.Request) {
 		"events": items,
 		"total":  total,
 	})
+}
+
+func (s *Server) handleBulkDismissEvents(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
+	var body struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if len(body.IDs) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"dismissed": 0})
+		return
+	}
+	if len(body.IDs) > bulkEventMaxIDs {
+		http.Error(w, "too many ids", http.StatusBadRequest)
+		return
+	}
+	n, err := db.BulkDismissMotionEvents(s.db, body.IDs)
+	if err != nil {
+		s.log.Error("bulk dismiss events", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"dismissed": n})
 }
 
 func (s *Server) handleBulkDeleteEvents(w http.ResponseWriter, r *http.Request) {
