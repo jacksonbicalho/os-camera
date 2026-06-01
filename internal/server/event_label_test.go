@@ -298,6 +298,64 @@ func TestBulkDeleteEvents_DeletesRows(t *testing.T) {
 	}
 }
 
+func TestBulkDeleteEvents_ResetsHasMotion(t *testing.T) {
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: "cam1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
+	rec := db.Recording{
+		CameraID:  "cam1",
+		StartedAt: base,
+		EndedAt:   base.Add(time.Minute),
+		Path:      "/storage/cam1/2026/05/03/20260503100000.mp4",
+		HasMotion: true,
+	}
+	if err := db.InsertRecording(database, rec); err != nil {
+		t.Fatal(err)
+	}
+
+	var evIDs []int64
+	for i := 0; i < 3; i++ {
+		_ = db.InsertMotionEvent(database, db.MotionEvent{
+			CameraID:   "cam1",
+			OccurredAt: base.Add(time.Duration(i) * 10 * time.Second),
+			Score:      0.5,
+		})
+	}
+	events, _ := db.ListMotionEvents(database, "cam1", base, base.Add(time.Hour))
+	for _, ev := range events {
+		evIDs = append(evIDs, ev.ID)
+	}
+
+	cfg := config.ServerConfig{}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "master", "secret")
+
+	body := fmt.Sprintf(`{"ids":[%d,%d,%d]}`, evIDs[0], evIDs[1], evIDs[2])
+	req := httptest.NewRequest(http.MethodDelete, "/api/events/bulk", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var hasMotion int
+	if err := database.QueryRow(`SELECT has_motion FROM recordings WHERE path=?`, rec.Path).Scan(&hasMotion); err != nil {
+		t.Fatal(err)
+	}
+	if hasMotion != 0 {
+		t.Error("has_motion deve ser 0 após deletar todos os eventos da gravação")
+	}
+}
+
 func TestBulkDeleteEvents_EmptyIDsReturnsZero(t *testing.T) {
 	srv, _, token, _ := setupBulkTest(t)
 	req := httptest.NewRequest(http.MethodDelete, "/api/events/bulk", strings.NewReader(`{"ids":[]}`))

@@ -155,6 +155,35 @@ func DeleteRecording(db *DB, path string) error {
 	return err
 }
 
+// ResetHasMotionOrphaned resets has_motion=0 for recordings whose qualifying
+// events (checked with lead/trail from camera_motion) have all been deleted.
+// Pass a non-empty cameraID to scope the update to one camera; pass "" for all.
+func ResetHasMotionOrphaned(d *DB, cameraID string) error {
+	where := ""
+	args := []any{}
+	if cameraID != "" {
+		where = " AND recordings.camera_id = ?"
+		args = append(args, cameraID)
+	}
+	_, err := d.Exec(`
+		UPDATE recordings SET has_motion=0
+		WHERE has_motion=1
+		AND ended_at IS NOT NULL`+where+`
+		AND NOT EXISTS (
+			SELECT 1
+			FROM motion_events me
+			LEFT JOIN camera_motion cm ON cm.camera_id = me.camera_id
+			WHERE me.camera_id = recordings.camera_id
+			AND recordings.started_at < strftime('%Y-%m-%dT%H:%M:%SZ', me.occurred_at,
+				'+' || COALESCE(cm.playback_trail_seconds, 0) || ' seconds')
+			AND recordings.ended_at > strftime('%Y-%m-%dT%H:%M:%SZ', me.occurred_at,
+				'-' || COALESCE(cm.playback_lead_seconds, 0) || ' seconds')
+		)`,
+		args...,
+	)
+	return err
+}
+
 // EndedAtByStartedAt returns the ended_at for a recording identified by camera and started_at.
 // Returns a zero time if the row does not exist or ended_at is NULL.
 func EndedAtByStartedAt(db *DB, cameraID string, startedAt time.Time) (time.Time, error) {
