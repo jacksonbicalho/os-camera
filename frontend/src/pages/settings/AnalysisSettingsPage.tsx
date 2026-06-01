@@ -33,7 +33,7 @@ function frameURL(cameraId: string, eventTime: string, frame: string): string {
   return `/recordings/${cameraId}/${dateDir}/${frame}?token=${getToken()}`
 }
 
-const LIMIT = 20
+const PAGE_SIZE_OPTIONS = [50, 100, 150, 200, 300, 500]
 
 export default function AnalysisSettingsPage() {
   const { settings } = useSettings()
@@ -51,6 +51,7 @@ export default function AnalysisSettingsPage() {
   const [labelCamID, setLabelCamID] = useState('')
   const [unlabeledOnly, setUnlabeledOnly] = useState(true)
   const [labelSearch, setLabelSearch] = useState('')
+  const [labelLimit, setLabelLimit] = useState(50)
   const [labelPage, setLabelPage] = useState(1)
   const [labelEvents, setLabelEvents] = useState<EventItem[] | null>(null)
   const [labelTotal, setLabelTotal] = useState(0)
@@ -64,12 +65,14 @@ export default function AnalysisSettingsPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [bulkLabel, setBulkLabel] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
-  const [bulkConfirm, setBulkConfirm] = useState<null | { action: 'delete' | 'label'; label?: string }>(null)
+  const [bulkConfirm, setBulkConfirm] = useState<null | { action: 'dismiss' | 'label'; label?: string }>(null)
   const [bulkError, setBulkError] = useState('')
 
-  // per-row inline delete state
-  const [rowDeleteConfirm, setRowDeleteConfirm] = useState<EventItem | null>(null)
-  const [rowDeleteBusy, setRowDeleteBusy] = useState(false)
+  // per-row inline dismiss state
+  const [rowDismissConfirm, setRowDismissConfirm] = useState<EventItem | null>(null)
+  const [rowDismissBusy, setRowDismissBusy] = useState(false)
+
+  const [showDismissed, setShowDismissed] = useState(false)
 
   function toggleSelect(id: number) {
     setSelected(s => {
@@ -86,54 +89,47 @@ export default function AnalysisSettingsPage() {
     setBulkLabel('')
     setBulkError('')
   }
-  async function executeBulkDelete() {
+  async function executeBulkDismiss() {
     const ids = Array.from(selected)
     setBulkBusy(true)
     setBulkError('')
     try {
-      const r = await fetch('/api/events/bulk', {
-        method: 'DELETE',
+      const r = await fetch('/api/events/bulk/dismiss', {
+        method: 'PATCH',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids }),
       })
-      if (!r.ok) { setBulkError('Erro ao excluir'); return }
+      if (!r.ok) { setBulkError('Erro ao ignorar'); return }
       clearSelection()
       setBulkConfirm(null)
-      // refresh page; back off if it became empty
       const newTotal = labelTotal - ids.length
-      const lastPage = Math.max(1, Math.ceil(newTotal / LIMIT))
-      if (labelPage > lastPage) {
-        setLabelPage(lastPage)
-      }
+      const lastPage = Math.max(1, Math.ceil(newTotal / labelLimit))
+      if (labelPage > lastPage) setLabelPage(lastPage)
       setLabelEvents(null)
       setLabelRefreshTick(t => t + 1)
-      refreshCounts()
     } finally {
       setBulkBusy(false)
     }
   }
-  async function executeRowDelete() {
-    if (!rowDeleteConfirm) return
-    const id = rowDeleteConfirm.id
-    setRowDeleteBusy(true)
+  async function executeRowDismiss() {
+    if (!rowDismissConfirm) return
+    const id = rowDismissConfirm.id
+    setRowDismissBusy(true)
     try {
-      const r = await fetch('/api/events/bulk', {
-        method: 'DELETE',
+      const r = await fetch('/api/events/bulk/dismiss', {
+        method: 'PATCH',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: [id] }),
       })
       if (!r.ok) return
-      setRowDeleteConfirm(null)
+      setRowDismissConfirm(null)
       const newTotal = labelTotal - 1
-      const lastPage = Math.max(1, Math.ceil(newTotal / LIMIT))
-      if (labelPage > lastPage) {
-        setLabelPage(lastPage)
-      }
+      const lastPage = Math.max(1, Math.ceil(newTotal / labelLimit))
+      if (labelPage > lastPage) setLabelPage(lastPage)
       setLabelEvents(null)
       setLabelRefreshTick(t => t + 1)
-      refreshCounts()
     } finally {
-      setRowDeleteBusy(false)
+      setRowDismissBusy(false)
     }
   }
   async function executeBulkLabel() {
@@ -339,9 +335,10 @@ export default function AnalysisSettingsPage() {
     const controller = new AbortController()
     const params = new URLSearchParams({
       page: String(labelPage),
-      limit: String(LIMIT),
-      ...(unlabeledOnly && !labelSearch ? { unlabeled: 'true' } : {}),
-      ...(labelSearch ? { label: labelSearch } : {}),
+      limit: String(labelLimit),
+      ...(showDismissed ? { dismissed: 'true' } : {}),
+      ...(!showDismissed && unlabeledOnly && !labelSearch ? { unlabeled: 'true' } : {}),
+      ...(!showDismissed && labelSearch ? { label: labelSearch } : {}),
     })
     fetch(`/api/cameras/${labelCamID}/events?${params}`, {
       headers: authHeaders(),
@@ -358,7 +355,7 @@ export default function AnalysisSettingsPage() {
       })
       .catch(err => { if (err.name !== 'AbortError') setLabelEvents([]) })
     return () => controller.abort()
-  }, [labelCamID, unlabeledOnly, labelSearch, labelPage, labelRefreshTick])
+  }, [labelCamID, unlabeledOnly, labelSearch, labelPage, labelLimit, labelRefreshTick, showDismissed])
 
   function handleLabelBlur(eventId: number) {
     const label = labelInputs[eventId] ?? ''
@@ -456,19 +453,19 @@ export default function AnalysisSettingsPage() {
           </div>
 
           <div className="p-4 space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">URL do serviço</label>
-              <input
-                type="url"
-                className="w-full bg-gray-700 text-gray-200 text-sm rounded px-3 py-2 border border-gray-600 focus:outline-none focus:border-blue-500"
-                placeholder="http://yolo:8001"
-                value={cfg.service_url}
-                onChange={e => setCfg(c => ({ ...c, service_url: e.target.value }))}
-              />
-              <p className="text-xs text-gray-500 mt-1">Endereço do container YOLO (ex: <code>http://yolo:8001</code>)</p>
-            </div>
-
             <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">URL do serviço</label>
+                <input
+                  type="url"
+                  className="w-full bg-gray-700 text-gray-200 text-sm rounded px-3 py-2 border border-gray-600 focus:outline-none focus:border-blue-500"
+                  placeholder="http://yolo:8001"
+                  value={cfg.service_url}
+                  onChange={e => setCfg(c => ({ ...c, service_url: e.target.value }))}
+                />
+                <p className="text-xs text-gray-500 mt-1">Endereço do container YOLO (ex: <code>http://yolo:8001</code>)</p>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Modelo</label>
                 <select
@@ -492,23 +489,23 @@ export default function AnalysisSettingsPage() {
                 </select>
                 <p className="text-xs text-gray-500 mt-1">n = mais rápido · x = mais preciso</p>
               </div>
+            </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
-                  Limiar de confiança ({(cfg.confidence_threshold * 100).toFixed(0)}%)
-                </label>
-                <input
-                  type="range"
-                  min={0.1}
-                  max={0.9}
-                  step={0.05}
-                  className="w-full accent-blue-500"
-                  value={cfg.confidence_threshold}
-                  onChange={e => setCfg(c => ({ ...c, confidence_threshold: Number(e.target.value) }))}
-                />
-                <div className="flex justify-between text-xs text-gray-500 mt-0.5">
-                  <span>10%</span><span>90%</span>
-                </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">
+                Limiar de confiança ({(cfg.confidence_threshold * 100).toFixed(0)}%)
+              </label>
+              <input
+                type="range"
+                min={0.1}
+                max={0.9}
+                step={0.05}
+                className="w-full accent-blue-500"
+                value={cfg.confidence_threshold}
+                onChange={e => setCfg(c => ({ ...c, confidence_threshold: Number(e.target.value) }))}
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-0.5">
+                <span>10%</span><span>90%</span>
               </div>
             </div>
           </div>
@@ -645,15 +642,26 @@ export default function AnalysisSettingsPage() {
                 onChange={e => { setLabelSearch(e.target.value); setLabelPage(1); setLabelEvents(null); clearSelection() }}
                 className="bg-gray-700 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500 w-40"
               />
-              <label className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${labelSearch ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400'}`}>
+              {!showDismissed && (
+                <label className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${labelSearch ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400'}`}>
+                  <input
+                    type="checkbox"
+                    className="accent-blue-500"
+                    checked={unlabeledOnly && !labelSearch}
+                    disabled={!!labelSearch}
+                    onChange={e => { setUnlabeledOnly(e.target.checked); setLabelPage(1); setLabelEvents(null); clearSelection() }}
+                  />
+                  Sem label
+                </label>
+              )}
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none text-gray-400">
                 <input
                   type="checkbox"
-                  className="accent-blue-500"
-                  checked={unlabeledOnly && !labelSearch}
-                  disabled={!!labelSearch}
-                  onChange={e => { setUnlabeledOnly(e.target.checked); setLabelPage(1); setLabelEvents(null); clearSelection() }}
+                  className="accent-yellow-500"
+                  checked={showDismissed}
+                  onChange={e => { setShowDismissed(e.target.checked); setLabelPage(1); setLabelEvents(null); clearSelection() }}
                 />
-                Sem label
+                Ignorados
               </label>
             </div>
           </div>
@@ -665,12 +673,22 @@ export default function AnalysisSettingsPage() {
               )}
               {!labelLoading && labelEvents?.length === 0 && (
                 <div className="p-6 text-center text-xs text-gray-500">
-                  {unlabeledOnly ? 'Nenhum evento sem label.' : 'Nenhum evento encontrado.'}
+                  {showDismissed ? 'Nenhum evento ignorado.' : unlabeledOnly ? 'Nenhum evento sem label.' : 'Nenhum evento encontrado.'}
                 </div>
               )}
               {!labelLoading && (labelEvents?.length ?? 0) > 0 && (
                 <>
                   <div className="flex items-center gap-3 px-4 py-2 bg-gray-900/40 border-b border-gray-700 text-xs text-gray-400">
+                    <label className="flex items-center gap-1.5 text-gray-500">
+                      Por página:
+                      <select
+                        className="bg-gray-700 text-gray-300 text-xs rounded px-1.5 py-0.5 border border-gray-600 focus:outline-none focus:border-blue-500"
+                        value={labelLimit}
+                        onChange={e => { setLabelLimit(Number(e.target.value)); setLabelPage(1); clearSelection() }}
+                      >
+                        {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </label>
                     <label className="flex items-center gap-2 cursor-pointer select-none">
                       <input
                         type="checkbox"
@@ -701,14 +719,16 @@ export default function AnalysisSettingsPage() {
                       >
                         Aplicar label
                       </button>
-                      <button
-                        type="button"
-                        disabled={bulkBusy}
-                        onClick={() => setBulkConfirm({ action: 'delete' })}
-                        className="px-3 py-1 text-xs bg-red-600 hover:bg-red-500 text-white rounded disabled:opacity-40"
-                      >
-                        Excluir
-                      </button>
+                      {!showDismissed && (
+                        <button
+                          type="button"
+                          disabled={bulkBusy}
+                          onClick={() => setBulkConfirm({ action: 'dismiss' })}
+                          className="px-3 py-1 text-xs bg-yellow-700 hover:bg-yellow-600 text-white rounded disabled:opacity-40"
+                        >
+                          Ignorar
+                        </button>
+                      )}
                       <button
                         type="button"
                         disabled={bulkBusy}
@@ -768,16 +788,18 @@ export default function AnalysisSettingsPage() {
                               className={`w-full bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border ${borderCls} focus:outline-none focus:border-blue-500 transition-colors`}
                             />
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setRowDeleteConfirm(ev)}
-                            title="Excluir este evento"
-                            className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
-                            </svg>
-                          </button>
+                          {!showDismissed && (
+                            <button
+                              type="button"
+                              onClick={() => setRowDismissConfirm(ev)}
+                              title="Ignorar este evento"
+                              className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-gray-500 hover:text-yellow-400 hover:bg-yellow-500/10 rounded transition-colors"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
+                              </svg>
+                            </button>
+                          )}
                         </li>
                       )
                     })}
@@ -785,9 +807,9 @@ export default function AnalysisSettingsPage() {
                 </>
               )}
 
-              {labelTotal > LIMIT && (
+              {labelTotal > labelLimit && (
                 <div className="p-3 flex items-center justify-between border-t border-gray-700">
-                  <span className="text-xs text-gray-500">{labelTotal} eventos · página {labelPage} de {Math.ceil(labelTotal / LIMIT)}</span>
+                  <span className="text-xs text-gray-500">{labelTotal} eventos · página {labelPage} de {Math.ceil(labelTotal / labelLimit)}</span>
                   <div className="flex gap-2">
                     <button
                       onClick={() => { setLabelPage(p => Math.max(1, p - 1)); setLabelEvents(null); clearSelection() }}
@@ -798,7 +820,7 @@ export default function AnalysisSettingsPage() {
                     </button>
                     <button
                       onClick={() => { setLabelPage(p => p + 1); setLabelEvents(null); clearSelection() }}
-                      disabled={labelPage >= Math.ceil(labelTotal / LIMIT)}
+                      disabled={labelPage >= Math.ceil(labelTotal / labelLimit)}
                       className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       próxima →
@@ -893,26 +915,24 @@ export default function AnalysisSettingsPage() {
       )}
 
       <ConfirmDialog
-        open={bulkConfirm?.action === 'delete'}
-        title="Excluir eventos"
-        message={`Excluir ${selected.size} evento${selected.size !== 1 ? 's' : ''}? Esta ação não pode ser desfeita.`}
-        confirmLabel={bulkBusy ? 'Excluindo…' : 'Excluir'}
-        danger
-        onConfirm={executeBulkDelete}
+        open={bulkConfirm?.action === 'dismiss'}
+        title="Ignorar eventos"
+        message={`Ignorar ${selected.size} evento${selected.size !== 1 ? 's' : ''}? Eles não aparecerão mais na lista de rotulagem.`}
+        confirmLabel={bulkBusy ? 'Ignorando…' : 'Ignorar'}
+        onConfirm={executeBulkDismiss}
         onCancel={() => { if (!bulkBusy) setBulkConfirm(null) }}
       />
       <ConfirmDialog
-        open={!!rowDeleteConfirm}
-        title="Excluir evento"
+        open={!!rowDismissConfirm}
+        title="Ignorar evento"
         message={
-          rowDeleteConfirm
-            ? `Excluir o evento de ${new Date(rowDeleteConfirm.time).toLocaleString()}? Esta ação não pode ser desfeita.`
+          rowDismissConfirm
+            ? `Ignorar o evento de ${new Date(rowDismissConfirm.time).toLocaleString()}? Ele não aparecerá mais na lista de rotulagem.`
             : ''
         }
-        confirmLabel={rowDeleteBusy ? 'Excluindo…' : 'Excluir'}
-        danger
-        onConfirm={executeRowDelete}
-        onCancel={() => { if (!rowDeleteBusy) setRowDeleteConfirm(null) }}
+        confirmLabel={rowDismissBusy ? 'Ignorando…' : 'Ignorar'}
+        onConfirm={executeRowDismiss}
+        onCancel={() => { if (!rowDismissBusy) setRowDismissConfirm(null) }}
       />
       <ConfirmDialog
         open={bulkConfirm?.action === 'label'}

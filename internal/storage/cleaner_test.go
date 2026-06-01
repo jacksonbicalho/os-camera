@@ -865,6 +865,40 @@ func TestClean_PurgesMotionJPEGsOnDelete(t *testing.T) {
 	}
 }
 
+// TestSyncRecordings_ResetsHasMotionWhenEventsDeleted verifica que syncRecordings
+// reseta has_motion=0 para gravações cujos eventos foram deletados fora do ciclo
+// normal de limpeza (ex: via bulk delete pela API).
+func TestSyncRecordings_ResetsHasMotionWhenEventsDeleted(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCameraWithMotion(t, database, "cam1", 0, 0)
+
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	pathA := mp4WithTimestamp(dir, "cam1", base)
+	pathB := mp4WithTimestamp(dir, "cam1", base.Add(5*time.Minute))
+	writeFile(t, pathA, base)
+	writeFile(t, pathB, base.Add(5*time.Minute))
+
+	addMotionEvent(t, database, "cam1", base.Add(2*time.Minute), 0.5)
+
+	// Primeiro ciclo: A recebe has_motion=1 via syncRecordings.
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+	if !hasMotionInDB(t, database, pathA) {
+		t.Fatal("pathA deve ter has_motion=1 após sync")
+	}
+
+	// Simula bulk delete de eventos via API (exclui evento sem apagar gravação).
+	if _, err := database.Exec(`DELETE FROM motion_events WHERE camera_id='cam1'`); err != nil {
+		t.Fatal(err)
+	}
+
+	// Segundo ciclo: syncRecordings deve resetar has_motion=0 para A.
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+	if hasMotionInDB(t, database, pathA) {
+		t.Error("pathA deve ter has_motion=0 após todos os eventos serem deletados")
+	}
+}
+
 func TestClean_DoesNotDeleteCurrentRecording(t *testing.T) {
 	dir := t.TempDir()
 	database := openTestDB(t)

@@ -262,6 +262,10 @@ func (c *Cleaner) syncRecordings() {
 	if err != nil {
 		c.log.Warn("failed to update has_motion from motion_events", "err", err)
 	}
+
+	if err := db.ResetHasMotionOrphaned(c.db, ""); err != nil {
+		c.log.Warn("failed to reset orphaned has_motion", "err", err)
+	}
 }
 
 // effectiveRetentionMinutes returns the retention minutes, preferring DB
