@@ -618,10 +618,23 @@ func (c *Cleaner) cleanFromFS() {
 	}
 }
 
+func (c *Cleaner) analysisEnabled() bool {
+	if c.db == nil {
+		return false
+	}
+	cfg, err := db.GetVideoAnalysisConfig(c.db)
+	if err != nil {
+		return false
+	}
+	return cfg.Enabled && cfg.ServiceURL != ""
+}
+
 func (c *Cleaner) Clean() {
 	if c.db != nil {
 		c.syncRecordings()
-		c.analyzeNewRecordings()
+		if c.analysisEnabled() {
+			c.analyzeNewRecordings()
+		}
 		c.cleanFromDB()
 	} else {
 		c.cleanFromFS()
@@ -638,7 +651,6 @@ func (c *Cleaner) analyzeNewRecordings() {
 		return
 	}
 	if !cfg.Enabled {
-		c.log.Debug("analyzeNewRecordings: skipped (disabled)")
 		return
 	}
 	if cfg.ServiceURL == "" {
@@ -797,7 +809,7 @@ func (c *Cleaner) Run(ctx context.Context, defaultInterval time.Duration) {
 		case <-ticker.C:
 			if c.db != nil {
 				c.syncRecordings()
-				if c.analyzeMu.TryLock() {
+				if c.analysisEnabled() && c.analyzeMu.TryLock() {
 					go func() {
 						defer c.analyzeMu.Unlock()
 						c.analyzeNewRecordings()

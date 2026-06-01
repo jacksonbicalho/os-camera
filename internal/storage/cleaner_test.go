@@ -1163,3 +1163,24 @@ func TestSyncRecordings_RemovesCorruptRecordingAlreadyInDB(t *testing.T) {
 		t.Error("pre-existing corrupt pathA should have been removed from database")
 	}
 }
+
+func TestAnalyzeNewRecordings_DisabledDoesNotLog(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCamera(t, database, "cam1")
+
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	writeFile(t, mp4WithTimestamp(dir, "cam1", base), base)
+
+	var buf bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	fake := &analysis.FakeAnalyzer{}
+	storage.New(dir, 0, 0, 5*time.Minute, 0, 0, database, log).
+		WithAnalyzer(fake).
+		Clean()
+
+	if strings.Contains(buf.String(), "skipped (disabled)") {
+		t.Error("Clean() should not log 'skipped (disabled)' when analysis is globally disabled")
+	}
+}
