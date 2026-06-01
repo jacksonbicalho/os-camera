@@ -387,6 +387,17 @@ export default function CameraPage() {
     setActivePanel('events')
   }, [location.state, isLiveRoute])
 
+  // Sidebar camera link: navigate to same URL with goLive state to reset to live mode
+  const handledGoLiveRef = useRef(0)
+  useEffect(() => {
+    const state = location.state as { goLive?: number } | null
+    if (!state?.goLive) return
+    if (handledGoLiveRef.current === state.goLive) return
+    handledGoLiveRef.current = state.goLive
+    setActiveRecording(null)
+    setActivePanel(null)
+  }, [location.state])
+
   // Runs only on mount: loads the recording indicated by the URL param so that
   // a direct navigation / page refresh restores the correct recording.
   // Must NOT re-run on internal navigations (openRecording calls replace: true
