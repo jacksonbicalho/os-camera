@@ -28,7 +28,13 @@ Cria a tag de release executando o script `./scripts/release.sh`, após o PR `re
 - GitHub Actions: https://github.com/jacksonbicalho/camera/actions
 ```
 
-6. **Reporte.** Confirme tag criada, link do release no GitHub e que o workflow vai gerar o binário automaticamente.
+6. **Mergeie master de volta em develop.** Sem este passo, `git describe` em develop não encontra a nova tag (que fica no merge commit de master) e retorna a versão anterior — quebrando a versão exibida no modo dev.
+   ```bash
+   git checkout develop && git fetch origin master && git merge origin/master --no-edit && git push origin develop
+   ```
+   Depois retorne ao `develop`.
+
+7. **Reporte.** Confirme tag criada, link do release no GitHub e que o workflow vai gerar o binário automaticamente.
 
 ## Restrições
 
