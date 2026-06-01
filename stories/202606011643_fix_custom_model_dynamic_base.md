@@ -24,4 +24,4 @@ Nenhuma mudança no backend necessária — a informação já está em `cfg.mod
 
 ## Revisão
 
-- [ ] Aprovado
+- [x] Aprovado
