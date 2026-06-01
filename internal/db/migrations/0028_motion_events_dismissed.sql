@@ -1,0 +1,1 @@
+ALTER TABLE motion_events ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0;
