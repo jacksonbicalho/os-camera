@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { VolumeX, Volume2, Gauge, Repeat, Film, Zap, CalendarDays, Code2, Settings, Maximize, Play, Pause, X, Trash2 } from '../components/Icons'
+import { VolumeX, Volume2, Gauge, Repeat, Film, Zap, CalendarDays, Code2, Settings, Maximize, Play, Pause, X, Trash2, Camera } from '../components/Icons'
 import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -243,6 +243,31 @@ export default function CameraPage() {
     }
     setAnnBox(box)
     setAnnSaveOk(false)
+  }
+
+  function takeSnapshot() {
+    const video = isLive
+      ? hlsPlayerRef.current?.getVideoElement() ?? null
+      : videoRef.current
+    if (!video || video.videoWidth === 0) return
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d')?.drawImage(video, 0, 0)
+    const cameraName = (cam?.name ?? id ?? 'camera').replace(/[^a-zA-Z0-9]/g, '_')
+    const ts = isLive
+      ? new Date().toISOString()
+      : new Date(new Date(activeRecording?.start ?? 0).getTime() + recCurrentTime * 1000).toISOString()
+    const filename = `${cameraName}_${ts.replace(/[:.]/g, '-')}.jpg`
+    canvas.toBlob(blob => {
+      if (!blob) return
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    }, 'image/jpeg', 0.92)
   }
 
   async function saveAnnotation() {
@@ -1040,6 +1065,13 @@ function toggleFullscreen() {
                     className="flex items-center gap-1 px-1 py-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
                   >
                     {playerBtn(<Maximize className="w-4 h-4" />, 'Expandir')}
+                  </button>
+                  <button
+                    onClick={takeSnapshot}
+                    title="Tirar snapshot"
+                    className="flex items-center gap-1 px-1 py-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+                  >
+                    {playerBtn(<Camera className="w-4 h-4" />, 'Snapshot')}
                   </button>
                 </div>
               </div>
