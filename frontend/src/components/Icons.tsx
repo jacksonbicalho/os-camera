@@ -43,6 +43,26 @@ export function Github({ className, ...props }: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function CameraCapture({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      {/* Corner brackets — 5px arms, flush to edge */}
+      <path d="M2 7V2h5" />
+      <path d="M22 7V2h-5" />
+      <path d="M2 17v5h5" />
+      <path d="M22 17v5h-5" />
+      {/* Camera body — compact, centered */}
+      <rect x="7" y="11.5" width="10" height="7" rx="1" />
+      {/* Flash mount hump (left of centre) */}
+      <path d="M9 11.5v-1.3q0-.7.6-.7h3.2q.6 0 .6.7v1.3" />
+      {/* Lens */}
+      <circle cx="12" cy="15" r="2" />
+      {/* Flash dot */}
+      <circle cx="15.5" cy="12.5" r="0.5" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 export function CameraLogo({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" className={className} {...props}>
