@@ -18,7 +18,7 @@ RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
 
 # ── pré-requisitos ────────────────────────────────────────────────────────────
-for cmd in git; do
+for cmd in git gh; do
     command -v "$cmd" &>/dev/null || { echo -e "${RED}Erro: $cmd não encontrado${RESET}" >&2; exit 1; }
 done
 
@@ -56,13 +56,13 @@ RANGE="${LAST_TAG:+${LAST_TAG}..}HEAD"
 # body todas as linhas "* feat(...):" / "* fix(...):" dos PRs individuais.
 # Expandimos essas linhas para que bump detection e changelog fiquem corretos.
 #
-# Develop preserva os commits originais dos PRs; quando GitHub faz squash de
-# develop → master, a body do squash inclui PRs que já saíram em releases
-# anteriores. Extraímos os PRs já presentes em LAST_TAG e filtramos pra
-# manter só os novos.
+# O body do commit squash acumula todo o histórico de squashes anteriores,
+# então não pode ser usado para determinar "já lançado". Em vez disso, lemos
+# o body da GitHub Release (o changelog real daquela tag), que só contém os
+# PRs efetivamente publicados naquela versão.
 PREV_PRS=""
 if [[ -n "$LAST_TAG" ]]; then
-    PREV_PRS="$(git show "$LAST_TAG^{commit}" --format="%B" -s 2>/dev/null | grep -oE '#[0-9]+' | sort -u)"
+    PREV_PRS="$(gh release view "$LAST_TAG" --json body -q '.body' 2>/dev/null | grep -oE '#[0-9]+' | sort -u)"
 fi
 pr_already_released() {
     local pr="$1"
@@ -157,6 +157,7 @@ declare -A LINES
 for key in "${!SECTIONS[@]}"; do LINES[$key]=""; done
 
 while read -r hash subject; do
+    [[ -z "$hash" ]] && continue
     short_hash="${hash:0:7}"
     type=""
     scope=""
