@@ -2,6 +2,7 @@ export {
   AlertTriangle,
   BarChart2,
   Bell,
+  Camera,
   Cctv,
   CalendarDays,
   Check,
