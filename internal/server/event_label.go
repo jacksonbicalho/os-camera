@@ -158,6 +158,9 @@ func (s *Server) handleBulkDeleteEvents(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	}
+	if err := db.ResetHasMotionOrphaned(s.db, ""); err != nil {
+		s.log.Warn("reset has_motion after bulk delete", "err", err)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"deleted": deleted})
 }
