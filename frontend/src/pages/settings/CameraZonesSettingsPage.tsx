@@ -270,9 +270,11 @@ function paintCanvas(
         ctx.fillRect(wx - 5, wy - 5, 10, 10)
       }
 
-      // Delete button just outside TR corner
-      const [bx, by] = delBtnWorld(z, cw, ch)
-      drawDeleteButton(ctx, bx, by, stroke)
+      // Delete button only on selected zone
+      if (isSel) {
+        const [bx, by] = delBtnWorld(z, cw, ch)
+        drawDeleteButton(ctx, bx, by, stroke)
+      }
 
       // Rotation handle (only for selected zone) — clamped so it's always on-screen
       if (isSel) {
@@ -451,9 +453,7 @@ export default function CameraZonesSettingsPage() {
     const zs = zonesRef.current
     const si = selectedIdxRef.current
 
-    for (let i = zs.length - 1; i >= 0; i--) {
-      if (hitDelBtn(zs[i], px, py, cw, ch)) { setCursorStyle('pointer'); return }
-    }
+    if (si !== null && zs[si] && hitDelBtn(zs[si], px, py, cw, ch)) { setCursorStyle('pointer'); return }
     if (si !== null && zs[si] && hitRotHandle(zs[si], px, py, cw, ch)) {
       setCursorStyle('alias'); return
     }
@@ -516,17 +516,12 @@ export default function CameraZonesSettingsPage() {
     const zs = zonesRef.current
     const si = selectedIdxRef.current
 
-    // Delete button (checked first, front to back)
-    for (let i = zs.length - 1; i >= 0; i--) {
-      if (hitDelBtn(zs[i], x, y, cw, ch)) {
-        setZones(prev => prev.filter((_, j) => j !== i))
-        setSelectedIdx(prev => {
-          if (prev === i) { setRegionScore(null); setPeakScore(null); return null }
-          if (prev !== null && i < prev) return prev - 1
-          return prev
-        })
-        return
-      }
+    // Delete button — only for the selected zone
+    if (si !== null && zs[si] && hitDelBtn(zs[si], x, y, cw, ch)) {
+      setZones(prev => prev.filter((_, j) => j !== si))
+      setSelectedIdx(null)
+      setRegionScore(null); setPeakScore(null)
+      return
     }
 
     // Rotation handle (only for selected zone)
@@ -611,7 +606,7 @@ export default function CameraZonesSettingsPage() {
 
       {isAdmin && (
         <p className="text-xs text-gray-500 mb-5">
-          Arraste em área vazia para criar uma zona. Clique numa zona para selecioná-la. Arraste os cantos para redimensionar. Use o círculo acima para rotacionar. Clique no × para excluir.
+          Arraste em área vazia para criar uma zona. Clique numa zona para selecioná-la. Arraste os cantos para redimensionar. Use o círculo acima para rotacionar. Clique no × na zona selecionada para excluí-la.
         </p>
       )}
 
