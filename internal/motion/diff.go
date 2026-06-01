@@ -28,18 +28,17 @@ const zoneBboxPixelThreshold = 12
 // ingênuo. Objeto real tem densidade ≥ 5–25% no bbox; ruído esparso fica < 1%.
 const minBBoxDensity = 0.03
 
-// computeBBox retorna o bounding box normalizado (0.0–1.0) da região com maior
-// diferença entre os frames. Pixels mascarados pelas zones são ignorados.
-// Retorna (bbox, true) quando pixels acima do threshold foram encontrados,
-// ou ({0,0,1,1}, false) quando nenhum pixel ultrapassou o threshold.
+// computeBBox retorna o bounding box normalizado (0.0–1.0) do maior componente
+// conectado (8-conectividade) de pixels com diff acima do threshold em relação
+// a prev. Pixels mascarados pelas zones são ignorados. Seleciona o componente
+// com maior totalDiff, que corresponde ao objeto mais significativo (pessoa/gato)
+// em vez de artefatos dispersos (sombras, reflexos de iluminação).
+// Retorna (bbox, true) quando um componente foi encontrado, ou ({0,0,1,1}, false).
 func computeBBox(prev, cur []byte, w, h int, zs []zones.Zone) (BBox, bool) {
-	minX, minY := w, h
-	maxX, maxY := -1, -1
-	diffCount := 0
+	// Build per-pixel absolute diff (0 = below threshold or masked).
+	diff := make([]int, len(prev))
 	for i := range prev {
-		px := i % w
-		py := i / w
-		if isMasked(px, py, w, h, zs) {
+		if isMasked(i%w, i/w, w, h, zs) {
 			continue
 		}
 		d := int(cur[i]) - int(prev[i])
@@ -47,36 +46,10 @@ func computeBBox(prev, cur []byte, w, h int, zs []zones.Zone) (BBox, bool) {
 			d = -d
 		}
 		if d >= bboxPixelThreshold {
-			diffCount++
-			if px < minX {
-				minX = px
-			}
-			if py < minY {
-				minY = py
-			}
-			if px > maxX {
-				maxX = px
-			}
-			if py > maxY {
-				maxY = py
-			}
+			diff[i] = d
 		}
 	}
-	if maxX < 0 {
-		return BBox{0, 0, 1, 1}, false
-	}
-	bw := maxX - minX + 1
-	bh := maxY - minY + 1
-	if float64(diffCount)/float64(bw*bh) < minBBoxDensity {
-		return BBox{0, 0, 1, 1}, false
-	}
-	fw, fh := float64(w), float64(h)
-	return BBox{
-		X: float64(minX) / fw,
-		Y: float64(minY) / fh,
-		W: float64(bw) / fw,
-		H: float64(bh) / fh,
-	}, true
+	return largestDiffComponent(diff, w, h, minBBoxDensity, BBox{0, 0, 1, 1})
 }
 
 // computeBBoxInZone retorna o bounding box normalizado (0.0–1.0) dos pixels
@@ -89,9 +62,7 @@ func computeBBoxInZone(prev, cur []byte, w, h int, dz zones.Zone) (BBox, bool) {
 	x1z := int(math.Ceil((dz.X + dz.W) * float64(w)))
 	y1z := int(math.Ceil((dz.Y + dz.H) * float64(h)))
 
-	minX, minY := w, h
-	maxX, maxY := -1, -1
-	diffCount := 0
+	diff := make([]int, len(prev))
 	for y := y0z; y < y1z; y++ {
 		for x := x0z; x < x1z; x++ {
 			i := y*w + x
@@ -100,37 +71,125 @@ func computeBBoxInZone(prev, cur []byte, w, h int, dz zones.Zone) (BBox, bool) {
 				d = -d
 			}
 			if d >= zoneBboxPixelThreshold {
-				diffCount++
-				if x < minX {
-					minX = x
-				}
-				if y < minY {
-					minY = y
-				}
-				if x > maxX {
-					maxX = x
-				}
-				if y > maxY {
-					maxY = y
-				}
+				diff[i] = d
 			}
 		}
 	}
-	if maxX < 0 {
-		return BBox{dz.X, dz.Y, dz.W, dz.H}, false
+
+	fallback := BBox{dz.X, dz.Y, dz.W, dz.H}
+	found, bbox := largestDiffComponentInRegion(diff, w, x0z, y0z, x1z, y1z, minBBoxDensity, fallback)
+	return found, bbox
+}
+
+type bboxRegion struct {
+	totalDiff, count    int
+	minX, maxX, minY, maxY int
+}
+
+// largestDiffComponent finds the connected component (8-connectivity) with the
+// highest totalDiff across the whole frame, then returns its normalised bbox.
+func largestDiffComponent(diff []int, w, h int, minDensity float64, fallback BBox) (BBox, bool) {
+	best, ok := findBestComponent(diff, w, 0, 0, w, h)
+	if !ok {
+		return fallback, false
 	}
-	bw := maxX - minX + 1
-	bh := maxY - minY + 1
-	if float64(diffCount)/float64(bw*bh) < minBBoxDensity {
-		return BBox{dz.X, dz.Y, dz.W, dz.H}, false
+	bw := best.maxX - best.minX + 1
+	bh := best.maxY - best.minY + 1
+	if float64(best.count)/float64(bw*bh) < minDensity {
+		return fallback, false
 	}
 	fw, fh := float64(w), float64(h)
 	return BBox{
-		X: float64(minX) / fw,
-		Y: float64(minY) / fh,
+		X: float64(best.minX) / fw,
+		Y: float64(best.minY) / fh,
 		W: float64(bw) / fw,
 		H: float64(bh) / fh,
 	}, true
+}
+
+// largestDiffComponentInRegion is the zone-bounded variant of largestDiffComponent.
+// Returns (bbox, found) — note argument order is swapped for zone fallback symmetry.
+func largestDiffComponentInRegion(diff []int, w, x0, y0, x1, y1 int, minDensity float64, fallback BBox) (BBox, bool) {
+	best, ok := findBestComponent(diff, w, x0, y0, x1, y1)
+	if !ok {
+		return fallback, false
+	}
+	bw := best.maxX - best.minX + 1
+	bh := best.maxY - best.minY + 1
+	if float64(best.count)/float64(bw*bh) < minDensity {
+		return fallback, false
+	}
+	fw, fh := float64(w), float64(len(diff)/w)
+	return BBox{
+		X: float64(best.minX) / fw,
+		Y: float64(best.minY) / fh,
+		W: float64(bw) / fw,
+		H: float64(bh) / fh,
+	}, true
+}
+
+// findBestComponent runs BFS over diff[y*w+x] for pixels within [x0,x1)×[y0,y1),
+// labels 8-connected components, and returns the one with the highest totalDiff.
+func findBestComponent(diff []int, w, x0, y0, x1, y1 int) (bboxRegion, bool) {
+	visited := make([]bool, len(diff))
+	queue := make([]int, 0, 64)
+
+	best := bboxRegion{}
+	bestTotal := 0
+
+	for sy := y0; sy < y1; sy++ {
+		for sx := x0; sx < x1; sx++ {
+			start := sy*w + sx
+			if diff[start] == 0 || visited[start] {
+				continue
+			}
+			visited[start] = true
+			queue = append(queue[:0], start)
+			r := bboxRegion{minX: x1, minY: y1, maxX: x0 - 1, maxY: y0 - 1}
+
+			for head := 0; head < len(queue); head++ {
+				idx := queue[head]
+				px, py := idx%w, idx/w
+				r.totalDiff += diff[idx]
+				r.count++
+				if px < r.minX {
+					r.minX = px
+				}
+				if px > r.maxX {
+					r.maxX = px
+				}
+				if py < r.minY {
+					r.minY = py
+				}
+				if py > r.maxY {
+					r.maxY = py
+				}
+				for dy := -1; dy <= 1; dy++ {
+					for dx := -1; dx <= 1; dx++ {
+						if dx == 0 && dy == 0 {
+							continue
+						}
+						nx, ny := px+dx, py+dy
+						if nx < x0 || nx >= x1 || ny < y0 || ny >= y1 {
+							continue
+						}
+						ni := ny*w + nx
+						if diff[ni] > 0 && !visited[ni] {
+							visited[ni] = true
+							queue = append(queue, ni)
+						}
+					}
+				}
+			}
+
+			if r.totalDiff > bestTotal {
+				bestTotal = r.totalDiff
+				best = r
+			}
+		}
+	}
+
+	return best, bestTotal > 0
 }
 
 func diffFrames(a, b []byte) float64 {

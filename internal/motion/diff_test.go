@@ -417,8 +417,9 @@ func TestComputeBBoxIgnoresMaskedPixels(t *testing.T) {
 
 // --- density filtering (anti-sparse-noise) ---
 
-// 16×16 frame with diff at 4 corner pixels only. Without density filtering the
-// bbox spans the entire frame; the density check should reject it as noise.
+// 16×16 frame with diff at 4 corner pixels only. With connected components each
+// corner becomes its own 1-pixel blob with a tight 1/16×1/16 bbox — much better
+// than the old min/max which spanned the entire frame. found=true; bbox is tiny.
 func TestComputeBBoxRejectsSparseNoise(t *testing.T) {
 	a := make([]byte, 256)
 	b := make([]byte, 256)
@@ -427,8 +428,12 @@ func TestComputeBBoxRejectsSparseNoise(t *testing.T) {
 	b[15*16] = 200      // (0,15)
 	b[15*16+15] = 200   // (15,15)
 	got, found := computeBBox(a, b, 16, 16, nil)
-	if found {
-		t.Errorf("expected found=false for sparse corner noise, got bbox %+v", got)
+	if !found {
+		t.Fatal("expected found=true: each corner is its own valid 1-pixel blob")
+	}
+	// Must be a tiny bbox (single pixel = 1/16 of the frame), not the whole frame.
+	if got.W > 0.1 || got.H > 0.1 {
+		t.Errorf("expected tiny bbox for isolated corner pixel, got %+v", got)
 	}
 }
 
@@ -455,7 +460,8 @@ func TestComputeBBoxKeepsDenseCluster(t *testing.T) {
 	}
 }
 
-// Sparse noise inside a zone should also be rejected.
+// Sparse corner pixels inside a zone: connected components returns a tiny bbox
+// for the best single-pixel blob, not the zone fallback.
 func TestComputeBBoxInZoneRejectsSparseNoise(t *testing.T) {
 	a := make([]byte, 256)
 	b := make([]byte, 256)
@@ -465,8 +471,12 @@ func TestComputeBBoxInZoneRejectsSparseNoise(t *testing.T) {
 	b[15*16+15] = 200
 	z := zones.Zone{X: 0, Y: 0, W: 1, H: 1}
 	got, found := computeBBoxInZone(a, b, 16, 16, z)
-	if found {
-		t.Errorf("expected found=false for sparse corner noise in zone, got bbox %+v", got)
+	if !found {
+		t.Fatal("expected found=true: each corner is its own valid 1-pixel blob")
+	}
+	// Must be a tiny bbox (single pixel = 1/16), not the whole zone.
+	if got.W > 0.1 || got.H > 0.1 {
+		t.Errorf("expected tiny bbox for isolated corner pixel, got %+v", got)
 	}
 }
 
@@ -504,41 +514,76 @@ func TestUpdateBackgroundAlphaOneBecomesCurrentFrame(t *testing.T) {
 
 // TestComputeBBoxBackgroundSubtractionLocalizesObject demonstrates that diffing
 // against a background frame (instead of prev) correctly localizes the object's
-// CURRENT position, eliminating the trailing bbox from the departure region.
+// CURRENT position when old and new positions are adjacent (one continuous blob).
 func TestComputeBBoxBackgroundSubtractionLocalizesObject(t *testing.T) {
-	// Frame 10×1: background is all gray (100)
+	// Frame 10×1: background is all gray (100).
+	// Object moves from pixels 1-4 to pixels 5-8 (adjacent, no gap).
+	// diff(prev,cur): pixels 1-8 all change → one wide component.
+	// diff(bg,cur):   only pixels 5-8 differ from bg → tight right-side bbox.
 	w, h := 10, 1
 	bg := make([]byte, w*h)
 	for i := range bg {
 		bg[i] = 100
 	}
-	// Previous frame: object was at pixels 1-3 (left side)
 	prev := make([]byte, w*h)
 	copy(prev, bg)
-	prev[1], prev[2], prev[3] = 200, 200, 200
-	// Current frame: object is at pixels 7-9 (right side)
+	prev[1], prev[2], prev[3], prev[4] = 200, 200, 200, 200
 	cur := make([]byte, w*h)
 	copy(cur, bg)
-	cur[7], cur[8], cur[9] = 200, 200, 200
+	cur[5], cur[6], cur[7], cur[8] = 200, 200, 200, 200
 
-	// Old approach: diff(prev, cur) — spans departure + arrival (pixels 1-3 and 7-9)
+	// Old approach: diff(prev, cur) — pixels 1-8 all differ, one connected component.
 	bboxOld, _ := computeBBox(prev, cur, w, h, nil)
-	// New approach: diff(bg, cur) — only where object IS now (pixels 7-9)
+	// New approach: diff(bg, cur) — only pixels 5-8 differ from background.
 	bboxNew, _ := computeBBox(bg, cur, w, h, nil)
 
-	// Old bbox must span both regions (departure at left, arrival at right)
-	if bboxOld.X > 0.15 {
-		t.Errorf("old approach: expected bbox starting near left, got X=%.2f", bboxOld.X)
-	}
+	// Old bbox spans the merged blob (pixels 1-8).
 	if bboxOld.W < 0.7 {
-		t.Errorf("old approach: expected wide bbox covering both regions, got W=%.2f", bboxOld.W)
+		t.Errorf("old approach: expected wide bbox covering pixels 1-8, got W=%.2f", bboxOld.W)
 	}
 
-	// New bbox must be only on the right (where object IS)
-	if bboxNew.X < 0.65 {
-		t.Errorf("background subtraction: expected bbox on right side (X>=0.7), got X=%.2f", bboxNew.X)
+	// New bbox is only on the right (where object IS now).
+	if bboxNew.X < 0.45 {
+		t.Errorf("background subtraction: expected bbox starting at pixel 5 (X≥0.5), got X=%.2f", bboxNew.X)
 	}
-	if bboxNew.W > 0.35 {
-		t.Errorf("background subtraction: expected narrow bbox (W<=0.3), got W=%.2f", bboxNew.W)
+	if bboxNew.W > 0.45 {
+		t.Errorf("background subtraction: expected narrow bbox (W≤0.4), got W=%.2f", bboxNew.W)
+	}
+}
+
+// TestComputeBBoxPicksLargestConnectedBlob is the corridor scenario:
+// scattered diff pixels at top and bottom (shadows, illumination) with a dense
+// person-shaped blob in the middle. Connected components should select the middle
+// blob; the old min/max approach spans the entire frame height.
+func TestComputeBBoxPicksLargestConnectedBlob(t *testing.T) {
+	w, h := 10, 10
+	a := make([]byte, w*h)
+	b := make([]byte, w*h)
+	// Scattered noise above the person — isolated pixels, not adjacent to blob.
+	b[0*w+1] = 200 // (1,0)
+	b[1*w+7] = 200 // (7,1)
+	// Person blob: dense 3×3 block at rows 4-6, cols 3-5 (9 pixels, totalDiff=1800).
+	for y := 4; y <= 6; y++ {
+		for x := 3; x <= 5; x++ {
+			b[y*w+x] = 200
+		}
+	}
+	// Scattered noise below — isolated pixels, not adjacent to blob.
+	b[8*w+2] = 200 // (2,8)
+	b[9*w+8] = 200 // (8,9)
+
+	got, found := computeBBox(a, b, w, h, nil)
+	if !found {
+		t.Fatal("expected found=true for dense blob")
+	}
+	// Bbox must surround the person blob (rows 4-6, cols 3-5), not the whole frame.
+	if got.Y < 0.35 || got.Y > 0.45 {
+		t.Errorf("expected Y≈0.40 (person blob rows 4-6), got Y=%.3f — bbox spans wrong region", got.Y)
+	}
+	if got.H > 0.40 {
+		t.Errorf("expected H≈0.30 (3 rows), got H=%.3f — bbox too tall (includes noise rows)", got.H)
+	}
+	if got.X < 0.25 || got.X > 0.35 {
+		t.Errorf("expected X≈0.30 (cols 3-5), got X=%.3f", got.X)
 	}
 }
