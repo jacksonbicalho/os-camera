@@ -124,6 +124,22 @@ func (s *Server) handleUpdateAnnotation(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) handleDeleteAnnotationsByEvent(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
+	eventID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid event id", http.StatusBadRequest)
+		return
+	}
+	if err := db.DeleteAnnotationsByEvent(s.db, eventID); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleDeleteAnnotation(w http.ResponseWriter, r *http.Request) {
 	if !s.requireDB(w) {
 		return

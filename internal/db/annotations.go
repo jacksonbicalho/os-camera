@@ -62,6 +62,11 @@ func DeleteAnnotation(d *DB, id int64) error {
 	return err
 }
 
+func DeleteAnnotationsByEvent(d *DB, eventID int64) error {
+	_, err := d.Exec(`DELETE FROM annotations WHERE event_id=?`, eventID)
+	return err
+}
+
 func CountAnnotations(d *DB) (int, error) {
 	var n int
 	err := d.QueryRow(`SELECT COUNT(*) FROM annotations`).Scan(&n)
