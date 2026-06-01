@@ -473,12 +473,20 @@ export default function AnalysisSettingsPage() {
                   value={cfg.model}
                   onChange={e => setCfg(c => ({ ...c, model: e.target.value }))}
                 >
-                  {cfg.has_custom_model && (
-                    <optgroup label="Custom">
-                      <option value="custom">custom ✓ (treinado)</option>
-                      <option value="custom+yolov8n">custom + yolov8n</option>
-                    </optgroup>
-                  )}
+                  {cfg.has_custom_model && (() => {
+                    const base = cfg.model.startsWith('custom+')
+                      ? cfg.model.slice('custom+'.length)
+                      : cfg.model === 'custom'
+                        ? 'yolov8n'
+                        : cfg.model
+                    const combinedValue = `custom+${base}`
+                    return (
+                      <optgroup label="Custom">
+                        <option value="custom">custom ✓ (treinado)</option>
+                        <option value={combinedValue}>custom + {base}</option>
+                      </optgroup>
+                    )
+                  })()}
                   {MODELS.map(({ group, names }) => (
                     <optgroup key={group} label={group}>
                       {names.map(m => (
