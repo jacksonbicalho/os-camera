@@ -3,6 +3,7 @@ import SettingsLayout from '../../components/SettingsLayout'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { useSettings } from '../../hooks/useSettings'
 import { authHeaders, getRole } from '../../auth'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -101,6 +102,7 @@ export default function StorageSettingsPage() {
 
   const [showDriveForm, setShowDriveForm] = useState(false)
   const [editDrive, setEditDrive] = useState<Drive | null>(null)
+  useEscapeKey(() => setShowDriveForm(false), showDriveForm)
   const [driveForm, setDriveForm] = useState(emptyDriveForm())
   const [driveSaving, setDriveSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<Drive | null>(null)
