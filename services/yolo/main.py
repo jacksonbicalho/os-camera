@@ -150,6 +150,7 @@ def _run_finetune(job_id: str, req: FinetuneRequest):
             data=str(data_path),
             epochs=req.epochs,
             imgsz=640,
+            batch=4,
             project=str(work_dir / "runs"),
             name="train",
             exist_ok=True,

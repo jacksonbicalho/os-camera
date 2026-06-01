@@ -27,7 +27,13 @@ Abre o PR de release de `develop` para `master`, seguindo o fluxo de release em 
    - Confirme que develop está à frente de master: `git rev-list --count master..develop` > 0.
    - Se develop estiver atrás de master (raro), aborte.
 
-5. **Abra o PR.** Use HEREDOC pro body:
+5. **Determine a versão real** rodando o dry-run do script de release:
+   ```bash
+   ./scripts/release.sh --dry-run 2>&1 | grep "Nova versão:" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+'
+   ```
+   Use esta versão no título do PR — **não** a versão do nome do release file, que é apenas uma estimativa.
+
+6. **Abra o PR.** Use HEREDOC pro body:
 
 ```bash
 gh pr create --title "release: vX.Y.Z" --base master --head develop --body "$(cat <<'EOF'
@@ -40,7 +46,7 @@ EOF
 )"
 ```
 
-6. **Reporte.** Mostre URL do PR e diga que está pronto pro navigator aprovar no GitHub.
+7. **Reporte.** Mostre URL do PR e diga que está pronto pro navigator aprovar no GitHub.
 
 ## Restrições
 

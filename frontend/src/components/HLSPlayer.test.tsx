@@ -1,13 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, act } from '@testing-library/react'
 import HLSPlayer from './HLSPlayer'
+
+type HlsEventHandler = () => void
+
+let manifestParsedHandler: HlsEventHandler | null = null
 
 vi.mock('hls.js', () => ({
   default: class {
-    static isSupported() { return false }
+    static isSupported() { return true }
+    static Events = { MANIFEST_PARSED: 'manifestParsed', ERROR: 'error' }
     loadSource() {}
     attachMedia() {}
-    on() {}
+    on(event: string, handler: HlsEventHandler) {
+      if (event === 'manifestParsed') manifestParsedHandler = handler
+    }
     destroy() {}
   },
 }))
@@ -18,6 +25,7 @@ vi.mock('../auth', () => ({
 
 describe('HLSPlayer', () => {
   beforeEach(() => {
+    manifestParsedHandler = null
     HTMLVideoElement.prototype.play = vi.fn().mockResolvedValue(undefined)
   })
 
@@ -34,7 +42,31 @@ describe('HLSPlayer', () => {
   it('renders the play button when playback is blocked', async () => {
     HTMLVideoElement.prototype.play = vi.fn().mockRejectedValue(new Error('blocked'))
     render(<HLSPlayer src="/stream/cam/index.m3u8" />)
-    // play is called async after HLS attaches; initial render has no overlay
     expect(screen.queryByRole('button', { name: /reproduzir/i })).toBeNull()
+  })
+
+  it('respects muted=false prop after MANIFEST_PARSED — not hardcoded to muted', async () => {
+    const { container } = render(<HLSPlayer src="/stream/cam/index.m3u8" muted={false} />)
+    const video = container.querySelector('video') as HTMLVideoElement
+
+    // Flush the dynamic import microtask so HLS sets up the event handler
+    await act(async () => { await Promise.resolve() })
+    expect(manifestParsedHandler).not.toBeNull()
+
+    await act(async () => { manifestParsedHandler!() })
+
+    expect(video.muted).toBe(false)
+  })
+
+  it('respects muted=true prop after MANIFEST_PARSED', async () => {
+    const { container } = render(<HLSPlayer src="/stream/cam/index.m3u8" muted={true} />)
+    const video = container.querySelector('video') as HTMLVideoElement
+
+    await act(async () => { await Promise.resolve() })
+    expect(manifestParsedHandler).not.toBeNull()
+
+    await act(async () => { manifestParsedHandler!() })
+
+    expect(video.muted).toBe(true)
   })
 })

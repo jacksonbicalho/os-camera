@@ -49,8 +49,21 @@ func ListAnnotationsByEvent(d *DB, eventID int64) ([]Annotation, error) {
 	return result, rows.Err()
 }
 
+func UpdateAnnotation(d *DB, id int64, a Annotation) error {
+	_, err := d.Exec(`
+		UPDATE annotations SET label=?, bbox_x=?, bbox_y=?, bbox_w=?, bbox_h=?, rotation_deg=?
+		WHERE id=?`,
+		a.Label, a.BboxX, a.BboxY, a.BboxW, a.BboxH, a.RotationDeg, id)
+	return err
+}
+
 func DeleteAnnotation(d *DB, id int64) error {
 	_, err := d.Exec(`DELETE FROM annotations WHERE id=?`, id)
+	return err
+}
+
+func DeleteAnnotationsByEvent(d *DB, eventID int64) error {
+	_, err := d.Exec(`DELETE FROM annotations WHERE event_id=?`, eventID)
 	return err
 }
 

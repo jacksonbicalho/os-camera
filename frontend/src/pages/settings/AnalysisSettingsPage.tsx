@@ -240,13 +240,17 @@ export default function AnalysisSettingsPage() {
   }
 
   function handleAnnBoxChange(box: BboxRect | null) {
+    if (box === null && annBox === null && existingAnn !== null) {
+      deleteAnnotation()
+      return
+    }
     setAnnBox(box)
     setAnnSaveOk(false)
   }
 
   async function deleteAnnotation() {
-    if (!existingAnnId) return
-    const r = await fetch(`/api/annotations/${existingAnnId}`, {
+    if (!zoomEvent) return
+    const r = await fetch(`/api/events/${zoomEvent.id}/annotations`, {
       method: 'DELETE',
       headers: authHeaders(),
     })
@@ -263,18 +267,32 @@ export default function AnalysisSettingsPage() {
     if (!annBox || !zoomEvent || annBox.w < 0.01 || annBox.h < 0.01) return
     setAnnSaving(true)
     try {
-      const res = await fetch(`/api/events/${zoomEvent.id}/annotations`, {
-        method: 'POST',
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          label: annLabel,
-          bbox_x: annBox.x + annBox.w / 2,
-          bbox_y: annBox.y + annBox.h / 2,
-          bbox_w: annBox.w,
-          bbox_h: annBox.h,
-          rotation_deg: annBox.rotation_deg ?? 0,
-        }),
-      })
+      const payload = {
+        label: annLabel,
+        bbox_x: annBox.x + annBox.w / 2,
+        bbox_y: annBox.y + annBox.h / 2,
+        bbox_w: annBox.w,
+        bbox_h: annBox.h,
+        rotation_deg: annBox.rotation_deg ?? 0,
+      }
+      let res: Response
+      if (existingAnnId !== null) {
+        res = await fetch(`/api/annotations/${existingAnnId}`, {
+          method: 'PATCH',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      } else {
+        res = await fetch(`/api/events/${zoomEvent.id}/annotations`, {
+          method: 'POST',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setExistingAnnId(data.id)
+        }
+      }
       if (res.ok) {
         // sync event label with annotation label if they differ
         const currentEventLabel = labelInputs[zoomEvent.id] ?? ''
@@ -473,12 +491,20 @@ export default function AnalysisSettingsPage() {
                   value={cfg.model}
                   onChange={e => setCfg(c => ({ ...c, model: e.target.value }))}
                 >
-                  {cfg.has_custom_model && (
-                    <optgroup label="Custom">
-                      <option value="custom">custom ✓ (treinado)</option>
-                      <option value="custom+yolov8n">custom + yolov8n</option>
-                    </optgroup>
-                  )}
+                  {cfg.has_custom_model && (() => {
+                    const base = cfg.model.startsWith('custom+')
+                      ? cfg.model.slice('custom+'.length)
+                      : cfg.model === 'custom'
+                        ? 'yolov8n'
+                        : cfg.model
+                    const combinedValue = `custom+${base}`
+                    return (
+                      <optgroup label="Custom">
+                        <option value="custom">custom ✓ (treinado)</option>
+                        <option value={combinedValue}>custom + {base}</option>
+                      </optgroup>
+                    )
+                  })()}
                   {MODELS.map(({ group, names }) => (
                     <optgroup key={group} label={group}>
                       {names.map(m => (

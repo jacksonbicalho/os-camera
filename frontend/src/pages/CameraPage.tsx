@@ -15,6 +15,7 @@ import { useScrollToPlayer } from '../hooks/useScrollToPlayer'
 import { useEventSource } from '../hooks/useEventSource'
 import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { mergeRecordings } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
@@ -205,19 +206,9 @@ export default function CameraPage() {
     setExistingAnnLabel('')
   }
 
-  useEffect(() => {
-    if (!snapshotEvent) return
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') closeSnapshotModal() }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [snapshotEvent])
-
-  useEffect(() => {
-    if (!showDebug) return
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setShowDebug(false) }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [showDebug])
+  useEscapeKey(closeSnapshotModal, !!snapshotEvent)
+  useEscapeKey(() => setShowDebug(false), showDebug)
+  useEscapeKey(() => setDetectionModal(null), detectionModal !== null)
 
   function openSnapshotModal(ev: MotionEvent) {
     setAnnBox(null)
@@ -246,6 +237,10 @@ export default function CameraPage() {
   }, [snapshotEvent])
 
   function handleAnnBoxChange(box: BboxRect | null) {
+    if (box === null && annBox === null && existingAnn !== null) {
+      deleteAnnotation()
+      return
+    }
     setAnnBox(box)
     setAnnSaveOk(false)
   }
@@ -254,18 +249,32 @@ export default function CameraPage() {
     if (!snapshotEvent?.id || !annBox || annBox.w < 0.01 || annBox.h < 0.01) return
     setAnnSaving(true)
     try {
-      const res = await fetch(`/api/events/${snapshotEvent.id}/annotations`, {
-        method: 'POST',
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          label: annLabel.trim(),
-          bbox_x: annBox.x + annBox.w / 2,
-          bbox_y: annBox.y + annBox.h / 2,
-          bbox_w: annBox.w,
-          bbox_h: annBox.h,
-          rotation_deg: annBox.rotation_deg ?? 0,
-        }),
-      })
+      const payload = {
+        label: annLabel.trim(),
+        bbox_x: annBox.x + annBox.w / 2,
+        bbox_y: annBox.y + annBox.h / 2,
+        bbox_w: annBox.w,
+        bbox_h: annBox.h,
+        rotation_deg: annBox.rotation_deg ?? 0,
+      }
+      let res: Response
+      if (existingAnnId !== null) {
+        res = await fetch(`/api/annotations/${existingAnnId}`, {
+          method: 'PATCH',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      } else {
+        res = await fetch(`/api/events/${snapshotEvent.id}/annotations`, {
+          method: 'POST',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setExistingAnnId(data.id)
+        }
+      }
       if (!res.ok) return
       const currentEventLabel = snapshotEvent.label ?? ''
       if (annLabel.trim() && annLabel.trim() !== currentEventLabel) {
@@ -275,14 +284,8 @@ export default function CameraPage() {
           body: JSON.stringify({ label: annLabel.trim() }),
         })
       }
-      const fresh = await fetch(`/api/events/${snapshotEvent.id}/annotations`, { headers: authHeaders() })
-      const list: Array<{ id: number; label: string; bbox_x: number; bbox_y: number; bbox_w: number; bbox_h: number; rotation_deg?: number }> = await fresh.json()
-      const a = list[0]
-      if (a) {
-        setExistingAnnId(a.id)
-        setExistingAnnLabel(a.label ?? '')
-        setExistingAnn({ x: a.bbox_x - a.bbox_w / 2, y: a.bbox_y - a.bbox_h / 2, w: a.bbox_w, h: a.bbox_h, rotation_deg: a.rotation_deg })
-      }
+      setExistingAnnLabel(annLabel.trim())
+      setExistingAnn({ ...annBox })
       setAnnBox(null)
       setAnnSaveOk(true)
     } finally {
@@ -290,11 +293,10 @@ export default function CameraPage() {
     }
   }
 
-  async function deleteAnnotation(annId?: number) {
-    const id = annId ?? existingAnnId
-    if (!id) return
-    await fetch(`/api/annotations/${id}`, { method: 'DELETE', headers: authHeaders() })
-    if (id === existingAnnId) {
+  async function deleteAnnotation() {
+    if (!snapshotEvent?.id) return
+    const r = await fetch(`/api/events/${snapshotEvent.id}/annotations`, { method: 'DELETE', headers: authHeaders() })
+    if (r.ok) {
       setExistingAnn(null)
       setExistingAnnId(null)
       setExistingAnnLabel('')
@@ -395,6 +397,17 @@ export default function CameraPage() {
     setSelectedDate(new Date(t.getFullYear(), t.getMonth(), t.getDate()))
     setActivePanel('events')
   }, [location.state, isLiveRoute])
+
+  // Sidebar camera link: navigate to same URL with goLive state to reset to live mode
+  const handledGoLiveRef = useRef(0)
+  useEffect(() => {
+    const state = location.state as { goLive?: number } | null
+    if (!state?.goLive) return
+    if (handledGoLiveRef.current === state.goLive) return
+    handledGoLiveRef.current = state.goLive
+    setActiveRecording(null)
+    setActivePanel(null)
+  }, [location.state])
 
   // Runs only on mount: loads the recording indicated by the URL param so that
   // a direct navigation / page refresh restores the correct recording.

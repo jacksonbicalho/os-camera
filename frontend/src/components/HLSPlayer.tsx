@@ -33,6 +33,7 @@ interface MotionAlert {
 const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer({ src, className, containerClassName, cameraId, muted = true, segmentSeconds, onGoToEvent }, ref) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<HlsType | null>(null)
+  const mutedRef = useRef(muted)
   const [motionAlert, setMotionAlert] = useState<MotionAlert | null>(null)
   const alertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [playBlocked, setPlayBlocked] = useState(false)
@@ -77,7 +78,7 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
         hls.loadSource(src)
         hls.attachMedia(v)
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          v.muted = true
+          v.muted = mutedRef.current
           v.play()
             .then(() => { if (!cancelled) setPlayBlocked(false) })
             .catch((err: unknown) => {
@@ -106,6 +107,7 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
   }, [src, segmentSeconds])
 
   useEffect(() => {
+    mutedRef.current = muted
     if (videoRef.current) videoRef.current.muted = muted
   }, [muted])
 
