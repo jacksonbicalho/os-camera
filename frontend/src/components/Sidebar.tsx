@@ -558,18 +558,20 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             {cameraList.length === 0 ? (
               <div className="px-3 py-2 text-sm text-gray-500">Nenhuma câmera</div>
             ) : cameraList.map(cam => (
-              <Link
+              <button
                 key={cam.id}
-                to={`/camera/live/${cam.id}`}
-                onClick={() => setCamerasOpen(false)}
-                className={`block px-3 py-2 text-sm transition-colors truncate ${
+                onClick={() => {
+                  setCamerasOpen(false)
+                  navigate(`/camera/live/${cam.id}`, { replace: true, state: { goLive: Date.now() } })
+                }}
+                className={`block w-full text-left px-3 py-2 text-sm transition-colors truncate ${
                   location.pathname === `/camera/live/${cam.id}`
                     ? 'bg-gray-700 text-white'
                     : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                 }`}
               >
                 {cam.name}
-              </Link>
+              </button>
             ))}
           </div>,
           document.body
