@@ -43,6 +43,25 @@ export function Github({ className, ...props }: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function CameraCapture({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      {/* Viewfinder corners */}
+      <polyline points="3,8 3,3 8,3" />
+      <polyline points="21,8 21,3 16,3" />
+      <polyline points="3,16 3,21 8,21" />
+      <polyline points="21,16 21,21 16,21" />
+      {/* Camera body */}
+      <rect x="5.5" y="10" width="13" height="9" rx="1.5" />
+      <path d="M8.5 10 L8.5 8.5 Q8.5 8 9 8 L15 8 Q15.5 8 15.5 8.5 L15.5 10" />
+      {/* Lens */}
+      <circle cx="12" cy="14.5" r="2.5" />
+      {/* Flash dot */}
+      <circle cx="17.2" cy="11.2" r="0.7" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 export function CameraLogo({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" className={className} {...props}>

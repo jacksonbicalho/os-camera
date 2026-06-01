@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { VolumeX, Volume2, Gauge, Repeat, Film, Zap, CalendarDays, Code2, Settings, Maximize, Play, Pause, X, Trash2, Camera } from '../components/Icons'
+import { VolumeX, Volume2, Gauge, Repeat, Film, Zap, CalendarDays, Code2, Settings, Maximize, Play, Pause, X, Trash2, CameraCapture } from '../components/Icons'
 import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -1071,7 +1071,7 @@ function toggleFullscreen() {
                     title="Tirar snapshot"
                     className="flex items-center gap-1 px-1 py-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
                   >
-                    {playerBtn(<Camera className="w-4 h-4" />, 'Snapshot')}
+                    {playerBtn(<CameraCapture className="w-4 h-4" />, 'Snapshot')}
                   </button>
                 </div>
               </div>
