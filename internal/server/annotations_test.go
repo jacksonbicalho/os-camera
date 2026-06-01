@@ -98,6 +98,41 @@ func TestAnnotations_Delete(t *testing.T) {
 	}
 }
 
+func TestAnnotations_Update(t *testing.T) {
+	srv, database, token := setupAnnotationsServer(t)
+	insertAnnotationTestCamera(t, database)
+	evID := insertAnnotationTestEvent(t, database)
+
+	annID, err := db.InsertAnnotation(database, db.Annotation{
+		EventID: evID, Label: "original", BboxX: 10, BboxY: 20, BboxW: 100, BboxH: 80,
+	})
+	if err != nil {
+		t.Fatalf("InsertAnnotation: %v", err)
+	}
+
+	body, _ := json.Marshal(map[string]any{
+		"label":  "atualizado",
+		"bbox_x": 50.0, "bbox_y": 60.0, "bbox_w": 200.0, "bbox_h": 150.0, "rotation_deg": 45.0,
+	})
+	req := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/annotations/%d", annID), bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("PATCH annotation: got %d, body: %s", rr.Code, rr.Body.String())
+	}
+
+	list, _ := db.ListAnnotationsByEvent(database, evID)
+	if len(list) != 1 {
+		t.Fatalf("expected 1 annotation after update, got %d", len(list))
+	}
+	a := list[0]
+	if a.Label != "atualizado" || a.BboxX != 50 || a.BboxY != 60 || a.BboxW != 200 || a.BboxH != 150 || a.RotationDeg != 45 {
+		t.Errorf("annotation not updated correctly: %+v", a)
+	}
+}
+
 func TestAnnotations_RequiresAuth(t *testing.T) {
 	srv, database, _ := setupAnnotationsServer(t)
 	insertAnnotationTestCamera(t, database)

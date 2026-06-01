@@ -263,18 +263,32 @@ export default function AnalysisSettingsPage() {
     if (!annBox || !zoomEvent || annBox.w < 0.01 || annBox.h < 0.01) return
     setAnnSaving(true)
     try {
-      const res = await fetch(`/api/events/${zoomEvent.id}/annotations`, {
-        method: 'POST',
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          label: annLabel,
-          bbox_x: annBox.x + annBox.w / 2,
-          bbox_y: annBox.y + annBox.h / 2,
-          bbox_w: annBox.w,
-          bbox_h: annBox.h,
-          rotation_deg: annBox.rotation_deg ?? 0,
-        }),
-      })
+      const payload = {
+        label: annLabel,
+        bbox_x: annBox.x + annBox.w / 2,
+        bbox_y: annBox.y + annBox.h / 2,
+        bbox_w: annBox.w,
+        bbox_h: annBox.h,
+        rotation_deg: annBox.rotation_deg ?? 0,
+      }
+      let res: Response
+      if (existingAnnId !== null) {
+        res = await fetch(`/api/annotations/${existingAnnId}`, {
+          method: 'PATCH',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      } else {
+        res = await fetch(`/api/events/${zoomEvent.id}/annotations`, {
+          method: 'POST',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setExistingAnnId(data.id)
+        }
+      }
       if (res.ok) {
         // sync event label with annotation label if they differ
         const currentEventLabel = labelInputs[zoomEvent.id] ?? ''
