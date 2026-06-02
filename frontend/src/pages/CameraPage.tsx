@@ -272,11 +272,21 @@ export default function CameraPage() {
       ? new Date().toISOString()
       : new Date(new Date(activeRecording?.start ?? 0).getTime() + recCurrentTime * 1000).toISOString()
     const filename = `${cameraName}_${ts.replace(/[:.]/g, '-')}.jpg`
-    const activeId = activeEventIdRef.current
+    let eventId = activeEventIdRef.current
+    if (eventId === null && activeRecording) {
+      const currentMs = new Date(activeRecording.start).getTime() + recCurrentTime * 1000
+      const nearest = allMotionEventsRef.current
+        .filter(e => {
+          const t = new Date(e.time).getTime()
+          return t <= currentMs && currentMs - t < 60_000
+        })
+        .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())[0]
+      eventId = nearest?.id ?? null
+    }
     canvas.toBlob(blob => {
       if (!blob) return
-      if (activeId !== null) {
-        setPendingSnapBlob({ blob, eventId: activeId })
+      if (eventId !== null) {
+        setPendingSnapBlob({ blob, eventId })
       } else {
         downloadBlob(blob, filename)
       }
@@ -657,10 +667,11 @@ export default function CameraPage() {
     const nextStart = idx + 1 < asc.length
       ? new Date(asc[idx + 1].start).getTime()
       : recStart + 5 * 60 * 1000
-    return events.find(ev => {
+    const inRange = events.filter(ev => {
       const t = new Date(ev.time).getTime()
-      return t >= recStart && t < nextStart && !!ev.label
-    }) ?? null
+      return t >= recStart && t < nextStart
+    })
+    return inRange.find(ev => !!ev.label) ?? inRange.find(ev => !!ev.frame) ?? null
   }
 
   function findRecordingForEvent(ev: MotionEvent, recs: Recording[]): Recording | null {
@@ -1654,7 +1665,7 @@ function toggleFullscreen() {
           <div className="flex flex-col gap-3 items-center" onClick={e => e.stopPropagation()}>
             <div className="relative rounded overflow-hidden shadow-2xl" style={{ maxWidth: '90vw', maxHeight: '75vh' }}>
               <img
-                src={snapshotURL(id!, snapshotEvent.time, snapshotEvent.frame)}
+                src={snapshotURL(id!, snapshotEvent.time, snapshotEvent.frame) + (thumbCacheBust.get(snapshotEvent.id) ? `&t=${thumbCacheBust.get(snapshotEvent.id)}` : '')}
                 alt="snapshot de movimento"
                 className="block max-w-full max-h-full"
                 draggable={false}

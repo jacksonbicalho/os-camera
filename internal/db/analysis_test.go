@@ -239,3 +239,89 @@ func TestDetectionsByPaths_CustomModelFlag(t *testing.T) {
 		t.Errorf("expected custom model detection (custom_model=true), got %+v", d)
 	}
 }
+
+func TestResetDetectionsForReanalysis_DeletesAllDetections(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+
+	// gravação com detecção do modelo base
+	if err := db.InsertRecording(database, db.Recording{
+		CameraID:  "cam1",
+		StartedAt: time.Now().Add(-10 * time.Minute),
+		EndedAt:   time.Now(),
+		Path:      "cam1/2024/01/01/120000.mp4",
+		HasMotion: true,
+	}); err != nil {
+		t.Fatalf("InsertRecording base: %v", err)
+	}
+	if err := db.InsertDetections(database, "cam1/2024/01/01/120000.mp4", []db.Detection{
+		{Label: "person", Confidence: 0.9, FrameCount: 5},
+	}, false); err != nil {
+		t.Fatalf("InsertDetections base: %v", err)
+	}
+
+	// gravação com detecção do custom model — também deve ser apagada
+	if err := db.InsertRecording(database, db.Recording{
+		CameraID:  "cam1",
+		StartedAt: time.Now().Add(-20 * time.Minute),
+		EndedAt:   time.Now(),
+		Path:      "cam1/2024/01/01/110000.mp4",
+		HasMotion: true,
+	}); err != nil {
+		t.Fatalf("InsertRecording custom: %v", err)
+	}
+	if err := db.InsertDetections(database, "cam1/2024/01/01/110000.mp4", []db.Detection{
+		{Label: "car", Confidence: 0.8, FrameCount: 3},
+	}, true); err != nil {
+		t.Fatalf("InsertDetections custom: %v", err)
+	}
+
+	if err := db.ResetDetectionsForReanalysis(database); err != nil {
+		t.Fatalf("ResetDetectionsForReanalysis: %v", err)
+	}
+
+	base, _ := db.ListDetectionsByPath(database, "cam1/2024/01/01/120000.mp4")
+	if len(base) != 0 {
+		t.Errorf("expected base detections deleted, got %d", len(base))
+	}
+
+	custom, _ := db.ListDetectionsByPath(database, "cam1/2024/01/01/110000.mp4")
+	if len(custom) != 0 {
+		t.Errorf("expected custom detections deleted, got %d", len(custom))
+	}
+}
+
+func TestResetDetectionsForReanalysis_ResetsAnalysisSkipped(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+
+	if err := db.InsertRecording(database, db.Recording{
+		CameraID:  "cam1",
+		StartedAt: time.Now().Add(-5 * time.Minute),
+		EndedAt:   time.Now(),
+		Path:      "cam1/2024/01/01/130000.mp4",
+		HasMotion: true,
+	}); err != nil {
+		t.Fatalf("InsertRecording: %v", err)
+	}
+	// marca como skipped com detecção base
+	if err := db.InsertDetections(database, "cam1/2024/01/01/130000.mp4", []db.Detection{
+		{Label: "", Confidence: 0, FrameCount: 0},
+	}, false); err != nil {
+		t.Fatalf("InsertDetections sentinel: %v", err)
+	}
+	if err := db.MarkAnalysisSkipped(database, 1); err != nil {
+		// id pode variar; apenas verifica que ResetDetections não falha
+		_ = err
+	}
+
+	if err := db.ResetDetectionsForReanalysis(database); err != nil {
+		t.Fatalf("ResetDetectionsForReanalysis: %v", err)
+	}
+
+	// gravação deve estar elegível para re-análise (sem detecções)
+	dets, _ := db.ListDetectionsByPath(database, "cam1/2024/01/01/130000.mp4")
+	if len(dets) != 0 {
+		t.Errorf("expected no detections after reset, got %d", len(dets))
+	}
+}

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -206,4 +207,25 @@ func ListDetectionsByPath(d *DB, path string) ([]Detection, error) {
 		result = append(result, det)
 	}
 	return result, rows.Err()
+}
+
+// ResetDetectionsForReanalysis deletes all detections from recordings with
+// has_motion=1 and resets analysis_skipped=0, so the next analyzeNewRecordings
+// cycle re-analyzes every recording with the newly trained model.
+func ResetDetectionsForReanalysis(d *DB) error {
+	_, err := d.Exec(`
+		DELETE FROM detections
+		WHERE recording_id IN (
+			SELECT id FROM recordings WHERE has_motion = 1
+		)`)
+	if err != nil {
+		return fmt.Errorf("reset detections: %w", err)
+	}
+	_, err = d.Exec(`
+		UPDATE recordings SET analysis_skipped = 0
+		WHERE has_motion = 1 AND analysis_skipped = 1`)
+	if err != nil {
+		return fmt.Errorf("reset analysis_skipped: %w", err)
+	}
+	return nil
 }
