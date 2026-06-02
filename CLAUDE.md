@@ -238,7 +238,7 @@ cronológica natural ao listar o diretório.
 Ao iniciar uma nova história:
 - Criar o arquivo `stories/YYYYMMDDHHmm_<descricao>.md` com contexto, critérios de aceitação e notas técnicas.
 - Ao concluir a implementação, adicionar uma seção `## Revisão` no arquivo com checklist do que foi feito.
-- **Só proceder com PR após o navigator aprovar marcando `[x] Aprovado` na seção Revisão.**
+- **Nenhum commit pode ser feito sem aprovação explícita do navigator. Só proceder com commit ou PR após o navigator marcar `[x] Aprovado` na seção Revisão.**
 
 ### Slash commands
 
@@ -260,12 +260,15 @@ Use os commands em vez de executar os passos manualmente — eles validam pré-c
 2. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.
 3. Implementar o mínimo para o teste passar (**green**).
 4. Refatorar se necessário, mantendo os testes verdes (**refactor**).
-5. Executar **obrigatoriamente antes de qualquer commit**:
+5. Executar a suíte de testes (obrigatório antes de apresentar ao navigator):
    - Backend: `go test ./...` + `go build ./...`
    - Frontend: `yarn lint` + `yarn test --run` + `yarn build` (em `frontend/`)
-   - Nunca commitar se qualquer um desses falhar.
-6. Adicionar seção `## Revisão` na história e aguardar aprovação do navigator. **Só proceder com o item 7 após o navigator aprovar marcando `[x] Aprovado` na seção Revisão.**
-7. Commitar com mensagem semântica na branch e fazer `git push origin <branch>`. **Aguardar autorização explícita do navigator antes de abrir o PR** — `[x] Aprovado` na história libera o commit/push, mas não o `gh pr create`. Só abrir o PR quando o navigator pedir. O PR **sempre** tem `--base develop` (nunca `master`).
+   - Nunca prosseguir se qualquer um desses falhar.
+6. Adicionar seção `## Revisão` na história e **aguardar aprovação explícita do navigator**.
+
+   > ⚠️ **Nenhum commit pode ser feito antes de o navigator marcar `[x] Aprovado`.** O driver apresenta o resultado, o navigator revisa o código e aprova — só então o commit acontece.
+
+7. Com a aprovação do navigator (`[x] Aprovado`), commitar com mensagem semântica na branch e fazer `git push origin <branch>`. **Aguardar autorização explícita do navigator antes de abrir o PR** — a aprovação libera o commit/push, mas não o `gh pr create`. Só abrir o PR quando o navigator pedir. O PR **sempre** tem `--base develop` (nunca `master`).
 8. Atualizar o arquivo de release correspondente em `releases/`: preencher a branch e o número do PR na tabela, marcar `[~]` (aguardando aprovação no GitHub). O merge não é feito individualmente — acontece em lote quando o navigator liberar a release (merge em `develop`, depois PR `develop → master`).
 
 ### Commits semânticos
