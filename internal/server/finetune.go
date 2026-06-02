@@ -139,6 +139,9 @@ func (s *Server) handleFinetuneStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	if status.Status == "done" || status.Status == "completed" {
 		_ = db.SetHasCustomModel(s.db, true)
+		if err := db.ResetDetectionsForReanalysis(s.db); err != nil {
+			s.log.Warn("finetune done: reset detections failed", "err", err)
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)
