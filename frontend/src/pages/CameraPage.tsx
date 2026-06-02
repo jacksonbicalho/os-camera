@@ -370,6 +370,7 @@ export default function CameraPage() {
       setExistingAnn({ ...annBox })
       setAnnBox(null)
       setAnnSaveOk(true)
+      setTimeout(() => setAnnSaveOk(false), 2000)
     } finally {
       setAnnSaving(false)
     }
@@ -1671,7 +1672,7 @@ function toggleFullscreen() {
                 draggable={false}
               />
               <BboxCanvas
-                box={annBox ?? (annSaveOk ? null : existingAnn)}
+                box={annBox ?? existingAnn}
                 onChange={handleAnnBoxChange}
                 readonly={annSaveOk}
                 className="absolute inset-0 w-full h-full select-none"
