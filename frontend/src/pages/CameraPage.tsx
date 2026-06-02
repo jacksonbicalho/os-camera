@@ -241,8 +241,15 @@ export default function CameraPage() {
   }, [snapshotEvent])
 
   function handleAnnBoxChange(box: BboxRect | null) {
-    if (box === null && annBox === null && existingAnn !== null) {
-      deleteAnnotation()
+    if (box === null) {
+      setAnnBox(null)
+      setAnnSaveOk(false)
+      if (existingAnn !== null) {
+        setExistingAnn(null)
+        setExistingAnnId(null)
+        setExistingAnnLabel('')
+        if (existingAnnId !== null) deleteAnnotation()
+      }
       return
     }
     setAnnBox(box)
