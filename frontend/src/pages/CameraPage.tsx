@@ -1665,7 +1665,7 @@ function toggleFullscreen() {
           <div className="flex flex-col gap-3 items-center" onClick={e => e.stopPropagation()}>
             <div className="relative rounded overflow-hidden shadow-2xl" style={{ maxWidth: '90vw', maxHeight: '75vh' }}>
               <img
-                src={snapshotURL(id!, snapshotEvent.time, snapshotEvent.frame)}
+                src={snapshotURL(id!, snapshotEvent.time, snapshotEvent.frame) + (thumbCacheBust.get(snapshotEvent.id) ? `&t=${thumbCacheBust.get(snapshotEvent.id)}` : '')}
                 alt="snapshot de movimento"
                 className="block max-w-full max-h-full"
                 draggable={false}
