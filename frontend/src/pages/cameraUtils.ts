@@ -1,5 +1,5 @@
 export interface Recording {
-  id?: number
+  id: number
   filename: string
   start: string
   url: string
@@ -27,7 +27,7 @@ export interface Annotation {
 }
 
 export interface MotionEvent {
-  id?: number
+  id: number
   time: string
   score: number
   frame?: string

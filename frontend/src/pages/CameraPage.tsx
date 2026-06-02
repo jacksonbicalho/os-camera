@@ -144,6 +144,8 @@ export default function CameraPage() {
   const [existingAnnId, setExistingAnnId] = useState<number | null>(null)
   const [existingAnnLabel, setExistingAnnLabel] = useState('')
   const [detectionModal, setDetectionModal] = useState<Array<{ label: string; confidence: number; frame_count: number; custom_model?: boolean }> | null>(null)
+  const [pendingSnapBlob, setPendingSnapBlob] = useState<{ blob: Blob; eventId: number } | null>(null)
+  const [thumbCacheBust, setThumbCacheBust] = useState<Map<number, number>>(new Map())
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [showDebug, setShowDebug] = useState(false)
@@ -245,6 +247,15 @@ export default function CameraPage() {
     setAnnSaveOk(false)
   }
 
+  function downloadBlob(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   function takeSnapshot() {
     const video = isLive
       ? hlsPlayerRef.current?.getVideoElement() ?? null
@@ -259,15 +270,36 @@ export default function CameraPage() {
       ? new Date().toISOString()
       : new Date(new Date(activeRecording?.start ?? 0).getTime() + recCurrentTime * 1000).toISOString()
     const filename = `${cameraName}_${ts.replace(/[:.]/g, '-')}.jpg`
+    const activeId = activeEventIdRef.current
     canvas.toBlob(blob => {
       if (!blob) return
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      a.click()
-      URL.revokeObjectURL(url)
+      if (activeId !== null) {
+        setPendingSnapBlob({ blob, eventId: activeId })
+      } else {
+        downloadBlob(blob, filename)
+      }
     }, 'image/jpeg', 0.92)
+  }
+
+  async function replaceEventThumb() {
+    if (!pendingSnapBlob) return
+    const { blob, eventId } = pendingSnapBlob
+    setPendingSnapBlob(null)
+    await fetch(`/api/events/${eventId}/frame`, {
+      method: 'PUT',
+      headers: { ...authHeaders(), 'Content-Type': 'image/jpeg' },
+      body: blob,
+    })
+    setThumbCacheBust(prev => new Map(prev).set(eventId, Date.now()))
+  }
+
+  function downloadPendingSnap() {
+    if (!pendingSnapBlob) return
+    const { blob } = pendingSnapBlob
+    const cameraName = (cam?.name ?? id ?? 'camera').replace(/[^a-zA-Z0-9]/g, '_')
+    const filename = `${cameraName}_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`
+    downloadBlob(blob, filename)
+    setPendingSnapBlob(null)
   }
 
   async function saveAnnotation() {
@@ -1453,7 +1485,8 @@ function toggleFullscreen() {
                     >
                       {visibleEvents.map((ev, i) => {
                         const isActive = activeEventIdx === i
-                        const thumbURL = ev.frame ? snapshotURL(id!, ev.time, ev.frame) : null
+                        const bust = thumbCacheBust.get(ev.id)
+                        const thumbURL = ev.frame ? snapshotURL(id!, ev.time, ev.frame) + (bust ? `&t=${bust}` : '') : null
                         const recDets = recordings.filter(r => r.start <= ev.time).sort((a, b) => b.start.localeCompare(a.start))[0]?.detections
                         return (
                           <button
@@ -1489,6 +1522,7 @@ function toggleFullscreen() {
                               </span>
                               {thumbURL && (
                                 <img
+                                  key={`thumb-${ev.id}-${bust ?? 0}`}
                                   src={thumbURL}
                                   alt="snapshot"
                                   className="w-16 h-10 object-cover rounded cursor-zoom-in border border-gray-700 shrink-0"
@@ -1685,6 +1719,16 @@ function toggleFullscreen() {
           {deleteError}
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingSnapBlob !== null}
+        title="Substituir thumbnail"
+        message="Usar este snapshot como thumbnail do evento de movimento?"
+        confirmLabel="Substituir"
+        cancelLabel="Baixar"
+        onConfirm={replaceEventThumb}
+        onCancel={downloadPendingSnap}
+      />
 
       <ConfirmDialog
         open={deleteTarget !== null}
