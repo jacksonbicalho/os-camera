@@ -2317,3 +2317,96 @@ func TestGetStatsIncludesCameraHealth(t *testing.T) {
 		}
 	}
 }
+
+// --- PUT /api/events/{id}/frame ---
+
+func TestUpdateEventFrameReplacesFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	database := openServerTestDB(t)
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: "cam1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateUser(database, "u", "p", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+
+	// frame_path no banco é só o filename; path completo = RecordingsPath/cameraID/YYYY/MM/DD/filename
+	base := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+	frameFilename := "20260601100000_motion.jpg"
+	frameDir := filepath.Join(tmpDir, "cam1", "2026", "06", "01")
+	if err := os.MkdirAll(frameDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	framePath := filepath.Join(frameDir, frameFilename)
+	if err := os.WriteFile(framePath, []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID:   "cam1",
+		OccurredAt: base,
+		Score:      0.5,
+		FramePath:  frameFilename,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	events, _ := db.ListMotionEvents(database, "cam1", base, base.Add(time.Second))
+	eventID := events[0].ID
+
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	newJPEG := []byte{0xFF, 0xD8, 0xFF, 0xD9}
+	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/events/%d/frame", eventID), strings.NewReader(string(newJPEG)))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "image/jpeg")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+
+	data, err := os.ReadFile(framePath)
+	if err != nil {
+		t.Fatalf("expected file at %s: %v", framePath, err)
+	}
+	if string(data) != string(newJPEG) {
+		t.Error("file content not updated")
+	}
+}
+
+func TestUpdateEventFrameReturns404ForUnknownEvent(t *testing.T) {
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "u", "p", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.ServerConfig{}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	req := httptest.NewRequest(http.MethodPut, "/api/events/9999/frame", strings.NewReader("data"))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "image/jpeg")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestUpdateEventFrameRequiresAuth(t *testing.T) {
+	cfg := config.ServerConfig{}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/events/1/frame", strings.NewReader("data"))
+	req.Header.Set("Content-Type", "image/jpeg")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}

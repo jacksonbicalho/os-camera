@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+@keyframes thumb-flash {
+  0%, 100% { box-shadow: 0 0 0 0px rgba(96, 165, 250, 0); }
+  20%, 60% { box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.9); }
+  40%, 80% { box-shadow: 0 0 0 0px rgba(96, 165, 250, 0); }
+}
+
 body {
   margin: 0;
   background-color: #111827;
