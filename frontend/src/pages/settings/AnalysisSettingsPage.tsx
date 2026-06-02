@@ -27,10 +27,10 @@ interface EventItem {
   label?: string
 }
 
-function frameURL(cameraId: string, eventTime: string, frame: string): string {
+function frameURL(cameraId: string, eventTime: string, frame: string, bust?: number): string {
   const d = new Date(eventTime)
   const dateDir = `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`
-  return `/recordings/${cameraId}/${dateDir}/${frame}?token=${getToken()}`
+  return `/recordings/${cameraId}/${dateDir}/${frame}?token=${getToken()}${bust ? `&t=${bust}` : ''}`
 }
 
 const PAGE_SIZE_OPTIONS = [50, 100, 150, 200, 300, 500]
@@ -54,6 +54,7 @@ export default function AnalysisSettingsPage() {
   const [labelLimit, setLabelLimit] = useState(50)
   const [labelPage, setLabelPage] = useState(1)
   const [labelEvents, setLabelEvents] = useState<EventItem[] | null>(null)
+  const eventsLoadedAtRef = useRef(Date.now())
   const [labelTotal, setLabelTotal] = useState(0)
   const [labelInputs, setLabelInputs] = useState<Record<number, string>>({})
   const [labelSaveState, setLabelSaveState] = useState<Record<number, 'saved' | 'error'>>({})
@@ -364,6 +365,7 @@ export default function AnalysisSettingsPage() {
     })
       .then(r => r.json())
       .then(d => {
+        eventsLoadedAtRef.current = Date.now()
         setLabelEvents(d.events ?? [])
         setLabelTotal(d.total ?? 0)
         const inputs: Record<number, string> = {}
@@ -786,11 +788,11 @@ export default function AnalysisSettingsPage() {
                           {ev.frame ? (
                             <button
                               type="button"
-                              onClick={() => openZoomModal(frameURL(labelCamID, ev.time, ev.frame!), ev.id, labelInputs[ev.id] ?? ev.label ?? '')}
+                              onClick={() => openZoomModal(frameURL(labelCamID, ev.time, ev.frame!, eventsLoadedAtRef.current), ev.id, labelInputs[ev.id] ?? ev.label ?? '')}
                               className="flex-shrink-0 rounded overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 hover:opacity-80 transition-opacity"
                             >
                               <img
-                                src={frameURL(labelCamID, ev.time, ev.frame)}
+                                src={frameURL(labelCamID, ev.time, ev.frame, eventsLoadedAtRef.current)}
                                 className="w-40 h-24 object-cover bg-gray-900"
                                 alt=""
                               />
