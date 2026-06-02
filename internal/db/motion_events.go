@@ -150,6 +150,19 @@ func DeleteMotionEventsInRange(db *DB, cameraID string, start, end time.Time) er
 	return err
 }
 
+// UpdateMotionEventFramePath replaces the frame_path of a motion event.
+// Returns an error if no row with the given id exists.
+func UpdateMotionEventFramePath(db *DB, id int64, framePath string) error {
+	res, err := db.Exec(`UPDATE motion_events SET frame_path=? WHERE id=?`, framePath, id)
+	if err != nil {
+		return fmt.Errorf("update motion event frame_path: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("motion event %d not found", id)
+	}
+	return nil
+}
+
 // UpdateMotionEventLabel sets or clears the label of a motion event.
 func UpdateMotionEventLabel(db *DB, id int64, label string) error {
 	_, err := db.Exec(`UPDATE motion_events SET label=? WHERE id=?`, nullStr(label), id)

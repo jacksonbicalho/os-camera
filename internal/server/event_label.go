@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,6 +12,37 @@ import (
 )
 
 const bulkEventMaxIDs = 500
+
+func (s *Server) handleUpdateEventFrame(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid event id", http.StatusBadRequest)
+		return
+	}
+	ev, err := db.GetMotionEventByID(s.db, id)
+	if err != nil {
+		http.Error(w, "event not found", http.StatusNotFound)
+		return
+	}
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "read body", http.StatusBadRequest)
+		return
+	}
+	if ev.FramePath != "" {
+		datePart := ev.OccurredAt.UTC().Format("2006/01/02")
+		fullPath := filepath.Join(s.cfg.RecordingsPath, ev.CameraID, datePart, ev.FramePath)
+		if err := os.WriteFile(fullPath, data, 0644); err != nil {
+			s.log.Error("write event frame", "path", fullPath, "err", err)
+			http.Error(w, "write failed", http.StatusInternalServerError)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
 
 func (s *Server) handleUpdateEventLabel(w http.ResponseWriter, r *http.Request) {
 	if !s.requireDB(w) {

@@ -494,3 +494,38 @@ func TestPageMotionEvents_ShowsDismissedWhenFiltered(t *testing.T) {
 		t.Error("deve retornar o evento dismissed")
 	}
 }
+
+func TestUpdateMotionEventFramePath_SetsPath(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+
+	base := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+	insertTestEvent(t, database, "cam1", base, 0.5, "")
+
+	events, _ := db.ListMotionEvents(database, "cam1", base, base.Add(time.Second))
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	id := events[0].ID
+
+	if err := db.UpdateMotionEventFramePath(database, id, "/recordings/cam1/2026/06/01/snap.jpg"); err != nil {
+		t.Fatalf("UpdateMotionEventFramePath: %v", err)
+	}
+
+	got, err := db.GetMotionEventByID(database, id)
+	if err != nil {
+		t.Fatalf("GetMotionEventByID: %v", err)
+	}
+	if got.FramePath != "/recordings/cam1/2026/06/01/snap.jpg" {
+		t.Errorf("expected updated frame_path, got %q", got.FramePath)
+	}
+}
+
+func TestUpdateMotionEventFramePath_UnknownIDReturnsError(t *testing.T) {
+	database := openTestDB(t)
+
+	err := db.UpdateMotionEventFramePath(database, 9999, "/some/path.jpg")
+	if err == nil {
+		t.Fatal("expected error for unknown event id, got nil")
+	}
+}
