@@ -13,11 +13,12 @@ interface AnalysisConfig {
   has_custom_model?: boolean
 }
 
-const MODELS = [
-  { group: 'YOLOv8',  names: ['yolov8n', 'yolov8s', 'yolov8m', 'yolov8l', 'yolov8x'] },
-  { group: 'YOLO11',  names: ['yolo11n', 'yolo11s', 'yolo11m', 'yolo11l', 'yolo11x'] },
-  { group: 'YOLO12',  names: ['yolo12n', 'yolo12s', 'yolo12m', 'yolo12l', 'yolo12x'] },
-]
+interface ModelInfo {
+  name: string
+  group: string
+  inference: boolean
+  finetune: boolean
+}
 
 interface EventItem {
   id: number
@@ -47,6 +48,8 @@ export default function AnalysisSettingsPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [serviceModels, setServiceModels] = useState<ModelInfo[] | null>(null)
+  const [serviceOffline, setServiceOffline] = useState(false)
   // label section state — null means "not yet loaded / loading"
   const [labelCamID, setLabelCamID] = useState('')
   const [unlabeledOnly, setUnlabeledOnly] = useState(true)
@@ -178,7 +181,18 @@ export default function AnalysisSettingsPage() {
       .then(setCfg)
       .catch(() => setError('Falha ao carregar configurações'))
     refreshCounts()
+    fetchModels()
   }, [])
+
+  function fetchModels() {
+    fetch('/api/settings/analysis/models', { headers: authHeaders() })
+      .then(r => {
+        if (!r.ok) throw new Error('offline')
+        return r.json()
+      })
+      .then(d => { setServiceModels(d.models); setServiceOffline(false) })
+      .catch(() => { setServiceModels(null); setServiceOffline(true) })
+  }
 
   function refreshCounts() {
     fetch('/api/settings/analysis/annotation-count', { headers: authHeaders() })
@@ -439,6 +453,7 @@ export default function AnalysisSettingsPage() {
       if (res.ok) {
         setSaved(true)
         setTimeout(() => setSaved(false), 2000)
+        fetchModels()
       } else {
         setError('Erro ao salvar')
       }
@@ -488,34 +503,46 @@ export default function AnalysisSettingsPage() {
 
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Modelo</label>
-                <select
-                  className="w-full bg-gray-700 text-gray-200 text-sm rounded px-3 py-2 border border-gray-600 focus:outline-none focus:border-blue-500"
-                  value={cfg.model}
-                  onChange={e => setCfg(c => ({ ...c, model: e.target.value }))}
-                >
-                  {cfg.has_custom_model && (() => {
-                    const base = cfg.model.startsWith('custom+')
-                      ? cfg.model.slice('custom+'.length)
-                      : cfg.model === 'custom'
-                        ? 'yolov8n'
-                        : cfg.model
-                    const combinedValue = `custom+${base}`
-                    return (
-                      <optgroup label="Custom">
-                        <option value="custom">custom ✓ (treinado)</option>
-                        <option value={combinedValue}>custom + {base}</option>
-                      </optgroup>
-                    )
-                  })()}
-                  {MODELS.map(({ group, names }) => (
-                    <optgroup key={group} label={group}>
-                      {names.map(m => (
-                        <option key={m} value={m}>{m}</option>
+                {serviceOffline ? (
+                  <div className="w-full bg-gray-700 text-yellow-400 text-sm rounded px-3 py-2 border border-yellow-600">
+                    Serviço YOLO offline — configure a URL e verifique se o container está rodando
+                  </div>
+                ) : serviceModels === null ? (
+                  <div className="w-full bg-gray-700 text-gray-400 text-sm rounded px-3 py-2 border border-gray-600">
+                    Carregando modelos...
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      className="w-full bg-gray-700 text-gray-200 text-sm rounded px-3 py-2 border border-gray-600 focus:outline-none focus:border-blue-500"
+                      value={cfg.model}
+                      onChange={e => setCfg(c => ({ ...c, model: e.target.value }))}
+                    >
+                      {cfg.has_custom_model && (() => {
+                        const base = cfg.model.startsWith('custom+')
+                          ? cfg.model.slice('custom+'.length)
+                          : cfg.model === 'custom'
+                            ? 'yolov8n'
+                            : cfg.model
+                        const combinedValue = `custom+${base}`
+                        return (
+                          <optgroup label="Custom">
+                            <option value="custom">custom ✓ (treinado)</option>
+                            <option value={combinedValue}>custom + {base}</option>
+                          </optgroup>
+                        )
+                      })()}
+                      {Array.from(new Set(serviceModels.filter(m => m.inference).map(m => m.group))).map(group => (
+                        <optgroup key={group} label={group}>
+                          {serviceModels.filter(m => m.group === group && m.inference).map(m => (
+                            <option key={m.name} value={m.name}>{m.name}</option>
+                          ))}
+                        </optgroup>
                       ))}
-                    </optgroup>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500 mt-1">n = mais rápido · x = mais preciso</p>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">n = mais rápido · x = mais preciso</p>
+                  </>
+                )}
               </div>
             </div>
 
