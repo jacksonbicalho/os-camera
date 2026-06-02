@@ -65,7 +65,12 @@ function delBtnWorld(b: BboxRect, cw: number, ch: number): [number, number] {
 
 function hitDelBtn(b: BboxRect, px: number, py: number, cw: number, ch: number): boolean {
   const [bx, by] = delBtnWorld(b, cw, ch)
-  return Math.hypot(px - bx, py - by) <= DEL_R + 3
+  return Math.hypot(px - bx, py - by) <= DEL_R + 6
+}
+
+function nearDelBtn(b: BboxRect, px: number, py: number, cw: number, ch: number): boolean {
+  const [bx, by] = delBtnWorld(b, cw, ch)
+  return Math.hypot(px - bx, py - by) <= DEL_R + 14
 }
 
 function drawDeleteButton(ctx: CanvasRenderingContext2D, bx: number, by: number, strokeColor: string) {
@@ -328,6 +333,7 @@ export default function BboxCanvas({
         setCursor('crosshair')
         return
       }
+      if (nearDelBtn(bx, x, y, cw, ch)) return
       if (hitRotHandle(bx, x, y, cw, ch)) {
         setInteraction({ mode: 'rotating', x1: x, y1: y })
         setCursor('alias')
