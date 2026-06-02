@@ -64,6 +64,41 @@ func (c *Client) Analyze(ctx context.Context, req AnalyzeRequest) ([]Detection, 
 	return result.Detections, nil
 }
 
+// --- Models ---
+
+type ModelInfo struct {
+	Name      string `json:"name"`
+	Group     string `json:"group"`
+	Inference bool   `json:"inference"`
+	Finetune  bool   `json:"finetune"`
+}
+
+type ModelsResponse struct {
+	Device  string      `json:"device"`
+	VramGB  float64     `json:"vram_gb"`
+	Models  []ModelInfo `json:"models"`
+}
+
+func (c *Client) Models(ctx context.Context) (ModelsResponse, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/models", nil)
+	if err != nil {
+		return ModelsResponse{}, err
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return ModelsResponse{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ModelsResponse{}, fmt.Errorf("yolo service returned %d", resp.StatusCode)
+	}
+	var result ModelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return ModelsResponse{}, err
+	}
+	return result, nil
+}
+
 // --- Fine-tuning ---
 
 type AnnotationItem struct {
