@@ -272,11 +272,21 @@ export default function CameraPage() {
       ? new Date().toISOString()
       : new Date(new Date(activeRecording?.start ?? 0).getTime() + recCurrentTime * 1000).toISOString()
     const filename = `${cameraName}_${ts.replace(/[:.]/g, '-')}.jpg`
-    const activeId = activeEventIdRef.current
+    let eventId = activeEventIdRef.current
+    if (eventId === null && activeRecording) {
+      const currentMs = new Date(activeRecording.start).getTime() + recCurrentTime * 1000
+      const nearest = allMotionEventsRef.current
+        .filter(e => {
+          const t = new Date(e.time).getTime()
+          return t <= currentMs && currentMs - t < 60_000
+        })
+        .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())[0]
+      eventId = nearest?.id ?? null
+    }
     canvas.toBlob(blob => {
       if (!blob) return
-      if (activeId !== null) {
-        setPendingSnapBlob({ blob, eventId: activeId })
+      if (eventId !== null) {
+        setPendingSnapBlob({ blob, eventId })
       } else {
         downloadBlob(blob, filename)
       }
