@@ -273,13 +273,10 @@ export default function CameraPage() {
       : new Date(new Date(activeRecording?.start ?? 0).getTime() + recCurrentTime * 1000).toISOString()
     const filename = `${cameraName}_${ts.replace(/[:.]/g, '-')}.jpg`
     const activeId = activeEventIdRef.current
-    const activeEv = activeId !== null
-      ? allMotionEventsRef.current.find(e => e.id === activeId) ?? null
-      : null
     canvas.toBlob(blob => {
       if (!blob) return
-      if (activeEv?.frame) {
-        setPendingSnapBlob({ blob, eventId: activeEv.id })
+      if (activeId !== null) {
+        setPendingSnapBlob({ blob, eventId: activeId })
       } else {
         downloadBlob(blob, filename)
       }
