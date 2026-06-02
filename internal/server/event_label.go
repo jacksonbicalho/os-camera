@@ -27,21 +27,32 @@ func (s *Server) handleUpdateEventFrame(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "event not found", http.StatusNotFound)
 		return
 	}
-	if ev.FramePath == "" {
-		http.Error(w, "event has no frame", http.StatusUnprocessableEntity)
-		return
-	}
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "read body", http.StatusBadRequest)
 		return
 	}
+	framePath := ev.FramePath
+	if framePath == "" {
+		framePath = ev.OccurredAt.UTC().Format("20060102150405") + "_motion.jpg"
+	}
 	datePart := ev.OccurredAt.UTC().Format("2006/01/02")
-	fullPath := filepath.Join(s.cfg.RecordingsPath, ev.CameraID, datePart, ev.FramePath)
+	dir := filepath.Join(s.cfg.RecordingsPath, ev.CameraID, datePart)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		s.log.Error("mkdir event frame dir", "dir", dir, "err", err)
+		http.Error(w, "write failed", http.StatusInternalServerError)
+		return
+	}
+	fullPath := filepath.Join(dir, framePath)
 	if err := os.WriteFile(fullPath, data, 0644); err != nil {
 		s.log.Error("write event frame", "path", fullPath, "err", err)
 		http.Error(w, "write failed", http.StatusInternalServerError)
 		return
+	}
+	if ev.FramePath == "" {
+		if err := db.UpdateMotionEventFramePath(s.db, id, framePath); err != nil {
+			s.log.Warn("update event frame_path", "id", id, "err", err)
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

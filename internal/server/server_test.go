@@ -2397,6 +2397,60 @@ func TestUpdateEventFrameReturns404ForUnknownEvent(t *testing.T) {
 	}
 }
 
+func TestUpdateEventFrameCreatesFileWhenNoFramePath(t *testing.T) {
+	tmpDir := t.TempDir()
+	database := openServerTestDB(t)
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: "cam1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateUser(database, "u", "p", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID:   "cam1",
+		OccurredAt: base,
+		Score:      0.5,
+		FramePath:  "", // sem frame
+	}); err != nil {
+		t.Fatal(err)
+	}
+	events, _ := db.ListMotionEvents(database, "cam1", base, base.Add(time.Second))
+	eventID := events[0].ID
+
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "u", "p")
+
+	newJPEG := []byte{0xFF, 0xD8, 0xFF, 0xD9}
+	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/events/%d/frame", eventID), strings.NewReader(string(newJPEG)))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "image/jpeg")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+
+	ev, err := db.GetMotionEventByID(database, eventID)
+	if err != nil {
+		t.Fatalf("GetMotionEventByID: %v", err)
+	}
+	if ev.FramePath == "" {
+		t.Error("expected frame_path to be set after PUT")
+	}
+	fullPath := filepath.Join(tmpDir, "cam1", "2026", "06", "01", ev.FramePath)
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		t.Fatalf("expected file at %s: %v", fullPath, err)
+	}
+	if string(data) != string(newJPEG) {
+		t.Error("file content mismatch")
+	}
+}
+
 func TestUpdateEventFrameRequiresAuth(t *testing.T) {
 	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: "cam1"}}, discardLogger(), nil)
