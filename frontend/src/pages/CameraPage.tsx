@@ -147,6 +147,7 @@ export default function CameraPage() {
   const [pendingSnapBlob, setPendingSnapBlob] = useState<{ blob: Blob; eventId: number } | null>(null)
   const [thumbCacheBust, setThumbCacheBust] = useState<Map<number, number>>(new Map())
   const [thumbOverrides, setThumbOverrides] = useState<Map<number, string>>(new Map())
+  const [thumbFlash, setThumbFlash] = useState<Set<number>>(new Set())
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [showDebug, setShowDebug] = useState(false)
@@ -297,7 +298,10 @@ export default function CameraPage() {
     }).then(() => {
       URL.revokeObjectURL(blobUrl)
       setThumbOverrides(prev => { const m = new Map(prev); m.delete(eventId); return m })
-      setThumbCacheBust(prev => new Map(prev).set(eventId, Date.now()))
+      const bust = Date.now()
+      setThumbCacheBust(prev => new Map(prev).set(eventId, bust))
+      setThumbFlash(prev => new Set(prev).add(eventId))
+      setTimeout(() => setThumbFlash(prev => { const s = new Set(prev); s.delete(eventId); return s }), 900)
     }).catch(() => {
       URL.revokeObjectURL(blobUrl)
       setThumbOverrides(prev => { const m = new Map(prev); m.delete(eventId); return m })
@@ -1538,6 +1542,7 @@ function toggleFullscreen() {
                                   src={thumbURL}
                                   alt="snapshot"
                                   className="w-16 h-10 object-cover rounded cursor-zoom-in border border-gray-700 shrink-0"
+                                  style={thumbFlash.has(ev.id) ? { animation: 'thumb-flash 0.9s ease-out' } : undefined}
                                   onClick={e => { e.stopPropagation(); openSnapshotModal(ev) }}
                                 />
                               )}
