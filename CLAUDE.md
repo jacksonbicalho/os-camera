@@ -66,7 +66,7 @@ EOF
 ./scripts/release.sh --dry-run   # prévia sem criar nada
 ```
 
-O script lê os commits convencionais desde a última tag, determina o bump (`feat` → minor, breaking → major, resto → patch), gera o changelog agrupado por tipo e cria uma tag no formato `vX.Y.Z-rc.N`. O push da tag dispara o GitHub Actions que publica a release. Todas as releases são rc enquanto o projeto não atingir estabilidade.
+O script lê os commits convencionais desde a última tag, determina o bump (`feat` → minor, breaking → major, resto → patch), gera o changelog agrupado por tipo e cria uma tag no formato `vX.Y.Z-dev`. O push da tag dispara o GitHub Actions que publica a release. O sufixo `-dev` indica projeto em desenvolvimento ativo; quando atingir estabilidade, as tags passarão a usar `vX.Y.Z` sem sufixo.
 
 #### Planejamento de release (releases/)
 
