@@ -146,6 +146,7 @@ export default function CameraPage() {
   const [detectionModal, setDetectionModal] = useState<Array<{ label: string; confidence: number; frame_count: number; custom_model?: boolean }> | null>(null)
   const [pendingSnapBlob, setPendingSnapBlob] = useState<{ blob: Blob; eventId: number } | null>(null)
   const [thumbCacheBust, setThumbCacheBust] = useState<Map<number, number>>(new Map())
+  const [thumbOverrides, setThumbOverrides] = useState<Map<number, string>>(new Map())
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [showDebug, setShowDebug] = useState(false)
@@ -281,16 +282,26 @@ export default function CameraPage() {
     }, 'image/jpeg', 0.92)
   }
 
-  async function replaceEventThumb() {
+  function replaceEventThumb() {
     if (!pendingSnapBlob) return
     const { blob, eventId } = pendingSnapBlob
     setPendingSnapBlob(null)
-    await fetch(`/api/events/${eventId}/frame`, {
+
+    const blobUrl = URL.createObjectURL(blob)
+    setThumbOverrides(prev => new Map(prev).set(eventId, blobUrl))
+
+    fetch(`/api/events/${eventId}/frame`, {
       method: 'PUT',
       headers: { ...authHeaders(), 'Content-Type': 'image/jpeg' },
       body: blob,
+    }).then(() => {
+      URL.revokeObjectURL(blobUrl)
+      setThumbOverrides(prev => { const m = new Map(prev); m.delete(eventId); return m })
+      setThumbCacheBust(prev => new Map(prev).set(eventId, Date.now()))
+    }).catch(() => {
+      URL.revokeObjectURL(blobUrl)
+      setThumbOverrides(prev => { const m = new Map(prev); m.delete(eventId); return m })
     })
-    setThumbCacheBust(prev => new Map(prev).set(eventId, Date.now()))
   }
 
   function downloadPendingSnap() {
@@ -1486,7 +1497,8 @@ function toggleFullscreen() {
                       {visibleEvents.map((ev, i) => {
                         const isActive = activeEventIdx === i
                         const bust = thumbCacheBust.get(ev.id)
-                        const thumbURL = ev.frame ? snapshotURL(id!, ev.time, ev.frame) + (bust ? `&t=${bust}` : '') : null
+                        const thumbOverride = thumbOverrides.get(ev.id)
+                        const thumbURL = thumbOverride ?? (ev.frame ? snapshotURL(id!, ev.time, ev.frame) + (bust ? `&t=${bust}` : '') : null)
                         const recDets = recordings.filter(r => r.start <= ev.time).sort((a, b) => b.start.localeCompare(a.start))[0]?.detections
                         return (
                           <button
@@ -1522,7 +1534,7 @@ function toggleFullscreen() {
                               </span>
                               {thumbURL && (
                                 <img
-                                  key={`thumb-${ev.id}-${bust ?? 0}`}
+                                  key={`thumb-${ev.id}-${thumbOverride ?? bust ?? 0}`}
                                   src={thumbURL}
                                   alt="snapshot"
                                   className="w-16 h-10 object-cover rounded cursor-zoom-in border border-gray-700 shrink-0"
