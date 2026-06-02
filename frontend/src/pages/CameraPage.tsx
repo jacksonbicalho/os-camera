@@ -273,10 +273,13 @@ export default function CameraPage() {
       : new Date(new Date(activeRecording?.start ?? 0).getTime() + recCurrentTime * 1000).toISOString()
     const filename = `${cameraName}_${ts.replace(/[:.]/g, '-')}.jpg`
     const activeId = activeEventIdRef.current
+    const activeEv = activeId !== null
+      ? allMotionEventsRef.current.find(e => e.id === activeId) ?? null
+      : null
     canvas.toBlob(blob => {
       if (!blob) return
-      if (activeId !== null) {
-        setPendingSnapBlob({ blob, eventId: activeId })
+      if (activeEv?.frame) {
+        setPendingSnapBlob({ blob, eventId: activeEv.id })
       } else {
         downloadBlob(blob, filename)
       }
@@ -657,10 +660,11 @@ export default function CameraPage() {
     const nextStart = idx + 1 < asc.length
       ? new Date(asc[idx + 1].start).getTime()
       : recStart + 5 * 60 * 1000
-    return events.find(ev => {
+    const inRange = events.filter(ev => {
       const t = new Date(ev.time).getTime()
-      return t >= recStart && t < nextStart && !!ev.label
-    }) ?? null
+      return t >= recStart && t < nextStart
+    })
+    return inRange.find(ev => !!ev.label) ?? inRange.find(ev => !!ev.frame) ?? null
   }
 
   function findRecordingForEvent(ev: MotionEvent, recs: Recording[]): Recording | null {
