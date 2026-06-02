@@ -76,7 +76,7 @@ O script lê os commits convencionais desde a última tag, determina o bump (`fe
 1. Criar `releases/YYYYMMDDHHmm_vX.Y.Z.md` com as histórias planejadas.
 2. Ao concluir cada história, preencher branch e PR na tabela e marcar `[~]` (aguardando aprovação no GitHub — PR targeta `develop`).
 3. Após aprovação no GitHub, marcar `[x]`.
-4. Quando todas estiverem `[x]`, o navigator diz **"pode mergear a release"** — Claude itera a lista, mergeia cada PR em `develop` em sequência e marca `[✓]`.
+4. Quando todas estiverem `[x]`, o navigator diz **"pode mergear a release"** — Claude itera a lista, mergeia cada PR em `develop` em sequência, deleta a branch local (`git branch -d <branch>`) e marca `[✓]`. O GitHub deleta a branch remota automaticamente após o merge (setting "Automatically delete head branches" ativo).
 5. Após todos os merges em `develop`, Claude abre um PR `develop → master` com título `release: vX.Y.Z`.
 6. Após aprovação e merge do PR de release, Claude roda `./scripts/release.sh` para gerar a tag.
 7. **Após a tag ser criada**, mergear `master` de volta em `develop` para que `git describe` retorne a versão correta no modo dev:
@@ -228,6 +228,7 @@ feat/xyz · fix/abc · chore/def  ← branches de história
 - Branches de história partem **sempre de `develop`**: `git checkout -b <tipo>/<desc> develop`
 - PRs de história têm **`develop` como base**: `gh pr create --base develop`
 - PRs de release têm **`master` como base**: `gh pr create --base master --head develop`
+- **Ciclo de vida da branch:** deletada imediatamente após o merge em `develop` — remoto automaticamente pelo GitHub, local com `git branch -d <branch>` no passo de merge em lote.
 
 ### Histórias
 
