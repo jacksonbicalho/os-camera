@@ -148,6 +148,26 @@ docker run --rm \
 
 Nunca afirmar que os testes do frontend passaram sem ter rodado o comando acima (ou visto o CI verde).
 
+### Serviço YOLO (`services/yolo/`)
+
+Microserviço Python/FastAPI opcional para análise de gravações e fine-tuning. Expõe:
+- `POST /analyze` — inferência YOLO em arquivo MP4
+- `POST /finetune` / `GET /finetune/status/{id}` / `DELETE /finetune/{id}` — treino assíncrono
+
+**Subir o serviço:**
+
+```bash
+# CPU (qualquer hardware, incluindo Raspberry Pi)
+docker compose --profile yolo up -d
+
+# GPU NVIDIA (requer nvidia-container-toolkit no host)
+docker compose -f docker-compose.yml -f docker-compose.nvidia.yml --profile yolo up -d
+```
+
+O padrão de **override files** mantém `docker-compose.yml` universal (funciona em RPi, AMD, CPU-only) e `docker-compose.nvidia.yml` adiciona apenas o device reservation NVIDIA. Nunca colocar configuração de GPU no `docker-compose.yml` base.
+
+Modelos pré-baixados na imagem: `yolov8n` e `yolo11n`. Com GPU RTX 3050 (4GB VRAM): fine-tuning viável para variantes `n` e `s`; variantes `l` e `x` causam OOM no treino (inferência funciona). Ver `docs/analysis.md` para documentação completa.
+
 ## Arquitetura
 
 ### Binários
