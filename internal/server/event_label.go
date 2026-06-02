@@ -27,19 +27,21 @@ func (s *Server) handleUpdateEventFrame(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "event not found", http.StatusNotFound)
 		return
 	}
+	if ev.FramePath == "" {
+		http.Error(w, "event has no frame", http.StatusUnprocessableEntity)
+		return
+	}
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "read body", http.StatusBadRequest)
 		return
 	}
-	if ev.FramePath != "" {
-		datePart := ev.OccurredAt.UTC().Format("2006/01/02")
-		fullPath := filepath.Join(s.cfg.RecordingsPath, ev.CameraID, datePart, ev.FramePath)
-		if err := os.WriteFile(fullPath, data, 0644); err != nil {
-			s.log.Error("write event frame", "path", fullPath, "err", err)
-			http.Error(w, "write failed", http.StatusInternalServerError)
-			return
-		}
+	datePart := ev.OccurredAt.UTC().Format("2006/01/02")
+	fullPath := filepath.Join(s.cfg.RecordingsPath, ev.CameraID, datePart, ev.FramePath)
+	if err := os.WriteFile(fullPath, data, 0644); err != nil {
+		s.log.Error("write event frame", "path", fullPath, "err", err)
+		http.Error(w, "write failed", http.StatusInternalServerError)
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
