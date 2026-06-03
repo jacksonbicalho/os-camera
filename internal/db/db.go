@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"sort"
 	"strings"
@@ -19,6 +20,7 @@ var migrationsFS embed.FS
 type DB struct {
 	*sql.DB
 	IsNew bool
+	log   *slog.Logger
 }
 
 // Open opens (or creates) the SQLite database at path, applies pending
