@@ -93,6 +93,7 @@ func main() {
 		log.Fatalf("failed to open database: %v", err)
 	}
 	defer database.Close()
+	database.WithLogger(slog)
 
 	if database.IsNew {
 		slog.Info("new database, seeding admin user from bootstrap config")
