@@ -83,7 +83,7 @@ func openMemDB(t *testing.T, log *slog.Logger) *db.DB {
 
 // ── logging tests ────────────────────────────────────────────────────────────
 
-func TestDBLogging_exec_noLogForFastSuccess(t *testing.T) {
+func TestDBLogging_exec_debugLogsFastSuccess(t *testing.T) {
 	log, h := newCapture(slog.LevelDebug)
 	d := openMemDB(t, log)
 
@@ -92,13 +92,19 @@ func TestDBLogging_exec_noLogForFastSuccess(t *testing.T) {
 		t.Fatalf("exec: %v", err)
 	}
 
-	// Fast successful queries must NOT produce any log entry.
-	if _, ok := h.find("db query"); ok {
-		t.Error("fast successful Exec should not be logged")
+	rec, ok := h.findLevel("db query", slog.LevelDebug)
+	if !ok {
+		t.Fatal("fast successful Exec should be logged at DEBUG")
+	}
+	if h.attrStr(rec, "sql") == "" {
+		t.Error("debug db query log should include sql")
+	}
+	if h.attrStr(rec, "duration") == "" {
+		t.Error("debug db query log should include duration")
 	}
 }
 
-func TestDBLogging_query_noLogForFastSuccess(t *testing.T) {
+func TestDBLogging_query_debugLogsFastSuccess(t *testing.T) {
 	log, h := newCapture(slog.LevelDebug)
 	d := openMemDB(t, log)
 
@@ -108,20 +114,35 @@ func TestDBLogging_query_noLogForFastSuccess(t *testing.T) {
 	}
 	rows.Close()
 
-	if _, ok := h.find("db query"); ok {
-		t.Error("fast successful Query should not be logged")
+	if _, ok := h.findLevel("db query", slog.LevelDebug); !ok {
+		t.Fatal("fast successful Query should be logged at DEBUG")
 	}
 }
 
-func TestDBLogging_queryRow_noLogForFastSuccess(t *testing.T) {
+func TestDBLogging_queryRow_debugLogsFastSuccess(t *testing.T) {
 	log, h := newCapture(slog.LevelDebug)
 	d := openMemDB(t, log)
 
 	var n int
 	_ = d.QueryRow(`SELECT 42`).Scan(&n)
 
+	if _, ok := h.findLevel("db query", slog.LevelDebug); !ok {
+		t.Fatal("fast successful QueryRow should be logged at DEBUG")
+	}
+}
+
+func TestDBLogging_fastSuccess_notLoggedWhenDebugDisabled(t *testing.T) {
+	log, h := newCapture(slog.LevelInfo)
+	d := openMemDB(t, log)
+
+	_, err := d.Exec(`CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY)`)
+	if err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+
+	// With debug disabled, a fast successful query must stay silent.
 	if _, ok := h.find("db query"); ok {
-		t.Error("fast successful QueryRow should not be logged")
+		t.Error("fast successful Exec must not be logged when debug is disabled")
 	}
 }
 
