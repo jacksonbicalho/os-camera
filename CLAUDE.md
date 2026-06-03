@@ -66,7 +66,7 @@ EOF
 ./scripts/release.sh --dry-run   # prévia sem criar nada
 ```
 
-O script lê os commits convencionais desde a última tag, determina o bump (`feat` → minor, breaking → major, resto → patch), gera o changelog agrupado por tipo e cria uma tag no formato `vX.Y.Z-rc.N`. O push da tag dispara o GitHub Actions que publica a release. Todas as releases são rc enquanto o projeto não atingir estabilidade.
+O script lê os commits convencionais desde a última tag, determina o bump (`feat` → minor, breaking → major, resto → patch), gera o changelog agrupado por tipo e cria uma tag no formato `vX.Y.Z-dev`. O push da tag dispara o GitHub Actions que publica a release. O sufixo `-dev` indica projeto em desenvolvimento ativo; quando atingir estabilidade, as tags passarão a usar `vX.Y.Z` sem sufixo.
 
 #### Planejamento de release (releases/)
 
@@ -76,7 +76,7 @@ O script lê os commits convencionais desde a última tag, determina o bump (`fe
 1. Criar `releases/YYYYMMDDHHmm_vX.Y.Z.md` com as histórias planejadas.
 2. Ao concluir cada história, preencher branch e PR na tabela e marcar `[~]` (aguardando aprovação no GitHub — PR targeta `develop`).
 3. Após aprovação no GitHub, marcar `[x]`.
-4. Quando todas estiverem `[x]`, o navigator diz **"pode mergear a release"** — Claude itera a lista, mergeia cada PR em `develop` em sequência e marca `[✓]`.
+4. Quando todas estiverem `[x]`, o navigator diz **"pode mergear a release"** — Claude itera a lista, mergeia cada PR em `develop` em sequência, deleta a branch local (`git branch -d <branch>`) e marca `[✓]`. O GitHub deleta a branch remota automaticamente após o merge (setting "Automatically delete head branches" ativo).
 5. Após todos os merges em `develop`, Claude abre um PR `develop → master` com título `release: vX.Y.Z`.
 6. Após aprovação e merge do PR de release, Claude roda `./scripts/release.sh` para gerar a tag.
 7. **Após a tag ser criada**, mergear `master` de volta em `develop` para que `git describe` retorne a versão correta no modo dev:
@@ -147,6 +147,26 @@ docker run --rm \
 ```
 
 Nunca afirmar que os testes do frontend passaram sem ter rodado o comando acima (ou visto o CI verde).
+
+### Serviço YOLO (`services/yolo/`)
+
+Microserviço Python/FastAPI opcional para análise de gravações e fine-tuning. Expõe:
+- `POST /analyze` — inferência YOLO em arquivo MP4
+- `POST /finetune` / `GET /finetune/status/{id}` / `DELETE /finetune/{id}` — treino assíncrono
+
+**Subir o serviço:**
+
+```bash
+# CPU (qualquer hardware, incluindo Raspberry Pi)
+docker compose --profile yolo up -d
+
+# GPU NVIDIA (requer nvidia-container-toolkit no host)
+docker compose -f docker-compose.yml -f docker-compose.nvidia.yml --profile yolo up -d
+```
+
+O padrão de **override files** mantém `docker-compose.yml` universal (funciona em RPi, AMD, CPU-only) e `docker-compose.nvidia.yml` adiciona apenas o device reservation NVIDIA. Nunca colocar configuração de GPU no `docker-compose.yml` base.
+
+Modelos pré-baixados na imagem: `yolov8n` e `yolo11n`. Com GPU RTX 3050 (4GB VRAM): fine-tuning viável para variantes `n` e `s`; variantes `l` e `x` causam OOM no treino (inferência funciona). Ver `docs/analysis.md` para documentação completa.
 
 ## Arquitetura
 
@@ -228,6 +248,7 @@ feat/xyz · fix/abc · chore/def  ← branches de história
 - Branches de história partem **sempre de `develop`**: `git checkout -b <tipo>/<desc> develop`
 - PRs de história têm **`develop` como base**: `gh pr create --base develop`
 - PRs de release têm **`master` como base**: `gh pr create --base master --head develop`
+- **Ciclo de vida da branch:** deletada imediatamente após o merge em `develop` — remoto automaticamente pelo GitHub, local com `git branch -d <branch>` no passo de merge em lote.
 
 ### Histórias
 
@@ -238,7 +259,7 @@ cronológica natural ao listar o diretório.
 Ao iniciar uma nova história:
 - Criar o arquivo `stories/YYYYMMDDHHmm_<descricao>.md` com contexto, critérios de aceitação e notas técnicas.
 - Ao concluir a implementação, adicionar uma seção `## Revisão` no arquivo com checklist do que foi feito.
-- **Só proceder com PR após o navigator aprovar marcando `[x] Aprovado` na seção Revisão.**
+- **Nenhum commit pode ser feito sem aprovação explícita do navigator. Só proceder com commit ou PR após o navigator marcar `[x] Aprovado` na seção Revisão.**
 
 ### Slash commands
 
@@ -260,12 +281,15 @@ Use os commands em vez de executar os passos manualmente — eles validam pré-c
 2. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.
 3. Implementar o mínimo para o teste passar (**green**).
 4. Refatorar se necessário, mantendo os testes verdes (**refactor**).
-5. Executar **obrigatoriamente antes de qualquer commit**:
+5. Executar a suíte de testes (obrigatório antes de apresentar ao navigator):
    - Backend: `go test ./...` + `go build ./...`
    - Frontend: `yarn lint` + `yarn test --run` + `yarn build` (em `frontend/`)
-   - Nunca commitar se qualquer um desses falhar.
-6. Adicionar seção `## Revisão` na história e aguardar aprovação do navigator. **Só proceder com o item 7 após o navigator aprovar marcando `[x] Aprovado` na seção Revisão.**
-7. Commitar com mensagem semântica na branch e fazer `git push origin <branch>`. **Aguardar autorização explícita do navigator antes de abrir o PR** — `[x] Aprovado` na história libera o commit/push, mas não o `gh pr create`. Só abrir o PR quando o navigator pedir. O PR **sempre** tem `--base develop` (nunca `master`).
+   - Nunca prosseguir se qualquer um desses falhar.
+6. Adicionar seção `## Revisão` na história e **aguardar aprovação explícita do navigator**.
+
+   > ⚠️ **Nenhum commit pode ser feito antes de o navigator marcar `[x] Aprovado`.** O driver apresenta o resultado, o navigator revisa o código e aprova — só então o commit acontece.
+
+7. Com a aprovação do navigator (`[x] Aprovado`), commitar com mensagem semântica na branch e fazer `git push origin <branch>`. **Aguardar autorização explícita do navigator antes de abrir o PR** — a aprovação libera o commit/push, mas não o `gh pr create`. Só abrir o PR quando o navigator pedir. O PR **sempre** tem `--base develop` (nunca `master`).
 8. Atualizar o arquivo de release correspondente em `releases/`: preencher a branch e o número do PR na tabela, marcar `[~]` (aguardando aprovação no GitHub). O merge não é feito individualmente — acontece em lote quando o navigator liberar a release (merge em `develop`, depois PR `develop → master`).
 
 ### Commits semânticos

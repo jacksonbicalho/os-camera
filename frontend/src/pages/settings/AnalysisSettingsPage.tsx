@@ -13,11 +13,12 @@ interface AnalysisConfig {
   has_custom_model?: boolean
 }
 
-const MODELS = [
-  { group: 'YOLOv8',  names: ['yolov8n', 'yolov8s', 'yolov8m', 'yolov8l', 'yolov8x'] },
-  { group: 'YOLO11',  names: ['yolo11n', 'yolo11s', 'yolo11m', 'yolo11l', 'yolo11x'] },
-  { group: 'YOLO12',  names: ['yolo12n', 'yolo12s', 'yolo12m', 'yolo12l', 'yolo12x'] },
-]
+interface ModelInfo {
+  name: string
+  group: string
+  inference: boolean
+  finetune: boolean
+}
 
 interface EventItem {
   id: number
@@ -27,13 +28,50 @@ interface EventItem {
   label?: string
 }
 
-function frameURL(cameraId: string, eventTime: string, frame: string): string {
+function frameURL(cameraId: string, eventTime: string, frame: string, bust?: number): string {
   const d = new Date(eventTime)
   const dateDir = `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`
-  return `/recordings/${cameraId}/${dateDir}/${frame}?token=${getToken()}`
+  return `/recordings/${cameraId}/${dateDir}/${frame}?token=${getToken()}${bust ? `&t=${bust}` : ''}`
 }
 
 const PAGE_SIZE_OPTIONS = [50, 100, 150, 200, 300, 500]
+
+function ReanalyzePanel() {
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function handleReanalyze() {
+    setBusy(true); setDone(false); setErr('')
+    try {
+      const r = await fetch('/api/settings/analysis/reanalyze', { method: 'POST', headers: authHeaders() })
+      if (r.ok) { setDone(true); setTimeout(() => setDone(false), 3000) }
+      else setErr('Erro ao solicitar re-análise')
+    } catch { setErr('Erro ao solicitar re-análise') }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 flex items-center justify-between gap-4">
+      <div>
+        <p className="text-sm font-medium text-gray-200">Re-analisar tudo</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          Limpa as detecções existentes e re-envia todas as gravações ao serviço YOLO com o modelo atual.
+        </p>
+        {err && <p className="text-xs text-red-400 mt-1">{err}</p>}
+        {done && <p className="text-xs text-green-400 mt-1">Re-análise agendada — será processada na próxima limpeza do storage.</p>}
+      </div>
+      <button
+        type="button"
+        onClick={handleReanalyze}
+        disabled={busy}
+        className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+      >
+        {busy ? 'Aguarde...' : 'Re-analisar tudo'}
+      </button>
+    </div>
+  )
+}
 
 export default function AnalysisSettingsPage() {
   const { settings } = useSettings()
@@ -47,6 +85,12 @@ export default function AnalysisSettingsPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [serviceModels, setServiceModels] = useState<ModelInfo[] | null>(null)
+  const [serviceOffline, setServiceOffline] = useState(false)
+
+  const activeBase = cfg.model.startsWith('custom+') ? cfg.model.slice('custom+'.length) : cfg.model === 'custom' ? null : cfg.model
+  const activeModelInfo = activeBase && serviceModels ? serviceModels.find(m => m.name === activeBase) ?? null : null
+  const modelNoFinetune = serviceModels !== null && !serviceOffline && activeModelInfo !== null && !activeModelInfo.finetune
   // label section state — null means "not yet loaded / loading"
   const [labelCamID, setLabelCamID] = useState('')
   const [unlabeledOnly, setUnlabeledOnly] = useState(true)
@@ -54,6 +98,7 @@ export default function AnalysisSettingsPage() {
   const [labelLimit, setLabelLimit] = useState(50)
   const [labelPage, setLabelPage] = useState(1)
   const [labelEvents, setLabelEvents] = useState<EventItem[] | null>(null)
+  const eventsLoadedAtRef = useRef(Date.now())
   const [labelTotal, setLabelTotal] = useState(0)
   const [labelInputs, setLabelInputs] = useState<Record<number, string>>({})
   const [labelSaveState, setLabelSaveState] = useState<Record<number, 'saved' | 'error'>>({})
@@ -177,7 +222,18 @@ export default function AnalysisSettingsPage() {
       .then(setCfg)
       .catch(() => setError('Falha ao carregar configurações'))
     refreshCounts()
+    fetchModels()
   }, [])
+
+  function fetchModels() {
+    fetch('/api/settings/analysis/models', { headers: authHeaders() })
+      .then(r => {
+        if (!r.ok) throw new Error('offline')
+        return r.json()
+      })
+      .then(d => { setServiceModels(d.models); setServiceOffline(false) })
+      .catch(() => { setServiceModels(null); setServiceOffline(true) })
+  }
 
   function refreshCounts() {
     fetch('/api/settings/analysis/annotation-count', { headers: authHeaders() })
@@ -364,6 +420,7 @@ export default function AnalysisSettingsPage() {
     })
       .then(r => r.json())
       .then(d => {
+        eventsLoadedAtRef.current = Date.now()
         setLabelEvents(d.events ?? [])
         setLabelTotal(d.total ?? 0)
         const inputs: Record<number, string> = {}
@@ -437,6 +494,7 @@ export default function AnalysisSettingsPage() {
       if (res.ok) {
         setSaved(true)
         setTimeout(() => setSaved(false), 2000)
+        fetchModels()
       } else {
         setError('Erro ao salvar')
       }
@@ -486,34 +544,46 @@ export default function AnalysisSettingsPage() {
 
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Modelo</label>
-                <select
-                  className="w-full bg-gray-700 text-gray-200 text-sm rounded px-3 py-2 border border-gray-600 focus:outline-none focus:border-blue-500"
-                  value={cfg.model}
-                  onChange={e => setCfg(c => ({ ...c, model: e.target.value }))}
-                >
-                  {cfg.has_custom_model && (() => {
-                    const base = cfg.model.startsWith('custom+')
-                      ? cfg.model.slice('custom+'.length)
-                      : cfg.model === 'custom'
-                        ? 'yolov8n'
-                        : cfg.model
-                    const combinedValue = `custom+${base}`
-                    return (
-                      <optgroup label="Custom">
-                        <option value="custom">custom ✓ (treinado)</option>
-                        <option value={combinedValue}>custom + {base}</option>
-                      </optgroup>
-                    )
-                  })()}
-                  {MODELS.map(({ group, names }) => (
-                    <optgroup key={group} label={group}>
-                      {names.map(m => (
-                        <option key={m} value={m}>{m}</option>
+                {serviceOffline ? (
+                  <div className="w-full bg-gray-700 text-yellow-400 text-sm rounded px-3 py-2 border border-yellow-600">
+                    Serviço YOLO offline — configure a URL e verifique se o container está rodando
+                  </div>
+                ) : serviceModels === null ? (
+                  <div className="w-full bg-gray-700 text-gray-400 text-sm rounded px-3 py-2 border border-gray-600">
+                    Carregando modelos...
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      className="w-full bg-gray-700 text-gray-200 text-sm rounded px-3 py-2 border border-gray-600 focus:outline-none focus:border-blue-500"
+                      value={cfg.model}
+                      onChange={e => setCfg(c => ({ ...c, model: e.target.value }))}
+                    >
+                      {cfg.has_custom_model && (() => {
+                        const base = cfg.model.startsWith('custom+')
+                          ? cfg.model.slice('custom+'.length)
+                          : cfg.model === 'custom'
+                            ? 'yolov8n'
+                            : cfg.model
+                        const combinedValue = `custom+${base}`
+                        return (
+                          <optgroup label="Custom">
+                            <option value="custom">custom ✓ (treinado)</option>
+                            <option value={combinedValue}>custom + {base}</option>
+                          </optgroup>
+                        )
+                      })()}
+                      {Array.from(new Set(serviceModels.filter(m => m.inference).map(m => m.group))).map(group => (
+                        <optgroup key={group} label={group}>
+                          {serviceModels.filter(m => m.group === group && m.inference).map(m => (
+                            <option key={m.name} value={m.name}>{m.name}</option>
+                          ))}
+                        </optgroup>
                       ))}
-                    </optgroup>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500 mt-1">n = mais rápido · x = mais preciso</p>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">n = mais rápido · x = mais preciso</p>
+                  </>
+                )}
               </div>
             </div>
 
@@ -560,6 +630,8 @@ export default function AnalysisSettingsPage() {
           </ol>
         </div>
 
+        <ReanalyzePanel />
+
         <div className="bg-gray-800 rounded-lg border border-gray-700 divide-y divide-gray-700">
           <div className="p-4">
             <h4 className="text-sm font-semibold text-gray-200 mb-1">Fine-tuning</h4>
@@ -569,6 +641,11 @@ export default function AnalysisSettingsPage() {
             </p>
           </div>
 
+          {modelNoFinetune && (
+            <div className="px-4 py-2 bg-yellow-900/40 border-b border-yellow-700 text-yellow-300 text-xs">
+              O modelo <strong>{activeBase}</strong> não suporta fine-tuning na GPU disponível. Selecione um modelo menor (ex: yolov8n, yolo11n).
+            </div>
+          )}
           <div className="p-4 space-y-3">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-0.5">
@@ -583,7 +660,7 @@ export default function AnalysisSettingsPage() {
               </div>
               <button
                 type="button"
-                disabled={(!annCount && !labelCount) || (ftStatus?.status === 'running' || ftStatus?.status === 'pending')}
+                disabled={(!annCount && !labelCount) || ftStatus?.status === 'running' || ftStatus?.status === 'pending' || modelNoFinetune}
                 onClick={handleStartFinetune}
                 className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
               >
@@ -665,7 +742,7 @@ export default function AnalysisSettingsPage() {
                 type="text"
                 placeholder="Buscar label…"
                 value={labelSearch}
-                onChange={e => { setLabelSearch(e.target.value); setLabelPage(1); setLabelEvents(null); clearSelection() }}
+                onChange={e => { setLabelSearch(e.target.value); setLabelPage(1); clearSelection() }}
                 className="bg-gray-700 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500 w-40"
               />
               {!showDismissed && (
@@ -786,11 +863,11 @@ export default function AnalysisSettingsPage() {
                           {ev.frame ? (
                             <button
                               type="button"
-                              onClick={() => openZoomModal(frameURL(labelCamID, ev.time, ev.frame!), ev.id, labelInputs[ev.id] ?? ev.label ?? '')}
+                              onClick={() => openZoomModal(frameURL(labelCamID, ev.time, ev.frame!, eventsLoadedAtRef.current), ev.id, labelInputs[ev.id] ?? ev.label ?? '')}
                               className="flex-shrink-0 rounded overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 hover:opacity-80 transition-opacity"
                             >
                               <img
-                                src={frameURL(labelCamID, ev.time, ev.frame)}
+                                src={frameURL(labelCamID, ev.time, ev.frame, eventsLoadedAtRef.current)}
                                 className="w-40 h-24 object-cover bg-gray-900"
                                 alt=""
                               />

@@ -11,6 +11,33 @@ import (
 	"camera/internal/db"
 )
 
+func (s *Server) handleReanalyze(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
+	if err := db.ResetDetectionsForReanalysis(s.db); err != nil {
+		http.Error(w, "failed to reset detections: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
+	cfg, err := db.GetVideoAnalysisConfig(s.db)
+	if err != nil || cfg.ServiceURL == "" {
+		http.Error(w, "analysis service not configured", http.StatusServiceUnavailable)
+		return
+	}
+	client := analysis.NewClient(cfg.ServiceURL)
+	models, err := client.Models(r.Context())
+	if err != nil {
+		http.Error(w, "yolo service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(models)
+}
+
 func (s *Server) handleStartFinetune(w http.ResponseWriter, r *http.Request) {
 	if !s.requireDB(w) {
 		return

@@ -9,10 +9,54 @@ import shutil
 import yaml
 from collections import defaultdict
 from pathlib import Path
+import torch
 
 app = FastAPI()
 _models: dict[str, YOLO] = {}
 MODEL_DIR = Path("/models")
+
+# ── hardware detection ────────────────────────────────────────────────────────
+def _detect_hardware() -> tuple[str, float]:
+    """Returns (device, vram_gb). vram_gb=0 means CPU-only."""
+    if torch.cuda.is_available():
+        vram = torch.cuda.get_device_properties(0).total_memory / 1e9
+        return "cuda", round(vram, 1)
+    return "cpu", 0.0
+
+_DEVICE, _VRAM_GB = _detect_hardware()
+
+# VRAM requirements per size (GB) — finetune with batch=4
+# Observed: yolo12l ~2.44GB, so 'l' fits in 4GB; 'x' is ~50% heavier than 'l'
+_FINETUNE_VRAM = {"n": 1.0, "s": 1.5, "m": 2.0, "l": 3.0, "x": 5.0}
+_INFER_VRAM    = {"n": 0.3, "s": 0.5, "m": 1.0, "l": 1.5, "x": 2.5}
+
+_MODEL_GROUPS = [
+    ("YOLOv8",  ["yolov8n",  "yolov8s",  "yolov8m",  "yolov8l",  "yolov8x"]),
+    ("YOLO11",  ["yolo11n",  "yolo11s",  "yolo11m",  "yolo11l",  "yolo11x"]),
+    ("YOLO12",  ["yolo12n",  "yolo12s",  "yolo12m",  "yolo12l",  "yolo12x"]),
+]
+
+def _build_model_list() -> list[dict]:
+    result = []
+    for group, names in _MODEL_GROUPS:
+        for name in names:
+            size = name[-1]  # n/s/m/l/x
+            if _DEVICE == "cuda":
+                can_infer    = _VRAM_GB >= _INFER_VRAM[size]
+                can_finetune = _VRAM_GB >= _FINETUNE_VRAM[size]
+            else:
+                can_infer    = True   # CPU sempre consegue inferir (lento)
+                can_finetune = False  # Fine-tuning em CPU não é prático
+            result.append({
+                "name": name,
+                "group": group,
+                "inference": can_infer,
+                "finetune": can_finetune,
+            })
+    # Custom model — sempre disponível se existir
+    if (MODEL_DIR / "custom.pt").exists():
+        result.insert(0, {"name": "custom", "group": "Custom", "inference": True, "finetune": False})
+    return result
 
 # Fine-tune jobs: job_id -> {status, epoch, total_epochs, error}
 _jobs: dict[str, dict] = {}
@@ -198,7 +242,16 @@ def _analyze_one(model: YOLO, cap, conf_threshold: float):
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "device": _DEVICE, "vram_gb": _VRAM_GB}
+
+
+@app.get("/models")
+def list_models():
+    return {
+        "device": _DEVICE,
+        "vram_gb": _VRAM_GB,
+        "models": _build_model_list(),
+    }
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
