@@ -742,7 +742,7 @@ export default function AnalysisSettingsPage() {
                 type="text"
                 placeholder="Buscar label…"
                 value={labelSearch}
-                onChange={e => { setLabelSearch(e.target.value); setLabelPage(1); setLabelEvents(null); clearSelection() }}
+                onChange={e => { setLabelSearch(e.target.value); setLabelPage(1); clearSelection() }}
                 className="bg-gray-700 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500 w-40"
               />
               {!showDismissed && (
