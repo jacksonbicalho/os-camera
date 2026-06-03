@@ -36,6 +36,43 @@ function frameURL(cameraId: string, eventTime: string, frame: string, bust?: num
 
 const PAGE_SIZE_OPTIONS = [50, 100, 150, 200, 300, 500]
 
+function ReanalyzePanel() {
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function handleReanalyze() {
+    setBusy(true); setDone(false); setErr('')
+    try {
+      const r = await fetch('/api/settings/analysis/reanalyze', { method: 'POST', headers: authHeaders() })
+      if (r.ok) { setDone(true); setTimeout(() => setDone(false), 3000) }
+      else setErr('Erro ao solicitar re-análise')
+    } catch { setErr('Erro ao solicitar re-análise') }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 flex items-center justify-between gap-4">
+      <div>
+        <p className="text-sm font-medium text-gray-200">Re-analisar tudo</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          Limpa as detecções existentes e re-envia todas as gravações ao serviço YOLO com o modelo atual.
+        </p>
+        {err && <p className="text-xs text-red-400 mt-1">{err}</p>}
+        {done && <p className="text-xs text-green-400 mt-1">Re-análise agendada — será processada na próxima limpeza do storage.</p>}
+      </div>
+      <button
+        type="button"
+        onClick={handleReanalyze}
+        disabled={busy}
+        className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+      >
+        {busy ? 'Aguarde...' : 'Re-analisar tudo'}
+      </button>
+    </div>
+  )
+}
+
 export default function AnalysisSettingsPage() {
   const { settings } = useSettings()
   const cameras: CameraSettings[] = settings?.cameras ?? []
@@ -50,6 +87,10 @@ export default function AnalysisSettingsPage() {
   const [error, setError] = useState('')
   const [serviceModels, setServiceModels] = useState<ModelInfo[] | null>(null)
   const [serviceOffline, setServiceOffline] = useState(false)
+
+  const activeBase = cfg.model.startsWith('custom+') ? cfg.model.slice('custom+'.length) : cfg.model === 'custom' ? null : cfg.model
+  const activeModelInfo = activeBase && serviceModels ? serviceModels.find(m => m.name === activeBase) ?? null : null
+  const modelNoFinetune = serviceModels !== null && !serviceOffline && activeModelInfo !== null && !activeModelInfo.finetune
   // label section state — null means "not yet loaded / loading"
   const [labelCamID, setLabelCamID] = useState('')
   const [unlabeledOnly, setUnlabeledOnly] = useState(true)
@@ -589,6 +630,8 @@ export default function AnalysisSettingsPage() {
           </ol>
         </div>
 
+        <ReanalyzePanel />
+
         <div className="bg-gray-800 rounded-lg border border-gray-700 divide-y divide-gray-700">
           <div className="p-4">
             <h4 className="text-sm font-semibold text-gray-200 mb-1">Fine-tuning</h4>
@@ -598,6 +641,11 @@ export default function AnalysisSettingsPage() {
             </p>
           </div>
 
+          {modelNoFinetune && (
+            <div className="px-4 py-2 bg-yellow-900/40 border-b border-yellow-700 text-yellow-300 text-xs">
+              O modelo <strong>{activeBase}</strong> não suporta fine-tuning na GPU disponível. Selecione um modelo menor (ex: yolov8n, yolo11n).
+            </div>
+          )}
           <div className="p-4 space-y-3">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-0.5">
@@ -612,7 +660,7 @@ export default function AnalysisSettingsPage() {
               </div>
               <button
                 type="button"
-                disabled={(!annCount && !labelCount) || (ftStatus?.status === 'running' || ftStatus?.status === 'pending')}
+                disabled={(!annCount && !labelCount) || ftStatus?.status === 'running' || ftStatus?.status === 'pending' || modelNoFinetune}
                 onClick={handleStartFinetune}
                 className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
               >

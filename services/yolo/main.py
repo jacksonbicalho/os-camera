@@ -25,9 +25,10 @@ def _detect_hardware() -> tuple[str, float]:
 
 _DEVICE, _VRAM_GB = _detect_hardware()
 
-# VRAM requirements per size (GB) — finetune with batch=4, inference estimate
-_FINETUNE_VRAM = {"n": 1.5, "s": 2.5, "m": 3.5, "l": 6.0, "x": 8.0}
-_INFER_VRAM    = {"n": 0.5, "s": 1.0, "m": 2.0, "l": 3.0, "x": 4.5}
+# VRAM requirements per size (GB) — finetune with batch=4
+# Observed: yolo12l ~2.44GB, so 'l' fits in 4GB; 'x' is ~50% heavier than 'l'
+_FINETUNE_VRAM = {"n": 1.0, "s": 1.5, "m": 2.0, "l": 3.0, "x": 5.0}
+_INFER_VRAM    = {"n": 0.3, "s": 0.5, "m": 1.0, "l": 1.5, "x": 2.5}
 
 _MODEL_GROUPS = [
     ("YOLOv8",  ["yolov8n",  "yolov8s",  "yolov8m",  "yolov8l",  "yolov8x"]),

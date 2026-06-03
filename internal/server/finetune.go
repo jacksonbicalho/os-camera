@@ -11,6 +11,17 @@ import (
 	"camera/internal/db"
 )
 
+func (s *Server) handleReanalyze(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDB(w) {
+		return
+	}
+	if err := db.ResetDetectionsForReanalysis(s.db); err != nil {
+		http.Error(w, "failed to reset detections: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 	cfg, err := db.GetVideoAnalysisConfig(s.db)
 	if err != nil || cfg.ServiceURL == "" {
