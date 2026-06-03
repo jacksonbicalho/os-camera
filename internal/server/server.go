@@ -1599,6 +1599,14 @@ func (s *Server) handleMotionZonesPut(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// Refresh the running monitor's cached zones so the change takes effect
+	// without restarting the process.
+	s.mu.Lock()
+	mon := s.monitors[id]
+	s.mu.Unlock()
+	if mon != nil {
+		mon.ReloadZones()
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
