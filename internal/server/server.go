@@ -260,7 +260,10 @@ func (s *Server) updateDailyPeak(cameraID string, ev motion.Event) {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.mux.ServeHTTP(w, r)
+	lw := &loggingResponseWriter{ResponseWriter: w, code: http.StatusOK}
+	start := time.Now()
+	s.mux.ServeHTTP(lw, r)
+	s.logRequest(r, lw.code, time.Since(start))
 }
 
 func (s *Server) routes() {
