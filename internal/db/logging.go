@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"log/slog"
 	"strings"
@@ -46,17 +47,25 @@ func (d *DB) logQuery(query string, dur time.Duration, err error) {
 		return
 	}
 
-	sql := truncate(strings.Join(strings.Fields(query), " "), maxSQLLen)
-	durStr := dur.Round(time.Microsecond).String()
-
 	switch {
 	case err != nil:
-		d.log.Error("db query", "sql", sql, "duration", durStr, "err", err)
+		d.log.Error("db query", "sql", clipSQL(query), "duration", durText(dur), "err", err)
 	case dur >= slowQueryThreshold:
-		d.log.Warn("db query slow", "sql", sql, "duration", durStr)
+		d.log.Warn("db query slow", "sql", clipSQL(query), "duration", durText(dur))
+	case d.log.Enabled(context.Background(), slog.LevelDebug):
+		// Fast successful queries are noisy (every poll, every motion event), so
+		// they are only logged when debug is enabled — and the Enabled guard avoids
+		// formatting the SQL on the hot path when it is not.
+		d.log.Debug("db query", "sql", clipSQL(query), "duration", durText(dur))
 	}
-	// Fast successful queries are not logged — even in debug mode they are too
-	// frequent (every poll cycle, every motion event) to be useful.
+}
+
+func clipSQL(query string) string {
+	return truncate(strings.Join(strings.Fields(query), " "), maxSQLLen)
+}
+
+func durText(dur time.Duration) string {
+	return dur.Round(time.Microsecond).String()
 }
 
 func truncate(s string, max int) string {
