@@ -4,6 +4,7 @@ import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { getUsername, authHeaders } from '../auth'
 import Sidebar from './Sidebar'
+import AlertBanner from './AlertBanner'
 import { Github, CameraLogo } from './Icons'
 
 interface AppLayoutProps {
@@ -87,6 +88,7 @@ export default function AppLayout({ children, mainClassName = '', fill = false }
       <div className="flex h-screen overflow-hidden bg-gray-950">
         <Sidebar username={getUsername() ?? undefined} />
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <AlertBanner />
           <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
           {footer}
         </div>
@@ -101,6 +103,7 @@ export default function AppLayout({ children, mainClassName = '', fill = false }
         <Sidebar username={getUsername() ?? undefined} />
       </div>
       <div className="flex-1 flex flex-col min-w-0">
+        <AlertBanner />
         <main className={`flex-1 p-6 ${mainClassName}`.trim()}>{children}</main>
         {footer}
       </div>

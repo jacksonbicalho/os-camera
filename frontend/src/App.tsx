@@ -6,6 +6,7 @@ import DashboardPage from './pages/DashboardPage'
 import ChangePasswordPage from './pages/ChangePasswordPage'
 import { SidebarItemsProvider } from './contexts/SidebarContext'
 import { DisplayModeProvider } from './contexts/DisplayModeContext'
+import { AlertProvider } from './contexts/AlertContext'
 
 const CameraPage = lazy(() => import('./pages/CameraPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
@@ -53,6 +54,7 @@ function Lazy({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <DisplayModeProvider>
+    <AlertProvider>
     <SidebarItemsProvider>
     <UnauthorizedHandler />
     <Routes>
@@ -82,6 +84,7 @@ export default function App() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </SidebarItemsProvider>
+    </AlertProvider>
     </DisplayModeProvider>
   )
 }
