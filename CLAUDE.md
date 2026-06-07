@@ -273,6 +273,18 @@ O fluxo abaixo é automatizado pelos slash commands em `.claude/commands/`:
 
 Use os commands em vez de executar os passos manualmente — eles validam pré-condições e evitam erros (branch errada, working tree suja, status incompleto).
 
+### Hooks de pre-commit (`.claude/settings.json`)
+
+Hooks `PreToolUse` (matcher `Bash`, versionados no repo) impõem o fluxo automaticamente:
+
+| Gate | Bloqueia quando |
+|---|---|
+| Aprovação da story | `git commit` em branch de história cuja story não tem `[x] Aprovado`. |
+| Target do PR | `gh pr create --base master` a partir de branch que não seja `develop`/`release/*`. |
+| Testes backend | `git commit` quando `go build ./...` ou `go test -count=1 ./...` falham. |
+
+O gate de testes roda no host (Go instalado), **sem cache** (`-count=1`) — só execução limpa pega testes dependentes de `time.Now()` (o cache do Go não rastreia o relógio). Escopo é backend; o frontend segue coberto pelo CI. Hooks só recarregam no início da sessão do Claude Code: alterações em `settings.json` valem a partir da próxima sessão.
+
 ### Fluxo por história
 
 > ⚠️ **OBRIGATÓRIO:** Antes de escrever qualquer linha de código ou teste, o driver DEVE criar o arquivo de história E abrir a branch (use `/story`). Sem exceção — nem para bugs simples, nem para "pequenas correções".
