@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { useNavigate, useLocation, Link, NavLink } from "react-router-dom"
 import { clearToken, getRole, authHeaders, onUnauthorized } from "../auth"
 import { useNotifications } from "../contexts/NotificationContext"
+import { useUserNotifications } from "../contexts/UserNotificationContext"
 import { useSidebarItems, type SidebarItem, type SidebarDropdownOption } from "../contexts/SidebarContext"
 import { useDisplayMode } from "../contexts/DisplayModeContext"
 import { formatDistanceToNow } from "date-fns"
@@ -272,6 +273,8 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
     browserSupported, browserPermission, browserEnabled,
     enableBrowserNotifications, disableBrowserNotifications,
   } = useNotifications()
+
+  const { unreadCount: userUnread } = useUserNotifications()
 
   const bellBtnRef = useRef<HTMLButtonElement>(null)
   const [bellPos, setBellPos] = useState({ top: 0, left: 0 })
@@ -630,16 +633,33 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
           <button
             id="sidebar-user"
             onClick={() => setUserOpen((v) => !v)}
-            className={`${btnBase} text-gray-400 hover:bg-gray-800 hover:text-white`}
+            className={`relative ${btnBase} text-gray-400 hover:bg-gray-800 hover:text-white`}
             title={username}
           >
             {showIcon && <CircleUser className="w-6 h-6" />}
             {showLabel && <span className="text-sm truncate">{username}</span>}
+            {userUnread > 0 && (
+              <span className="absolute top-1 left-6 min-w-[16px] h-4 px-1 rounded-full bg-blue-600 text-white text-[10px] font-semibold flex items-center justify-center">
+                {userUnread > 99 ? '99+' : userUnread}
+              </span>
+            )}
           </button>
 
           {userOpen && (
             <div className="absolute left-full bottom-0 ml-2 w-44 bg-gray-800 border border-gray-700 rounded shadow-lg z-50">
               <div className="px-4 py-2 text-xs text-gray-500 border-b border-gray-700 truncate">{username}</div>
+              <Link
+                to="/notifications"
+                onClick={() => setUserOpen(false)}
+                className="flex items-center justify-between w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+              >
+                <span>Notificações</span>
+                {userUnread > 0 && (
+                  <span className="min-w-[16px] h-4 px-1 rounded-full bg-blue-600 text-white text-[10px] font-semibold flex items-center justify-center">
+                    {userUnread > 99 ? '99+' : userUnread}
+                  </span>
+                )}
+              </Link>
               <Link
                 to="/change-password"
                 onClick={() => setUserOpen(false)}
