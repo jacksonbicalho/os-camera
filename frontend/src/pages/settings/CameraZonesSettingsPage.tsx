@@ -7,6 +7,7 @@ import ConfirmDialog from '../../components/ConfirmDialog'
 import { authHeaders, getRole, getToken } from '../../auth'
 import { useSettings } from '../../hooks/useSettings'
 import { useEventSource } from '../../hooks/useEventSource'
+import { zoneThresholdLabel } from './zoneThreshold'
 
 interface Zone {
   x: number
@@ -202,6 +203,8 @@ function paintCanvas(
   ia: Interaction,
   selIdx: number | null,
   readonly: boolean,
+  globalThreshold: number,
+  liveScore: number | null,
 ) {
   ctx.clearRect(0, 0, cw, ch)
 
@@ -308,6 +311,25 @@ function paintCanvas(
         ctx.fillText(label, 8, 15)
         ctx.restore()
       }
+
+      // Live "score / threshold" label, anchored to the selected zone, updating
+      // in real time from the SSE region score. Stacks below the name label.
+      if (isSel) {
+        const thr = zoneThresholdLabel(liveScore, z.threshold, globalThreshold)
+        ctx.save()
+        const [tlx, tly] = cornerWorld(z, 0, cw, ch)
+        ctx.translate(tlx, tly)
+        ctx.rotate(a)
+        ctx.font = '11px sans-serif'
+        ctx.textAlign = 'left'
+        const yTop = label ? 22 : 4
+        const tw = ctx.measureText(thr).width
+        ctx.fillStyle = 'rgba(0,0,0,0.65)'
+        ctx.fillRect(4, yTop, tw + 8, 16)
+        ctx.fillStyle = stroke
+        ctx.fillText(thr, 8, yTop + 11)
+        ctx.restore()
+      }
     }
   }
 }
@@ -354,12 +376,16 @@ export default function CameraZonesSettingsPage() {
   const zonesRef = useRef(zones)
   const interactionRef = useRef(interaction)
   const selectedIdxRef = useRef(selectedIdx)
+  const globalThresholdRef = useRef(0)
+  const regionScoreRef = useRef<number | null>(null)
 
   // Sync refs every render (no dep array — runs every render)
   useEffect(() => {
     zonesRef.current = zones
     interactionRef.current = interaction
     selectedIdxRef.current = selectedIdx
+    globalThresholdRef.current = cam?.motion?.threshold ?? 0
+    regionScoreRef.current = regionScore
   })
 
   // SSE URL for live region score — only when a zone is selected
@@ -436,6 +462,7 @@ export default function CameraZonesSettingsPage() {
           ctx, videoRef.current, zonesRef.current,
           canvas.width, canvas.height,
           interactionRef.current, selectedIdxRef.current, !isAdmin,
+          globalThresholdRef.current, regionScoreRef.current,
         )
       }
       rafRef.current = requestAnimationFrame(loop)
