@@ -289,6 +289,10 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("DELETE /api/notifications/{id}", s.requireFullAuth(s.handleDeleteNotification))
 	s.mux.HandleFunc("DELETE /api/notifications", s.requireFullAuth(s.handleDeleteAllNotifications))
 
+	// Per-user preferences (theme), scoped to the authenticated user.
+	s.mux.HandleFunc("GET /api/me/preferences", s.requireFullAuth(s.handleGetPreferences))
+	s.mux.HandleFunc("PUT /api/me/preferences", s.requireFullAuth(s.handleUpdatePreferences))
+
 	s.mux.HandleFunc("GET /api/users", s.requireAdmin(s.handleListUsers))
 	s.mux.HandleFunc("POST /api/users", s.requireAdmin(s.handleCreateUser))
 	s.mux.HandleFunc("PUT /api/users/{id}", s.requireAdmin(s.handleUpdateUser))
