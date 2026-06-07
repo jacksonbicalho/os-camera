@@ -4,12 +4,15 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import { NotificationProvider } from './contexts/NotificationContext'
+import { UserNotificationProvider } from './contexts/UserNotificationContext'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <NotificationProvider>
-        <App />
+        <UserNotificationProvider>
+          <App />
+        </UserNotificationProvider>
       </NotificationProvider>
     </BrowserRouter>
   </StrictMode>,
