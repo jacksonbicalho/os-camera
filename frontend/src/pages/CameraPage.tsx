@@ -20,6 +20,7 @@ import { mergeRecordings } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
+import { zoneThresholdLabel } from './settings/zoneThreshold'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useSetSidebarItems } from '../contexts/SidebarContext'
 import { useDisplayMode } from '../contexts/DisplayModeContext'
@@ -155,6 +156,11 @@ export default function CameraPage() {
   const [debugStats, setDebugStats] = useState<{ fps: number; dropped: number; hlsStats: HLSStats | null; lagMs: number } | null>(null)
   const [showDebugChart, setShowDebugChart] = useState(false)
   const [debugPos, setDebugPos] = useState({ x: 8, y: 8 })
+  // Ferramenta efêmera "Analisar limiar": desenha uma região sobre o vídeo ao vivo
+  // e mostra o score/limiar dela em tempo real, sem salvar como zona.
+  const [analyzeMode, setAnalyzeMode] = useState(false)
+  const [analyzeBox, setAnalyzeBox] = useState<BboxRect | null>(null)
+  const [analyzeScore, setAnalyzeScore] = useState<number | null>(null)
   const [playerHeight, setPlayerHeight] = useState<number | undefined>(undefined)
   const debugDragRef = useRef<{ startMouseX: number; startMouseY: number; startPosX: number; startPosY: number } | null>(null)
   const speedMenuRef = useRef<HTMLDivElement>(null)
@@ -806,6 +812,18 @@ export default function CameraPage() {
 
   const isLive = activeRecording === null && !recordingId
 
+  // Live region score for the ephemeral "Analisar limiar" tool (live view only).
+  const onAnalyzeScore = useCallback((data: string) => {
+    try {
+      const p = JSON.parse(data)
+      if (typeof p.score === 'number') setAnalyzeScore(p.score)
+    } catch { /* ignore malformed */ }
+  }, [])
+  const analyzeURL = isLive && analyzeMode && analyzeBox && id
+    ? `/api/cameras/${id}/motion/region-score?x=${analyzeBox.x}&y=${analyzeBox.y}&w=${analyzeBox.w}&h=${analyzeBox.h}`
+    : null
+  useEventSource(analyzeURL, onAnalyzeScore)
+
   useEffect(() => {
     setItems([])
     return () => setItems([])
@@ -1143,7 +1161,22 @@ function toggleFullscreen() {
               </div>
 
               {isLive ? (
-                <HLSPlayer ref={hlsPlayerRef} src={liveUrl} containerClassName="flex-1 min-h-0" className="w-full h-full bg-black" cameraId={id} muted={videoMuted} segmentSeconds={cam?.hls_segment_seconds} onGoToEvent={handleGoToEvent} />
+                <div className="flex-1 min-h-0 relative">
+                  <HLSPlayer ref={hlsPlayerRef} src={liveUrl} containerClassName="w-full h-full" className="w-full h-full bg-black" cameraId={id} muted={videoMuted} segmentSeconds={cam?.hls_segment_seconds} onGoToEvent={handleGoToEvent} />
+                  {analyzeMode && (
+                    <div className="absolute inset-0">
+                      <BboxCanvas box={analyzeBox} onChange={setAnalyzeBox} className="w-full h-full" />
+                      {analyzeBox && (
+                        <span
+                          className="absolute z-10 px-1.5 py-0.5 rounded bg-black/70 text-emerald-300 text-xs font-mono tabular-nums pointer-events-none"
+                          style={{ left: `${analyzeBox.x * 100}%`, top: `${analyzeBox.y * 100}%` }}
+                        >
+                          {zoneThresholdLabel(analyzeScore, undefined, effectiveThreshold)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div
                   ref={recPlayerRef}
@@ -1375,6 +1408,20 @@ function toggleFullscreen() {
                         />
                         gráfico limiar
                       </label>
+                      {isLive && (
+                        <label className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 cursor-pointer transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={analyzeMode}
+                            onChange={e => {
+                              setAnalyzeMode(e.target.checked)
+                              if (!e.target.checked) { setAnalyzeBox(null); setAnalyzeScore(null) }
+                            }}
+                            className="accent-blue-500 w-3 h-3"
+                          />
+                          analisar limiar (desenhe uma região)
+                        </label>
+                      )}
                     </div>
                   )}
                 </div>
