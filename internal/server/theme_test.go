@@ -68,6 +68,16 @@ func TestPreferences_SetValidTheme(t *testing.T) {
 	}
 }
 
+func TestPreferences_AcceptsSystemTheme(t *testing.T) {
+	srv, token := themeServer(t)
+	if code := putTheme(t, srv, token, "system"); code != http.StatusNoContent && code != http.StatusOK {
+		t.Fatalf("PUT system: expected 200/204, got %d", code)
+	}
+	if th := getTheme(t, srv, token); th != "system" {
+		t.Errorf("expected 'system' after PUT, got %q", th)
+	}
+}
+
 func TestPreferences_RejectsInvalidTheme(t *testing.T) {
 	srv, token := themeServer(t)
 	if code := putTheme(t, srv, token, "rainbow"); code != http.StatusBadRequest {

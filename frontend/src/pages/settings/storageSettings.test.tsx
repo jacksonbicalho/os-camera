@@ -78,9 +78,12 @@ describe('retention destination — unified dropdown (Apagar + drives)', () => {
 
     render(<MemoryRouter><StorageSettingsPage /></MemoryRouter>)
 
+    // Wait until the dropdown exists AND the drive options have loaded, otherwise
+    // changing to a not-yet-rendered option yields an empty value (flaky).
     const destSelect = await waitFor(() => {
       const s = screen.getAllByRole('combobox').find(el => (el as HTMLSelectElement).value === 'delete')
       expect(s).toBeTruthy()
+      expect(within(s as HTMLElement).queryByRole('option', { name: 'Backup S3' })).toBeTruthy()
       return s as HTMLSelectElement
     })
 
