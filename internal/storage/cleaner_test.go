@@ -1238,3 +1238,37 @@ func TestClean_KeepsRecentOrphanMotionEvents(t *testing.T) {
 		t.Errorf("expected recent orphan kept, got %d", n)
 	}
 }
+
+// Ao cruzar o limite de Alerta(%), cada admin recebe uma notificação; viewers não.
+// Edge-triggered: não duplica enquanto continua acima.
+func TestCheckSize_NotifiesAdminsOnThresholdCrossing(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	admin, err := db.CreateUser(database, "admin", "pw", "admin", false)
+	if err != nil {
+		t.Fatalf("create admin: %v", err)
+	}
+	viewer, err := db.CreateUser(database, "viewer", "pw", "viewer", false)
+	if err != nil {
+		t.Fatalf("create viewer: %v", err)
+	}
+
+	// maxSizeGB ~107 bytes, 70% ~74 bytes; 200-byte file is above the warn threshold.
+	writeFileWithSize(t, filepath.Join(dir, "cam1", "big.mp4"), 200)
+
+	c := storage.New(dir, 0, 0, 5*time.Minute, 1e-7, 70, database, discardLogger())
+	c.CheckSize()
+
+	if n, _ := db.CountUnreadNotifications(database, admin); n != 1 {
+		t.Errorf("admin should have 1 notification, got %d", n)
+	}
+	if n, _ := db.CountUnreadNotifications(database, viewer); n != 0 {
+		t.Errorf("viewer should have 0 notifications, got %d", n)
+	}
+
+	// Still above on the next check → no duplicate (edge-triggered).
+	c.CheckSize()
+	if n, _ := db.CountUnreadNotifications(database, admin); n != 1 {
+		t.Errorf("admin should still have 1 notification (no duplicate), got %d", n)
+	}
+}
