@@ -289,6 +289,8 @@ O gate de testes roda no host (Go instalado), **sem cache** (`-count=1`) — só
 
 `scripts/merge-when-green.sh <PR#>` colapsa o ciclo pós-PR numa única invocação (economia de tokens): aguarda o CI em silêncio, mergeia em `develop`, sincroniza o branch local, deleta a branch da história e marca `[~]→[✓]` na linha do PR no release file mais recente. Imprime só o resumo. **Recusa** PRs com base `master` (releases são aprovadas à mão) e é idempotente em PR já mergeado. Invocar só quando o navigator já autorizou o merge.
 
+`scripts/release-tag.sh [--dry-run]` colapsa o **corte de release** (após o PR develop→master já mergeado): cria/envia a tag via `release.sh` (confirmação automática), aguarda o workflow Release publicar **em silêncio** (poll de `gh release view`), mergeia `master→develop` (passo pós-tag) e imprime uma linha (`RELEASED <versão> | assets: N | develop sincronizado`). `--dry-run` só mostra a versão que sairia. Substitui o ciclo manual com `gh run watch`.
+
 ### Fluxo por história
 
 > ⚠️ **OBRIGATÓRIO:** Antes de escrever qualquer linha de código ou teste, o driver DEVE criar o arquivo de história E abrir a branch (use `/story`). Sem exceção — nem para bugs simples, nem para "pequenas correções".

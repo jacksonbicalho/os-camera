@@ -38,6 +38,13 @@ fi
 # ── espera o CI (silencioso) — só mergeia se ainda não estiver mergeado ──────
 if [[ "$STATE" != "MERGED" ]]; then
     echo -e "${YELLOW}Aguardando CI do PR #$PR...${RESET}"
+    # Logo após `gh pr create` os checks ainda não foram registrados e
+    # `gh pr checks --watch` sai com erro ("no checks reported"). Espera os
+    # checks surgirem antes de observar, para não confundir corrida com falha.
+    for _ in $(seq 1 30); do
+        [[ -n "$(gh pr checks "$PR" 2>/dev/null)" ]] && break
+        sleep 4
+    done
     if ! gh pr checks "$PR" --watch --interval 20 >/dev/null 2>&1; then
         echo -e "${RED}CI FALHOU no PR #$PR:${RESET}" >&2
         gh pr checks "$PR" 2>/dev/null | grep -iE 'fail|pending' >&2 || true
