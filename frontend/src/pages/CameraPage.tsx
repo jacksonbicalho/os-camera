@@ -21,6 +21,7 @@ import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
 import { zoneThresholdLabel } from './settings/zoneThreshold'
+import { videoDownloadName } from './videoDownload'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useSetSidebarItems } from '../contexts/SidebarContext'
 import { useDisplayMode } from '../contexts/DisplayModeContext'
@@ -260,6 +261,18 @@ export default function CameraPage() {
     }
     setAnnBox(box)
     setAnnSaveOk(false)
+  }
+
+  function downloadVideo() {
+    if (!activeRecording) return
+    // <a download> streams to disk (better than blob for large MP4s). Same-origin
+    // so the download attribute (filename) is honored.
+    const a = document.createElement('a')
+    a.href = `${activeRecording.url}?token=${getToken()}`
+    a.download = videoDownloadName(cam?.name, activeRecording.start)
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
   }
 
   function downloadBlob(blob: Blob, filename: string) {
@@ -1157,6 +1170,21 @@ function toggleFullscreen() {
                   >
                     {playerBtn(<CameraCapture className="w-4 h-4" />, 'Snapshot')}
                   </button>
+                  {!isLive && activeRecording && (
+                    <button
+                      onClick={downloadVideo}
+                      title="Baixar vídeo"
+                      className="flex items-center gap-1 px-1 py-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+                    >
+                      {playerBtn(
+                        <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                          <path d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M4 14.5V16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1.5" strokeLinecap="round" />
+                        </svg>,
+                        'Baixar vídeo',
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
 
