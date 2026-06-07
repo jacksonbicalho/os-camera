@@ -605,10 +605,11 @@ func TestSyncRecordings_LinksChunksAcrossMidnight(t *testing.T) {
 	database := openTestDB(t)
 	createTestCamera(t, database, "cam1")
 
-	// 23:58:00 UTC do dia 2026-05-30
-	beforeMidnight := time.Date(2026, 5, 30, 23, 58, 0, 0, time.UTC)
-	// 00:03:00 UTC do dia 2026-05-31
-	afterMidnight := time.Date(2026, 5, 31, 0, 3, 0, 0, time.UTC)
+	// Ancorado em ontem 00:00 UTC para cruzar uma meia-noite recente sem que os
+	// chunks envelheçam além da retenção (datas absolutas viravam time-bomb).
+	midnight := time.Now().UTC().Truncate(24 * time.Hour).Add(-24 * time.Hour)
+	beforeMidnight := midnight.Add(-2 * time.Minute) // anteontem 23:58 UTC
+	afterMidnight := midnight.Add(3 * time.Minute)   // ontem 00:03 UTC
 
 	pathA := mp4WithTimestamp(dir, "cam1", beforeMidnight)
 	pathB := mp4WithTimestamp(dir, "cam1", afterMidnight)
