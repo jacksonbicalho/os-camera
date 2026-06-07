@@ -106,6 +106,13 @@ func (m *Monitor) UnregisterInspector(id string) {
 	m.det.unregisterInspector(id)
 }
 
+// ReloadZones refreshes the detector's in-memory zone cache from the source.
+// Call after zones are edited (e.g. via the API) so the change takes effect
+// without restarting the monitor. Safe for concurrent use.
+func (m *Monitor) ReloadZones() {
+	m.det.reloadZones()
+}
+
 func (m *Monitor) Run(ctx context.Context) {
 	defer close(m.events)
 	defer close(m.rawScores)

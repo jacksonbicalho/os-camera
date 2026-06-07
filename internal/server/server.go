@@ -260,7 +260,10 @@ func (s *Server) updateDailyPeak(cameraID string, ev motion.Event) {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.mux.ServeHTTP(w, r)
+	lw := &loggingResponseWriter{ResponseWriter: w, code: http.StatusOK}
+	start := time.Now()
+	s.mux.ServeHTTP(lw, r)
+	s.logRequest(r, lw.code, time.Since(start))
 }
 
 func (s *Server) routes() {
@@ -278,6 +281,13 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("PUT /api/settings/cameras/reorder", s.requireAdmin(s.handleReorderCameras))
 	s.mux.HandleFunc("PUT /api/settings/cameras/{id}", s.requireAdmin(s.handleUpdateCamera))
 	s.mux.HandleFunc("DELETE /api/settings/cameras/{id}", s.requireAdmin(s.handleDeleteCamera))
+
+	// Notifications are per-user (scoped to the authenticated user, not admin-only).
+	s.mux.HandleFunc("GET /api/notifications", s.requireFullAuth(s.handleListNotifications))
+	s.mux.HandleFunc("POST /api/notifications/read-all", s.requireFullAuth(s.handleMarkAllNotificationsRead))
+	s.mux.HandleFunc("POST /api/notifications/{id}/read", s.requireFullAuth(s.handleMarkNotificationRead))
+	s.mux.HandleFunc("DELETE /api/notifications/{id}", s.requireFullAuth(s.handleDeleteNotification))
+	s.mux.HandleFunc("DELETE /api/notifications", s.requireFullAuth(s.handleDeleteAllNotifications))
 
 	s.mux.HandleFunc("GET /api/users", s.requireAdmin(s.handleListUsers))
 	s.mux.HandleFunc("POST /api/users", s.requireAdmin(s.handleCreateUser))
@@ -617,8 +627,12 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"timezone": s.timezone,
 		"debug":    s.debug,
 		"log": map[string]any{
-			"output": s.logCfg.Output,
-			"path":   s.logCfg.Path,
+			"output":       s.logCfg.Output,
+			"path":         s.logCfg.Path,
+			"max_size_mb":  s.logCfg.MaxSizeMBOrDefault(),
+			"max_age_days": s.logCfg.MaxAgeDaysOrDefault(),
+			"max_backups":  s.logCfg.MaxBackupsOrDefault(),
+			"compress":     s.logCfg.CompressOrDefault(),
 		},
 		"server": map[string]any{
 			"port":            s.cfg.Port,
@@ -1595,6 +1609,14 @@ func (s *Server) handleMotionZonesPut(w http.ResponseWriter, r *http.Request) {
 	if err := db.SetZones(s.db, id, zs); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
+	}
+	// Refresh the running monitor's cached zones so the change takes effect
+	// without restarting the process.
+	s.mu.Lock()
+	mon := s.monitors[id]
+	s.mu.Unlock()
+	if mon != nil {
+		mon.ReloadZones()
 	}
 	w.WriteHeader(http.StatusOK)
 }

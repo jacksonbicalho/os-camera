@@ -53,6 +53,10 @@ type detector struct {
 	lastEvent  time.Time
 	zoneLastEv []time.Time
 
+	zonesMu     sync.RWMutex
+	cachedZones []zones.Zone
+	zonesLoaded bool
+
 	bg         []byte // background model for bbox localization
 
 	inspMu     sync.Mutex
@@ -75,6 +79,34 @@ func newDetector(cameraID, url string, width, height int, cfg config.MotionConfi
 		now:        func() time.Time { return time.Now().UTC() },
 		inspectors: make(map[string]inspectorEntry),
 	}
+}
+
+// zones returns the cached motion zones, loading them from the source on first
+// access. Zones change rarely (only when edited via the API), so caching avoids
+// hitting the database on every frame. Call reloadZones to refresh after a change.
+func (d *detector) zones() []zones.Zone {
+	d.zonesMu.RLock()
+	if d.zonesLoaded {
+		zs := d.cachedZones
+		d.zonesMu.RUnlock()
+		return zs
+	}
+	d.zonesMu.RUnlock()
+	return d.reloadZones()
+}
+
+// reloadZones re-fetches zones from the source and replaces the cache. Safe for
+// concurrent use (e.g. the detector goroutine and an API save handler).
+func (d *detector) reloadZones() []zones.Zone {
+	var zs []zones.Zone
+	if d.getZones != nil {
+		zs = d.getZones()
+	}
+	d.zonesMu.Lock()
+	d.cachedZones = zs
+	d.zonesLoaded = true
+	d.zonesMu.Unlock()
+	return zs
 }
 
 func (d *detector) cooldownElapsed(now time.Time) bool {
@@ -131,10 +163,7 @@ func (d *detector) processFrames(ctx context.Context) {
 		copy(cur, buf)
 
 		if prev != nil {
-			var zs []zones.Zone
-			if d.getZones != nil {
-				zs = d.getZones()
-			}
+			zs := d.zones()
 
 			// Initialize background from the first prev frame seen.
 			if d.bg == nil {

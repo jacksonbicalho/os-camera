@@ -605,10 +605,11 @@ func TestSyncRecordings_LinksChunksAcrossMidnight(t *testing.T) {
 	database := openTestDB(t)
 	createTestCamera(t, database, "cam1")
 
-	// 23:58:00 UTC do dia 2026-05-30
-	beforeMidnight := time.Date(2026, 5, 30, 23, 58, 0, 0, time.UTC)
-	// 00:03:00 UTC do dia 2026-05-31
-	afterMidnight := time.Date(2026, 5, 31, 0, 3, 0, 0, time.UTC)
+	// Ancorado em ontem 00:00 UTC para cruzar uma meia-noite recente sem que os
+	// chunks envelheçam além da retenção (datas absolutas viravam time-bomb).
+	midnight := time.Now().UTC().Truncate(24 * time.Hour).Add(-24 * time.Hour)
+	beforeMidnight := midnight.Add(-2 * time.Minute) // anteontem 23:58 UTC
+	afterMidnight := midnight.Add(3 * time.Minute)   // ontem 00:03 UTC
 
 	pathA := mp4WithTimestamp(dir, "cam1", beforeMidnight)
 	pathB := mp4WithTimestamp(dir, "cam1", afterMidnight)
@@ -762,10 +763,10 @@ func TestSyncRecordings_DoesNotMarkNullEndedAtAsHasMotion(t *testing.T) {
 // TestCleanFromDB_PurgesOrphanedMotionEvents verifica que eventos de movimento
 // sem cobertura de nenhuma gravação (órfãos) são removidos após a gravação
 // relacionada ser deletada pela regra de retenção.
-func TestCleanFromDB_KeepsMotionEventsOutsideRecordingRange(t *testing.T) {
+func TestCleanFromDB_PurgesOrphanEventAfterRecordingsDeleted(t *testing.T) {
 	dir := t.TempDir()
 	database := openTestDB(t)
-	// lead=30s: evento 5s antes de A começa cobre A pelo lead
+	// lead=30s: evento 5s antes de A começa marca A com has_motion via lead
 	createTestCameraWithMotion(t, database, "cam1", 30, 10)
 
 	base := time.Now().UTC().Add(-120 * time.Minute).Truncate(time.Second)
@@ -780,29 +781,25 @@ func TestCleanFromDB_KeepsMotionEventsOutsideRecordingRange(t *testing.T) {
 	evOrphan := base.Add(-5 * time.Second)
 	addMotionEvent(t, database, "cam1", evOrphan, 0.1)
 
-	// Primeiro ciclo: sincroniza gravações e marca has_motion.
+	// Primeiro ciclo (retenção longa): sincroniza, marca has_motion e preserva tudo.
 	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
 
 	if !hasMotionInDB(t, database, pathA) {
 		t.Fatal("pathA deve ter has_motion=1 (evento dentro da janela de lead)")
 	}
 
-	// Segundo ciclo: retenção curta deleta ambas as gravações (120min > 60min).
+	// Segundo ciclo (retenção curta): deleta ambas as gravações (120min > 60min).
 	storage.New(dir, 60, 60, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
 
 	if _, err := os.Stat(pathA); !os.IsNotExist(err) {
 		t.Fatal("pathA deveria ter sido deletado")
 	}
 
-	// O evento fora do intervalo da gravação ([base-5s]) não é deletado pelo cleaner:
-	// purgeOrphanedEvents foi removido pois não é possível distinguir eventos de
-	// câmeras com gravação desabilitada de eventos cujas gravações foram limpas.
-	// A limpeza de eventos acontece apenas quando a gravação é explicitamente deletada
-	// via handleDeleteRecording ou cleanFromDB (purgeMotionAssets).
+	// Sem gravação cobrindo o evento e além da retenção → purgeOrphanEvents o remove.
 	var count int
 	database.QueryRow(`SELECT COUNT(*) FROM motion_events WHERE camera_id='cam1'`).Scan(&count)
-	if count != 1 {
-		t.Errorf("evento fora do range da gravação deve persistir no banco, mas count=%d", count)
+	if count != 0 {
+		t.Errorf("evento órfão além da retenção deveria ter sido purgado, count=%d", count)
 	}
 }
 
@@ -1182,5 +1179,96 @@ func TestAnalyzeNewRecordings_DisabledDoesNotLog(t *testing.T) {
 
 	if strings.Contains(buf.String(), "skipped (disabled)") {
 		t.Error("Clean() should not log 'skipped (disabled)' when analysis is globally disabled")
+	}
+}
+
+// O cleaner deve purgar motion_events órfãos (sem gravação cobrindo o
+// occurred_at) mais velhos que a retenção, apagando também o JPEG do frame.
+func TestClean_PurgesOldOrphanMotionEvents(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCamera(t, database, "cam1")
+
+	old := time.Now().UTC().Add(-10 * 24 * time.Hour) // bem além de 7 dias
+	day := old.Format("2006/01/02")
+	frame := old.Format("20060102150405") + "_motion.jpg"
+	jpegPath := filepath.Join(dir, "cam1", filepath.FromSlash(day), frame)
+	writeFile(t, jpegPath, old)
+
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID:   "cam1",
+		OccurredAt: old,
+		FramePath:  frame,
+	}); err != nil {
+		t.Fatalf("InsertMotionEvent: %v", err)
+	}
+
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	n, err := db.CountMotionEvents(database, "cam1")
+	if err != nil {
+		t.Fatalf("CountMotionEvents: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected orphan event purged, got %d remaining", n)
+	}
+	if _, err := os.Stat(jpegPath); !os.IsNotExist(err) {
+		t.Errorf("expected orphan jpeg removed, stat err = %v", err)
+	}
+}
+
+// Eventos órfãos dentro da retenção NÃO podem ser apagados.
+func TestClean_KeepsRecentOrphanMotionEvents(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCamera(t, database, "cam1")
+
+	recent := time.Now().UTC().Add(-1 * time.Hour)
+	if err := db.InsertMotionEvent(database, db.MotionEvent{CameraID: "cam1", OccurredAt: recent}); err != nil {
+		t.Fatalf("InsertMotionEvent: %v", err)
+	}
+
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	n, err := db.CountMotionEvents(database, "cam1")
+	if err != nil {
+		t.Fatalf("CountMotionEvents: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected recent orphan kept, got %d", n)
+	}
+}
+
+// Ao cruzar o limite de Alerta(%), cada admin recebe uma notificação; viewers não.
+// Edge-triggered: não duplica enquanto continua acima.
+func TestCheckSize_NotifiesAdminsOnThresholdCrossing(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	admin, err := db.CreateUser(database, "admin", "pw", "admin", false)
+	if err != nil {
+		t.Fatalf("create admin: %v", err)
+	}
+	viewer, err := db.CreateUser(database, "viewer", "pw", "viewer", false)
+	if err != nil {
+		t.Fatalf("create viewer: %v", err)
+	}
+
+	// maxSizeGB ~107 bytes, 70% ~74 bytes; 200-byte file is above the warn threshold.
+	writeFileWithSize(t, filepath.Join(dir, "cam1", "big.mp4"), 200)
+
+	c := storage.New(dir, 0, 0, 5*time.Minute, 1e-7, 70, database, discardLogger())
+	c.CheckSize()
+
+	if n, _ := db.CountUnreadNotifications(database, admin); n != 1 {
+		t.Errorf("admin should have 1 notification, got %d", n)
+	}
+	if n, _ := db.CountUnreadNotifications(database, viewer); n != 0 {
+		t.Errorf("viewer should have 0 notifications, got %d", n)
+	}
+
+	// Still above on the next check → no duplicate (edge-triggered).
+	c.CheckSize()
+	if n, _ := db.CountUnreadNotifications(database, admin); n != 1 {
+		t.Errorf("admin should still have 1 notification (no duplicate), got %d", n)
 	}
 }

@@ -28,6 +28,11 @@ db_path: /var/camera/data/camera.db
 log:
   output: stdout        # stdout | file
   path:                 # diretório quando output: file
+  # rotação (somente output: file) — defaults mostrados:
+  # max_size_mb: 50     # rotaciona ao atingir este tamanho
+  # max_age_days: 30    # apaga rotacionados mais velhos que isto (0 = ilimitado)
+  # max_backups: 10     # máx. de rotacionados por nível (0 = ilimitado)
+  # compress: true      # comprime os rotacionados em gzip
 
 server:
   port: 8080
@@ -62,6 +67,12 @@ admin:
 |---|---|---|
 | `output` | `stdout` | Destino dos logs: `stdout` ou `file` |
 | `path` | — | Diretório dos arquivos de log quando `output: file`; gera `debug.log`, `info.log`, `warn.log`, `error.log` |
+| `max_size_mb` | `50` | Tamanho em que cada arquivo rotaciona (MB). Só se aplica a `output: file` |
+| `max_age_days` | `30` | Idade máxima dos arquivos rotacionados antes de apagar; `0` = ilimitado |
+| `max_backups` | `10` | Quantidade máxima de arquivos rotacionados por nível; `0` = ilimitado |
+| `compress` | `true` | Comprime os arquivos rotacionados em gzip |
+
+> A rotação só vale para `output: file`. Em `output: stdout` quem cuida do tamanho/retenção é o supervisor de processo (Docker/journald/systemd).
 
 ### `server`
 

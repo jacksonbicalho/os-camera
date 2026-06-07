@@ -6,9 +6,11 @@ import DashboardPage from './pages/DashboardPage'
 import ChangePasswordPage from './pages/ChangePasswordPage'
 import { SidebarItemsProvider } from './contexts/SidebarContext'
 import { DisplayModeProvider } from './contexts/DisplayModeContext'
+import { AlertProvider } from './contexts/AlertContext'
 
 const CameraPage = lazy(() => import('./pages/CameraPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'))
 const CamerasSettingsPage = lazy(() => import('./pages/settings/CamerasSettingsPage'))
 const CameraDetailSettingsPage = lazy(() => import('./pages/settings/CameraDetailSettingsPage'))
 const CameraMotionSettingsPage = lazy(() => import('./pages/settings/CameraMotionSettingsPage'))
@@ -53,6 +55,7 @@ function Lazy({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <DisplayModeProvider>
+    <AlertProvider>
     <SidebarItemsProvider>
     <UnauthorizedHandler />
     <Routes>
@@ -63,6 +66,7 @@ export default function App() {
       <Route path="/camera/live/:id" element={<Lazy><CameraPage /></Lazy>} />
       <Route path="/camera/recording/:id/:recording_id" element={<Lazy><CameraPage /></Lazy>} />
       <Route path="/stats" element={<Lazy><StatsPage /></Lazy>} />
+      <Route path="/notifications" element={<Lazy><NotificationsPage /></Lazy>} />
       <Route path="/settings/cameras" element={<Lazy><CamerasSettingsPage /></Lazy>} />
       <Route path="/settings/cameras/new" element={<Lazy><CamerasSettingsPage /></Lazy>} />
       <Route path="/settings/cameras/:id" element={<Lazy><CameraDetailSettingsPage /></Lazy>} />
@@ -82,6 +86,7 @@ export default function App() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </SidebarItemsProvider>
+    </AlertProvider>
     </DisplayModeProvider>
   )
 }

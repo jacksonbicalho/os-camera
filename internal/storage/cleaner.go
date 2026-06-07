@@ -9,11 +9,11 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-	"sync"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"camera/internal/analysis"
@@ -32,6 +32,7 @@ type Cleaner struct {
 	forceCh              chan struct{}
 	analyzer             analysis.Analyzer
 	analyzeMu            sync.Mutex
+	diskWarned           bool // edge-trigger state for the disk-usage notification
 }
 
 func (c *Cleaner) WithAnalyzer(a analysis.Analyzer) *Cleaner {
@@ -444,20 +445,62 @@ func (c *Cleaner) purgeMotionAssets(path string, startedAt, endedAt time.Time) {
 	if err != nil {
 		c.log.Warn("failed to list motion events for purge", "camera_id", cameraID, "err", err)
 	}
+	c.removeEventJPEGs(events)
+
+	if err := db.DeleteMotionEventsInRange(c.db, cameraID, startedAt, endedAt); err != nil {
+		c.log.Warn("failed to delete motion events from db", "camera_id", cameraID, "err", err)
+	}
+}
+
+// removeEventJPEGs deletes the snapshot JPEG of each event from disk, resolving
+// the path from the camera, the UTC day and frame_path. Missing files are ignored.
+func (c *Cleaner) removeEventJPEGs(events []db.MotionEvent) {
 	for _, ev := range events {
 		if ev.FramePath == "" {
 			continue
 		}
 		dayDir := ev.OccurredAt.UTC().Format("2006/01/02")
-		jpegPath := filepath.Join(c.storagePath, cameraID, filepath.FromSlash(dayDir), ev.FramePath)
+		jpegPath := filepath.Join(c.storagePath, ev.CameraID, filepath.FromSlash(dayDir), ev.FramePath)
 		if err := os.Remove(jpegPath); err != nil && !os.IsNotExist(err) {
 			c.log.Warn("failed to delete motion jpeg", "path", jpegPath, "err", err)
 		}
 	}
+}
 
-	if err := db.DeleteMotionEventsInRange(c.db, cameraID, startedAt, endedAt); err != nil {
-		c.log.Warn("failed to delete motion events from db", "camera_id", cameraID, "err", err)
+// purgeOrphanEvents removes motion_events with no covering recording that are
+// older than the with-motion retention, deleting their JPEGs too. Closes the
+// gap where events outlive the recording whose purge would have removed them
+// (e.g. left by incomplete-recording cleanup, or in gaps between chunks).
+func (c *Cleaner) purgeOrphanEvents() {
+	if c.db == nil {
+		return
 	}
+	withMotionMinutes, _ := c.effectiveRetentionMinutes()
+	if withMotionMinutes <= 0 {
+		return
+	}
+	cutoff := time.Now().UTC().Add(-time.Duration(withMotionMinutes) * time.Minute)
+
+	events, err := db.ListOrphanedMotionEvents(c.db, cutoff)
+	if err != nil {
+		c.log.Warn("failed to list orphaned motion events", "err", err)
+		return
+	}
+	if len(events) == 0 {
+		return
+	}
+
+	ids := make([]int64, len(events))
+	for i, ev := range events {
+		ids[i] = ev.ID
+	}
+	n, deleted, err := db.BulkDeleteMotionEvents(c.db, ids)
+	if err != nil {
+		c.log.Warn("failed to delete orphaned motion events", "err", err)
+		return
+	}
+	c.removeEventJPEGs(deleted)
+	c.log.Info("purged orphaned motion events", "count", n)
 }
 
 // uploadAndPurge uploads the MP4 file to the given drive, then removes the
@@ -636,6 +679,7 @@ func (c *Cleaner) Clean() {
 			c.analyzeNewRecordings()
 		}
 		c.cleanFromDB()
+		c.purgeOrphanEvents()
 	} else {
 		c.cleanFromFS()
 	}
@@ -744,8 +788,35 @@ func (c *Cleaner) analyzeNewRecordings() {
 	c.log.Info("analyzeNewRecordings: done", "analyzed", analyzed, "total", total)
 }
 
+// effectiveSizeSettings returns max size (GB) and warn percent, preferring DB
+// overrides (storage.max_size_gb / storage.warn_percent) over the construction
+// values — so changes made in the UI take effect at runtime.
+func (c *Cleaner) effectiveSizeSettings() (maxGB, warnPct float64) {
+	maxGB, warnPct = c.maxSizeGB, c.warnPercent
+	if c.db == nil {
+		return
+	}
+	all, err := db.GetAllConfig(c.db)
+	if err != nil {
+		return
+	}
+	if v, ok := all["storage.max_size_gb"]; ok {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			maxGB = f
+		}
+	}
+	if v, ok := all["storage.warn_percent"]; ok {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			warnPct = f
+		}
+	}
+	return
+}
+
 func (c *Cleaner) CheckSize() {
-	if c.maxSizeGB == 0 {
+	maxGB, warnPct := c.effectiveSizeSettings()
+	if maxGB <= 0 || warnPct <= 0 {
+		c.diskWarned = false
 		return
 	}
 	var totalBytes int64
@@ -760,15 +831,52 @@ func (c *Cleaner) CheckSize() {
 		totalBytes += info.Size()
 		return nil
 	})
-	maxBytes := int64(c.maxSizeGB * 1024 * 1024 * 1024)
-	warnBytes := int64(float64(maxBytes) * c.warnPercent / 100)
-	if totalBytes >= warnBytes {
+	maxBytes := int64(maxGB * 1024 * 1024 * 1024)
+	warnBytes := int64(float64(maxBytes) * warnPct / 100)
+	above := totalBytes >= warnBytes
+	if above {
 		usedGB := float64(totalBytes) / (1024 * 1024 * 1024)
 		c.log.Warn("storage usage high",
 			"used_gb", usedGB,
-			"max_gb", c.maxSizeGB,
-			"warn_percent", c.warnPercent,
+			"max_gb", maxGB,
+			"warn_percent", warnPct,
 		)
+		// Edge-triggered: notify admins only when crossing into the high state.
+		if !c.diskWarned {
+			c.notifyDiskHigh(usedGB, maxGB)
+		}
+	}
+	c.diskWarned = above
+}
+
+// notifyDiskHigh creates a warning notification for every admin user.
+func (c *Cleaner) notifyDiskHigh(usedGB, maxGB float64) {
+	if c.db == nil {
+		return
+	}
+	users, err := db.ListUsers(c.db)
+	if err != nil {
+		c.log.Warn("disk notification: failed to list users", "err", err)
+		return
+	}
+	pct := 0.0
+	if maxGB > 0 {
+		pct = usedGB / maxGB * 100
+	}
+	msg := fmt.Sprintf("Armazenamento em %.0f%% do limite (%.1f de %.1f GB). Gravações antigas podem ser removidas em breve.", pct, usedGB, maxGB)
+	for _, u := range users {
+		if u.Role != "admin" {
+			continue
+		}
+		if _, err := db.InsertUserNotification(c.db, db.UserNotification{
+			UserID:  u.ID,
+			Type:    "warning",
+			Title:   "Disco quase cheio",
+			Message: msg,
+			Link:    "/settings/storage",
+		}); err != nil {
+			c.log.Warn("disk notification: failed to insert", "user", u.ID, "err", err)
+		}
 	}
 }
 

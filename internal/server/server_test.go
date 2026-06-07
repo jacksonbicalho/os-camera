@@ -1420,8 +1420,12 @@ func TestGetSettingsIncludesDebugAndLog(t *testing.T) {
 	var resp struct {
 		Debug bool `json:"debug"`
 		Log   struct {
-			Output string `json:"output"`
-			Path   string `json:"path"`
+			Output     string `json:"output"`
+			Path       string `json:"path"`
+			MaxSizeMB  int    `json:"max_size_mb"`
+			MaxAgeDays int    `json:"max_age_days"`
+			MaxBackups int    `json:"max_backups"`
+			Compress   bool   `json:"compress"`
 		} `json:"log"`
 	}
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
@@ -1435,6 +1439,19 @@ func TestGetSettingsIncludesDebugAndLog(t *testing.T) {
 	}
 	if resp.Log.Path != "/var/log/camera" {
 		t.Errorf("expected log.path=/var/log/camera, got %q", resp.Log.Path)
+	}
+	// Rotation values fall back to defaults when not set in the config.
+	if resp.Log.MaxSizeMB != 50 {
+		t.Errorf("expected default log.max_size_mb=50, got %d", resp.Log.MaxSizeMB)
+	}
+	if resp.Log.MaxAgeDays != 30 {
+		t.Errorf("expected default log.max_age_days=30, got %d", resp.Log.MaxAgeDays)
+	}
+	if resp.Log.MaxBackups != 10 {
+		t.Errorf("expected default log.max_backups=10, got %d", resp.Log.MaxBackups)
+	}
+	if !resp.Log.Compress {
+		t.Error("expected default log.compress=true")
 	}
 }
 

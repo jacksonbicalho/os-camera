@@ -43,7 +43,7 @@ func main() {
 		case "version", "--version", "-v":
 			fmt.Printf("camera %s (commit %s, built %s)\n", version, commit, builtAt)
 			return
-}
+		}
 	}
 
 	configPath := flag.String("config", "camera.yaml", "path to config file")
@@ -60,9 +60,13 @@ func main() {
 	}
 
 	slog, err := logger.New(logger.Options{
-		Debug:  cfg.Debug,
-		Output: output,
-		Path:   cfg.Log.Path,
+		Debug:      cfg.Debug,
+		Output:     output,
+		Path:       cfg.Log.Path,
+		MaxSizeMB:  cfg.Log.MaxSizeMBOrDefault(),
+		MaxAgeDays: cfg.Log.MaxAgeDaysOrDefault(),
+		MaxBackups: cfg.Log.MaxBackupsOrDefault(),
+		Compress:   cfg.Log.CompressOrDefault(),
 	})
 	if err != nil {
 		log.Fatalf("failed to initialize logger: %v", err)
@@ -93,6 +97,7 @@ func main() {
 		log.Fatalf("failed to open database: %v", err)
 	}
 	defer database.Close()
+	database.WithLogger(slog)
 
 	if database.IsNew {
 		slog.Info("new database, seeding admin user from bootstrap config")

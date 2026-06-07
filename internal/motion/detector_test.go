@@ -253,6 +253,54 @@ func TestDetectorCooldownZeroDisablesSuppression(t *testing.T) {
 	}
 }
 
+func TestDetectorCachesZonesAcrossFrames(t *testing.T) {
+	tmpDir := t.TempDir()
+	frameSize := 4
+	// 3 frames → 2 diffs → zones consulted twice without caching.
+	frameData := append(bytes.Repeat([]byte{0}, frameSize),
+		append(bytes.Repeat([]byte{255}, frameSize),
+			bytes.Repeat([]byte{0}, frameSize)...)...)
+
+	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
+	cmd := &fakeFrameCommander{process: proc}
+	st := newStore(tmpDir, nil)
+
+	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1, CooldownSeconds: 0}
+	zoneCalls := 0
+	det := newDetector("cam", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(),
+		nil, nil, func() []zones.Zone { zoneCalls++; return nil })
+
+	det.processFrames(context.Background())
+
+	if zoneCalls != 1 {
+		t.Errorf("expected getZones queried once (cached across frames), got %d", zoneCalls)
+	}
+}
+
+func TestDetectorReloadZonesRefreshesCache(t *testing.T) {
+	tmpDir := t.TempDir()
+	frameSize := 4
+	frameData := append(bytes.Repeat([]byte{0}, frameSize),
+		append(bytes.Repeat([]byte{255}, frameSize),
+			bytes.Repeat([]byte{0}, frameSize)...)...)
+
+	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
+	cmd := &fakeFrameCommander{process: proc}
+	st := newStore(tmpDir, nil)
+
+	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1, CooldownSeconds: 0}
+	zoneCalls := 0
+	det := newDetector("cam", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(),
+		nil, nil, func() []zones.Zone { zoneCalls++; return nil })
+
+	det.processFrames(context.Background()) // loads zones once (cached)
+	det.reloadZones()                       // forces a refresh
+
+	if zoneCalls != 2 {
+		t.Errorf("expected reloadZones to re-query (1 cached load + 1 reload), got %d", zoneCalls)
+	}
+}
+
 func TestDetectorContextCancellationTerminatesProcess(t *testing.T) {
 	// fakeBlockProcess blocks until Terminate() is called, simulating an infinite
 	// RTSP stream that never returns EOF.
