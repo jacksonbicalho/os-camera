@@ -26,10 +26,33 @@ export default function SystemSettingsPage() {
           />
           <SettingsSection
             title="Logs"
-            fields={[
-              { label: 'Destino', value: settings.log.output || 'stdout' },
-              { label: 'Diretório', value: settings.log.path || '—' },
-            ]}
+            groups={
+              settings.log.output === 'file'
+                ? [
+                    [
+                      { label: 'Destino', value: settings.log.output },
+                      { label: 'Diretório', value: settings.log.path || '—' },
+                      { label: 'Rotaciona em', value: `${settings.log.max_size_mb} MB` },
+                    ],
+                    [
+                      {
+                        label: 'Retenção',
+                        value: settings.log.max_age_days > 0 ? `${settings.log.max_age_days} dias` : 'ilimitada',
+                      },
+                      {
+                        label: 'Máx. de arquivos',
+                        value: settings.log.max_backups > 0 ? String(settings.log.max_backups) : 'ilimitado',
+                      },
+                      { label: 'Compressão', value: settings.log.compress ? 'gzip' : 'desativada' },
+                    ],
+                  ]
+                : [
+                    [
+                      { label: 'Destino', value: settings.log.output || 'stdout' },
+                      { label: 'Diretório', value: settings.log.path || '—' },
+                    ],
+                  ]
+            }
           />
           <SettingsSection
             title="Caminhos"

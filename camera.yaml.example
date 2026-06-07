@@ -10,6 +10,12 @@ db_path: /var/camera/data/camera.db  # caminho do banco SQLite (criado automatic
 log:
   output: stdout                   # stdout | file
   path:                            # diretório quando output: file
+  # Rotação de arquivos (somente output: file). Valores abaixo são os defaults
+  # aplicados quando os campos estão ausentes:
+  # max_size_mb: 50                 # rotaciona o arquivo ao atingir este tamanho (MB)
+  # max_age_days: 30               # apaga rotacionados mais velhos que isto (0 = ilimitado)
+  # max_backups: 10                # máx. de arquivos rotacionados por nível (0 = ilimitado)
+  # compress: true                 # comprime os rotacionados em gzip
 
 server:
   port: 8080

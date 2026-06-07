@@ -102,6 +102,81 @@ log:
 	}
 }
 
+func TestLoadParsesLogRotationFields(t *testing.T) {
+	path := writeTempYAML(t, `
+log:
+  output: file
+  path: /var/log/camera
+  max_size_mb: 25
+  max_age_days: 7
+  max_backups: 3
+  compress: false
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Log.MaxSizeMBOrDefault() != 25 {
+		t.Errorf("expected max_size_mb 25, got %d", cfg.Log.MaxSizeMBOrDefault())
+	}
+	if cfg.Log.MaxAgeDaysOrDefault() != 7 {
+		t.Errorf("expected max_age_days 7, got %d", cfg.Log.MaxAgeDaysOrDefault())
+	}
+	if cfg.Log.MaxBackupsOrDefault() != 3 {
+		t.Errorf("expected max_backups 3, got %d", cfg.Log.MaxBackupsOrDefault())
+	}
+	if cfg.Log.CompressOrDefault() {
+		t.Error("expected compress false from file")
+	}
+}
+
+func TestLogRotationDefaultsWhenAbsent(t *testing.T) {
+	path := writeTempYAML(t, `
+log:
+  output: file
+  path: /var/log/camera
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Log.MaxSizeMBOrDefault() != 50 {
+		t.Errorf("expected default max_size_mb 50, got %d", cfg.Log.MaxSizeMBOrDefault())
+	}
+	if cfg.Log.MaxAgeDaysOrDefault() != 30 {
+		t.Errorf("expected default max_age_days 30, got %d", cfg.Log.MaxAgeDaysOrDefault())
+	}
+	if cfg.Log.MaxBackupsOrDefault() != 10 {
+		t.Errorf("expected default max_backups 10, got %d", cfg.Log.MaxBackupsOrDefault())
+	}
+	if !cfg.Log.CompressOrDefault() {
+		t.Error("expected default compress true")
+	}
+}
+
+func TestLogRotationZeroIsRespected(t *testing.T) {
+	path := writeTempYAML(t, `
+log:
+  output: file
+  path: /var/log/camera
+  max_age_days: 0
+  max_backups: 0
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Log.MaxAgeDaysOrDefault() != 0 {
+		t.Errorf("expected explicit max_age_days 0 (unlimited), got %d", cfg.Log.MaxAgeDaysOrDefault())
+	}
+	if cfg.Log.MaxBackupsOrDefault() != 0 {
+		t.Errorf("expected explicit max_backups 0 (unlimited), got %d", cfg.Log.MaxBackupsOrDefault())
+	}
+}
+
 func TestLoadParsesDebugField(t *testing.T) {
 	path := writeTempYAML(t, `debug: true`)
 

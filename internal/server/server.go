@@ -620,8 +620,12 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"timezone": s.timezone,
 		"debug":    s.debug,
 		"log": map[string]any{
-			"output": s.logCfg.Output,
-			"path":   s.logCfg.Path,
+			"output":       s.logCfg.Output,
+			"path":         s.logCfg.Path,
+			"max_size_mb":  s.logCfg.MaxSizeMBOrDefault(),
+			"max_age_days": s.logCfg.MaxAgeDaysOrDefault(),
+			"max_backups":  s.logCfg.MaxBackupsOrDefault(),
+			"compress":     s.logCfg.CompressOrDefault(),
 		},
 		"server": map[string]any{
 			"port":            s.cfg.Port,

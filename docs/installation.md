@@ -107,6 +107,12 @@ chmod +x camera-linux-amd64
 ./camera-linux-amd64 --config camera.yaml
 ```
 
+O wizard pergunta o destino dos logs (`stdout` ou `file`). Ao escolher `file`, ele
+também pergunta o diretório e os parâmetros de **rotação**: tamanho de rotação
+(`max_size_mb`), retenção (`max_age_days`), número máximo de arquivos
+(`max_backups`) e compressão gzip (`compress`). Em `stdout` a rotação não se aplica
+— quem cuida disso é o supervisor de processo (Docker/journald/systemd).
+
 ---
 
 ## Compilar a partir do código

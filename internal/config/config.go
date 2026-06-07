@@ -35,8 +35,49 @@ type Config struct {
 }
 
 type LogConfig struct {
-	Output string `yaml:"output"`
-	Path   string `yaml:"path"`
+	Output     string `yaml:"output"`
+	Path       string `yaml:"path"`
+	MaxSizeMB  *int   `yaml:"max_size_mb"`
+	MaxAgeDays *int   `yaml:"max_age_days"`
+	MaxBackups *int   `yaml:"max_backups"`
+	Compress   *bool  `yaml:"compress"`
+}
+
+// Defaults for log rotation, applied when the field is absent from the YAML.
+// Pointers distinguish "absent" from an explicit zero (0 = unlimited in lumberjack).
+const (
+	DefaultLogMaxSizeMB  = 50
+	DefaultLogMaxAgeDays = 30
+	DefaultLogMaxBackups = 10
+	DefaultLogCompress   = true
+)
+
+func (c LogConfig) MaxSizeMBOrDefault() int {
+	if c.MaxSizeMB != nil {
+		return *c.MaxSizeMB
+	}
+	return DefaultLogMaxSizeMB
+}
+
+func (c LogConfig) MaxAgeDaysOrDefault() int {
+	if c.MaxAgeDays != nil {
+		return *c.MaxAgeDays
+	}
+	return DefaultLogMaxAgeDays
+}
+
+func (c LogConfig) MaxBackupsOrDefault() int {
+	if c.MaxBackups != nil {
+		return *c.MaxBackups
+	}
+	return DefaultLogMaxBackups
+}
+
+func (c LogConfig) CompressOrDefault() bool {
+	if c.Compress != nil {
+		return *c.Compress
+	}
+	return DefaultLogCompress
 }
 
 type AdminConfig struct {
@@ -57,14 +98,14 @@ type StorageConfig struct {
 
 // MotionConfig holds per-camera motion detection settings (used by the DB layer).
 type MotionConfig struct {
-	Enabled             bool    `yaml:"enabled"`
-	Threshold           float64 `yaml:"threshold"`
-	FPS                 int     `yaml:"fps"`
-	CooldownSeconds     int     `yaml:"cooldown_seconds"`
-	CaptureWidth        int     `yaml:"capture_width"`
-	CaptureHeight       int     `yaml:"capture_height"`
-	PlaybackLeadSeconds  int `yaml:"playback_lead_seconds"`
-	PlaybackTrailSeconds int `yaml:"playback_trail_seconds"`
+	Enabled              bool    `yaml:"enabled"`
+	Threshold            float64 `yaml:"threshold"`
+	FPS                  int     `yaml:"fps"`
+	CooldownSeconds      int     `yaml:"cooldown_seconds"`
+	CaptureWidth         int     `yaml:"capture_width"`
+	CaptureHeight        int     `yaml:"capture_height"`
+	PlaybackLeadSeconds  int     `yaml:"playback_lead_seconds"`
+	PlaybackTrailSeconds int     `yaml:"playback_trail_seconds"`
 }
 
 // CameraConfig holds per-camera settings loaded from the database.
