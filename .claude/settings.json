@@ -13,6 +13,11 @@
             "type": "command",
             "command": "input=$(cat); cmd=$(echo \"$input\" | jq -r '.tool_input.command'); echo \"$cmd\" | grep -q 'gh pr create' || exit 0; echo \"$cmd\" | grep -q -- '--base master' || exit 0; branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); [ \"$branch\" = \"develop\" ] && exit 0; case \"$branch\" in release/*) exit 0 ;; esac; echo \"❌ PRs de feature devem usar --base develop, nao --base master.\"; echo \"   Excecao: branches release/* e develop podem abrir PR para master.\"; exit 1",
             "statusMessage": "Verificando target do PR..."
+          },
+          {
+            "type": "command",
+            "command": "input=$(cat); cmd=$(echo \"$input\" | jq -r '.tool_input.command'); echo \"$cmd\" | grep -q 'git commit' || exit 0; out=$(go build ./... 2>&1 && go test -count=1 ./... 2>&1); [ $? -eq 0 ] && exit 0; echo \"❌ Build/testes falharam — commit bloqueado. Corrija antes de commitar:\"; echo \"$out\" | grep -E 'FAIL|error|cannot' | head -20; exit 1",
+            "statusMessage": "Rodando go build + go test -count=1..."
           }
         ]
       }
