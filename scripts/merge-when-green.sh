@@ -20,7 +20,7 @@ if [[ -z "$PR" ]]; then
     exit 2
 fi
 
-for cmd in git gh; do
+for cmd in git gh jq; do
     command -v "$cmd" &>/dev/null || { echo -e "${RED}Erro: $cmd não encontrado${RESET}" >&2; exit 2; }
 done
 
@@ -35,18 +35,29 @@ if [[ "$BASE" != "develop" ]]; then
     exit 1
 fi
 
-# ── espera o CI (silencioso) — só mergeia se ainda não estiver mergeado ──────
+# ── espera o CI do commit HEAD atual (silencioso) ───────────────────────────
+# Avalia os check-runs do SHA exato da PR (via API), em vez de `gh pr checks
+# --watch`. Isso evita falsos negativos tanto na corrida pós-create (checks ainda
+# não registrados) quanto na pós-push (checks obsoletos do commit anterior).
 if [[ "$STATE" != "MERGED" ]]; then
     echo -e "${YELLOW}Aguardando CI do PR #$PR...${RESET}"
-    # Logo após `gh pr create` os checks ainda não foram registrados e
-    # `gh pr checks --watch` sai com erro ("no checks reported"). Espera os
-    # checks surgirem antes de observar, para não confundir corrida com falha.
-    for _ in $(seq 1 30); do
-        [[ -n "$(gh pr checks "$PR" 2>/dev/null)" ]] && break
-        sleep 4
+    REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
+    SHA="$(gh pr view "$PR" --json headRefOid -q .headRefOid)"
+    failed=1  # timeout/sem conclusão = falha (não mergeia)
+    for _ in $(seq 1 120); do  # ~20 min (10s cada)
+        runs="$(gh api "repos/$REPO/commits/$SHA/check-runs" 2>/dev/null || echo '{}')"
+        total="$(echo "$runs" | jq -r '.total_count // 0')"
+        if [[ "$total" -gt 0 ]]; then
+            pending="$(echo "$runs" | jq -r '[.check_runs[] | select(.status != "completed")] | length')"
+            if [[ "$pending" -eq 0 ]]; then
+                failed="$(echo "$runs" | jq -r '[.check_runs[] | select(.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped")] | length')"
+                break
+            fi
+        fi
+        sleep 10
     done
-    if ! gh pr checks "$PR" --watch --interval 20 >/dev/null 2>&1; then
-        echo -e "${RED}CI FALHOU no PR #$PR:${RESET}" >&2
+    if [[ "$failed" -ne 0 ]]; then
+        echo -e "${RED}CI FALHOU (ou não concluiu) no PR #$PR:${RESET}" >&2
         gh pr checks "$PR" 2>/dev/null | grep -iE 'fail|pending' >&2 || true
         exit 1
     fi

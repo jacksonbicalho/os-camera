@@ -269,28 +269,22 @@ export default function StorageSettingsPage() {
                 </div>
                 <div>
                   <span className="block text-xs text-gray-500 mb-1">Ao expirar</span>
+                  {/* Destino unificado: "Apagar" + cada drive cadastrado numa única lista.
+                      Drives recém-criados aparecem aqui na hora (mapeiam o estado `drives`,
+                      recarregado após salvar um drive). */}
                   <select
                     className="bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600"
-                    value={rc.action}
-                    onChange={e => handleRetentionChange(cat, e.target.value, e.target.value === 'delete' ? '' : (rc.drive_id || drives[0]?.id || ''))}
+                    value={rc.action === 'send_to_drive' && rc.drive_id ? `drive:${rc.drive_id}` : 'delete'}
+                    onChange={e => {
+                      const v = e.target.value
+                      if (v === 'delete') handleRetentionChange(cat, 'delete', '')
+                      else handleRetentionChange(cat, 'send_to_drive', v.slice('drive:'.length))
+                    }}
                   >
                     <option value="delete">Apagar</option>
-                    <option value="send_to_drive" disabled={drives.length === 0}>Enviar para drive</option>
+                    {drives.map(dr => <option key={dr.id} value={`drive:${dr.id}`}>{dr.name}</option>)}
                   </select>
                 </div>
-                {rc.action === 'send_to_drive' && (
-                  <div>
-                    <span className="block text-xs text-gray-500 mb-1">Drive</span>
-                    <select
-                      className="bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600"
-                      value={rc.drive_id}
-                      onChange={e => handleRetentionChange(cat, 'send_to_drive', e.target.value)}
-                    >
-                      <option value="">Selecionar drive...</option>
-                      {drives.map(dr => <option key={dr.id} value={dr.id}>{dr.name}</option>)}
-                    </select>
-                  </div>
-                )}
               </div>
             )
           })}

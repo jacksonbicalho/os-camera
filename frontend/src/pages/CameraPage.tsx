@@ -20,6 +20,9 @@ import { mergeRecordings } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
+import { zoneThresholdLabel } from './settings/zoneThreshold'
+import { filterRecordings } from './recordingsFilter'
+import { videoDownloadName } from './videoDownload'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useSetSidebarItems } from '../contexts/SidebarContext'
 import { useDisplayMode } from '../contexts/DisplayModeContext'
@@ -125,6 +128,7 @@ export default function CameraPage() {
   const [activeEventId, setActiveEventId] = useState<number | null>(null)
   const [scrollNonce, setScrollNonce] = useState(0)
   const [recordingsDisplayPage, setRecordingsDisplayPage] = useState(1)
+  const [onlyMotion, setOnlyMotion] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [continuousPlay, setContinuousPlay] = useState(false)
   const [browserMaxRate, setBrowserMaxRate] = useState<number | null>(null)
@@ -155,6 +159,11 @@ export default function CameraPage() {
   const [debugStats, setDebugStats] = useState<{ fps: number; dropped: number; hlsStats: HLSStats | null; lagMs: number } | null>(null)
   const [showDebugChart, setShowDebugChart] = useState(false)
   const [debugPos, setDebugPos] = useState({ x: 8, y: 8 })
+  // Ferramenta efêmera "Analisar limiar": desenha uma região sobre o vídeo ao vivo
+  // e mostra o score/limiar dela em tempo real, sem salvar como zona.
+  const [analyzeMode, setAnalyzeMode] = useState(false)
+  const [analyzeBox, setAnalyzeBox] = useState<BboxRect | null>(null)
+  const [analyzeScore, setAnalyzeScore] = useState<number | null>(null)
   const [playerHeight, setPlayerHeight] = useState<number | undefined>(undefined)
   const debugDragRef = useRef<{ startMouseX: number; startMouseY: number; startPosX: number; startPosY: number } | null>(null)
   const speedMenuRef = useRef<HTMLDivElement>(null)
@@ -254,6 +263,18 @@ export default function CameraPage() {
     }
     setAnnBox(box)
     setAnnSaveOk(false)
+  }
+
+  function downloadVideo() {
+    if (!activeRecording) return
+    // <a download> streams to disk (better than blob for large MP4s). Same-origin
+    // so the download attribute (filename) is honored.
+    const a = document.createElement('a')
+    a.href = `${activeRecording.url}?token=${getToken()}`
+    a.download = videoDownloadName(cam?.name, activeRecording.start)
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
   }
 
   function downloadBlob(blob: Blob, filename: string) {
@@ -806,6 +827,18 @@ export default function CameraPage() {
 
   const isLive = activeRecording === null && !recordingId
 
+  // Live region score for the ephemeral "Analisar limiar" tool (live view only).
+  const onAnalyzeScore = useCallback((data: string) => {
+    try {
+      const p = JSON.parse(data)
+      if (typeof p.score === 'number') setAnalyzeScore(p.score)
+    } catch { /* ignore malformed */ }
+  }, [])
+  const analyzeURL = isLive && analyzeMode && analyzeBox && id
+    ? `/api/cameras/${id}/motion/region-score?x=${analyzeBox.x}&y=${analyzeBox.y}&w=${analyzeBox.w}&h=${analyzeBox.h}`
+    : null
+  useEventSource(analyzeURL, onAnalyzeScore)
+
   useEffect(() => {
     setItems([])
     return () => setItems([])
@@ -923,8 +956,9 @@ function toggleFullscreen() {
       ? visibleEvents.findIndex(e => e.time === activeEventTime)
       : -1
 
-  const displayedRecordings = recordings.slice(0, recordingsDisplayPage * PAGE_SIZE)
-  const hasMoreDisplayedRecordings = displayedRecordings.length < recordings.length
+  const filteredRecordings = filterRecordings(recordings, onlyMotion)
+  const displayedRecordings = filteredRecordings.slice(0, recordingsDisplayPage * PAGE_SIZE)
+  const hasMoreDisplayedRecordings = displayedRecordings.length < filteredRecordings.length
 
   // Keep refs in sync for use inside onEnded (avoids stale closure)
   activeEventTimeRef.current = activeEventTime
@@ -1139,11 +1173,41 @@ function toggleFullscreen() {
                   >
                     {playerBtn(<CameraCapture className="w-4 h-4" />, 'Snapshot')}
                   </button>
+                  {!isLive && activeRecording && (
+                    <button
+                      onClick={downloadVideo}
+                      title="Baixar vídeo"
+                      className="flex items-center gap-1 px-1 py-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+                    >
+                      {playerBtn(
+                        <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                          <path d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M4 14.5V16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1.5" strokeLinecap="round" />
+                        </svg>,
+                        'Baixar vídeo',
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
 
               {isLive ? (
-                <HLSPlayer ref={hlsPlayerRef} src={liveUrl} containerClassName="flex-1 min-h-0" className="w-full h-full bg-black" cameraId={id} muted={videoMuted} segmentSeconds={cam?.hls_segment_seconds} onGoToEvent={handleGoToEvent} />
+                <div className="flex-1 min-h-0 relative">
+                  <HLSPlayer ref={hlsPlayerRef} src={liveUrl} containerClassName="w-full h-full" className="w-full h-full bg-black" cameraId={id} muted={videoMuted} segmentSeconds={cam?.hls_segment_seconds} onGoToEvent={handleGoToEvent} />
+                  {analyzeMode && (
+                    <div className="absolute inset-0">
+                      <BboxCanvas box={analyzeBox} onChange={setAnalyzeBox} className="w-full h-full" />
+                      {analyzeBox && (
+                        <span
+                          className="absolute z-10 px-1.5 py-0.5 rounded bg-black/70 text-emerald-300 text-xs font-mono tabular-nums pointer-events-none"
+                          style={{ left: `${analyzeBox.x * 100}%`, top: `${analyzeBox.y * 100}%` }}
+                        >
+                          {zoneThresholdLabel(analyzeScore, undefined, effectiveThreshold)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div
                   ref={recPlayerRef}
@@ -1375,6 +1439,20 @@ function toggleFullscreen() {
                         />
                         gráfico limiar
                       </label>
+                      {isLive && (
+                        <label className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 cursor-pointer transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={analyzeMode}
+                            onChange={e => {
+                              setAnalyzeMode(e.target.checked)
+                              if (!e.target.checked) { setAnalyzeBox(null); setAnalyzeScore(null) }
+                            }}
+                            className="accent-blue-500 w-3 h-3"
+                          />
+                          analisar limiar (desenhe uma região)
+                        </label>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1443,14 +1521,24 @@ function toggleFullscreen() {
                     </button>
                   </div>
                   {activePanel === 'recordings' ? (
+                    <>
+                    <label className="flex items-center gap-2 px-3 py-2 text-xs text-gray-400 hover:text-gray-200 border-b border-gray-800 cursor-pointer transition-colors shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={onlyMotion}
+                        onChange={e => { setOnlyMotion(e.target.checked); setRecordingsDisplayPage(1) }}
+                        className="accent-blue-500 w-3 h-3"
+                      />
+                      Apenas com movimento
+                    </label>
                     <ListPanel
                       key="recordings"
                       sortOrder={sortOrder}
                       onSortOrderChange={() => { setSortOrder(o => o === 'desc' ? 'asc' : 'desc'); setRecordingsDisplayPage(1) }}
                       hasMore={hasMoreDisplayedRecordings}
                       onLoadMore={() => setRecordingsDisplayPage(p => p + 1)}
-                      empty={recordings.length === 0}
-                      emptyMessage={cam?.recording_enabled === false ? "Gravação desabilitada. Câmera disponível apenas ao vivo." : "Sem gravações nesta data."}
+                      empty={filteredRecordings.length === 0}
+                      emptyMessage={cam?.recording_enabled === false ? "Gravação desabilitada. Câmera disponível apenas ao vivo." : onlyMotion && recordings.length > 0 ? "Nenhuma gravação com movimento nesta data." : "Sem gravações nesta data."}
                     >
                       {(() => {
                         return displayedRecordings.map(rec => {
@@ -1507,6 +1595,7 @@ function toggleFullscreen() {
                         })
                       })()}
                     </ListPanel>
+                    </>
                   ) : activePanel === 'events' ? (
                     <ListPanel
                       key="events"

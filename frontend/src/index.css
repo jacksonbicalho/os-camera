@@ -1,5 +1,43 @@
 @import "tailwindcss";
 
+/* Tema "moderno" (dark sleek indigo/violeta): redefine as variáveis de cor do
+   Tailwind v4 sob o seletor de tema, então as classes existentes (bg-gray-900,
+   text-blue-500, …) adotam a nova paleta sem reescrever componentes. */
+/* Tema "moderno" = tema CLARO. A app hardcoda cores dark; aqui invertemos a rampa
+   de cinzas (fundos escuros→claros, textos gray-* claros→escuros) e mapeamos o
+   branco dos títulos para um tom escuro — tudo via variáveis Tailwind v4, sem
+   reescrever componentes. */
+[data-theme="moderno"] {
+  --color-gray-950: #f3f4f6;  /* fundo da app */
+  --color-gray-900: #ffffff;  /* cards/superfícies */
+  --color-gray-800: #e5e7eb;  /* superfícies 2ª / hover / bordas */
+  --color-gray-700: #d1d5db;  /* bordas */
+  --color-gray-600: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-400: #4b5563;  /* texto secundário → escuro */
+  --color-gray-300: #374151;  /* texto → escuro */
+  --color-gray-200: #1f2937;  /* texto → escuro */
+  --color-gray-100: #111827;
+  --color-gray-50:  #030712;
+  /* títulos/elementos com text-white passam a escuro no fundo claro */
+  --color-white: #111827;
+}
+/* Exceção: texto branco sobre fundo de destaque (botões/badges) ou sobre vídeo
+   (overlay bg-white/10) continua branco. */
+[data-theme="moderno"] [class*="bg-blue-"].text-white,
+[data-theme="moderno"] [class*="bg-green-"].text-white,
+[data-theme="moderno"] [class*="bg-red-"].text-white,
+[data-theme="moderno"] [class*="bg-indigo-"].text-white,
+[data-theme="moderno"] [class*="bg-violet-"].text-white,
+[data-theme="moderno"] [class*="bg-amber-"].text-white,
+[data-theme="moderno"] [class*="bg-white"].text-white {
+  color: #fff;
+}
+[data-theme="moderno"] body {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
 @keyframes thumb-flash {
   0%, 100% { box-shadow: 0 0 0 0px rgba(96, 165, 250, 0); }
   20%, 60% { box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.9); }
