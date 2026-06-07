@@ -62,7 +62,9 @@ RANGE="${LAST_TAG:+${LAST_TAG}..}HEAD"
 # PRs efetivamente publicados naquela versão.
 PREV_PRS=""
 if [[ -n "$LAST_TAG" ]]; then
-    PREV_PRS="$(gh release view "$LAST_TAG" --json body -q '.body' 2>/dev/null | grep -oE '#[0-9]+' | sort -u)"
+    # `|| true`: quando o corpo da release anterior não tem #NNN (ex: changelog em
+    # hashes), o grep sai 1 e, sob set -e + pipefail, abortaria o script aqui.
+    PREV_PRS="$(gh release view "$LAST_TAG" --json body -q '.body' 2>/dev/null | grep -oE '#[0-9]+' | sort -u || true)"
 fi
 pr_already_released() {
     local pr="$1"
