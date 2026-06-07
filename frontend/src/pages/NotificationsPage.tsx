@@ -24,10 +24,10 @@ export default function NotificationsPage() {
 
   return (
     <AppLayout>
-      <div className="max-w-3xl mx-auto">
-        <div className="flex items-start justify-between mb-6">
+      <div>
+        <div className="flex items-start justify-between mb-8">
           <div>
-            <h3 className="text-lg font-semibold text-gray-200">Notificações</h3>
+            <h2 className="text-2xl font-bold text-white">Notificações</h2>
             <p className="text-sm text-gray-500 mt-1">
               {unreadCount > 0 ? `${unreadCount} não lida(s)` : 'Tudo lido'}
             </p>

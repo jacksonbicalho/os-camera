@@ -285,6 +285,10 @@ Hooks `PreToolUse` (matcher `Bash`, versionados no repo) impõem o fluxo automat
 
 O gate de testes roda no host (Go instalado), **sem cache** (`-count=1`) — só execução limpa pega testes dependentes de `time.Now()` (o cache do Go não rastreia o relógio). Escopo é backend; o frontend segue coberto pelo CI. Hooks só recarregam no início da sessão do Claude Code: alterações em `settings.json` valem a partir da próxima sessão.
 
+### Merge pós-PR
+
+`scripts/merge-when-green.sh <PR#>` colapsa o ciclo pós-PR numa única invocação (economia de tokens): aguarda o CI em silêncio, mergeia em `develop`, sincroniza o branch local, deleta a branch da história e marca `[~]→[✓]` na linha do PR no release file mais recente. Imprime só o resumo. **Recusa** PRs com base `master` (releases são aprovadas à mão) e é idempotente em PR já mergeado. Invocar só quando o navigator já autorizou o merge.
+
 ### Fluxo por história
 
 > ⚠️ **OBRIGATÓRIO:** Antes de escrever qualquer linha de código ou teste, o driver DEVE criar o arquivo de história E abrir a branch (use `/story`). Sem exceção — nem para bugs simples, nem para "pequenas correções".
