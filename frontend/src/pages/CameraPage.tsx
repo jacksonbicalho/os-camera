@@ -21,6 +21,7 @@ import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
 import { zoneThresholdLabel } from './settings/zoneThreshold'
+import { filterRecordings } from './recordingsFilter'
 import { videoDownloadName } from './videoDownload'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useSetSidebarItems } from '../contexts/SidebarContext'
@@ -127,6 +128,7 @@ export default function CameraPage() {
   const [activeEventId, setActiveEventId] = useState<number | null>(null)
   const [scrollNonce, setScrollNonce] = useState(0)
   const [recordingsDisplayPage, setRecordingsDisplayPage] = useState(1)
+  const [onlyMotion, setOnlyMotion] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [continuousPlay, setContinuousPlay] = useState(false)
   const [browserMaxRate, setBrowserMaxRate] = useState<number | null>(null)
@@ -954,8 +956,9 @@ function toggleFullscreen() {
       ? visibleEvents.findIndex(e => e.time === activeEventTime)
       : -1
 
-  const displayedRecordings = recordings.slice(0, recordingsDisplayPage * PAGE_SIZE)
-  const hasMoreDisplayedRecordings = displayedRecordings.length < recordings.length
+  const filteredRecordings = filterRecordings(recordings, onlyMotion)
+  const displayedRecordings = filteredRecordings.slice(0, recordingsDisplayPage * PAGE_SIZE)
+  const hasMoreDisplayedRecordings = displayedRecordings.length < filteredRecordings.length
 
   // Keep refs in sync for use inside onEnded (avoids stale closure)
   activeEventTimeRef.current = activeEventTime
@@ -1518,14 +1521,24 @@ function toggleFullscreen() {
                     </button>
                   </div>
                   {activePanel === 'recordings' ? (
+                    <>
+                    <label className="flex items-center gap-2 px-3 py-2 text-xs text-gray-400 hover:text-gray-200 border-b border-gray-800 cursor-pointer transition-colors shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={onlyMotion}
+                        onChange={e => { setOnlyMotion(e.target.checked); setRecordingsDisplayPage(1) }}
+                        className="accent-blue-500 w-3 h-3"
+                      />
+                      Apenas com movimento
+                    </label>
                     <ListPanel
                       key="recordings"
                       sortOrder={sortOrder}
                       onSortOrderChange={() => { setSortOrder(o => o === 'desc' ? 'asc' : 'desc'); setRecordingsDisplayPage(1) }}
                       hasMore={hasMoreDisplayedRecordings}
                       onLoadMore={() => setRecordingsDisplayPage(p => p + 1)}
-                      empty={recordings.length === 0}
-                      emptyMessage={cam?.recording_enabled === false ? "Gravação desabilitada. Câmera disponível apenas ao vivo." : "Sem gravações nesta data."}
+                      empty={filteredRecordings.length === 0}
+                      emptyMessage={cam?.recording_enabled === false ? "Gravação desabilitada. Câmera disponível apenas ao vivo." : onlyMotion && recordings.length > 0 ? "Nenhuma gravação com movimento nesta data." : "Sem gravações nesta data."}
                     >
                       {(() => {
                         return displayedRecordings.map(rec => {
@@ -1582,6 +1595,7 @@ function toggleFullscreen() {
                         })
                       })()}
                     </ListPanel>
+                    </>
                   ) : activePanel === 'events' ? (
                     <ListPanel
                       key="events"
