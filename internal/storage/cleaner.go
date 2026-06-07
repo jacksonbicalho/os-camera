@@ -9,11 +9,11 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-	"sync"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"camera/internal/analysis"
@@ -444,20 +444,62 @@ func (c *Cleaner) purgeMotionAssets(path string, startedAt, endedAt time.Time) {
 	if err != nil {
 		c.log.Warn("failed to list motion events for purge", "camera_id", cameraID, "err", err)
 	}
+	c.removeEventJPEGs(events)
+
+	if err := db.DeleteMotionEventsInRange(c.db, cameraID, startedAt, endedAt); err != nil {
+		c.log.Warn("failed to delete motion events from db", "camera_id", cameraID, "err", err)
+	}
+}
+
+// removeEventJPEGs deletes the snapshot JPEG of each event from disk, resolving
+// the path from the camera, the UTC day and frame_path. Missing files are ignored.
+func (c *Cleaner) removeEventJPEGs(events []db.MotionEvent) {
 	for _, ev := range events {
 		if ev.FramePath == "" {
 			continue
 		}
 		dayDir := ev.OccurredAt.UTC().Format("2006/01/02")
-		jpegPath := filepath.Join(c.storagePath, cameraID, filepath.FromSlash(dayDir), ev.FramePath)
+		jpegPath := filepath.Join(c.storagePath, ev.CameraID, filepath.FromSlash(dayDir), ev.FramePath)
 		if err := os.Remove(jpegPath); err != nil && !os.IsNotExist(err) {
 			c.log.Warn("failed to delete motion jpeg", "path", jpegPath, "err", err)
 		}
 	}
+}
 
-	if err := db.DeleteMotionEventsInRange(c.db, cameraID, startedAt, endedAt); err != nil {
-		c.log.Warn("failed to delete motion events from db", "camera_id", cameraID, "err", err)
+// purgeOrphanEvents removes motion_events with no covering recording that are
+// older than the with-motion retention, deleting their JPEGs too. Closes the
+// gap where events outlive the recording whose purge would have removed them
+// (e.g. left by incomplete-recording cleanup, or in gaps between chunks).
+func (c *Cleaner) purgeOrphanEvents() {
+	if c.db == nil {
+		return
 	}
+	withMotionMinutes, _ := c.effectiveRetentionMinutes()
+	if withMotionMinutes <= 0 {
+		return
+	}
+	cutoff := time.Now().UTC().Add(-time.Duration(withMotionMinutes) * time.Minute)
+
+	events, err := db.ListOrphanedMotionEvents(c.db, cutoff)
+	if err != nil {
+		c.log.Warn("failed to list orphaned motion events", "err", err)
+		return
+	}
+	if len(events) == 0 {
+		return
+	}
+
+	ids := make([]int64, len(events))
+	for i, ev := range events {
+		ids[i] = ev.ID
+	}
+	n, deleted, err := db.BulkDeleteMotionEvents(c.db, ids)
+	if err != nil {
+		c.log.Warn("failed to delete orphaned motion events", "err", err)
+		return
+	}
+	c.removeEventJPEGs(deleted)
+	c.log.Info("purged orphaned motion events", "count", n)
 }
 
 // uploadAndPurge uploads the MP4 file to the given drive, then removes the
@@ -636,6 +678,7 @@ func (c *Cleaner) Clean() {
 			c.analyzeNewRecordings()
 		}
 		c.cleanFromDB()
+		c.purgeOrphanEvents()
 	} else {
 		c.cleanFromFS()
 	}
