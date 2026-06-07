@@ -36,6 +36,10 @@ export interface Settings {
   log: {
     output: string
     path: string
+    max_size_mb: number
+    max_age_days: number
+    max_backups: number
+    compress: boolean
   }
   server: {
     port: number

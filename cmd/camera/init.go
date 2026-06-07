@@ -71,6 +71,15 @@ func (wi *wizardReader) askInt(prompt string, def int) int {
 	return v
 }
 
+func (wi *wizardReader) askBool(prompt string, def bool) bool {
+	d := "n"
+	if def {
+		d = "s"
+	}
+	s := strings.ToLower(wi.ask(prompt+" (s/n)", d))
+	return s == "s"
+}
+
 type initParams struct {
 	port          int
 	dbPath        string
@@ -79,6 +88,13 @@ type initParams struct {
 	storagePath   string
 	adminUsername string
 	adminPassword string
+
+	logOutput     string
+	logPath       string
+	logMaxSizeMB  int
+	logMaxAgeDays int
+	logMaxBackups int
+	logCompress   bool
 }
 
 func initWizard(input io.Reader, output io.Writer) (string, error) {
@@ -105,19 +121,29 @@ func initWizard(input io.Reader, output io.Writer) (string, error) {
 	fmt.Fprintln(output, "\n--- Geral ---")
 	timezone := wi.ask("Fuso horário", "America/Sao_Paulo")
 
-	fmt.Fprintln(output, "\n--- Administrador inicial ---")
-	adminUsername := wi.ask("Usuário administrador", "admin")
-	adminPassword := wi.ask("Senha inicial (obrigatório trocar no primeiro login)", "changeme")
+	fmt.Fprintln(output, "\n--- Logs ---")
+	logOutput := strings.ToLower(wi.ask("Saída de log (stdout/file)", "stdout"))
+	params := initParams{
+		port:         port,
+		dbPath:       dbPath,
+		timezone:     timezone,
+		segmentsPath: segmentsPath,
+		storagePath:  storagePath,
+		logOutput:    logOutput,
+	}
+	if logOutput == "file" {
+		params.logPath = wi.ask("Diretório dos arquivos de log", defaultBase("logs"))
+		params.logMaxSizeMB = wi.askInt("Tamanho máx. por arquivo antes de rotacionar (MB)", 50)
+		params.logMaxAgeDays = wi.askInt("Idade máx. dos arquivos rotacionados (dias, 0 = ilimitado)", 30)
+		params.logMaxBackups = wi.askInt("Qtd máx. de arquivos rotacionados por nível (0 = ilimitado)", 10)
+		params.logCompress = wi.askBool("Comprimir arquivos rotacionados em gzip?", true)
+	}
 
-	return buildInitYAML(initParams{
-		port:          port,
-		dbPath:        dbPath,
-		timezone:      timezone,
-		segmentsPath:  segmentsPath,
-		storagePath:   storagePath,
-		adminUsername: adminUsername,
-		adminPassword: adminPassword,
-	}), nil
+	fmt.Fprintln(output, "\n--- Administrador inicial ---")
+	params.adminUsername = wi.ask("Usuário administrador", "admin")
+	params.adminPassword = wi.ask("Senha inicial (obrigatório trocar no primeiro login)", "changeme")
+
+	return buildInitYAML(params), nil
 }
 
 func buildInitYAML(p initParams) string {
@@ -126,7 +152,20 @@ func buildInitYAML(p initParams) string {
 	fmt.Fprintf(&sb, "debug: false\n")
 	fmt.Fprintf(&sb, "timezone: %s\n", p.timezone)
 	fmt.Fprintf(&sb, "\ndb_path: %s\n", p.dbPath)
-	fmt.Fprintf(&sb, "\nlog:\n  output: stdout\n  path:\n")
+	logOutput := p.logOutput
+	if logOutput == "" {
+		logOutput = "stdout"
+	}
+	fmt.Fprintf(&sb, "\nlog:\n  output: %s\n", logOutput)
+	if logOutput == "file" {
+		fmt.Fprintf(&sb, "  path: %s\n", p.logPath)
+		fmt.Fprintf(&sb, "  max_size_mb: %d\n", p.logMaxSizeMB)
+		fmt.Fprintf(&sb, "  max_age_days: %d\n", p.logMaxAgeDays)
+		fmt.Fprintf(&sb, "  max_backups: %d\n", p.logMaxBackups)
+		fmt.Fprintf(&sb, "  compress: %t\n", p.logCompress)
+	} else {
+		fmt.Fprintf(&sb, "  path:\n")
+	}
 	fmt.Fprintf(&sb, "\nserver:\n")
 	fmt.Fprintf(&sb, "  port: %d\n", p.port)
 	fmt.Fprintf(&sb, "  segments_path: %s\n", p.segmentsPath)
@@ -152,4 +191,3 @@ func yamlStringValue(s string) string {
 	}
 	return s
 }
-

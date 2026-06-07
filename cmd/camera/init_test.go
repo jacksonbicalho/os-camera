@@ -14,6 +14,7 @@ func TestInitWizardDefaultInputs(t *testing.T) {
 		"",         // segments_path
 		"",         // storage path
 		"",         // timezone: America/Sao_Paulo
+		"",         // log output: stdout (no rotation prompts follow)
 		"",         // admin username: admin
 		"changeme", // admin password
 	}
@@ -22,6 +23,10 @@ func TestInitWizardDefaultInputs(t *testing.T) {
 	yaml, err := initWizard(strings.NewReader(input), io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(yaml, "output: stdout") {
+		t.Errorf("YAML missing %q\n\nGot:\n%s", "output: stdout", yaml)
 	}
 
 	var dbPath, segPath, storagePath string
@@ -69,6 +74,7 @@ func TestInitWizardCustomValues(t *testing.T) {
 		"/var/hls",       // segments_path
 		"/mnt/cams",      // storage path
 		"America/Recife", // timezone
+		"",               // log output: stdout
 		"master",         // admin username
 		"s3cr3t!",        // admin password (has special char)
 	}
@@ -102,6 +108,7 @@ func TestInitWizardNoCamerasIsNotError(t *testing.T) {
 		"", // segments_path
 		"", // storage path
 		"", // timezone
+		"", // log output: stdout
 		"", // admin username
 		"", // admin password (empty = default "changeme")
 	}
@@ -110,5 +117,43 @@ func TestInitWizardNoCamerasIsNotError(t *testing.T) {
 	_, err := initWizard(strings.NewReader(input), io.Discard)
 	if err != nil {
 		t.Fatalf("wizard with no cameras should not return error, got: %v", err)
+	}
+}
+
+func TestInitWizardLogFileEmitsRotation(t *testing.T) {
+	lines := []string{
+		"",                // port
+		"",                // db_path
+		"",                // segments_path
+		"",                // storage path
+		"",                // timezone
+		"file",            // log output: file → rotation prompts follow
+		"/var/log/camera", // log path
+		"25",              // max_size_mb
+		"7",               // max_age_days
+		"3",               // max_backups
+		"n",               // compress? → false
+		"",                // admin username
+		"",                // admin password
+	}
+	input := strings.Join(lines, "\n") + "\n"
+
+	yaml, err := initWizard(strings.NewReader(input), io.Discard)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wants := []string{
+		"output: file",
+		"path: /var/log/camera",
+		"max_size_mb: 25",
+		"max_age_days: 7",
+		"max_backups: 3",
+		"compress: false",
+	}
+	for _, want := range wants {
+		if !strings.Contains(yaml, want) {
+			t.Errorf("YAML missing %q\n\nGot:\n%s", want, yaml)
+		}
 	}
 }

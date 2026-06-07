@@ -6,12 +6,21 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
 type Options struct {
 	Debug  bool
 	Output string
 	Path   string
+
+	// Log rotation (file output only). Resolved values — the caller applies
+	// defaults before constructing the logger.
+	MaxSizeMB  int  // rotate when a file reaches this size in megabytes
+	MaxAgeDays int  // delete rotated files older than this (0 = keep)
+	MaxBackups int  // keep at most this many rotated files per level (0 = keep all)
+	Compress   bool // gzip rotated files
 }
 
 func New(opts Options) (*slog.Logger, error) {
@@ -19,7 +28,7 @@ func New(opts Options) (*slog.Logger, error) {
 	case "stdout":
 		return newStdoutLogger(opts.Debug), nil
 	case "file":
-		return newFileLogger(opts.Debug, opts.Path)
+		return newFileLogger(opts)
 	default:
 		return nil, fmt.Errorf("invalid log output %q: must be stdout or file", opts.Output)
 	}
@@ -33,29 +42,47 @@ func newStdoutLogger(debug bool) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 }
 
-func newFileLogger(debug bool, path string) (*slog.Logger, error) {
-	if err := os.MkdirAll(path, 0755); err != nil {
+func newFileLogger(opts Options) (*slog.Logger, error) {
+	if err := os.MkdirAll(opts.Path, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
 
 	levels := []slog.Level{slog.LevelInfo, slog.LevelWarn, slog.LevelError}
-	if debug {
+	if opts.Debug {
 		levels = append([]slog.Level{slog.LevelDebug}, levels...)
 	}
 
 	handlers := make([]slog.Handler, 0, len(levels))
 	for _, level := range levels {
-		f, err := os.OpenFile(filepath.Join(path, levelFilename(level)), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-		if err != nil {
+		filename := filepath.Join(opts.Path, levelFilename(level))
+		// lumberjack creates the file lazily on first write; touch it so the
+		// per-level files exist immediately even before anything is logged.
+		if f, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err != nil {
 			return nil, fmt.Errorf("failed to open %s: %w", levelFilename(level), err)
+		} else {
+			f.Close()
 		}
+		w := newRotatingWriter(filename, opts)
 		handlers = append(handlers, &levelHandler{
 			level:   level,
-			handler: slog.NewJSONHandler(f, &slog.HandlerOptions{Level: level}),
+			handler: slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level}),
 		})
 	}
 
 	return slog.New(&multiHandler{handlers: handlers}), nil
+}
+
+// newRotatingWriter maps our resolved Options onto a lumberjack writer.
+// Rotation, compression and retention themselves are lumberjack's job — this
+// function only owns the field mapping.
+func newRotatingWriter(filename string, opts Options) *lumberjack.Logger {
+	return &lumberjack.Logger{
+		Filename:   filename,
+		MaxSize:    opts.MaxSizeMB,
+		MaxAge:     opts.MaxAgeDays,
+		MaxBackups: opts.MaxBackups,
+		Compress:   opts.Compress,
+	}
 }
 
 func levelFilename(level slog.Level) string {
