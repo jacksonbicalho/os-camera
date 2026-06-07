@@ -529,3 +529,42 @@ func TestUpdateMotionEventFramePath_UnknownIDReturnsError(t *testing.T) {
 		t.Fatal("expected error for unknown event id, got nil")
 	}
 }
+
+func TestListOrphanedMotionEvents_OnlyOldUncovered(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+
+	now := time.Now().UTC()
+	old := now.Add(-48 * time.Hour)
+	recent := now.Add(-1 * time.Hour)
+	cutoff := now.Add(-24 * time.Hour)
+
+	// Old event covered by a recording → NOT orphan.
+	if err := db.InsertRecording(database, db.Recording{
+		CameraID:  "cam1",
+		StartedAt: old.Add(-time.Minute),
+		EndedAt:   old.Add(time.Minute),
+		Path:      "/x/covered.mp4",
+	}); err != nil {
+		t.Fatalf("InsertRecording: %v", err)
+	}
+	insertTestEvent(t, database, "cam1", old, 0.5, "") // covered
+
+	// Old event with no covering recording → orphan.
+	insertTestEvent(t, database, "cam1", old.Add(30*time.Minute), 0.6, "")
+
+	// Recent uncovered event → within retention, NOT orphan.
+	insertTestEvent(t, database, "cam1", recent, 0.6, "")
+
+	orphans, err := db.ListOrphanedMotionEvents(database, cutoff)
+	if err != nil {
+		t.Fatalf("ListOrphanedMotionEvents: %v", err)
+	}
+	if len(orphans) != 1 {
+		t.Fatalf("expected 1 orphan, got %d", len(orphans))
+	}
+	want := old.Add(30 * time.Minute).Format(time.RFC3339)
+	if got := orphans[0].OccurredAt.UTC().Format(time.RFC3339); got != want {
+		t.Errorf("orphan occurred_at = %s, want %s", got, want)
+	}
+}

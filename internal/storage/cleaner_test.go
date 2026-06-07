@@ -763,10 +763,10 @@ func TestSyncRecordings_DoesNotMarkNullEndedAtAsHasMotion(t *testing.T) {
 // TestCleanFromDB_PurgesOrphanedMotionEvents verifica que eventos de movimento
 // sem cobertura de nenhuma gravação (órfãos) são removidos após a gravação
 // relacionada ser deletada pela regra de retenção.
-func TestCleanFromDB_KeepsMotionEventsOutsideRecordingRange(t *testing.T) {
+func TestCleanFromDB_PurgesOrphanEventAfterRecordingsDeleted(t *testing.T) {
 	dir := t.TempDir()
 	database := openTestDB(t)
-	// lead=30s: evento 5s antes de A começa cobre A pelo lead
+	// lead=30s: evento 5s antes de A começa marca A com has_motion via lead
 	createTestCameraWithMotion(t, database, "cam1", 30, 10)
 
 	base := time.Now().UTC().Add(-120 * time.Minute).Truncate(time.Second)
@@ -781,29 +781,25 @@ func TestCleanFromDB_KeepsMotionEventsOutsideRecordingRange(t *testing.T) {
 	evOrphan := base.Add(-5 * time.Second)
 	addMotionEvent(t, database, "cam1", evOrphan, 0.1)
 
-	// Primeiro ciclo: sincroniza gravações e marca has_motion.
+	// Primeiro ciclo (retenção longa): sincroniza, marca has_motion e preserva tudo.
 	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
 
 	if !hasMotionInDB(t, database, pathA) {
 		t.Fatal("pathA deve ter has_motion=1 (evento dentro da janela de lead)")
 	}
 
-	// Segundo ciclo: retenção curta deleta ambas as gravações (120min > 60min).
+	// Segundo ciclo (retenção curta): deleta ambas as gravações (120min > 60min).
 	storage.New(dir, 60, 60, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
 
 	if _, err := os.Stat(pathA); !os.IsNotExist(err) {
 		t.Fatal("pathA deveria ter sido deletado")
 	}
 
-	// O evento fora do intervalo da gravação ([base-5s]) não é deletado pelo cleaner:
-	// purgeOrphanedEvents foi removido pois não é possível distinguir eventos de
-	// câmeras com gravação desabilitada de eventos cujas gravações foram limpas.
-	// A limpeza de eventos acontece apenas quando a gravação é explicitamente deletada
-	// via handleDeleteRecording ou cleanFromDB (purgeMotionAssets).
+	// Sem gravação cobrindo o evento e além da retenção → purgeOrphanEvents o remove.
 	var count int
 	database.QueryRow(`SELECT COUNT(*) FROM motion_events WHERE camera_id='cam1'`).Scan(&count)
-	if count != 1 {
-		t.Errorf("evento fora do range da gravação deve persistir no banco, mas count=%d", count)
+	if count != 0 {
+		t.Errorf("evento órfão além da retenção deveria ter sido purgado, count=%d", count)
 	}
 }
 
@@ -1183,5 +1179,62 @@ func TestAnalyzeNewRecordings_DisabledDoesNotLog(t *testing.T) {
 
 	if strings.Contains(buf.String(), "skipped (disabled)") {
 		t.Error("Clean() should not log 'skipped (disabled)' when analysis is globally disabled")
+	}
+}
+
+// O cleaner deve purgar motion_events órfãos (sem gravação cobrindo o
+// occurred_at) mais velhos que a retenção, apagando também o JPEG do frame.
+func TestClean_PurgesOldOrphanMotionEvents(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCamera(t, database, "cam1")
+
+	old := time.Now().UTC().Add(-10 * 24 * time.Hour) // bem além de 7 dias
+	day := old.Format("2006/01/02")
+	frame := old.Format("20060102150405") + "_motion.jpg"
+	jpegPath := filepath.Join(dir, "cam1", filepath.FromSlash(day), frame)
+	writeFile(t, jpegPath, old)
+
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID:   "cam1",
+		OccurredAt: old,
+		FramePath:  frame,
+	}); err != nil {
+		t.Fatalf("InsertMotionEvent: %v", err)
+	}
+
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	n, err := db.CountMotionEvents(database, "cam1")
+	if err != nil {
+		t.Fatalf("CountMotionEvents: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected orphan event purged, got %d remaining", n)
+	}
+	if _, err := os.Stat(jpegPath); !os.IsNotExist(err) {
+		t.Errorf("expected orphan jpeg removed, stat err = %v", err)
+	}
+}
+
+// Eventos órfãos dentro da retenção NÃO podem ser apagados.
+func TestClean_KeepsRecentOrphanMotionEvents(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCamera(t, database, "cam1")
+
+	recent := time.Now().UTC().Add(-1 * time.Hour)
+	if err := db.InsertMotionEvent(database, db.MotionEvent{CameraID: "cam1", OccurredAt: recent}); err != nil {
+		t.Fatalf("InsertMotionEvent: %v", err)
+	}
+
+	storage.New(dir, 10080, 10080, 5*time.Minute, 0, 0, database, discardLogger()).Clean()
+
+	n, err := db.CountMotionEvents(database, "cam1")
+	if err != nil {
+		t.Fatalf("CountMotionEvents: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected recent orphan kept, got %d", n)
 	}
 }

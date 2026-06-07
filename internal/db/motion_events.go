@@ -72,6 +72,42 @@ func ListMotionEvents(db *DB, cameraID string, start, end time.Time) ([]MotionEv
 	return events, rows.Err()
 }
 
+// ListOrphanedMotionEvents returns motion events older than cutoff whose
+// occurred_at is not covered by any recording. Used by the cleaner to purge
+// events left behind when their recording was already removed (or never
+// existed). Events within retention or covered by a recording are excluded.
+// occurred_at and recordings times are both RFC3339 text, so the comparisons
+// are plain lexicographic ordering.
+func ListOrphanedMotionEvents(db *DB, cutoff time.Time) ([]MotionEvent, error) {
+	rows, err := db.Query(`
+		SELECT id, camera_id, occurred_at, score, frame_path, label, color, bbox_x, bbox_y, bbox_w, bbox_h, dismissed
+		FROM motion_events me
+		WHERE occurred_at < ?
+		  AND NOT EXISTS (
+		    SELECT 1 FROM recordings r
+		    WHERE r.camera_id = me.camera_id
+		      AND r.started_at <= me.occurred_at
+		      AND (r.ended_at IS NULL OR r.ended_at >= me.occurred_at)
+		  )
+		ORDER BY occurred_at`,
+		cutoff.UTC().Format(time.RFC3339),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list orphaned motion events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []MotionEvent
+	for rows.Next() {
+		ev, err := scanMotionEvent(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan motion event: %w", err)
+		}
+		events = append(events, ev)
+	}
+	return events, rows.Err()
+}
+
 // GetMotionEventByID returns a single motion event by its primary key.
 func GetMotionEventByID(db *DB, id int64) (MotionEvent, error) {
 	row := db.QueryRow(`
