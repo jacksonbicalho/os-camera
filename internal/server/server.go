@@ -282,6 +282,13 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("PUT /api/settings/cameras/{id}", s.requireAdmin(s.handleUpdateCamera))
 	s.mux.HandleFunc("DELETE /api/settings/cameras/{id}", s.requireAdmin(s.handleDeleteCamera))
 
+	// Notifications are per-user (scoped to the authenticated user, not admin-only).
+	s.mux.HandleFunc("GET /api/notifications", s.requireFullAuth(s.handleListNotifications))
+	s.mux.HandleFunc("POST /api/notifications/read-all", s.requireFullAuth(s.handleMarkAllNotificationsRead))
+	s.mux.HandleFunc("POST /api/notifications/{id}/read", s.requireFullAuth(s.handleMarkNotificationRead))
+	s.mux.HandleFunc("DELETE /api/notifications/{id}", s.requireFullAuth(s.handleDeleteNotification))
+	s.mux.HandleFunc("DELETE /api/notifications", s.requireFullAuth(s.handleDeleteAllNotifications))
+
 	s.mux.HandleFunc("GET /api/users", s.requireAdmin(s.handleListUsers))
 	s.mux.HandleFunc("POST /api/users", s.requireAdmin(s.handleCreateUser))
 	s.mux.HandleFunc("PUT /api/users/{id}", s.requireAdmin(s.handleUpdateUser))
