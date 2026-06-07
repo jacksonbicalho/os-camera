@@ -7,8 +7,9 @@ import (
 	"camera/internal/db"
 )
 
-// validThemes are the UI themes the frontend knows how to render.
-var validThemes = map[string]bool{"dark": true, "moderno": true}
+// validThemes are the UI theme preferences the frontend accepts. "system" follows
+// the OS prefers-color-scheme; the frontend resolves it to dark/moderno at render.
+var validThemes = map[string]bool{"dark": true, "moderno": true, "system": true}
 
 func (s *Server) handleGetPreferences(w http.ResponseWriter, r *http.Request) {
 	if s.db == nil {
