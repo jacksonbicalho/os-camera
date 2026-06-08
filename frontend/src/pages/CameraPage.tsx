@@ -22,7 +22,7 @@ import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
 import { zoneThresholdLabel } from './settings/zoneThreshold'
-import { filterRecordings } from './recordingsFilter'
+import { filterRecordings, recordingsCount } from './recordingsFilter'
 import { videoDownloadName } from './videoDownload'
 import { recordingsForEventWindow } from './eventRecordings'
 import { useNotifications } from '../contexts/NotificationContext'
@@ -1542,7 +1542,7 @@ function toggleFullscreen() {
                       }`}
                     >
                       <span>Gravações</span>
-                      <span className="tabular-nums">{recordingsTotal || recordings.length}</span>
+                      <span className="tabular-nums">{recordingsCount(recordings, recordingsTotal, onlyMotion)}</span>
                     </button>
                     <button
                       id="tab-events"
