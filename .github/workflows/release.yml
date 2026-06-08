@@ -185,6 +185,15 @@ jobs:
             CHANGELOG+="${OUTPUT[$k]}"$'\n'
           done
 
+          # Link para todos os commits da release (compare com a tag anterior).
+          REPO_URL="${{ github.server_url }}/${{ github.repository }}"
+          TAG="${{ github.ref_name }}"
+          if [[ -n "$PREV_TAG" ]]; then
+            CHANGELOG+="**Commits:** [\`$PREV_TAG...$TAG\`]($REPO_URL/compare/$PREV_TAG...$TAG)"$'\n'
+          else
+            CHANGELOG+="**Commits:** [$TAG]($REPO_URL/commits/$TAG)"$'\n'
+          fi
+
           {
             echo "body<<EOF"
             echo "$CHANGELOG"
