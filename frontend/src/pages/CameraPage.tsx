@@ -23,6 +23,7 @@ import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
 import { zoneThresholdLabel } from './settings/zoneThreshold'
 import { filterRecordings } from './recordingsFilter'
 import { videoDownloadName } from './videoDownload'
+import { recordingsForEventWindow } from './eventRecordings'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useSetSidebarItems } from '../contexts/SidebarContext'
 import { useDisplayMode } from '../contexts/DisplayModeContext'
@@ -265,16 +266,26 @@ export default function CameraPage() {
     setAnnSaveOk(false)
   }
 
-  function downloadVideo() {
-    if (!activeRecording) return
+  function downloadRecording(rec: Recording) {
     // <a download> streams to disk (better than blob for large MP4s). Same-origin
     // so the download attribute (filename) is honored.
     const a = document.createElement('a')
-    a.href = `${activeRecording.url}?token=${getToken()}`
-    a.download = videoDownloadName(cam?.name, activeRecording.start)
+    a.href = `${rec.url}?token=${getToken()}`
+    a.download = videoDownloadName(cam?.name, rec.start)
     document.body.appendChild(a)
     a.click()
     a.remove()
+  }
+
+  function downloadVideo() {
+    if (activeRecording) downloadRecording(activeRecording)
+  }
+
+  // Baixa a(s) gravação(ões) cujo range cruza a janela do evento [occurred−lead, +trail].
+  function downloadEventVideos(ev: MotionEvent) {
+    const lead = cam?.motion?.playback_lead_seconds ?? 0
+    const trail = cam?.motion?.playback_trail_seconds ?? 0
+    recordingsForEventWindow(recordings, ev.time, lead, trail).forEach(downloadRecording)
   }
 
   function downloadBlob(blob: Blob, filename: string) {
@@ -1612,12 +1623,13 @@ function toggleFullscreen() {
                         const thumbOverride = thumbOverrides.get(ev.id)
                         const thumbURL = thumbOverride ?? (ev.frame ? snapshotURL(id!, ev.time, ev.frame) + (bust ? `&t=${bust}` : '') : null)
                         const recDets = recordings.filter(r => r.start <= ev.time).sort((a, b) => b.start.localeCompare(a.start))[0]?.detections
+                        const evRecs = recordingsForEventWindow(recordings, ev.time, cam?.motion?.playback_lead_seconds ?? 0, cam?.motion?.playback_trail_seconds ?? 0)
                         return (
                           <button
                             key={ev.id ?? `${ev.time}-${i}`}
                             ref={isActive ? (el) => { if (el) activeEventItemRef.current = el } : null}
                             onClick={() => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) }}
-                            className={`w-full flex flex-col px-3 py-2 transition-colors text-left ${
+                            className={`group w-full flex flex-col px-3 py-2 transition-colors text-left ${
                               isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-gray-800'
                             }`}
                           >
@@ -1626,6 +1638,20 @@ function toggleFullscreen() {
                                 {formatRecordingTime(ev.time, timezone)}
                               </span>
                               <div className="flex items-center gap-1.5 min-w-0">
+                                {evRecs.length > 0 && (
+                                  <span
+                                    role="button"
+                                    tabIndex={-1}
+                                    title="Baixar vídeo(s) do evento"
+                                    onClick={(e) => { e.stopPropagation(); downloadEventVideos(ev) }}
+                                    className="shrink-0 text-gray-500 hover:text-gray-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                                      <path d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5" strokeLinecap="round" strokeLinejoin="round" />
+                                      <path d="M4 14.5V16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1.5" strokeLinecap="round" />
+                                    </svg>
+                                  </span>
+                                )}
                                 {ev.label && ev.color && (
                                   <>
                                     <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ev.color }} />
