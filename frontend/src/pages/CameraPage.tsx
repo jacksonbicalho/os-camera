@@ -1873,13 +1873,20 @@ function toggleFullscreen() {
 
       <ConfirmDialog
         open={pendingSnapBlob !== null}
-        title="Substituir thumbnail"
-        message="Usar este snapshot como thumbnail do evento de movimento?"
-        confirmLabel="Substituir"
-        cancelLabel="Baixar"
+        title="Snapshot do evento"
+        message="Usar este snapshot como thumbnail do evento, ou baixá-lo?"
+        confirmLabel="Substituir thumbnail"
+        cancelLabel="Cancelar"
         onConfirm={replaceEventThumb}
-        onCancel={downloadPendingSnap}
-      />
+        onCancel={() => setPendingSnapBlob(null)}
+      >
+        <button
+          onClick={downloadPendingSnap}
+          className="self-start px-4 py-1.5 text-xs text-gray-200 border border-gray-600 rounded hover:bg-gray-700 transition-colors"
+        >
+          Baixar snapshot
+        </button>
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={deleteTarget !== null}
