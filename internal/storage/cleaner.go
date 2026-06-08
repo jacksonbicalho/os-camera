@@ -675,13 +675,21 @@ func (c *Cleaner) analysisEnabled() bool {
 func (c *Cleaner) Clean() {
 	if c.db != nil {
 		c.syncRecordings()
-		if c.analysisEnabled() {
-			c.analyzeNewRecordings()
-		}
 		c.cleanFromDB()
 		c.purgeOrphanEvents()
 	} else {
 		c.cleanFromFS()
+	}
+}
+
+// AnalyzeNew runs one pass of YOLO analysis over recordings not yet analyzed.
+// It is intentionally NOT part of Clean(): analysis can take minutes per file
+// (timeout × backlog), so running it on the retention path starved retention and
+// let overdue recordings pile up far beyond their configured window. Run() drives
+// this off the critical path (async, guarded by a mutex).
+func (c *Cleaner) AnalyzeNew() {
+	if c.analysisEnabled() {
+		c.analyzeNewRecordings()
 	}
 }
 
