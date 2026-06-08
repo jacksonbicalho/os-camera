@@ -568,3 +568,40 @@ func TestListOrphanedMotionEvents_OnlyOldUncovered(t *testing.T) {
 		t.Errorf("orphan occurred_at = %s, want %s", got, want)
 	}
 }
+
+func TestLabelUnlabeledMotionEventsInRange(t *testing.T) {
+	d := openTestDB(t)
+	ensureCamera(t, d, "cam1")
+	base := time.Date(2026, 6, 7, 12, 0, 0, 0, time.UTC)
+	insertTestEvent(t, d, "cam1", base, 0.5, "")                  // sem label, no range
+	insertTestEvent(t, d, "cam1", base.Add(time.Second), 0.5, "") // será rotulado à mão
+	insertTestEvent(t, d, "cam1", base.Add(time.Hour), 0.5, "")   // fora do range
+
+	// rotula o 2º à mão
+	evs, _ := db.ListMotionEvents(d, "cam1", base.Add(-time.Minute), base.Add(2*time.Hour))
+	if len(evs) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(evs))
+	}
+	if err := db.UpdateMotionEventLabel(d, evs[1].ID, "cao"); err != nil {
+		t.Fatalf("UpdateMotionEventLabel: %v", err)
+	}
+
+	n, err := db.LabelUnlabeledMotionEventsInRange(d, "cam1", base.Add(-time.Second), base.Add(5*time.Second), "person")
+	if err != nil {
+		t.Fatalf("LabelUnlabeledMotionEventsInRange: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 event labeled, got %d", n)
+	}
+
+	out, _ := db.ListMotionEvents(d, "cam1", base.Add(-time.Minute), base.Add(2*time.Hour))
+	if out[0].Label != "person" {
+		t.Errorf("unlabeled in-range event should become 'person', got %q", out[0].Label)
+	}
+	if out[1].Label != "cao" {
+		t.Errorf("human-labeled event must not be overwritten, got %q", out[1].Label)
+	}
+	if out[2].Label != "" {
+		t.Errorf("out-of-range event must stay unlabeled, got %q", out[2].Label)
+	}
+}
