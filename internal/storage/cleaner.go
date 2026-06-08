@@ -675,13 +675,21 @@ func (c *Cleaner) analysisEnabled() bool {
 func (c *Cleaner) Clean() {
 	if c.db != nil {
 		c.syncRecordings()
-		if c.analysisEnabled() {
-			c.analyzeNewRecordings()
-		}
 		c.cleanFromDB()
 		c.purgeOrphanEvents()
 	} else {
 		c.cleanFromFS()
+	}
+}
+
+// AnalyzeNew runs one pass of YOLO analysis over recordings not yet analyzed.
+// It is intentionally NOT part of Clean(): analysis can take minutes per file
+// (timeout × backlog), so running it on the retention path starved retention and
+// let overdue recordings pile up far beyond their configured window. Run() drives
+// this off the critical path (async, guarded by a mutex).
+func (c *Cleaner) AnalyzeNew() {
+	if c.analysisEnabled() {
+		c.analyzeNewRecordings()
 	}
 }
 
@@ -707,7 +715,7 @@ func (c *Cleaner) analyzeNewRecordings() {
 	}
 
 	rows, err := c.db.Query(`
-		SELECT r.id, r.camera_id, r.path
+		SELECT r.id, r.camera_id, r.path, r.started_at, r.ended_at
 		FROM recordings r
 		WHERE r.ended_at IS NOT NULL
 		AND r.has_motion = 1
@@ -718,16 +726,21 @@ func (c *Cleaner) analyzeNewRecordings() {
 		return
 	}
 	type pending struct {
-		id       int64
-		cameraID string
-		path     string
+		id        int64
+		cameraID  string
+		path      string
+		startedAt time.Time
+		endedAt   time.Time
 	}
 	var candidates []pending
 	for rows.Next() {
 		var p pending
-		if err := rows.Scan(&p.id, &p.cameraID, &p.path); err != nil {
+		var startedAt, endedAt string
+		if err := rows.Scan(&p.id, &p.cameraID, &p.path, &startedAt, &endedAt); err != nil {
 			continue
 		}
+		p.startedAt, _ = time.Parse(time.RFC3339, startedAt)
+		p.endedAt, _ = time.Parse(time.RFC3339, endedAt)
 		candidates = append(candidates, p)
 	}
 	rows.Close()
@@ -774,15 +787,28 @@ func (c *Cleaner) analyzeNewRecordings() {
 		}
 		labels := make([]string, len(dets))
 		dbDets := make([]db.Detection, len(dets))
+		topLabel, topConf := "", -1.0
 		for j, d := range dets {
 			labels[j] = d.Label
 			dbDets[j] = db.Detection{Label: d.Label, Confidence: d.Confidence, FrameCount: d.FrameCount}
+			if d.Label != "" && d.Confidence > topConf {
+				topLabel, topConf = d.Label, d.Confidence
+			}
 		}
 		c.log.Debug("analyzeNewRecordings: result", "path", p.path, "labels", labels)
 		if err := db.InsertDetections(c.db, p.path, dbDets, customModel); err != nil {
 			c.log.Warn("analyzeNewRecordings: insert detections failed", "path", p.path, "err", err)
 		} else {
 			analyzed++
+		}
+		// Aplica o label de maior confiança aos eventos sem rótulo da gravação,
+		// pra virarem dado de treino (corrigíveis depois em Análise de vídeo).
+		if topLabel != "" && !p.startedAt.IsZero() && !p.endedAt.IsZero() {
+			if n, err := db.LabelUnlabeledMotionEventsInRange(c.db, p.cameraID, p.startedAt, p.endedAt, topLabel); err != nil {
+				c.log.Warn("analyzeNewRecordings: label events failed", "path", p.path, "err", err)
+			} else if n > 0 {
+				c.log.Info("analyzeNewRecordings: labeled events from analysis", "path", p.path, "label", topLabel, "count", n)
+			}
 		}
 	}
 	c.log.Info("analyzeNewRecordings: done", "analyzed", analyzed, "total", total)

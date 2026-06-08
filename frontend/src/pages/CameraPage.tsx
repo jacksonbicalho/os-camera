@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { VolumeX, Volume2, Gauge, Repeat, Film, Zap, CalendarDays, Code2, Settings, Maximize, Play, Pause, X, Trash2, CameraCapture } from '../components/Icons'
+import { VolumeX, Volume2, Gauge, Repeat, Film, Zap, CalendarDays, Code2, Settings, Maximize, Play, Pause, X, Trash2, CameraCapture, ZoomOut } from '../components/Icons'
 import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -12,6 +12,7 @@ import HLSPlayer, { type HLSPlayerHandle } from '../components/HLSPlayer'
 import ListPanel from '../components/ListPanel'
 import MotionScoreChart from '../components/MotionScoreChart'
 import { useScrollToPlayer } from '../hooks/useScrollToPlayer'
+import { usePlayerZoom } from '../hooks/usePlayerZoom'
 import { useEventSource } from '../hooks/useEventSource'
 import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
@@ -21,8 +22,9 @@ import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
 import { zoneThresholdLabel } from './settings/zoneThreshold'
-import { filterRecordings } from './recordingsFilter'
+import { filterRecordings, recordingsCount } from './recordingsFilter'
 import { videoDownloadName } from './videoDownload'
+import { recordingsForEventWindow } from './eventRecordings'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useSetSidebarItems } from '../contexts/SidebarContext'
 import { useDisplayMode } from '../contexts/DisplayModeContext'
@@ -195,6 +197,18 @@ export default function CameraPage() {
   const pendingRecordingRef = useRef<{ filename: string } | null>(null)
   const mountRecordingIdRef = useRef(recordingId)
 
+  // Digital zoom no player: aplica o transform no <video> ativo (live ou gravação).
+  const getActiveVideo = useCallback(
+    () => videoRef.current ?? hlsPlayerRef.current?.getVideoElement() ?? null,
+    [],
+  )
+  const playerZoom = usePlayerZoom(getActiveVideo)
+  // Combina o ref do wrapper de gravação (controles) com o do zoom.
+  const recContainerRef = useCallback((node: HTMLDivElement | null) => {
+    recPlayerRef.current = node
+    playerZoom.setContainer(node)
+  }, [playerZoom.setContainer])
+
   useEffect(() => { recordingsRef.current = recordings }, [recordings])
   useEffect(() => { allMotionEventsRef.current = motionEvents }, [motionEvents])
   useEffect(() => { activeEventIdRef.current = activeEventId }, [activeEventId])
@@ -265,16 +279,26 @@ export default function CameraPage() {
     setAnnSaveOk(false)
   }
 
-  function downloadVideo() {
-    if (!activeRecording) return
+  function downloadRecording(rec: Recording) {
     // <a download> streams to disk (better than blob for large MP4s). Same-origin
     // so the download attribute (filename) is honored.
     const a = document.createElement('a')
-    a.href = `${activeRecording.url}?token=${getToken()}`
-    a.download = videoDownloadName(cam?.name, activeRecording.start)
+    a.href = `${rec.url}?token=${getToken()}`
+    a.download = videoDownloadName(cam?.name, rec.start)
     document.body.appendChild(a)
     a.click()
     a.remove()
+  }
+
+  function downloadVideo() {
+    if (activeRecording) downloadRecording(activeRecording)
+  }
+
+  // Baixa a(s) gravação(ões) cujo range cruza a janela do evento [occurred−lead, +trail].
+  function downloadEventVideos(ev: MotionEvent) {
+    const lead = cam?.motion?.playback_lead_seconds ?? 0
+    const trail = cam?.motion?.playback_trail_seconds ?? 0
+    recordingsForEventWindow(recordings, ev.time, lead, trail).forEach(downloadRecording)
   }
 
   function downloadBlob(blob: Blob, filename: string) {
@@ -827,6 +851,9 @@ export default function CameraPage() {
 
   const isLive = activeRecording === null && !recordingId
 
+  // Zera o zoom ao trocar de fonte (live ↔ gravação ↔ outra gravação).
+  useEffect(() => { playerZoom.reset() }, [isLive, activeRecording, recordingId, playerZoom.reset])
+
   // Live region score for the ephemeral "Analisar limiar" tool (live view only).
   const onAnalyzeScore = useCallback((data: string) => {
     try {
@@ -1192,8 +1219,24 @@ function toggleFullscreen() {
               </div>
 
               {isLive ? (
-                <div className="flex-1 min-h-0 relative">
+                <div
+                  ref={playerZoom.setContainer}
+                  className={`flex-1 min-h-0 relative overflow-hidden${playerZoom.isZoomed ? ' cursor-grab' : ''}`}
+                  onPointerDown={playerZoom.onPointerDown}
+                  onPointerMove={playerZoom.onPointerMove}
+                  onPointerUp={playerZoom.onPointerUp}
+                >
                   <HLSPlayer ref={hlsPlayerRef} src={liveUrl} containerClassName="w-full h-full" className="w-full h-full bg-black" cameraId={id} muted={videoMuted} segmentSeconds={cam?.hls_segment_seconds} onGoToEvent={handleGoToEvent} />
+                  {playerZoom.isZoomed && (
+                    <button
+                      onClick={playerZoom.reset}
+                      aria-label="Reiniciar zoom"
+                      title="Reiniciar zoom"
+                      className="absolute top-2 right-2 z-20 flex items-center gap-1 px-2 py-1 rounded bg-black/70 hover:bg-black/90 text-white text-xs font-medium tabular-nums"
+                    >
+                      <ZoomOut className="w-3.5 h-3.5" /> {playerZoom.scale.toFixed(1)}×
+                    </button>
+                  )}
                   {analyzeMode && (
                     <div className="absolute inset-0">
                       <BboxCanvas box={analyzeBox} onChange={setAnalyzeBox} className="w-full h-full" />
@@ -1210,16 +1253,19 @@ function toggleFullscreen() {
                 </div>
               ) : (
                 <div
-                  ref={recPlayerRef}
-                  className="flex-1 min-h-0 relative"
+                  ref={recContainerRef}
+                  className="flex-1 min-h-0 relative overflow-hidden"
                   onMouseMove={showRecControls}
                   onMouseLeave={() => { if (recPlaying) setRecControlsVisible(false) }}
+                  onPointerDown={playerZoom.onPointerDown}
+                  onPointerMove={playerZoom.onPointerMove}
+                  onPointerUp={playerZoom.onPointerUp}
                 >
                   <video
                     ref={videoRef}
-                    className="w-full h-full bg-black cursor-pointer"
+                    className={`w-full h-full bg-black ${playerZoom.isZoomed ? 'cursor-grab' : 'cursor-pointer'}`}
                     playsInline
-                    onClick={togglePlayRecording}
+                    onClick={() => { if (playerZoom.consumeDrag()) return; togglePlayRecording() }}
                     onPlay={() => { setRecPlaying(true); setRecPlayBlocked(false); setLastFrameDataUrl(null); showRecControls() }}
                     onPause={() => { setRecPlaying(false); setRecControlsVisible(true) }}
                     onCanPlay={() => setLastFrameDataUrl(null)}
@@ -1278,6 +1324,16 @@ function toggleFullscreen() {
                       }
                     }}
                   />
+                  {playerZoom.isZoomed && (
+                    <button
+                      onClick={playerZoom.reset}
+                      aria-label="Reiniciar zoom"
+                      title="Reiniciar zoom"
+                      className="absolute top-2 right-2 z-20 flex items-center gap-1 px-2 py-1 rounded bg-black/70 hover:bg-black/90 text-white text-xs font-medium tabular-nums"
+                    >
+                      <ZoomOut className="w-3.5 h-3.5" /> {playerZoom.scale.toFixed(1)}×
+                    </button>
+                  )}
                   {/* Último frame: mantém imagem visível enquanto próxima gravação carrega */}
                   {lastFrameDataUrl && (
                     <img
@@ -1486,7 +1542,7 @@ function toggleFullscreen() {
                       }`}
                     >
                       <span>Gravações</span>
-                      <span className="tabular-nums">{recordingsTotal || recordings.length}</span>
+                      <span className="tabular-nums">{recordingsCount(recordings, recordingsTotal, onlyMotion)}</span>
                     </button>
                     <button
                       id="tab-events"
@@ -1612,12 +1668,13 @@ function toggleFullscreen() {
                         const thumbOverride = thumbOverrides.get(ev.id)
                         const thumbURL = thumbOverride ?? (ev.frame ? snapshotURL(id!, ev.time, ev.frame) + (bust ? `&t=${bust}` : '') : null)
                         const recDets = recordings.filter(r => r.start <= ev.time).sort((a, b) => b.start.localeCompare(a.start))[0]?.detections
+                        const evRecs = recordingsForEventWindow(recordings, ev.time, cam?.motion?.playback_lead_seconds ?? 0, cam?.motion?.playback_trail_seconds ?? 0)
                         return (
                           <button
                             key={ev.id ?? `${ev.time}-${i}`}
                             ref={isActive ? (el) => { if (el) activeEventItemRef.current = el } : null}
                             onClick={() => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) }}
-                            className={`w-full flex flex-col px-3 py-2 transition-colors text-left ${
+                            className={`group w-full flex flex-col px-3 py-2 transition-colors text-left ${
                               isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-gray-800'
                             }`}
                           >
@@ -1626,6 +1683,20 @@ function toggleFullscreen() {
                                 {formatRecordingTime(ev.time, timezone)}
                               </span>
                               <div className="flex items-center gap-1.5 min-w-0">
+                                {evRecs.length > 0 && (
+                                  <span
+                                    role="button"
+                                    tabIndex={-1}
+                                    title="Baixar vídeo(s) do evento"
+                                    onClick={(e) => { e.stopPropagation(); downloadEventVideos(ev) }}
+                                    className="shrink-0 text-gray-500 hover:text-gray-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                                      <path d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5" strokeLinecap="round" strokeLinejoin="round" />
+                                      <path d="M4 14.5V16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1.5" strokeLinecap="round" />
+                                    </svg>
+                                  </span>
+                                )}
                                 {ev.label && ev.color && (
                                   <>
                                     <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ev.color }} />
@@ -1847,13 +1918,20 @@ function toggleFullscreen() {
 
       <ConfirmDialog
         open={pendingSnapBlob !== null}
-        title="Substituir thumbnail"
-        message="Usar este snapshot como thumbnail do evento de movimento?"
-        confirmLabel="Substituir"
-        cancelLabel="Baixar"
+        title="Snapshot do evento"
+        message="Usar este snapshot como thumbnail do evento, ou baixá-lo?"
+        confirmLabel="Substituir thumbnail"
+        cancelLabel="Cancelar"
         onConfirm={replaceEventThumb}
-        onCancel={downloadPendingSnap}
-      />
+        onCancel={() => setPendingSnapBlob(null)}
+      >
+        <button
+          onClick={downloadPendingSnap}
+          className="self-start px-4 py-1.5 text-xs text-gray-200 border border-gray-600 rounded hover:bg-gray-700 transition-colors"
+        >
+          Baixar snapshot
+        </button>
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={deleteTarget !== null}

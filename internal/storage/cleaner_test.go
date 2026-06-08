@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -951,6 +953,7 @@ func TestAnalyzeNewRecordings_AnalyzesCompletedChunks(t *testing.T) {
 	cleaner := storage.New(dir, 0, 0, 5*time.Minute, 0, 0, database, discardLogger()).
 		WithAnalyzer(fake)
 	cleaner.Clean()
+	cleaner.AnalyzeNew()
 
 	// pathA has ended_at (pathB appeared), so it should be analyzed
 	dets, err := db.ListDetectionsByPath(database, pathA)
@@ -961,15 +964,22 @@ func TestAnalyzeNewRecordings_AnalyzesCompletedChunks(t *testing.T) {
 		t.Errorf("expected 1 detection 'person' for completed chunk, got %v", dets)
 	}
 
+	// O label do YOLO deve ser aplicado ao evento sem rótulo da gravação (dado de treino).
+	evs, _ := db.ListMotionEvents(database, "cam1", base.Add(-time.Minute), base.Add(2*time.Minute))
+	if len(evs) != 1 || evs[0].Label != "person" {
+		t.Errorf("expected the recording's event to be labeled 'person', got %v", evs)
+	}
+
 	// pathB has no ended_at yet (last in dir) → should not be analyzed
 	detsB, _ := db.ListDetectionsByPath(database, pathB)
 	if len(detsB) != 0 {
 		t.Errorf("incomplete chunk should not be analyzed, got %d detections", len(detsB))
 	}
 
-	// Running Clean again should not re-analyze pathA (already has detections)
+	// Running again should not re-analyze pathA (already has detections)
 	prevCalled := fake.Called
 	cleaner.Clean()
+	cleaner.AnalyzeNew()
 	if fake.Called != prevCalled+0 {
 		// pathB might get ended_at if a third chunk appears, but none did —
 		// just ensure pathA is not re-analyzed
@@ -995,7 +1005,7 @@ func TestAnalyzeNewRecordings_SkipsWhenDisabled(t *testing.T) {
 	fake := &analysis.FakeAnalyzer{Results: []analysis.Detection{{Label: "car", Confidence: 0.8}}}
 	storage.New(dir, 0, 0, 5*time.Minute, 0, 0, database, discardLogger()).
 		WithAnalyzer(fake).
-		Clean()
+		AnalyzeNew()
 
 	if fake.Called != 0 {
 		t.Errorf("analyzer should not be called when global config is disabled, called %d times", fake.Called)
@@ -1034,12 +1044,14 @@ func TestAnalyzeNewRecordings_SkipsAfterAnalyzeError(t *testing.T) {
 		WithAnalyzer(fake)
 
 	cleaner.Clean()
+	cleaner.AnalyzeNew()
 	if fake.Called != 1 {
 		t.Fatalf("expected analyzer called once, got %d", fake.Called)
 	}
 
 	// Second run must not retry the failed recording.
 	cleaner.Clean()
+	cleaner.AnalyzeNew()
 	if fake.Called != 1 {
 		t.Errorf("failed recording should not be retried, analyzer called %d times total", fake.Called)
 	}
@@ -1075,7 +1087,7 @@ func TestAnalyzeNewRecordings_SkipsWhenFileNotOnDisk(t *testing.T) {
 	fake := &analysis.FakeAnalyzer{Results: []analysis.Detection{{Label: "person", Confidence: 0.9}}}
 	storage.New(dir, 0, 0, 5*time.Minute, 0, 0, database, discardLogger()).
 		WithAnalyzer(fake).
-		Clean()
+		AnalyzeNew()
 
 	if fake.Called != 0 {
 		t.Errorf("analyzer must not be called when file does not exist on disk, called %d times", fake.Called)
@@ -1175,10 +1187,10 @@ func TestAnalyzeNewRecordings_DisabledDoesNotLog(t *testing.T) {
 	fake := &analysis.FakeAnalyzer{}
 	storage.New(dir, 0, 0, 5*time.Minute, 0, 0, database, log).
 		WithAnalyzer(fake).
-		Clean()
+		AnalyzeNew()
 
 	if strings.Contains(buf.String(), "skipped (disabled)") {
-		t.Error("Clean() should not log 'skipped (disabled)' when analysis is globally disabled")
+		t.Error("AnalyzeNew() should not log 'skipped (disabled)' when analysis is globally disabled")
 	}
 }
 
@@ -1271,4 +1283,81 @@ func TestCheckSize_NotifiesAdminsOnThresholdCrossing(t *testing.T) {
 	if n, _ := db.CountUnreadNotifications(database, admin); n != 1 {
 		t.Errorf("admin should still have 1 notification (no duplicate), got %d", n)
 	}
+}
+
+// blockingAnalyzer hangs inside Analyze until release is closed, simulating a slow
+// YOLO backlog. Used to prove the retention pass is not blocked by analysis.
+type blockingAnalyzer struct {
+	release chan struct{}
+	once    sync.Once
+	started chan struct{}
+}
+
+func (b *blockingAnalyzer) Analyze(ctx context.Context, _ analysis.AnalyzeRequest) ([]analysis.Detection, error) {
+	b.once.Do(func() { close(b.started) })
+	select {
+	case <-b.release:
+	case <-ctx.Done():
+	}
+	return nil, ctx.Err()
+}
+
+// Retention must run even when analysis is backed up. The bug: Clean() called
+// analyzeNewRecordings synchronously before cleanFromDB, so a slow analysis
+// (2 min timeout × a large backlog) starved retention for hours and overdue
+// recordings piled up far beyond their configured retention.
+func TestClean_RetentionNotBlockedByAnalysis(t *testing.T) {
+	dir := t.TempDir()
+	database := openTestDB(t)
+	createTestCameraWithMotion(t, database, "cam1", 10, 10)
+
+	if err := db.UpdateVideoAnalysisConfig(database, db.VideoAnalysisConfig{
+		Enabled:    true,
+		ServiceURL: "http://yolo:8000",
+		Model:      "yolov8n",
+	}); err != nil {
+		t.Fatalf("UpdateVideoAnalysisConfig: %v", err)
+	}
+
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	pathA := mp4WithTimestamp(dir, "cam1", base)
+	pathB := mp4WithTimestamp(dir, "cam1", base.Add(5*time.Minute))
+	writeFile(t, pathA, base)
+	writeFile(t, pathB, base.Add(5*time.Minute))
+
+	// Motion event so pathA is has_motion=1 — both a retention candidate and an
+	// analysis candidate.
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID:   "cam1",
+		OccurredAt: base.Add(time.Minute),
+		Score:      0.5,
+	}); err != nil {
+		t.Fatalf("InsertMotionEvent: %v", err)
+	}
+
+	blocker := &blockingAnalyzer{release: make(chan struct{}), started: make(chan struct{})}
+	// Retention of 1 minute → pathA (2h old, has_motion, action=delete) is overdue.
+	cleaner := storage.New(dir, 1, 1, 5*time.Minute, 0, 0, database, discardLogger()).
+		WithAnalyzer(blocker)
+
+	done := make(chan struct{})
+	go func() { cleaner.Clean(); close(done) }()
+
+	// pathA must be expired by cleanFromDB even while analysis is blocked.
+	deadline := time.After(2 * time.Second)
+	for {
+		if _, err := os.Stat(pathA); os.IsNotExist(err) {
+			break // retention ran — good
+		}
+		select {
+		case <-deadline:
+			close(blocker.release)
+			<-done
+			t.Fatal("retention did not run while analysis was pending — analysis is blocking the clean loop")
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	close(blocker.release)
+	<-done
 }
