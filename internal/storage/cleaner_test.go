@@ -961,6 +961,12 @@ func TestAnalyzeNewRecordings_AnalyzesCompletedChunks(t *testing.T) {
 		t.Errorf("expected 1 detection 'person' for completed chunk, got %v", dets)
 	}
 
+	// O label do YOLO deve ser aplicado ao evento sem rótulo da gravação (dado de treino).
+	evs, _ := db.ListMotionEvents(database, "cam1", base.Add(-time.Minute), base.Add(2*time.Minute))
+	if len(evs) != 1 || evs[0].Label != "person" {
+		t.Errorf("expected the recording's event to be labeled 'person', got %v", evs)
+	}
+
 	// pathB has no ended_at yet (last in dir) → should not be analyzed
 	detsB, _ := db.ListDetectionsByPath(database, pathB)
 	if len(detsB) != 0 {

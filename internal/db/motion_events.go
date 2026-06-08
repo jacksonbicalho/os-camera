@@ -199,6 +199,24 @@ func UpdateMotionEventFramePath(db *DB, id int64, framePath string) error {
 	return nil
 }
 
+// LabelUnlabeledMotionEventsInRange sets label on the camera's motion events whose
+// occurred_at is in [start, end] and that have no label yet (NULL or empty). Used to
+// auto-apply a YOLO detection label to a recording's events without overwriting human
+// labels. Returns the number of rows updated.
+func LabelUnlabeledMotionEventsInRange(db *DB, cameraID string, start, end time.Time, label string) (int64, error) {
+	res, err := db.Exec(`
+		UPDATE motion_events SET label=?
+		WHERE camera_id=? AND occurred_at >= ? AND occurred_at <= ?
+		  AND (label IS NULL OR label='')`,
+		label, cameraID,
+		start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("label unlabeled motion events: %w", err)
+	}
+	return res.RowsAffected()
+}
+
 // UpdateMotionEventLabel sets or clears the label of a motion event.
 func UpdateMotionEventLabel(db *DB, id int64, label string) error {
 	_, err := db.Exec(`UPDATE motion_events SET label=? WHERE id=?`, nullStr(label), id)
