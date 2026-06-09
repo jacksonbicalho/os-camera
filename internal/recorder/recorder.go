@@ -19,6 +19,7 @@ type Recorder struct {
 	commander exec.Commander
 	log       *slog.Logger
 	process   exec.Process
+	now       func() time.Time
 }
 
 func NewRecorder(camera config.CameraConfig, storage config.StorageConfig, stream ffprobe.StreamInfo, commander exec.Commander, log *slog.Logger) *Recorder {
@@ -28,6 +29,7 @@ func NewRecorder(camera config.CameraConfig, storage config.StorageConfig, strea
 		stream:    stream,
 		commander: commander,
 		log:       log,
+		now:       func() time.Time { return time.Now().UTC() },
 	}
 }
 
@@ -86,11 +88,17 @@ func (r *Recorder) needsTranscode() bool {
 
 func (r *Recorder) Run(ctx context.Context, reconnect time.Duration) {
 	for {
-		if err := r.Start(time.Now().UTC()); err != nil {
+		start := r.now()
+		if err := r.Start(start); err != nil {
 			r.log.Error("recorder: failed to start", "camera", r.camera.ID, "error", err)
 		} else {
 			exited := make(chan struct{})
-			go func() { r.process.Wait(); close(exited) }()
+			proc := r.process
+			go func() { proc.Wait(); close(exited) }()
+			// ffmpeg bakes the day directory into its output pattern at start
+			// time; it never rolls over on its own. Restart the session at UTC
+			// midnight so the next day's chunks land in the next day's folder.
+			rollover := time.After(DurationUntilNextDay(start))
 			select {
 			case <-ctx.Done():
 				r.Stop()
@@ -98,6 +106,11 @@ func (r *Recorder) Run(ctx context.Context, reconnect time.Duration) {
 				return
 			case <-exited:
 				r.log.Warn("recorder: process exited unexpectedly", "camera", r.camera.ID)
+			case <-rollover:
+				r.log.Info("recorder: rolling output directory at day boundary", "camera", r.camera.ID)
+				r.Stop()
+				<-exited
+				continue // restart immediately on the new day, skipping the reconnect backoff
 			}
 		}
 		select {
@@ -116,6 +129,15 @@ func (r *Recorder) Stop() {
 	r.log.Info("stopping recorder, finalizing chunk", "camera", r.camera.ID)
 	r.process.Terminate()
 	r.process.Wait()
+}
+
+// DurationUntilNextDay returns how long until the next UTC midnight after t.
+// At exactly midnight it returns a full 24h (never zero), so the rollover timer
+// always schedules a meaningful wait.
+func DurationUntilNextDay(t time.Time) time.Duration {
+	t = t.UTC()
+	nextMidnight := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC).Add(24 * time.Hour)
+	return nextMidnight.Sub(t)
 }
 
 func OutputDir(storagePath, cameraID string, t time.Time) string {

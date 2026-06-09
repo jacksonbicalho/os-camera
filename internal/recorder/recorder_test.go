@@ -412,6 +412,26 @@ func TestRecorderRunRestartsAfterUnexpectedExit(t *testing.T) {
 	<-done
 }
 
+func TestDurationUntilNextDay(t *testing.T) {
+	cases := []struct {
+		name string
+		t    time.Time
+		want time.Duration
+	}{
+		{"one minute before midnight", time.Date(2026, 4, 30, 23, 59, 0, 0, time.UTC), time.Minute},
+		{"midday", time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC), 12 * time.Hour},
+		{"exactly midnight returns full day", time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC), 24 * time.Hour},
+		{"non-utc input is normalized", time.Date(2026, 4, 30, 23, 59, 0, 0, time.FixedZone("x", 3600)), time.Hour + time.Minute},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := recorder.DurationUntilNextDay(tc.t); got != tc.want {
+				t.Errorf("DurationUntilNextDay(%v) = %v, want %v", tc.t, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRecorderRunStopsOnContextCancel(t *testing.T) {
 	tmpDir := t.TempDir()
 	camera := config.CameraConfig{ID: "cam1", RTSPURL: "rtsp://192.168.1.10:554/stream"}
