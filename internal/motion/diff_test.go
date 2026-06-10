@@ -423,10 +423,10 @@ func TestComputeBBoxIgnoresMaskedPixels(t *testing.T) {
 func TestComputeBBoxRejectsSparseNoise(t *testing.T) {
 	a := make([]byte, 256)
 	b := make([]byte, 256)
-	b[0] = 200          // (0,0)
-	b[15] = 200         // (15,0)
-	b[15*16] = 200      // (0,15)
-	b[15*16+15] = 200   // (15,15)
+	b[0] = 200        // (0,0)
+	b[15] = 200       // (15,0)
+	b[15*16] = 200    // (0,15)
+	b[15*16+15] = 200 // (15,15)
 	got, found := computeBBox(a, b, 16, 16, nil)
 	if !found {
 		t.Fatal("expected found=true: each corner is its own valid 1-pixel blob")

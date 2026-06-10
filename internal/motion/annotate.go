@@ -26,50 +26,19 @@ var (
 	ColorDetect = color.NRGBA{R: 249, G: 115, B: 22, A: 255}
 )
 
-func annotateFrame(frame []byte, w, h int, bbox BBox, score float64, c color.NRGBA, drawRect bool) []byte {
-	img := image.NewGray(image.Rect(0, 0, w, h))
-	copy(img.Pix, frame)
-
-	rgba := image.NewNRGBA(img.Bounds())
-	draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
-
-	if drawRect {
-		x0 := clamp(int(math.Round(bbox.X*float64(w))), 0, w-1)
-		y0 := clamp(int(math.Round(bbox.Y*float64(h))), 0, h-1)
-		x1 := clamp(int(math.Round((bbox.X+bbox.W)*float64(w)))-1, x0, w-1)
-		y1 := clamp(int(math.Round((bbox.Y+bbox.H)*float64(h)))-1, y0, h-1)
-		drawHLine(rgba, x0, x1, y0, c)
-		drawHLine(rgba, x0, x1, y1, c)
-		drawVLine(rgba, y0, y1, x0, c)
-		drawVLine(rgba, y0, y1, x1, c)
+// annotateRGBFrame draws the bbox rectangle and score label onto a full-res
+// RGB24 frame (w×h, 3 bytes/pixel), with line thickness and text scale
+// proportional to resolution, and encodes it as JPEG. This is the snapshot of
+// the exact frame that triggered the event — same instant as the bbox, so the
+// box always lands on the subject (no async grab, no temporal drift).
+func annotateRGBFrame(rgb []byte, w, h int, bbox BBox, score float64, c color.NRGBA, drawRect bool) []byte {
+	rgba := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for i := 0; i < w*h; i++ {
+		rgba.Pix[4*i] = rgb[3*i]
+		rgba.Pix[4*i+1] = rgb[3*i+1]
+		rgba.Pix[4*i+2] = rgb[3*i+2]
+		rgba.Pix[4*i+3] = 255
 	}
-
-	label := fmt.Sprintf("score: %.3f", score)
-	const margin = 4
-	tx := w - len(label)*charWidth - margin
-	if tx < 0 {
-		tx = 0
-	}
-	drawText(rgba, label, tx, 11, c)
-
-	var buf bytes.Buffer
-	jpeg.Encode(&buf, rgba, &jpeg.Options{Quality: 85})
-	return buf.Bytes()
-}
-
-// annotateJPEGBytes decodes a color JPEG, draws the bbox rectangle and score
-// label onto it with line thickness and text scale proportional to resolution,
-// and re-encodes it.
-func annotateJPEGBytes(data []byte, bbox BBox, score float64, c color.NRGBA, drawRect bool) ([]byte, error) {
-	src, err := jpeg.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	w := src.Bounds().Dx()
-	h := src.Bounds().Dy()
-
-	rgba := image.NewNRGBA(src.Bounds())
-	draw.Draw(rgba, rgba.Bounds(), src, image.Point{}, draw.Src)
 
 	thick := lineThickness(w, h)
 	scale := textScale(w, h)
@@ -99,7 +68,7 @@ func annotateJPEGBytes(data []byte, bbox BBox, score float64, c color.NRGBA, dra
 
 	var buf bytes.Buffer
 	jpeg.Encode(&buf, rgba, &jpeg.Options{Quality: 85})
-	return buf.Bytes(), nil
+	return buf.Bytes()
 }
 
 func lineThickness(w, h int) int {
@@ -185,27 +154,6 @@ func drawText(img draw.Image, text string, x, y int, c color.Color) {
 		Dot:  fixed.Point26_6{X: fixed.I(x), Y: fixed.I(y)},
 	}
 	d.DrawString(text)
-}
-
-// jpegToGray decodes a JPEG and downscales it to w×h grayscale using
-// nearest-neighbor sampling. Returns the raw pixel bytes (length w*h).
-func jpegToGray(data []byte, w, h int) ([]byte, error) {
-	src, err := jpeg.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	dst := image.NewGray(image.Rect(0, 0, w, h))
-	sb := src.Bounds()
-	srcW, srcH := sb.Dx(), sb.Dy()
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			sx := x * srcW / w
-			sy := y * srcH / h
-			c := src.At(sb.Min.X+sx, sb.Min.Y+sy)
-			dst.SetGray(x, y, color.GrayModel.Convert(c).(color.Gray))
-		}
-	}
-	return dst.Pix, nil
 }
 
 // hexToNRGBA converte uma cor hexadecimal (com ou sem "#") em color.NRGBA.
