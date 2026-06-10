@@ -363,10 +363,10 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             ref={bellBtnRef}
             onClick={openBell}
             className={`${btnBase} ${unreadCount > 0 ? "text-white animate-pulse" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
-            title="Notificações"
+            title="Eventos"
           >
             {showIcon && <Bell className="w-5 h-5" />}
-            {showLabel && <span className="text-sm truncate">Notificações</span>}
+            {showLabel && <span className="text-sm truncate">Eventos</span>}
             {unreadCount > 0 && (
               <span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-red-600 text-white rounded-full">
                 {unreadCount > 99 ? "99+" : unreadCount}
