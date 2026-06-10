@@ -25,7 +25,7 @@ import { zoneThresholdLabel } from './settings/zoneThreshold'
 import { filterRecordings, recordingsCount } from './recordingsFilter'
 import { videoDownloadName } from './videoDownload'
 import { recordingsForEventWindow } from './eventRecordings'
-import { useNotifications } from '../contexts/NotificationContext'
+import { useMarkActiveEventRead } from '../hooks/useMarkActiveEventRead'
 import { useSetSidebarItems } from '../contexts/SidebarContext'
 import { useDisplayMode } from '../contexts/DisplayModeContext'
 import type { HLSStats } from '../components/HLSPlayer'
@@ -807,7 +807,7 @@ export default function CameraPage() {
 
   const { settings } = useSettings()
   const motionPeak = useMotionPeak(id)
-  const { markRead } = useNotifications()
+  useMarkActiveEventRead(id ?? '', activeEventTime)
   const setItems = useSetSidebarItems()
   const { player: playerMode } = useDisplayMode()
   const playerShowIcon = playerMode !== 'text-only'
@@ -1673,7 +1673,7 @@ function toggleFullscreen() {
                           <button
                             key={ev.id ?? `${ev.time}-${i}`}
                             ref={isActive ? (el) => { if (el) activeEventItemRef.current = el } : null}
-                            onClick={() => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) }}
+                            onClick={() => { playEventAt(ev); setScrollNonce(n => n + 1) }}
                             className={`group w-full flex flex-col px-3 py-2 transition-colors text-left ${
                               isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-gray-800'
                             }`}
@@ -1789,7 +1789,7 @@ function toggleFullscreen() {
             timezone={timezone}
             sortOrder={activePanel === 'events' ? eventsSortOrder : sortOrder}
             onSeek={handleTimelineSeek}
-            onEventClick={activePanel === 'events' ? ev => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) } : undefined}
+            onEventClick={activePanel === 'events' ? ev => { playEventAt(ev); setScrollNonce(n => n + 1) } : undefined}
             maxHeight={playerHeight}
           />
         </div>
