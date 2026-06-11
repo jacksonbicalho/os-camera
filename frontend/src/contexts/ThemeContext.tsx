@@ -18,13 +18,13 @@ function prefersDark(): boolean {
 
 // Resolve a stored preference to a concrete theme. "system" follows the OS:
 // dark scheme → our dark, light scheme → our light.
-function resolve(t: Theme): Resolved {
+export function resolveTheme(t: Theme): Resolved {
   if (t === 'system') return prefersDark() ? 'dark' : 'light'
   return t
 }
 
 function applyTheme(t: Theme) {
-  document.documentElement.setAttribute('data-theme', resolve(t))
+  document.documentElement.setAttribute('data-theme', resolveTheme(t))
 }
 
 function isTheme(v: unknown): v is Theme {
