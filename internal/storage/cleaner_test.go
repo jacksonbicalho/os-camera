@@ -106,6 +106,42 @@ func mp4WithTimestamp(dir, cameraID string, ts time.Time) string {
 	return filepath.Join(dir, cameraID, day, name)
 }
 
+// sameDayBase mantém o setup de chunks adjacentes determinístico: testes ancoram
+// o tempo em now-age e criam chunks em [base, base+span]; o cleaner agrupa MP4s por
+// diretório YYYY/MM/DD, então se base e base+span caírem em dias UTC diferentes
+// (base perto da meia-noite) os chunks vão para pastas distintas e a lógica de
+// "próximo chunk" muda — tornando o teste flaky conforme o horário do relógio.
+// Garante que [base, base+span] fique no mesmo dia UTC, sem afetar a idade da base.
+func sameDayBase(now time.Time, age, span time.Duration) time.Time {
+	const dayLayout = "2006/01/02"
+	base := now.UTC().Add(-age).Truncate(time.Second)
+	if base.Format(dayLayout) != base.Add(span).Format(dayLayout) {
+		// base está a menos de `span` da meia-noite; recuar por `span` joga
+		// base+span de volta para o mesmo dia (base original, pré-meia-noite).
+		base = base.Add(-span)
+	}
+	return base
+}
+
+func TestSameDayBase_KeepsAdjacentChunksInSameUTCDay(t *testing.T) {
+	const dayLayout = "2006/01/02"
+	span := 1 * time.Minute
+	// now tal que now-120min = 23:59:30 → base+span cruzaria a meia-noite.
+	now := time.Date(2026, 6, 11, 1, 59, 30, 0, time.UTC)
+
+	base := sameDayBase(now, 120*time.Minute, span)
+
+	if base.Format(dayLayout) != base.Add(span).Format(dayLayout) {
+		t.Fatalf("base %v e base+span %v caíram em dias UTC diferentes",
+			base.Format(time.RFC3339), base.Add(span).Format(time.RFC3339))
+	}
+	// a base precisa continuar suficientemente no passado (além da retenção testada).
+	if !base.Before(now.Add(-60 * time.Minute)) {
+		t.Fatalf("base %v não está velha o suficiente em relação a now %v",
+			base.Format(time.RFC3339), now.Format(time.RFC3339))
+	}
+}
+
 func writeMotionNDJSONWithFrames(t *testing.T, dir string, events []struct {
 	ts    time.Time
 	frame string
@@ -383,7 +419,9 @@ func TestClean_DeletesWithMotionChunkAfterWithMotionRetention(t *testing.T) {
 // Com a janela correta (até o início de B), A não deve ser classificado como "com motion".
 func TestClean_AdjacentMotionEventDoesNotContaminateEarlierChunk(t *testing.T) {
 	dir := t.TempDir()
-	base := time.Now().UTC().Add(-120 * time.Minute).Truncate(time.Second)
+	// sameDayBase mantém A e B no mesmo dia UTC; o caminho FS (sem banco) agrupa
+	// por diretório YYYY/MM/DD e flakearia se a base caísse na virada de dia.
+	base := sameDayBase(time.Now().UTC(), 120*time.Minute, 1*time.Minute)
 	chunkA := base
 	chunkB := base.Add(1 * time.Minute)
 
@@ -409,7 +447,8 @@ func TestClean_AdjacentMotionEventDoesNotContaminateEarlierChunk(t *testing.T) {
 // Chunk com motion real dentro do seu próprio intervalo deve ser retido.
 func TestClean_MotionInsideChunkWindowKeepsChunk(t *testing.T) {
 	dir := t.TempDir()
-	base := time.Now().UTC().Add(-120 * time.Minute).Truncate(time.Second)
+	// sameDayBase mantém A e B no mesmo dia UTC (caminho FS, ver teste acima).
+	base := sameDayBase(time.Now().UTC(), 120*time.Minute, 1*time.Minute)
 	chunkA := base
 	chunkB := base.Add(1 * time.Minute)
 
