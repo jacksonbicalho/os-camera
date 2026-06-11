@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate, useLocation, Link, NavLink } from "react-router-dom"
 import { clearToken, getRole, authHeaders, onUnauthorized } from "../auth"
@@ -11,6 +11,7 @@ import { ptBR } from "date-fns/locale"
 import type { Notification } from "../contexts/NotificationContext"
 import ConfirmDialog from "./ConfirmDialog"
 import EventsPanelHeader from "./EventsPanelHeader"
+import ThemeModeNav from "./ThemeModeNav"
 import { Bell, X, Check, BarChart2, Settings, CircleUser, CameraLogo, Cctv } from "./Icons"
 
 interface SidebarProps {
@@ -551,18 +552,20 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
           >
             <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-700 font-medium">Configurações</div>
             {settingsLinks.map(({ to, label }) => (
-              <Link
-                key={to}
-                to={to}
-                onClick={() => setSettingsOpen(false)}
-                className={`block px-3 py-2 text-sm transition-colors ${
-                  location.pathname.startsWith(to)
-                    ? 'bg-gray-700 text-white'
-                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                }`}
-              >
-                {label}
-              </Link>
+              <Fragment key={to}>
+                {to === '/settings/about' && <ThemeModeNav />}
+                <Link
+                  to={to}
+                  onClick={() => setSettingsOpen(false)}
+                  className={`block px-3 py-2 text-sm transition-colors ${
+                    location.pathname.startsWith(to)
+                      ? 'bg-gray-700 text-white'
+                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                  }`}
+                >
+                  {label}
+                </Link>
+              </Fragment>
             ))}
           </div>,
           document.body

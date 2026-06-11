@@ -54,7 +54,7 @@ export default function AppearanceSettingsPage() {
       <div className="flex flex-col gap-6">
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 flex flex-col gap-3">
           <div>
-            <p className="text-sm font-medium text-gray-200">Tema</p>
+            <p className="text-sm font-medium text-gray-200">Estilo</p>
             <p className="text-xs text-gray-500 mt-0.5">Esquema de cores da interface.</p>
           </div>
           <div className="flex gap-3 flex-wrap">
