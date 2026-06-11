@@ -63,15 +63,22 @@ export function CameraCapture({ className, ...props }: SVGProps<SVGSVGElement>) 
   )
 }
 
+// Logo colors are driven by CSS variables (with dark defaults via the var
+// fallback) so the mark adapts to the theme — see [data-theme="light"] in
+// index.css, which inverts it to a light badge with dark camera lines. The red
+// status dot stays red in every theme.
 export function CameraLogo({ className, ...props }: SVGProps<SVGSVGElement>) {
+  const badge = { fill: 'var(--logo-bg, #18181b)' }
+  const surface = { fill: 'var(--logo-surface, #09090b)', stroke: 'var(--logo-stroke, #ffffff)' }
+  const dot = { fill: 'var(--logo-stroke, #ffffff)' }
   return (
     <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" className={className} {...props}>
-      <rect width="512" height="512" rx="112" fill="#18181b" />
-      <rect x="68" y="172" width="376" height="252" rx="36" fill="#09090b" stroke="#ffffff" strokeWidth="20" />
-      <path d="M188 172 L188 132 Q188 112 208 112 L304 112 Q324 112 324 132 L324 172" fill="#09090b" stroke="#ffffff" strokeWidth="20" strokeLinejoin="round" />
-      <circle cx="256" cy="298" r="90" fill="#09090b" stroke="#ffffff" strokeWidth="20" />
-      <circle cx="256" cy="298" r="56" fill="#09090b" stroke="#ffffff" strokeWidth="12" />
-      <circle cx="256" cy="298" r="26" fill="#ffffff" />
+      <rect width="512" height="512" rx="112" style={badge} />
+      <rect x="68" y="172" width="376" height="252" rx="36" style={surface} strokeWidth="20" />
+      <path d="M188 172 L188 132 Q188 112 208 112 L304 112 Q324 112 324 132 L324 172" style={surface} strokeWidth="20" strokeLinejoin="round" />
+      <circle cx="256" cy="298" r="90" style={surface} strokeWidth="20" />
+      <circle cx="256" cy="298" r="56" style={surface} strokeWidth="12" />
+      <circle cx="256" cy="298" r="26" style={dot} />
       <circle cx="394" cy="216" r="18" fill="#ef4444" />
     </svg>
   )
