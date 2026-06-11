@@ -23,14 +23,14 @@ func TestUserTheme_SetAndGet(t *testing.T) {
 	d := openTestDB(t)
 	u := mkUser(t, d, "u1")
 
-	if err := db.SetUserTheme(d, u, "moderno"); err != nil {
+	if err := db.SetUserTheme(d, u, "light"); err != nil {
 		t.Fatalf("SetUserTheme: %v", err)
 	}
 	th, err := db.GetUserTheme(d, u)
 	if err != nil {
 		t.Fatalf("GetUserTheme: %v", err)
 	}
-	if th != "moderno" {
-		t.Errorf("expected 'moderno', got %q", th)
+	if th != "light" {
+		t.Errorf("expected 'light', got %q", th)
 	}
 }

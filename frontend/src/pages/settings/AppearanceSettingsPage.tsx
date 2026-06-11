@@ -4,7 +4,7 @@ import { useTheme, type Theme } from '../../contexts/ThemeContext'
 
 const THEME_OPTIONS: { value: Theme; label: string }[] = [
   { value: 'dark', label: 'Dark' },
-  { value: 'moderno', label: 'Moderno' },
+  { value: 'light', label: 'Light' },
   { value: 'system', label: 'Sistema' },
 ]
 
