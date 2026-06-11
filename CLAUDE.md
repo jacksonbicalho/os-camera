@@ -6,22 +6,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Sistema de monitoramento residencial via RTSP. Cada câmera configurada tem três processos ffmpeg rodando em paralelo: um grava chunks MP4 em disco, outro gera segmentos HLS para visualização ao vivo e um terceiro detecta movimento por diff de frames. O frontend React é embutido no binário Go via `go:embed`.
 
-## Comandos principais
+## Fluxo de trabalho
 
-### Backend (Go)
+O desenvolvimento segue **XP (Extreme Programming)** com **TDD red → green → refactor**:
 
-```bash
-go test ./...                                         # todos os testes
-go test ./internal/server/... -run TestLogin          # teste específico
-make build                                            # binário local com versão git injetada
-make run                                              # sobe Docker dev com live reload (camera-dev)
-make all                                              # cross-compila para linux-amd64/arm64/arm e windows-amd64
-make linux-amd64                                      # binário específico em dist/
-make rpi                                              # alias para linux-arm64 (Raspberry Pi 3/4/5 64-bit)
-./camera init                                         # wizard interativo → gera camera.yaml no diretório atual
-./camera init --output /etc/camera/camera.yaml        # wizard → grava no caminho especificado
-./camera version                                      # imprime versão, commit e data do build
+- O **navigator** (usuário) define a história, revisa o código e aprova cada etapa.
+- O **driver** (Claude) implementa, sempre guiado pelos testes.
+
+> ⚠️ **`master` e `develop` são protegidos.** Push direto é bloqueado em ambos. Features entram via PR para `develop`; o PR `develop → master` acontece apenas no momento de release. Nunca commite ou force-push diretamente em nenhum dos dois.
+
+### Estratégia de branches
+
 ```
+master   ← PRs de release (develop → master)
+  ↑
+develop  ← PRs de feature/fix/chore
+  ↑
+feat/xyz · fix/abc · chore/def  ← branches de história
+```
+
+- Branches de história partem **sempre de `develop`**: `git checkout -b <tipo>/<desc> develop`
+- PRs de história têm **`develop` como base**: `gh pr create --base develop`
+- PRs de release têm **`master` como base**: `gh pr create --base master --head develop`
+- **Ciclo de vida da branch:** deletada imediatamente após o merge em `develop` — remoto automaticamente pelo GitHub, local com `git branch -d <branch>` no passo de merge em lote.
 
 ### CI e branch protection
 
@@ -58,6 +65,79 @@ gh api repos/{owner}/{repo}/branches/develop/protection \
 }
 EOF
 ```
+
+### Fluxo por história
+
+> ⚠️ **OBRIGATÓRIO:** Antes de escrever qualquer linha de código ou teste, o driver DEVE criar o arquivo de história E abrir a branch (use `/story`). Sem exceção — nem para bugs simples, nem para "pequenas correções".
+
+1. Criar `stories/YYYYMMDDHHmm_<descricao>.md` e abrir uma branch a partir de `develop`: `git checkout -b <tipo>/<descricao-curta> develop`. Se a história cobrir mais de um assunto independente, questionar o navigator antes de continuar — histórias devem ser pequenas e focadas.
+2. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.
+3. Implementar o mínimo para o teste passar (**green**).
+4. Refatorar se necessário, mantendo os testes verdes (**refactor**).
+5. Executar a suíte de testes (obrigatório antes de apresentar ao navigator):
+   - Backend: `go test ./...` + `go build ./...`
+   - Frontend: `yarn lint` + `yarn test --run` + `yarn build` (em `frontend/`)
+   - Nunca prosseguir se qualquer um desses falhar.
+6. Adicionar seção `## Revisão` na história e **aguardar aprovação explícita do navigator**.
+
+   > ⚠️ **Nenhum commit pode ser feito antes de o navigator marcar `[x] Aprovado`.** O driver apresenta o resultado, o navigator revisa o código e aprova — só então o commit acontece.
+
+7. Com a aprovação do navigator (`[x] Aprovado`), commitar com mensagem semântica na branch e fazer `git push origin <branch>`. **Aguardar autorização explícita do navigator antes de abrir o PR** — a aprovação libera o commit/push, mas não o `gh pr create`. Só abrir o PR quando o navigator pedir. O PR **sempre** tem `--base develop` (nunca `master`).
+8. Atualizar o arquivo de release correspondente em `releases/`: preencher a branch e o número do PR na tabela, marcar `[~]` (aguardando aprovação no GitHub). O merge não é feito individualmente — acontece em lote quando o navigator liberar a release (merge em `develop`, depois PR `develop → master`).
+
+### Histórias
+
+Histórias ficam em `stories/` (gitignored). O nome do arquivo usa timestamp no formato
+`YYYYMMDDHHmm_<descricao>.md` — igual às migrations de banco — garantindo ordenação
+cronológica natural ao listar o diretório.
+
+Ao iniciar uma nova história:
+- Criar o arquivo `stories/YYYYMMDDHHmm_<descricao>.md` com contexto, critérios de aceitação e notas técnicas.
+- Ao concluir a implementação, adicionar uma seção `## Revisão` no arquivo com checklist do que foi feito.
+- **Nenhum commit pode ser feito sem aprovação explícita do navigator. Só proceder com commit ou PR após o navigator marcar `[x] Aprovado` na seção Revisão.**
+
+### Commits semânticos
+
+Formato: `<tipo>(<escopo opcional>): <descrição curta em inglês>`
+
+| Tipo | Quando usar |
+|---|---|
+| `feat` | nova funcionalidade |
+| `fix` | correção de bug |
+| `refactor` | refatoração sem mudança de comportamento |
+| `test` | adição ou correção de testes |
+| `docs` | documentação |
+| `chore` | configuração, build, dependências |
+
+### Slash commands
+
+O fluxo acima é automatizado pelos slash commands em `.claude/commands/`:
+
+| Comando | O que faz |
+|---|---|
+| `/story <tipo>(<escopo>): <descrição>` | Cria story file + branch a partir de develop (passo 1 do fluxo). |
+| `/release-pr [vX.Y.Z]` | Valida release file e abre PR develop → master (após todas as histórias `[✓]`). |
+| `/release-tag` | Roda `./scripts/release.sh` em master após o PR de release ser mergeado. |
+
+Use os commands em vez de executar os passos manualmente — eles validam pré-condições e evitam erros (branch errada, working tree suja, status incompleto).
+
+### Hooks de pre-commit (`.claude/settings.json`)
+
+Hooks `PreToolUse` (matcher `Bash`, versionados no repo) impõem o fluxo automaticamente:
+
+| Gate | Bloqueia quando |
+|---|---|
+| Aprovação da story | `git commit` em branch de história cuja story não tem `[x] Aprovado`. |
+| Target do PR | `gh pr create --base master` a partir de branch que não seja `develop`/`release/*`. |
+| Testes backend | `git commit` quando `go build ./...` ou `go test -count=1 ./...` falham. |
+
+O gate de testes roda no host (Go instalado), **sem cache** (`-count=1`) — só execução limpa pega testes dependentes de `time.Now()` (o cache do Go não rastreia o relógio). Escopo é backend; o frontend segue coberto pelo CI. Hooks só recarregam no início da sessão do Claude Code: alterações em `settings.json` valem a partir da próxima sessão.
+
+### Merge pós-PR
+
+`scripts/merge-when-green.sh <PR#>` colapsa o ciclo pós-PR numa única invocação (economia de tokens): aguarda o CI em silêncio, mergeia em `develop`, sincroniza o branch local, deleta a branch da história e marca `[~]→[✓]` na linha do PR no release file mais recente. Imprime só o resumo. **Recusa** PRs com base `master` (releases são aprovadas à mão) e é idempotente em PR já mergeado. Invocar só quando o navigator já autorizou o merge.
+
+`scripts/release-tag.sh [--dry-run]` colapsa o **corte de release** (após o PR develop→master já mergeado): cria/envia a tag via `release.sh` (confirmação automática), aguarda o workflow Release publicar **em silêncio** (poll de `gh release view`), mergeia `master→develop` (passo pós-tag) e imprime uma linha (`RELEASED <versão> | assets: N | develop sincronizado`). `--dry-run` só mostra a versão que sairia. Substitui o ciclo manual com `gh run watch`.
 
 ### Release
 
@@ -102,9 +182,28 @@ O script lê os commits convencionais desde a última tag, determina o bump (`fe
 
 **Legenda de status:** `[ ]` planejada · `[~]` aguardando aprovação no GitHub · `[x]` aprovada · `[✓]` mergeada.
 
+## Comandos principais
+
+### Backend (Go)
+
+```bash
+go test ./...                                         # todos os testes
+go test ./internal/server/... -run TestLogin          # teste específico
+make build                                            # binário local com versão git injetada
+make run                                              # sobe Docker dev com live reload (camera-dev)
+make all                                              # cross-compila para linux-amd64/arm64/arm e windows-amd64
+make linux-amd64                                      # binário específico em dist/
+make rpi                                              # alias para linux-arm64 (Raspberry Pi 3/4/5 64-bit)
+./camera init                                         # wizard interativo → gera camera.yaml no diretório atual
+./camera init --output /etc/camera/camera.yaml        # wizard → grava no caminho especificado
+./camera version                                      # imprime versão, commit e data do build
+```
+
 ### Frontend (`frontend/src/`)
 
 SPA React/Vite/Tailwind. Páginas principais: `LoginPage` → `DashboardPage` → `CameraPage` / `StatsPage`. Seção de configurações em `/settings/*` com sidebar lateral (padrão GitHub Settings). Token JWT em `localStorage` (`auth.ts`). Em desenvolvimento, Vite faz proxy de `/api` e `/stream` para `localhost:8080`.
+
+**Todo componente/elemento da UI deve ter um `id` único e estável.** Botões, painéis, itens de navegação, abas, o ponteiro da timeline etc. recebem um `id` descritivo (ex: `sidebar-settings`, `events-panel`, `timeline-pointer`, `theme-mode-dark`). Facilita testes, automação e referência inequívoca em revisões — ao criar ou alterar um elemento, garanta o `id`.
 
 Rotas de settings por câmera: `/settings/cameras/:id` (detalhes) → `/settings/cameras/:id/motion` (detecção de movimento) → `/settings/cameras/:id/motion/zones` (zonas de exclusão — sub-página de motion).
 
@@ -194,9 +293,9 @@ Modelos pré-baixados na imagem: `yolov8n` e `yolo11n`. Com GPU RTX 3050 (4GB VR
 | Pacote | Responsabilidade |
 |---|---|
 | `internal/exec` | Interfaces `Commander` / `Process` e implementação real com `os/exec`. Injetadas nos pacotes abaixo para permitir testes sem ffmpeg. |
-| `internal/recorder` | Grava RTSP em chunks MP4. Armazena em `{storage}/{camera_id}/{YYYY/MM/DD}/{YYYYMMDDHHmmss}.mp4`. |
+| `internal/recorder` | Grava RTSP em chunks MP4. Armazena em `{storage}/{camera_id}/{YYYY/MM/DD}/{YYYYMMDDHHmmss}.mp4`. O ffmpeg congela o diretório do dia no padrão de saída ao iniciar (o `-strftime` só expande o nome do arquivo, não o diretório), então o `Run()` reinicia a sessão na virada da meia-noite UTC (`DurationUntilNextDay`) — sem isso, os chunks do novo dia continuariam caindo na pasta do dia em que o processo subiu. |
 | `internal/streaming` | Gera playlist HLS ao vivo em `{segments_path}/{camera_id}/index.m3u8`. Modo padrão: janela de 5 segmentos de 2s. Modo DVR (quando `camera.hls_dvr_seconds > 0`): mantém todos os segmentos da janela DVR, adiciona `EXT-X-PROGRAM-DATE-TIME` para seek por timestamp. `hls_dvr_seconds`, `hls_segment_seconds` e `hls_list_size` são configurados por câmera via UI. |
-| `internal/motion` | Detecta movimento via ffmpeg pipe raw (frames grayscale em 1/4 da resolução). Expõe dois canais: `Events()` para eventos acima do limiar e `RawScores()` para o score bruto de cada frame diff. A cada evento persiste no banco (`motion_events`) e salva um JPEG anotado (`_motion.jpg`) com bounding box e score. **`motion.ndjson` não é mais escrito** — todos os eventos vão direto para o banco; o arquivo é lido apenas como fallback legado. |
+| `internal/motion` | Detecta movimento via ffmpeg pipe raw. O pipe entrega frames **RGB full-res** (`format=rgb24`); cada frame é reduzido a cinza na resolução de diff (`downscaleRGBToGray`, default 1/4) em memória para o cálculo do diff/bbox, enquanto o frame full-res original é mantido para o snapshot. Expõe dois canais: `Events()` para eventos acima do limiar e `RawScores()` para o score bruto de cada frame diff. A cada evento persiste no banco (`motion_events`) e salva um JPEG anotado (`_motion.jpg`) com bounding box e score: o snapshot é o **próprio frame que disparou** (anotado in-place por `annotateRGBFrame`, full-res colorido), então o box sempre coincide com o sujeito — **não há mais grab RTSP assíncrono** (que capturava segundos depois e desalinhava o box). **`motion.ndjson` não é mais escrito** — todos os eventos vão direto para o banco; o arquivo é lido apenas como fallback legado. |
 | `internal/storage` | `Cleaner` com retenção diferenciada por categoria e suporte a drives S3. Quando o banco está disponível: `syncRecordings()` varre o filesystem e sincroniza MP4s para a tabela `recordings` (`INSERT OR IGNORE`), atualizando `has_motion` via join com `motion_events`; `cleanFromDB()` consulta `recordings` para decisões de exclusão — inclui `AND ended_at IS NOT NULL` para nunca processar o arquivo em gravação. Ação configurável por categoria (`delete` ou `send_to_drive`): `uploadAndPurge()` faz upload S3, apaga o MP4 e chama `purgeMotionAssets()`. `purgeMotionAssets()` busca `frame_path` no banco, apaga os JPEGs do disco e deleta as linhas de `motion_events`. `slugify()` converte o nome da câmera para prefixo do objeto S3, transliterando acentos (`ã→a`, `ç→c`, etc.) via mapa estático. Sem banco: consulta `motion.ndjson` diretamente. |
 | `internal/db` | Acesso ao SQLite (`modernc.org/sqlite`). Executa migrations em `internal/db/migrations/` na inicialização. Tabelas: `cameras`, `camera_recording_config`, `camera_motion_config`, `camera_motion_zones`, `users` (com `must_change_password`), `settings`, `recordings`, `motion_events`, `drives`, `retention_config`, `user_notifications` (notificações persistidas por usuário; FK `users` ON DELETE CASCADE). Coluna `users.theme` (preferência de tema da UI, default `dark`). |
 | `internal/ffprobe` | Executa e parseia saída JSON do ffprobe para detectar codec, áudio e dimensões do stream. |
@@ -225,103 +324,6 @@ Fluxo de primeiro acesso: o admin inicial é criado com `must_change_password = 
 ## Diretório `amostras/`
 
 O diretório `amostras/` (listado no `.gitignore`) é reservado para arquivos que o navigator coloca para análise contextual — screenshots, logs, dumps de banco, exemplos de vídeo ou qualquer artefato que ajude a diagnosticar um problema. Claude deve inspecionar o conteúdo desse diretório quando o navigator mencionar que colocou algo lá, ou quando precisar de evidência concreta para uma investigação.
-
-## Forma de trabalho
-
-O desenvolvimento segue **XP (Extreme Programming)** com **TDD red → green → refactor**:
-
-- O **navigator** (usuário) define a história, revisa o código e aprova cada etapa.
-- O **driver** (Claude) implementa, sempre guiado pelos testes.
-
-> ⚠️ **`master` e `develop` são protegidos.** Push direto é bloqueado em ambos. Features entram via PR para `develop`; o PR `develop → master` acontece apenas no momento de release. Nunca commite ou force-push diretamente em nenhum dos dois.
-
-### Estratégia de branches
-
-```
-master   ← PRs de release (develop → master)
-  ↑
-develop  ← PRs de feature/fix/chore
-  ↑
-feat/xyz · fix/abc · chore/def  ← branches de história
-```
-
-- Branches de história partem **sempre de `develop`**: `git checkout -b <tipo>/<desc> develop`
-- PRs de história têm **`develop` como base**: `gh pr create --base develop`
-- PRs de release têm **`master` como base**: `gh pr create --base master --head develop`
-- **Ciclo de vida da branch:** deletada imediatamente após o merge em `develop` — remoto automaticamente pelo GitHub, local com `git branch -d <branch>` no passo de merge em lote.
-
-### Histórias
-
-Histórias ficam em `stories/` (gitignored). O nome do arquivo usa timestamp no formato
-`YYYYMMDDHHmm_<descricao>.md` — igual às migrations de banco — garantindo ordenação
-cronológica natural ao listar o diretório.
-
-Ao iniciar uma nova história:
-- Criar o arquivo `stories/YYYYMMDDHHmm_<descricao>.md` com contexto, critérios de aceitação e notas técnicas.
-- Ao concluir a implementação, adicionar uma seção `## Revisão` no arquivo com checklist do que foi feito.
-- **Nenhum commit pode ser feito sem aprovação explícita do navigator. Só proceder com commit ou PR após o navigator marcar `[x] Aprovado` na seção Revisão.**
-
-### Slash commands
-
-O fluxo abaixo é automatizado pelos slash commands em `.claude/commands/`:
-
-| Comando | O que faz |
-|---|---|
-| `/story <tipo>(<escopo>): <descrição>` | Cria story file + branch a partir de develop (passo 1 do fluxo). |
-| `/release-pr [vX.Y.Z]` | Valida release file e abre PR develop → master (após todas as histórias `[✓]`). |
-| `/release-tag` | Roda `./scripts/release.sh` em master após o PR de release ser mergeado. |
-
-Use os commands em vez de executar os passos manualmente — eles validam pré-condições e evitam erros (branch errada, working tree suja, status incompleto).
-
-### Hooks de pre-commit (`.claude/settings.json`)
-
-Hooks `PreToolUse` (matcher `Bash`, versionados no repo) impõem o fluxo automaticamente:
-
-| Gate | Bloqueia quando |
-|---|---|
-| Aprovação da story | `git commit` em branch de história cuja story não tem `[x] Aprovado`. |
-| Target do PR | `gh pr create --base master` a partir de branch que não seja `develop`/`release/*`. |
-| Testes backend | `git commit` quando `go build ./...` ou `go test -count=1 ./...` falham. |
-
-O gate de testes roda no host (Go instalado), **sem cache** (`-count=1`) — só execução limpa pega testes dependentes de `time.Now()` (o cache do Go não rastreia o relógio). Escopo é backend; o frontend segue coberto pelo CI. Hooks só recarregam no início da sessão do Claude Code: alterações em `settings.json` valem a partir da próxima sessão.
-
-### Merge pós-PR
-
-`scripts/merge-when-green.sh <PR#>` colapsa o ciclo pós-PR numa única invocação (economia de tokens): aguarda o CI em silêncio, mergeia em `develop`, sincroniza o branch local, deleta a branch da história e marca `[~]→[✓]` na linha do PR no release file mais recente. Imprime só o resumo. **Recusa** PRs com base `master` (releases são aprovadas à mão) e é idempotente em PR já mergeado. Invocar só quando o navigator já autorizou o merge.
-
-`scripts/release-tag.sh [--dry-run]` colapsa o **corte de release** (após o PR develop→master já mergeado): cria/envia a tag via `release.sh` (confirmação automática), aguarda o workflow Release publicar **em silêncio** (poll de `gh release view`), mergeia `master→develop` (passo pós-tag) e imprime uma linha (`RELEASED <versão> | assets: N | develop sincronizado`). `--dry-run` só mostra a versão que sairia. Substitui o ciclo manual com `gh run watch`.
-
-### Fluxo por história
-
-> ⚠️ **OBRIGATÓRIO:** Antes de escrever qualquer linha de código ou teste, o driver DEVE criar o arquivo de história E abrir a branch (use `/story`). Sem exceção — nem para bugs simples, nem para "pequenas correções".
-
-1. Criar `stories/YYYYMMDDHHmm_<descricao>.md` e abrir uma branch a partir de `develop`: `git checkout -b <tipo>/<descricao-curta> develop`. Se a história cobrir mais de um assunto independente, questionar o navigator antes de continuar — histórias devem ser pequenas e focadas.
-2. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.
-3. Implementar o mínimo para o teste passar (**green**).
-4. Refatorar se necessário, mantendo os testes verdes (**refactor**).
-5. Executar a suíte de testes (obrigatório antes de apresentar ao navigator):
-   - Backend: `go test ./...` + `go build ./...`
-   - Frontend: `yarn lint` + `yarn test --run` + `yarn build` (em `frontend/`)
-   - Nunca prosseguir se qualquer um desses falhar.
-6. Adicionar seção `## Revisão` na história e **aguardar aprovação explícita do navigator**.
-
-   > ⚠️ **Nenhum commit pode ser feito antes de o navigator marcar `[x] Aprovado`.** O driver apresenta o resultado, o navigator revisa o código e aprova — só então o commit acontece.
-
-7. Com a aprovação do navigator (`[x] Aprovado`), commitar com mensagem semântica na branch e fazer `git push origin <branch>`. **Aguardar autorização explícita do navigator antes de abrir o PR** — a aprovação libera o commit/push, mas não o `gh pr create`. Só abrir o PR quando o navigator pedir. O PR **sempre** tem `--base develop` (nunca `master`).
-8. Atualizar o arquivo de release correspondente em `releases/`: preencher a branch e o número do PR na tabela, marcar `[~]` (aguardando aprovação no GitHub). O merge não é feito individualmente — acontece em lote quando o navigator liberar a release (merge em `develop`, depois PR `develop → master`).
-
-### Commits semânticos
-
-Formato: `<tipo>(<escopo opcional>): <descrição curta em inglês>`
-
-| Tipo | Quando usar |
-|---|---|
-| `feat` | nova funcionalidade |
-| `fix` | correção de bug |
-| `refactor` | refatoração sem mudança de comportamento |
-| `test` | adição ou correção de testes |
-| `docs` | documentação |
-| `chore` | configuração, build, dependências |
 
 ## Manutenção contínua
 

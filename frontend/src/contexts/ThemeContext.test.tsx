@@ -35,7 +35,7 @@ function Probe() {
   return (
     <>
       <span data-testid="theme">{theme}</span>
-      <button onClick={() => setTheme('moderno')}>set-moderno</button>
+      <button onClick={() => setTheme('light')}>set-light</button>
       <button onClick={() => setTheme('dark')}>set-dark</button>
     </>
   )
@@ -43,12 +43,12 @@ function Probe() {
 
 describe('ThemeContext', () => {
   it('loads the saved theme and applies data-theme on <html>', async () => {
-    mockFetch.mockResolvedValue({ status: 200, json: async () => ({ theme: 'moderno' }) })
+    mockFetch.mockResolvedValue({ status: 200, json: async () => ({ theme: 'light' }) })
 
     render(<ThemeProvider><Probe /></ThemeProvider>)
 
-    await waitFor(() => expect(screen.getByTestId('theme').textContent).toBe('moderno'))
-    expect(document.documentElement.getAttribute('data-theme')).toBe('moderno')
+    await waitFor(() => expect(screen.getByTestId('theme').textContent).toBe('light'))
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
   })
 
   it('"system" resolves to dark when the OS prefers dark', async () => {
@@ -61,14 +61,14 @@ describe('ThemeContext', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
   })
 
-  it('"system" resolves to moderno when the OS prefers light', async () => {
+  it('"system" resolves to light when the OS prefers light', async () => {
     mockMatchMedia(false)
     mockFetch.mockResolvedValue({ status: 200, json: async () => ({ theme: 'system' }) })
 
     render(<ThemeProvider><Probe /></ThemeProvider>)
 
     await waitFor(() => expect(screen.getByTestId('theme').textContent).toBe('system'))
-    expect(document.documentElement.getAttribute('data-theme')).toBe('moderno')
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
   })
 
   it('setTheme applies and persists via PUT', async () => {
@@ -79,15 +79,15 @@ describe('ThemeContext', () => {
 
     mockFetch.mockClear()
     mockFetch.mockResolvedValue({ status: 200, json: async () => ({}) })
-    act(() => { fireEvent.click(screen.getByText('set-moderno')) })
+    act(() => { fireEvent.click(screen.getByText('set-light')) })
 
-    expect(document.documentElement.getAttribute('data-theme')).toBe('moderno')
-    expect(screen.getByTestId('theme').textContent).toBe('moderno')
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+    expect(screen.getByTestId('theme').textContent).toBe('light')
 
     const put = mockFetch.mock.calls.find(
       (c: unknown[]) => c[0] === '/api/me/preferences' && (c[1] as RequestInit)?.method === 'PUT'
     )
     expect(put).toBeTruthy()
-    expect(JSON.parse((put![1] as RequestInit).body as string)).toEqual({ theme: 'moderno' })
+    expect(JSON.parse((put![1] as RequestInit).body as string)).toEqual({ theme: 'light' })
   })
 })

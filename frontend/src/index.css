@@ -1,41 +1,61 @@
 @import "tailwindcss";
 
-/* Tema "moderno" (dark sleek indigo/violeta): redefine as variáveis de cor do
-   Tailwind v4 sob o seletor de tema, então as classes existentes (bg-gray-900,
-   text-blue-500, …) adotam a nova paleta sem reescrever componentes. */
-/* Tema "moderno" = tema CLARO. A app hardcoda cores dark; aqui invertemos a rampa
-   de cinzas (fundos escuros→claros, textos gray-* claros→escuros) e mapeamos o
-   branco dos títulos para um tom escuro — tudo via variáveis Tailwind v4, sem
-   reescrever componentes. */
-[data-theme="moderno"] {
-  --color-gray-950: #f3f4f6;  /* fundo da app */
-  --color-gray-900: #ffffff;  /* cards/superfícies */
-  --color-gray-800: #e5e7eb;  /* superfícies 2ª / hover / bordas */
-  --color-gray-700: #d1d5db;  /* bordas */
-  --color-gray-600: #9ca3af;
-  --color-gray-500: #6b7280;
-  --color-gray-400: #4b5563;  /* texto secundário → escuro */
-  --color-gray-300: #374151;  /* texto → escuro */
-  --color-gray-200: #1f2937;  /* texto → escuro */
-  --color-gray-100: #111827;
-  --color-gray-50:  #030712;
-  /* títulos/elementos com text-white passam a escuro no fundo claro */
-  --color-white: #111827;
+/* Tema "light" = tema CLARO moderno (paleta slate fria). A app hardcoda cores
+   dark; aqui invertemos a rampa de cinzas (fundos escuros→claros, textos gray-*
+   claros→escuros) e mapeamos o branco dos títulos para slate-900 — tudo via
+   variáveis Tailwind v4, sem reescrever componentes. */
+[data-theme="light"] {
+  --color-gray-950: #f8fafc;  /* slate-50  — fundo da app */
+  --color-gray-900: #ffffff;  /* white     — cards/superfícies */
+  --color-gray-800: #e2e8f0;  /* slate-200 — superfícies 2ª / hover / bordas de card */
+  --color-gray-700: #cbd5e1;  /* slate-300 — bordas */
+  --color-gray-600: #94a3b8;  /* slate-400 */
+  --color-gray-500: #64748b;  /* slate-500 — texto mudo */
+  --color-gray-400: #475569;  /* slate-600 — texto secundário → escuro */
+  --color-gray-300: #334155;  /* slate-700 — texto → escuro */
+  --color-gray-200: #1e293b;  /* slate-800 — texto → escuro */
+  --color-gray-100: #0f172a;  /* slate-900 */
+  --color-gray-50:  #020617;  /* slate-950 */
+  /* títulos/elementos com text-white passam a slate-900 no fundo claro */
+  --color-white: #0f172a;
+
+  /* Badges/pills tintados (ex.: "motion", status): no dark usam bg-{cor}-900
+     escuro + texto-{cor}-300/400 claro. No claro isso lava — então invertemos só
+     os extremos (bg-900 → tint claro, bordas-800 → tint, texto-300/400 → tom
+     escuro legível). Os mid-tons (500/600/700) NÃO mudam: accents sólidos
+     (botões bg-blue-600 etc.) seguem vívidos. */
+  --color-green-900: #dcfce7;  --color-green-800: #bbf7d0;  --color-green-400: #15803d;  --color-green-300: #166534;
+  --color-blue-900:  #dbeafe;  --color-blue-800:  #bfdbfe;  --color-blue-400:  #1d4ed8;  --color-blue-300:  #1e40af;
+  --color-violet-900: #ede9fe; --color-violet-800: #ddd6fe; --color-violet-400: #6d28d9; --color-violet-300: #5b21b6;
+  --color-red-900:   #fee2e2;  --color-red-800:   #fecaca;  --color-red-400:   #b91c1c;  --color-red-300:   #991b1b;
+  --color-amber-900: #fef3c7;  --color-amber-800: #fde68a;  --color-amber-400: #b45309;  --color-amber-300: #92400e;
+  --color-indigo-900: #e0e7ff; --color-indigo-800: #c7d2fe; --color-indigo-400: #4338ca; --color-indigo-300: #3730a3;
+
+  /* Logo (CameraLogo): inverte o badge quase-preto do dark para um badge claro
+     com a câmera em traço escuro, harmonizando com o fundo slate-50. */
+  --logo-bg: #e2e8f0;       /* slate-200 — badge */
+  --logo-surface: #ffffff;  /* corpo da câmera */
+  --logo-stroke: #0f172a;   /* slate-900 — traços/lente */
 }
 /* Exceção: texto branco sobre fundo de destaque (botões/badges) ou sobre vídeo
    (overlay bg-white/10) continua branco. */
-[data-theme="moderno"] [class*="bg-blue-"].text-white,
-[data-theme="moderno"] [class*="bg-green-"].text-white,
-[data-theme="moderno"] [class*="bg-red-"].text-white,
-[data-theme="moderno"] [class*="bg-indigo-"].text-white,
-[data-theme="moderno"] [class*="bg-violet-"].text-white,
-[data-theme="moderno"] [class*="bg-amber-"].text-white,
-[data-theme="moderno"] [class*="bg-white"].text-white {
+[data-theme="light"] [class*="bg-blue-"].text-white,
+[data-theme="light"] [class*="bg-green-"].text-white,
+[data-theme="light"] [class*="bg-red-"].text-white,
+[data-theme="light"] [class*="bg-indigo-"].text-white,
+[data-theme="light"] [class*="bg-violet-"].text-white,
+[data-theme="light"] [class*="bg-amber-"].text-white,
+[data-theme="light"] [class*="bg-white"].text-white {
   color: #fff;
 }
-[data-theme="moderno"] body {
-  background-color: #f3f4f6;
-  color: #111827;
+[data-theme="light"] body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+/* Elevação sutil em superfícies de card (bg-gray-900 → branco) arredondadas,
+   para separá-las do fundo slate-50 — padrão de UI clara moderna. */
+[data-theme="light"] [class*="bg-gray-900"][class*="rounded"] {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.10);
 }
 
 @keyframes thumb-flash {

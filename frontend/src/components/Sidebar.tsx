@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate, useLocation, Link, NavLink } from "react-router-dom"
 import { clearToken, getRole, authHeaders, onUnauthorized } from "../auth"
@@ -10,7 +10,9 @@ import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import type { Notification } from "../contexts/NotificationContext"
 import ConfirmDialog from "./ConfirmDialog"
-import { Bell, X, Check, Eye, MoreVertical, Trash2, BarChart2, Settings, CircleUser, CameraLogo, Cctv } from "./Icons"
+import EventsPanelHeader from "./EventsPanelHeader"
+import ThemeModeNav from "./ThemeModeNav"
+import { Bell, X, Check, BarChart2, Settings, CircleUser, CameraLogo, Cctv } from "./Icons"
 
 interface SidebarProps {
   username?: string
@@ -238,7 +240,6 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
   const bellPanelRef = useRef<HTMLDivElement>(null)
   const { open: userOpen, setOpen: setUserOpen, ref: userRef } = useDropdown()
   const { open: bellOpen, setOpen: setBellOpen, ref: bellRef } = useDropdown(bellPanelRef)
-  const { open: kebabOpen, setOpen: setKebabOpen, ref: kebabRef } = useDropdown()
   const settingsPanelRef = useRef<HTMLDivElement>(null)
   const { open: settingsOpen, setOpen: setSettingsOpen, ref: settingsRef } = useDropdown(settingsPanelRef)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
@@ -268,7 +269,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
   const {
     notifications, unreadCount,
-    markRead, markSelectedRead, markAllUnread,
+    markRead, markSelectedRead,
     remove, removeAll, removeSelected,
     browserSupported, browserPermission, browserEnabled,
     enableBrowserNotifications, disableBrowserNotifications,
@@ -289,10 +290,6 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
     }
     setBellOpen(v => !v)
   }
-
-  useEffect(() => {
-    if (!bellOpen) setKebabOpen(false)
-  }, [bellOpen, setKebabOpen])
 
   const allSelected = notifications.length > 0 && notifications.every((n) => selectedIds.has(n.id))
   const someSelected = selectedIds.size > 0
@@ -318,10 +315,8 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
   const selectedNotifications = notifications.filter((n) => selectedIds.has(n.id))
   const canMarkRead = selectedNotifications.some((n) => !n.read)
-  const canMarkUnread = selectedNotifications.some((n) => n.read)
 
   function ask(state: ConfirmState) {
-    setKebabOpen(false)
     setConfirm(state)
   }
 
@@ -369,10 +364,10 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             ref={bellBtnRef}
             onClick={openBell}
             className={`${btnBase} ${unreadCount > 0 ? "text-white animate-pulse" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
-            title="Notificações"
+            title="Eventos"
           >
             {showIcon && <Bell className="w-5 h-5" />}
-            {showLabel && <span className="text-sm truncate">Notificações</span>}
+            {showLabel && <span className="text-sm truncate">Eventos</span>}
             {unreadCount > 0 && (
               <span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-red-600 text-white rounded-full">
                 {unreadCount > 99 ? "99+" : unreadCount}
@@ -382,86 +377,32 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
           {bellOpen && createPortal(
             <div
+              id="events-panel"
               ref={bellPanelRef}
               style={{ position: 'fixed', top: bellPos.top, left: bellPos.left, zIndex: 9999 }}
               className="w-72 bg-gray-800 border border-gray-700 rounded shadow-lg flex flex-col max-h-[80vh]">
-              <div className="px-3 pt-2.5 pb-0">
-                <span className="text-xs font-semibold text-gray-300">Notificações</span>
-              </div>
-
-              <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-700">
-                <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected }}
-                    onChange={toggleAll}
-                    className="w-3 h-3 accent-blue-500 cursor-pointer"
-                  />
-                  <span className="text-xs text-gray-400">Selecionar todos</span>
-                </label>
-
-                <div className="relative" ref={kebabRef}>
-                  <button
-                    onClick={() => setKebabOpen((v) => !v)}
-                    disabled={!someSelected}
-                    className="flex items-center gap-0.5 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    title="Ações"
-                  >
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
-
-                  {kebabOpen && (
-                    <div className="absolute right-0 top-full mt-1 bg-gray-900 border border-gray-700 rounded shadow-lg z-20 whitespace-nowrap min-w-[180px]">
-                      {canMarkRead && (
-                        <button
-                          onClick={() => ask({
-                            title: "Marcar como lidas",
-                            message: `Marcar ${targetLabel()} como lidas?`,
-                            confirmLabel: "Marcar",
-                            action: () => { markSelectedRead(targetIds()); setSelectedIds(new Set()) },
-                          })}
-                          className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700"
-                        >
-                          <Check className="w-3.5 h-3.5 text-blue-400" />
-                          Marcar como lidas
-                        </button>
-                      )}
-                      {canMarkUnread && (
-                        <button
-                          onClick={() => ask({
-                            title: "Marcar como não lidas",
-                            message: `Marcar ${targetLabel()} como não lidas?`,
-                            confirmLabel: "Marcar",
-                            action: () => { markAllUnread(targetIds()); setSelectedIds(new Set()) },
-                          })}
-                          className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-gray-400" />
-                          Marcar como não lidas
-                        </button>
-                      )}
-                      {(canMarkRead || canMarkUnread) && <div className="border-t border-gray-700 my-1" />}
-                      <button
-                        onClick={() => ask({
-                          title: "Excluir notificações",
-                          message: `Excluir ${targetLabel()}? Esta ação não pode ser desfeita.`,
-                          confirmLabel: "Excluir",
-                          danger: true,
-                          action: () => {
-                            if (someSelected) { removeSelected(targetIds()) } else { removeAll() }
-                            setSelectedIds(new Set())
-                          },
-                        })}
-                        className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-gray-700"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Excluir
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <EventsPanelHeader
+                allSelected={allSelected}
+                someSelected={someSelected}
+                canMarkRead={canMarkRead}
+                onToggleAll={toggleAll}
+                onMarkRead={() => ask({
+                  title: "Marcar como lidas",
+                  message: `Marcar ${targetLabel()} como lidas?`,
+                  confirmLabel: "Marcar",
+                  action: () => { markSelectedRead(targetIds()); setSelectedIds(new Set()) },
+                })}
+                onDelete={() => ask({
+                  title: "Excluir notificações",
+                  message: `Excluir ${targetLabel()}? Esta ação não pode ser desfeita.`,
+                  confirmLabel: "Excluir",
+                  danger: true,
+                  action: () => {
+                    if (someSelected) { removeSelected(targetIds()) } else { removeAll() }
+                    setSelectedIds(new Set())
+                  },
+                })}
+              />
 
               <div className="overflow-y-auto flex-1">
                 {notifications.length === 0 ? (
@@ -611,18 +552,20 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
           >
             <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-700 font-medium">Configurações</div>
             {settingsLinks.map(({ to, label }) => (
-              <Link
-                key={to}
-                to={to}
-                onClick={() => setSettingsOpen(false)}
-                className={`block px-3 py-2 text-sm transition-colors ${
-                  location.pathname.startsWith(to)
-                    ? 'bg-gray-700 text-white'
-                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                }`}
-              >
-                {label}
-              </Link>
+              <Fragment key={to}>
+                {to === '/settings/about' && <ThemeModeNav />}
+                <Link
+                  to={to}
+                  onClick={() => setSettingsOpen(false)}
+                  className={`block px-3 py-2 text-sm transition-colors ${
+                    location.pathname.startsWith(to)
+                      ? 'bg-gray-700 text-white'
+                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                  }`}
+                >
+                  {label}
+                </Link>
+              </Fragment>
             ))}
           </div>,
           document.body

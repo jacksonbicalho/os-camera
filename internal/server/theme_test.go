@@ -60,11 +60,11 @@ func TestPreferences_DefaultThemeIsDark(t *testing.T) {
 
 func TestPreferences_SetValidTheme(t *testing.T) {
 	srv, token := themeServer(t)
-	if code := putTheme(t, srv, token, "moderno"); code != http.StatusNoContent && code != http.StatusOK {
-		t.Fatalf("PUT moderno: expected 200/204, got %d", code)
+	if code := putTheme(t, srv, token, "light"); code != http.StatusNoContent && code != http.StatusOK {
+		t.Fatalf("PUT light: expected 200/204, got %d", code)
 	}
-	if th := getTheme(t, srv, token); th != "moderno" {
-		t.Errorf("expected 'moderno' after PUT, got %q", th)
+	if th := getTheme(t, srv, token); th != "light" {
+		t.Errorf("expected 'light' after PUT, got %q", th)
 	}
 }
 

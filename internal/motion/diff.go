@@ -82,7 +82,7 @@ func computeBBoxInZone(prev, cur []byte, w, h int, dz zones.Zone) (BBox, bool) {
 }
 
 type bboxRegion struct {
-	totalDiff, count    int
+	totalDiff, count       int
 	minX, maxX, minY, maxY int
 }
 
@@ -310,6 +310,44 @@ func downsampleAvg(buf []byte, w, h int, scale float64) ([]byte, int, int) {
 		}
 	}
 	return out, newW, newH
+}
+
+// downscaleRGBToGray converts an RGB24 frame (srcW×srcH, 3 bytes/pixel) to a
+// grayscale buffer at dstW×dstH using block-average downscale. When the source
+// and destination dimensions match it only collapses RGB→gray. The luma weights
+// match image/color.GrayModel (BT.601), so a frame whose channels are equal maps
+// to that same value. This feeds the motion diff while the original RGB frame is
+// kept full-resolution for the snapshot.
+func downscaleRGBToGray(rgb []byte, srcW, srcH, dstW, dstH int) []byte {
+	out := make([]byte, dstW*dstH)
+	for y := 0; y < dstH; y++ {
+		for x := 0; x < dstW; x++ {
+			x0 := x * srcW / dstW
+			x1 := (x + 1) * srcW / dstW
+			y0 := y * srcH / dstH
+			y1 := (y + 1) * srcH / dstH
+			if x1 <= x0 {
+				x1 = x0 + 1
+			}
+			if y1 <= y0 {
+				y1 = y0 + 1
+			}
+			var sum, count uint32
+			for sy := y0; sy < y1; sy++ {
+				for sx := x0; sx < x1; sx++ {
+					i := (sy*srcW + sx) * 3
+					r := uint32(rgb[i])
+					g := uint32(rgb[i+1])
+					b := uint32(rgb[i+2])
+					y8 := (19595*r + 38470*g + 7471*b + 1<<15) >> 16
+					sum += y8
+					count++
+				}
+			}
+			out[y*dstW+x] = byte(sum / count)
+		}
+	}
+	return out
 }
 
 // diffFramesForZoneScaled calcula o diff da zona com downscale opcional.

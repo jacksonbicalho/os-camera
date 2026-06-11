@@ -3,10 +3,9 @@ package motion
 import (
 	"context"
 	"fmt"
+	"image/color"
 	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,18 +31,15 @@ type frameCommander interface {
 	Start(url string, width, height, fps int) (frameProcess, error)
 }
 
-type snapshotGrabber interface {
-	Grab(ctx context.Context, rtspURL, destPath string) error
-}
-
 type detector struct {
 	cameraID   string
 	url        string
-	width      int
+	width      int // diff resolution (downscaled grayscale used for diff/bbox)
 	height     int
+	fullW      int // full-res pipe + snapshot resolution (0 → same as width/height)
+	fullH      int
 	cfg        config.MotionConfig
 	commander  frameCommander
-	grabber    snapshotGrabber
 	st         *store
 	log        *slog.Logger
 	notify     func(Event)
@@ -57,7 +53,7 @@ type detector struct {
 	cachedZones []zones.Zone
 	zonesLoaded bool
 
-	bg         []byte // background model for bbox localization
+	bg []byte // background model (diff resolution) for bbox localization
 
 	inspMu     sync.Mutex
 	inspectors map[string]inspectorEntry
@@ -79,6 +75,15 @@ func newDetector(cameraID, url string, width, height int, cfg config.MotionConfi
 		now:        func() time.Time { return time.Now().UTC() },
 		inspectors: make(map[string]inspectorEntry),
 	}
+}
+
+// fullDims returns the full-resolution pipe/snapshot dimensions, falling back to
+// the diff resolution when no separate full resolution was configured (tests).
+func (d *detector) fullDims() (int, int) {
+	if d.fullW > 0 && d.fullH > 0 {
+		return d.fullW, d.fullH
+	}
+	return d.width, d.height
 }
 
 // zones returns the cached motion zones, loading them from the source on first
@@ -131,12 +136,15 @@ func (d *detector) unregisterInspector(id string) {
 	d.inspMu.Unlock()
 }
 
-// processFrames starts the frame commander, reads frames until EOF or ctx
-// cancellation, and records a motion event whenever the diff between consecutive
-// frames exceeds the configured threshold.
+// processFrames starts the frame commander, reads full-resolution RGB frames
+// until EOF or ctx cancellation, downsamples each to grayscale for the diff, and
+// records a motion event whenever the diff between consecutive frames exceeds the
+// configured threshold. The snapshot for every event is the very frame that
+// triggered it (annotated in place), so the bbox always matches the subject.
 func (d *detector) processFrames(ctx context.Context) {
-	d.log.Debug("motion: starting frame capture", "camera", d.cameraID, "width", d.width, "height", d.height, "fps", d.cfg.FPS)
-	proc, err := d.commander.Start(d.url, d.width, d.height, d.cfg.FPS)
+	fw, fh := d.fullDims()
+	d.log.Debug("motion: starting frame capture", "camera", d.cameraID, "fullW", fw, "fullH", fh, "diffW", d.width, "diffH", d.height, "fps", d.cfg.FPS)
+	proc, err := d.commander.Start(d.url, fw, fh, d.cfg.FPS)
 	if err != nil {
 		d.log.Error("motion: failed to start frame capture", "camera", d.cameraID, "error", err)
 		return
@@ -150,17 +158,15 @@ func (d *detector) processFrames(ctx context.Context) {
 		proc.Wait()
 	}()
 
-	frameSize := d.width * d.height
-	buf := make([]byte, frameSize)
-	var prev []byte
+	rgbBuf := make([]byte, fw*fh*3)
+	var prev []byte // grayscale at diff resolution
 	var frameCount int
 
 	for {
-		if _, err := io.ReadFull(proc, buf); err != nil {
+		if _, err := io.ReadFull(proc, rgbBuf); err != nil {
 			return
 		}
-		cur := make([]byte, frameSize)
-		copy(cur, buf)
+		cur := downscaleRGBToGray(rgbBuf, fw, fh, d.width, d.height)
 
 		if prev != nil {
 			zs := d.zones()
@@ -177,30 +183,13 @@ func (d *detector) processFrames(ctx context.Context) {
 				d.notifyRaw(Event{Time: ts, Score: score})
 			}
 			if score >= d.cfg.Threshold && d.cooldownElapsed(ts) {
-				// Use background subtraction for bbox: localizes WHERE the object IS
-				// in cur, not the trail of where it moved from in prev.
+				// Background subtraction localizes WHERE the object IS in cur.
 				bbox, bboxFound := computeBBox(d.bg, cur, d.width, d.height, zs)
-				d.lastEvent = ts // update cooldown immediately before goroutine
-				if d.grabber != nil {
-					lowRes := annotateFrame(cur, d.width, d.height, bbox, score, ColorGlobal, bboxFound)
-					bgSnap := make([]byte, len(d.bg))
-					copy(bgSnap, d.bg)
-					go d.recordWithHighRes(ctx, ts, score, bbox, lowRes, "", "", bgSnap, zs)
-				} else {
-					jpegData := annotateFrame(cur, d.width, d.height, bbox, score, ColorGlobal, bboxFound)
-					frameName, _, saveErr := d.st.saveJPEG(d.cameraID, ts, jpegData)
-					if saveErr != nil {
-						d.log.Warn("motion: failed to save snapshot", "camera", d.cameraID, "error", saveErr)
-					}
-					if err := d.st.record(d.cameraID, ts, score, frameName, "", "", bbox); err != nil {
-						d.log.Error("motion: failed to record event", "camera", d.cameraID, "error", err)
-					} else if d.notify != nil {
-						d.notify(Event{Time: ts, Score: score})
-					}
-				}
+				d.lastEvent = ts
+				d.saveSnapshot(ts, score, bbox, bboxFound, rgbBuf, fw, fh, ColorGlobal, "", "")
 			}
 
-			d.evaluateDetectZones(d.bg, prev, cur, zs, ts, frameCount)
+			d.evaluateDetectZones(d.bg, prev, cur, zs, ts, frameCount, rgbBuf, fw, fh)
 			d.notifyInspectors(prev, cur)
 
 			// Advance background toward current frame only when idle (no motion),
@@ -214,7 +203,7 @@ func (d *detector) processFrames(ctx context.Context) {
 	}
 }
 
-func (d *detector) evaluateDetectZones(bg, prev, cur []byte, zs []zones.Zone, ts time.Time, frameCount int) {
+func (d *detector) evaluateDetectZones(bg, prev, cur []byte, zs []zones.Zone, ts time.Time, frameCount int, rgb []byte, fw, fh int) {
 	var detect []zones.Zone
 	for _, z := range zs {
 		if !z.IsExclude() {
@@ -243,100 +232,30 @@ func (d *detector) evaluateDetectZones(bg, prev, cur []byte, zs []zones.Zone, ts
 		cooldownOk := cd <= 0 || ts.Sub(d.zoneLastEv[i]) >= time.Duration(cd)*time.Second
 		if zScore >= thr && cooldownOk {
 			bbox, bboxFound := computeBBoxInZone(bg, cur, d.width, d.height, dz)
-			zoneColor := ColorDetect
+			annColor := ColorDetect
 			if dz.Color != "" {
-				zoneColor = hexToNRGBA(dz.Color)
+				annColor = hexToNRGBA(dz.Color)
 			}
-			d.zoneLastEv[i] = ts // update cooldown immediately before goroutine
-			if d.grabber != nil {
-				lowRes := annotateFrame(cur, d.width, d.height, bbox, zScore, zoneColor, bboxFound)
-				bgSnap := make([]byte, len(bg))
-				copy(bgSnap, bg)
-				go d.recordWithHighRes(context.Background(), ts, zScore, bbox, lowRes, dz.Label, dz.Color, bgSnap, zs)
-			} else {
-				jpegData := annotateFrame(cur, d.width, d.height, bbox, zScore, zoneColor, bboxFound)
-				frameName, _, saveErr := d.st.saveJPEG(d.cameraID, ts, jpegData)
-				if saveErr != nil {
-					d.log.Warn("motion: failed to save zone snapshot", "camera", d.cameraID, "zone", dz.Label, "error", saveErr)
-				}
-				if err := d.st.record(d.cameraID, ts, zScore, frameName, dz.Label, dz.Color, bbox); err != nil {
-					d.log.Error("motion: failed to record zone event", "camera", d.cameraID, "zone", dz.Label, "error", err)
-				} else if d.notify != nil {
-					d.notify(Event{Time: ts, Score: zScore, Label: dz.Label, Color: dz.Color})
-				}
-			}
+			d.zoneLastEv[i] = ts
+			d.saveSnapshot(ts, zScore, bbox, bboxFound, rgb, fw, fh, annColor, dz.Label, dz.Color)
 		}
 	}
 }
 
-// recordWithHighRes grabs a full-resolution JPEG from the RTSP stream, saves it
-// (falling back to the provided low-res data on failure), then records the event
-// and fires the notify callback. Running in a goroutine so the detector loop is
-// not blocked.
-//
-// bgSnap is a frozen copy of the background model at detection time; it is used
-// to re-compute the bbox from the grabbed frame, avoiding the stale-bbox problem
-// that arises because the RTSP grab happens asynchronously (the subject may have
-// moved between the detection frame and the grabbed frame).
-func (d *detector) recordWithHighRes(ctx context.Context, ts time.Time, score float64, bbox BBox, lowRes []byte, label, zoneColor string, bgSnap []byte, zs []zones.Zone) {
-	grabCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
-	// Build a temp path for the high-res grab; saveJPEG will finalise it.
-	dir := filepath.Join(d.st.basePath, d.cameraID, ts.UTC().Format("2006/01/02"))
-	_ = os.MkdirAll(dir, 0755)
-	tmpPath := filepath.Join(dir, ts.UTC().Format("20060102150405")+"_motion_hires.jpg")
-
-	var frameName string
-	c := ColorGlobal
-	if zoneColor != "" {
-		c = hexToNRGBA(zoneColor)
+// saveSnapshot annotates the full-res RGB frame that triggered the event with the
+// bbox and score, persists the JPEG and records the event. It runs synchronously:
+// the frame is already in memory, so there is no async RTSP grab and the snapshot
+// always reflects the exact instant of detection.
+func (d *detector) saveSnapshot(ts time.Time, score float64, bbox BBox, drawRect bool, rgb []byte, fw, fh int, annColor color.NRGBA, label, recColor string) {
+	jpegData := annotateRGBFrame(rgb, fw, fh, bbox, score, annColor, drawRect)
+	frameName, _, err := d.st.saveJPEG(d.cameraID, ts, jpegData)
+	if err != nil {
+		d.log.Warn("motion: failed to save snapshot", "camera", d.cameraID, "error", err)
 	}
-	if err := d.grabber.Grab(grabCtx, d.url, tmpPath); err != nil {
-		d.log.Warn("motion: high-res grab failed, using low-res snapshot", "camera", d.cameraID, "err", err)
-		var saveErr error
-		frameName, _, saveErr = d.st.saveJPEG(d.cameraID, ts, lowRes)
-		if saveErr != nil {
-			d.log.Warn("motion: failed to save low-res snapshot", "camera", d.cameraID, "error", saveErr)
-		}
-	} else {
-		finalName := ts.UTC().Format("20060102150405") + "_motion.jpg"
-		finalPath := filepath.Join(dir, finalName)
-		raw, readErr := os.ReadFile(tmpPath)
-		os.Remove(tmpPath)
-		if readErr != nil {
-			d.log.Warn("motion: failed to read high-res grab", "camera", d.cameraID, "err", readErr)
-			frameName, _, _ = d.st.saveJPEG(d.cameraID, ts, lowRes)
-		} else {
-			// Re-compute bbox from grabbed frame vs frozen background so the
-			// annotation reflects where the object IS in the grabbed image, not
-			// where it was when the detection frame was processed.
-			if bgSnap != nil {
-				freshGray, grayErr := jpegToGray(raw, d.width, d.height)
-				if grayErr == nil {
-					if freshBBox, freshFound := computeBBox(bgSnap, freshGray, d.width, d.height, zs); freshFound {
-						bbox = freshBBox
-					}
-				}
-			}
-			annotated, annErr := annotateJPEGBytes(raw, bbox, score, c, true)
-			if annErr != nil {
-				d.log.Warn("motion: failed to annotate high-res JPEG, using raw grab", "camera", d.cameraID, "err", annErr)
-				annotated = raw
-			}
-			if err := os.WriteFile(finalPath, annotated, 0644); err != nil {
-				d.log.Warn("motion: failed to write high-res snapshot", "camera", d.cameraID, "err", err)
-				frameName, _, _ = d.st.saveJPEG(d.cameraID, ts, lowRes)
-			} else {
-				frameName = finalName
-			}
-		}
-	}
-
-	if err := d.st.record(d.cameraID, ts, score, frameName, label, zoneColor, bbox); err != nil {
+	if err := d.st.record(d.cameraID, ts, score, frameName, label, recColor, bbox); err != nil {
 		d.log.Error("motion: failed to record event", "camera", d.cameraID, "error", err)
 	} else if d.notify != nil {
-		d.notify(Event{Time: ts, Score: score, Label: label, Color: zoneColor})
+		d.notify(Event{Time: ts, Score: score, Label: label, Color: recColor})
 	}
 }
 

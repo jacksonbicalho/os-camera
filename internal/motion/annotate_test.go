@@ -1,63 +1,9 @@
 package motion
 
 import (
-	"bytes"
-	"image"
 	"image/color"
-	"image/jpeg"
-	"math"
 	"testing"
 )
-
-// annotateFrame deve retornar um JPEG válido com as dimensões corretas.
-func TestAnnotateFrameReturnsValidJPEG(t *testing.T) {
-	w, h := 8, 6
-	frame := make([]byte, w*h)
-	bbox := BBox{X: 0.25, Y: 0.25, W: 0.5, H: 0.5}
-	data := annotateFrame(frame, w, h, bbox, 0.042, ColorGlobal, true)
-
-	img, err := jpeg.Decode(bytes.NewReader(data))
-	if err != nil {
-		t.Fatalf("invalid JPEG: %v", err)
-	}
-	b := img.Bounds()
-	if b.Dx() != w || b.Dy() != h {
-		t.Errorf("expected %dx%d, got %dx%d", w, h, b.Dx(), b.Dy())
-	}
-}
-
-// O retângulo anotado deve conter pixels brancos (255) na borda.
-func TestAnnotateFrameRectangleBorderIsWhite(t *testing.T) {
-	w, h := 16, 12
-	frame := make([]byte, w*h) // frame totalmente preto
-	bbox := BBox{X: 0.25, Y: 0.25, W: 0.5, H: 0.5}
-	data := annotateFrame(frame, w, h, bbox, 0.1, ColorGlobal, true)
-
-	img, err := jpeg.Decode(bytes.NewReader(data))
-	if err != nil {
-		t.Fatalf("invalid JPEG: %v", err)
-	}
-
-	// topo da borda do retângulo: y0 = round(0.25*12) = 3, x varia de x0..x1
-	// Verificar que pelo menos um pixel na linha y=3 é claro (>200 após compressão JPEG)
-	gray, ok := img.(*image.Gray)
-	if !ok {
-		// JPEG pode descomprimir como NRGBA; verificar luminância
-		x0 := int(math.Round(bbox.X * float64(w)))
-		y0 := int(math.Round(bbox.Y * float64(h)))
-		r, g, b, _ := img.At(x0, y0).RGBA()
-		lum := (r + g + b) / 3 >> 8
-		if lum < 150 {
-			t.Errorf("expected bright border pixel at (%d,%d), got lum=%d", x0, y0, lum)
-		}
-		return
-	}
-	x0 := int(math.Round(bbox.X * float64(w)))
-	y0 := int(math.Round(bbox.Y * float64(h)))
-	if gray.GrayAt(x0, y0).Y < 150 {
-		t.Errorf("expected bright border pixel at (%d,%d)", x0, y0)
-	}
-}
 
 func TestHexToNRGBA(t *testing.T) {
 	tests := []struct {
@@ -78,50 +24,8 @@ func TestHexToNRGBA(t *testing.T) {
 	}
 }
 
-// Frame vazio com bbox inteiro não deve entrar em pânico.
-func TestAnnotateFrameFullBBox(t *testing.T) {
-	w, h := 4, 4
-	frame := make([]byte, w*h)
-	bbox := BBox{X: 0, Y: 0, W: 1, H: 1}
-	data := annotateFrame(frame, w, h, bbox, 1.0, ColorGlobal, false)
-	if len(data) == 0 {
-		t.Fatal("expected non-empty JPEG output")
-	}
-}
-
-func TestAnnotateJPEGBytesPreservesColorAndDrawsAnnotations(t *testing.T) {
-	// Build a solid blue 16×12 JPEG.
-	w, h := 16, 12
-	src := image.NewNRGBA(image.Rect(0, 0, w, h))
-	blue := color.NRGBA{B: 200, A: 255}
-	for y := range h {
-		for x := range w {
-			src.SetNRGBA(x, y, blue)
-		}
-	}
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, src, &jpeg.Options{Quality: 95}); err != nil {
-		t.Fatalf("encode source JPEG: %v", err)
-	}
-
-	bbox := BBox{X: 0.25, Y: 0.25, W: 0.5, H: 0.5}
-	out, err := annotateJPEGBytes(buf.Bytes(), bbox, 0.123, ColorGlobal, true)
-	if err != nil {
-		t.Fatalf("annotateJPEGBytes: %v", err)
-	}
-
-	img, err := jpeg.Decode(bytes.NewReader(out))
-	if err != nil {
-		t.Fatalf("decode annotated JPEG: %v", err)
-	}
-	b := img.Bounds()
-	if b.Dx() != w || b.Dy() != h {
-		t.Errorf("expected %dx%d, got %dx%d", w, h, b.Dx(), b.Dy())
-	}
-}
-
-func TestAnnotateJPEGBytesUsesThickerLinesAtHighRes(t *testing.T) {
-	// Low-res: 480×270 → thickness 1. High-res: 1920×1080 → thickness 3.
+func TestLineThicknessProportional(t *testing.T) {
+	// Low-res: 480×270 → thickness 1. High-res: 1920×1080 → thickness 6.
 	if lineThickness(480, 270) != 1 {
 		t.Errorf("expected thickness 1 at 480×270, got %d", lineThickness(480, 270))
 	}
@@ -130,67 +34,11 @@ func TestAnnotateJPEGBytesUsesThickerLinesAtHighRes(t *testing.T) {
 	}
 }
 
-func TestAnnotateJPEGBytesTextScaleProportional(t *testing.T) {
+func TestTextScaleProportional(t *testing.T) {
 	if textScale(480, 270) != 1 {
 		t.Errorf("expected scale 1 at height 270, got %d", textScale(480, 270))
 	}
 	if textScale(1920, 1080) != 4 {
 		t.Errorf("expected scale 4 at height 1080, got %d", textScale(1920, 1080))
-	}
-}
-
-// TestJpegToGrayDecodeAndDownscale verifies that jpegToGray correctly decodes a
-// JPEG and downscales it to the requested resolution while preserving relative
-// brightness differences (object vs background).
-func TestJpegToGrayDecodeAndDownscale(t *testing.T) {
-	// 16×8 source: left half = 50 (background), right half = 230 (object)
-	srcW, srcH := 16, 8
-	src := image.NewGray(image.Rect(0, 0, srcW, srcH))
-	for y := 0; y < srcH; y++ {
-		for x := 0; x < srcW; x++ {
-			if x >= srcW/2 {
-				src.SetGray(x, y, color.Gray{Y: 230})
-			} else {
-				src.SetGray(x, y, color.Gray{Y: 50})
-			}
-		}
-	}
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, src, &jpeg.Options{Quality: 95}); err != nil {
-		t.Fatalf("encode: %v", err)
-	}
-
-	// Downscale to 8×4
-	dstW, dstH := 8, 4
-	out, err := jpegToGray(buf.Bytes(), dstW, dstH)
-	if err != nil {
-		t.Fatalf("jpegToGray: %v", err)
-	}
-	if len(out) != dstW*dstH {
-		t.Fatalf("expected %d pixels, got %d", dstW*dstH, len(out))
-	}
-
-	// Right half (x=4..7) should be substantially brighter than left (x=0..3)
-	var leftSum, rightSum int
-	for y := 0; y < dstH; y++ {
-		for x := 0; x < dstW; x++ {
-			v := int(out[y*dstW+x])
-			if x < dstW/2 {
-				leftSum += v
-			} else {
-				rightSum += v
-			}
-		}
-	}
-	if rightSum <= leftSum {
-		t.Errorf("right half should be brighter than left: rightSum=%d leftSum=%d", rightSum, leftSum)
-	}
-}
-
-// TestJpegToGrayInvalidDataReturnsError verifies that corrupt input is rejected.
-func TestJpegToGrayInvalidDataReturnsError(t *testing.T) {
-	_, err := jpegToGray([]byte("not a jpeg"), 4, 4)
-	if err == nil {
-		t.Error("expected error for invalid JPEG data")
 	}
 }

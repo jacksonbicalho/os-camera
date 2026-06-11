@@ -2,8 +2,8 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { authHeaders, getToken, onUnauthorized } from '../auth'
 
-export type Theme = 'dark' | 'moderno' | 'system'
-type Resolved = 'dark' | 'moderno'
+export type Theme = 'dark' | 'light' | 'system'
+type Resolved = 'dark' | 'light'
 
 interface ThemeContextValue {
   theme: Theme
@@ -17,18 +17,18 @@ function prefersDark(): boolean {
 }
 
 // Resolve a stored preference to a concrete theme. "system" follows the OS:
-// dark scheme → our dark, light scheme → our light ("moderno").
-function resolve(t: Theme): Resolved {
-  if (t === 'system') return prefersDark() ? 'dark' : 'moderno'
+// dark scheme → our dark, light scheme → our light.
+export function resolveTheme(t: Theme): Resolved {
+  if (t === 'system') return prefersDark() ? 'dark' : 'light'
   return t
 }
 
 function applyTheme(t: Theme) {
-  document.documentElement.setAttribute('data-theme', resolve(t))
+  document.documentElement.setAttribute('data-theme', resolveTheme(t))
 }
 
 function isTheme(v: unknown): v is Theme {
-  return v === 'dark' || v === 'moderno' || v === 'system'
+  return v === 'dark' || v === 'light' || v === 'system'
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {

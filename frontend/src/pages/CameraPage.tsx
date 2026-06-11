@@ -17,7 +17,7 @@ import { useEventSource } from '../hooks/useEventSource'
 import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { useEscapeKey } from '../hooks/useEscapeKey'
-import { mergeRecordings } from './cameraUtils'
+import { mergeRecordings, secondStepTarget } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
@@ -25,7 +25,7 @@ import { zoneThresholdLabel } from './settings/zoneThreshold'
 import { filterRecordings, recordingsCount } from './recordingsFilter'
 import { videoDownloadName } from './videoDownload'
 import { recordingsForEventWindow } from './eventRecordings'
-import { useNotifications } from '../contexts/NotificationContext'
+import { useMarkActiveEventRead } from '../hooks/useMarkActiveEventRead'
 import { useSetSidebarItems } from '../contexts/SidebarContext'
 import { useDisplayMode } from '../contexts/DisplayModeContext'
 import type { HLSStats } from '../components/HLSPlayer'
@@ -166,11 +166,14 @@ export default function CameraPage() {
   const [analyzeMode, setAnalyzeMode] = useState(false)
   const [analyzeBox, setAnalyzeBox] = useState<BboxRect | null>(null)
   const [analyzeScore, setAnalyzeScore] = useState<number | null>(null)
-  const [playerHeight, setPlayerHeight] = useState<number | undefined>(undefined)
+  // When the timeline pointer is parked over a gap, the UTC ms with no recording.
+  const [noRecordingAt, setNoRecordingAt] = useState<number | null>(null)
   const debugDragRef = useRef<{ startMouseX: number; startMouseY: number; startPosX: number; startPosY: number } | null>(null)
   const speedMenuRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<HTMLDivElement>(null)
   const pendingSeekRef = useRef<number | null>(null)
+  // Seconds-from-end pending seek (Ctrl+Shift+Down crossing into the previous chunk).
+  const pendingSeekFromEndRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const recPlayerRef = useRef<HTMLDivElement>(null)
   const recHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -180,6 +183,7 @@ export default function CameraPage() {
   const activeRecordingItemRef = useRef<HTMLDivElement | null>(null)
   const skipNextRecordingScrollRef = useRef(false)
   const recordingsRef = useRef(recordings)
+  const activeRecordingRef = useRef<Recording | null>(null)
   const activeEventTimeRef = useRef(activeEventTime)
   const activeEventIdRef = useRef(activeEventId)
   const allMotionEventsRef = useRef(motionEvents)
@@ -210,6 +214,7 @@ export default function CameraPage() {
   }, [playerZoom.setContainer])
 
   useEffect(() => { recordingsRef.current = recordings }, [recordings])
+  useEffect(() => { activeRecordingRef.current = activeRecording }, [activeRecording])
   useEffect(() => { allMotionEventsRef.current = motionEvents }, [motionEvents])
   useEffect(() => { activeEventIdRef.current = activeEventId }, [activeEventId])
   useEffect(() => { selectedDateRef.current = selectedDate }, [selectedDate])
@@ -440,14 +445,6 @@ export default function CameraPage() {
   }
 
   useEffect(() => {
-    const el = playerRef.current
-    if (!el) return
-    const ro = new ResizeObserver(() => setPlayerHeight(el.getBoundingClientRect().height))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
-  useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (!e.ctrlKey) return
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
@@ -455,8 +452,29 @@ export default function CameraPage() {
       const recs = recordingsRef.current
       if (recs.length === 0) return
       const sorted = [...recs].sort((a, b) => a.filename.localeCompare(b.filename))
+
+      // Ctrl+Shift+seta: navega segundo a segundo (↑ avança, ↓ retrocede).
+      if (e.shiftKey) {
+        const v = videoRef.current
+        if (!v || !activeRecording) return
+        const dir: 1 | -1 = e.key === 'ArrowUp' ? 1 : -1
+        const target = secondStepTarget(sorted, activeRecording.filename, v.currentTime, v.duration || recDuration, dir)
+        if (!target) return
+        if (target.kind === 'same') { v.currentTime = target.time; v.play().catch(() => {}); return }
+        setActiveEventTime(null)
+        setActiveEventId(null)
+        if (target.fromEnd) pendingSeekFromEndRef.current = target.offsetSeconds
+        else pendingSeekRef.current = target.offsetSeconds
+        openRecording(target.rec)
+        setScrollNonce(n => n + 1)
+        return
+      }
+
       const idx = activeRecording ? sorted.findIndex(r => r.filename === activeRecording.filename) : -1
-      const nextIdx = e.key === 'ArrowDown' ? idx + 1 : idx - 1
+      // `sorted` is ascending (oldest→newest); the timeline/list is shown in `sortOrder`.
+      // Match the visual direction: ArrowDown moves to the item below in the list.
+      const step = sortOrder === 'asc' ? 1 : -1
+      const nextIdx = e.key === 'ArrowDown' ? idx + step : idx - step
       if (nextIdx < 0 || nextIdx >= sorted.length) return
       const labeledEv = firstLabeledEventForRecording(sorted[nextIdx], recordingsRef.current, sortedEventsRef.current)
       setActiveEventTime(labeledEv?.time ?? null)
@@ -466,7 +484,7 @@ export default function CameraPage() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [activeRecording])
+  }, [activeRecording, sortOrder, recDuration])
 
   function handleRateChange(requested: number) {
     const options = [1, 2, 4, 8, 16, 32]
@@ -679,11 +697,13 @@ export default function CameraPage() {
   }
 
   function openRecording(rec: Recording) {
+    setNoRecordingAt(null)
     setActiveRecording(rec)
     if (rec.id) navigate(`/camera/recording/${id}/${rec.id}`, { replace: true })
   }
 
   function handleTimelineSeek(recording: Recording, offsetSeconds: number) {
+    setNoRecordingAt(null)
     setActiveEventTime(null)
     setActiveEventId(null)
     setActivePanel('recordings')
@@ -698,6 +718,30 @@ export default function CameraPage() {
       pendingSeekRef.current = offsetSeconds
       openRecording(recording)
     }
+  }
+
+  // Lightweight preview while dragging the timeline pointer: seek to the exact moment
+  // under the pointer without switching panels, scrolling or forcing play. Uses a ref
+  // for the loaded recording so rapid drags within a chunk don't reload the video.
+  function handleTimelineScrub(recording: Recording, offsetSeconds: number) {
+    setNoRecordingAt(null)
+    if (activeRecordingRef.current?.filename === recording.filename) {
+      if (videoRef.current && videoRef.current.readyState >= 1) {
+        videoRef.current.currentTime = offsetSeconds
+      } else {
+        pendingSeekRef.current = offsetSeconds
+      }
+    } else {
+      activeRecordingRef.current = recording
+      pendingSeekRef.current = offsetSeconds
+      openRecording(recording)
+    }
+  }
+
+  // Pointer is over a position with no recording: pause and show a message.
+  function handleTimelineGap(timestampMs: number) {
+    videoRef.current?.pause()
+    setNoRecordingAt(timestampMs)
   }
 
   async function handleConfirmDelete() {
@@ -807,7 +851,7 @@ export default function CameraPage() {
 
   const { settings } = useSettings()
   const motionPeak = useMotionPeak(id)
-  const { markRead } = useNotifications()
+  useMarkActiveEventRead(id ?? '', activeEventTime)
   const setItems = useSetSidebarItems()
   const { player: playerMode } = useDisplayMode()
   const playerShowIcon = playerMode !== 'text-only'
@@ -1027,7 +1071,7 @@ function toggleFullscreen() {
                   {/* Voltar ao vivo — visível só durante reprodução */}
                   {!isLive && (
                     <button
-                      onClick={() => { setActiveRecording(null); navigate(`/camera/live/${id}`, { replace: true }); setActivePanel(null) }}
+                      onClick={() => { setNoRecordingAt(null); setActiveRecording(null); navigate(`/camera/live/${id}`, { replace: true }); setActivePanel(null) }}
                       title="Voltar ao vivo"
                       className="p-1 transition-colors cursor-pointer text-gray-400 hover:text-gray-200"
                     >
@@ -1278,7 +1322,10 @@ function toggleFullscreen() {
                       if (recHideTimerRef.current) clearTimeout(recHideTimerRef.current)
                       try { e.currentTarget.playbackRate = playbackRate } catch { /* browser limit */ }
                       e.currentTarget.muted = videoMuted
-                      if (pendingSeekRef.current !== null) {
+                      if (pendingSeekFromEndRef.current !== null) {
+                        e.currentTarget.currentTime = Math.max(0, e.currentTarget.duration - pendingSeekFromEndRef.current)
+                        pendingSeekFromEndRef.current = null
+                      } else if (pendingSeekRef.current !== null) {
                         e.currentTarget.currentTime = pendingSeekRef.current
                         pendingSeekRef.current = null
                       }
@@ -1333,6 +1380,16 @@ function toggleFullscreen() {
                     >
                       <ZoomOut className="w-3.5 h-3.5" /> {playerZoom.scale.toFixed(1)}×
                     </button>
+                  )}
+                  {noRecordingAt !== null && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+                      <div className="px-4 py-2.5 rounded-lg bg-black/75 text-center">
+                        <div className="text-sm font-medium text-white">Sem gravação neste horário</div>
+                        <div className="mt-0.5 text-xs text-gray-300 tabular-nums">
+                          {new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(noRecordingAt))}
+                        </div>
+                      </div>
+                    </div>
                   )}
                   {/* Último frame: mantém imagem visível enquanto próxima gravação carrega */}
                   {lastFrameDataUrl && (
@@ -1673,7 +1730,7 @@ function toggleFullscreen() {
                           <button
                             key={ev.id ?? `${ev.time}-${i}`}
                             ref={isActive ? (el) => { if (el) activeEventItemRef.current = el } : null}
-                            onClick={() => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) }}
+                            onClick={() => { playEventAt(ev); setScrollNonce(n => n + 1) }}
                             className={`group w-full flex flex-col px-3 py-2 transition-colors text-left ${
                               isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-gray-800'
                             }`}
@@ -1785,12 +1842,17 @@ function toggleFullscreen() {
             recordings={recordings}
             motionEvents={motionEvents}
             activeRecording={activeRecording}
-            activeTime={activeEventTime ?? activeRecording?.start ?? null}
+            activeTime={
+              activeRecording && !isLive
+                ? new Date(new Date(activeRecording.start).getTime() + recCurrentTime * 1000).toISOString()
+                : activeEventTime ?? null
+            }
             timezone={timezone}
             sortOrder={activePanel === 'events' ? eventsSortOrder : sortOrder}
             onSeek={handleTimelineSeek}
-            onEventClick={activePanel === 'events' ? ev => { playEventAt(ev); markRead(`${id}-${ev.time}`); setScrollNonce(n => n + 1) } : undefined}
-            maxHeight={playerHeight}
+            onScrub={handleTimelineScrub}
+            onGap={handleTimelineGap}
+            onEventClick={activePanel === 'events' ? ev => { playEventAt(ev); setScrollNonce(n => n + 1) } : undefined}
           />
         </div>
 

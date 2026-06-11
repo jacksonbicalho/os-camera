@@ -3,11 +3,8 @@ package motion
 import (
 	"bytes"
 	"context"
-	"image"
-	"image/jpeg"
 	"io"
 	"log/slog"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -39,10 +36,21 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
+// grayToRGB expands a grayscale frame to RGB24 (R=G=B=v), matching the full-res
+// RGB pipe the detector now reads. With equal channels the in-process downscale
+// reproduces the original grayscale values, so the diff/bbox tests stay valid.
+func grayToRGB(gray []byte) []byte {
+	out := make([]byte, len(gray)*3)
+	for i, v := range gray {
+		out[3*i], out[3*i+1], out[3*i+2] = v, v, v
+	}
+	return out
+}
+
 func TestDetectorRecordsEventWhenDiffExceedsThreshold(t *testing.T) {
 	frameSize := 4 // 2×2 px grayscale
 	// frame1 = black, frame2 = white → diff=1.0 > threshold=0.05
-	frameData := append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...)
+	frameData := grayToRGB(append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...))
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
@@ -65,7 +73,7 @@ func TestDetectorRecordsEventWhenDiffExceedsThreshold(t *testing.T) {
 func TestDetectorIgnoresSmallDiff(t *testing.T) {
 	frameSize := 4
 	// Both frames identical → diff=0 < threshold=0.05
-	frameData := bytes.Repeat([]byte{128}, frameSize*2)
+	frameData := grayToRGB(bytes.Repeat([]byte{128}, frameSize*2))
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
@@ -87,7 +95,7 @@ func TestDetectorIgnoresSmallDiff(t *testing.T) {
 
 func TestDetectorTimestampIsApproxNow(t *testing.T) {
 	frameSize := 4
-	frameData := append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...)
+	frameData := grayToRGB(append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...))
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
@@ -116,7 +124,7 @@ func TestDetectorNotifyRawCalledForSubThresholdDiff(t *testing.T) {
 	tmpDir := t.TempDir()
 	frameSize := 4
 	// Both frames identical → diff=0 < threshold=0.05; notifyRaw must still fire
-	frameData := bytes.Repeat([]byte{128}, frameSize*2)
+	frameData := grayToRGB(bytes.Repeat([]byte{128}, frameSize*2))
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
@@ -139,7 +147,7 @@ func TestDetectorNotifyRawCalledAlongsideNotify(t *testing.T) {
 	tmpDir := t.TempDir()
 	frameSize := 4
 	// frame1=black, frame2=white → diff=1.0 > threshold; both notify and notifyRaw must fire
-	frameData := append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...)
+	frameData := grayToRGB(append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...))
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
@@ -167,9 +175,9 @@ func TestDetectorCooldownSuppressesEventsWithinWindow(t *testing.T) {
 	tmpDir := t.TempDir()
 	frameSize := 4
 	// 3 frames: black → white → black → two diffs of 1.0, both above threshold
-	frameData := append(bytes.Repeat([]byte{0}, frameSize),
+	frameData := grayToRGB(append(bytes.Repeat([]byte{0}, frameSize),
 		append(bytes.Repeat([]byte{255}, frameSize),
-			bytes.Repeat([]byte{0}, frameSize)...)...)
+			bytes.Repeat([]byte{0}, frameSize)...)...))
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
@@ -200,9 +208,9 @@ func TestDetectorCooldownSuppressesEventsWithinWindow(t *testing.T) {
 func TestDetectorCooldownAllowsEventAfterWindow(t *testing.T) {
 	tmpDir := t.TempDir()
 	frameSize := 4
-	frameData := append(bytes.Repeat([]byte{0}, frameSize),
+	frameData := grayToRGB(append(bytes.Repeat([]byte{0}, frameSize),
 		append(bytes.Repeat([]byte{255}, frameSize),
-			bytes.Repeat([]byte{0}, frameSize)...)...)
+			bytes.Repeat([]byte{0}, frameSize)...)...))
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
@@ -233,9 +241,9 @@ func TestDetectorCooldownAllowsEventAfterWindow(t *testing.T) {
 func TestDetectorCooldownZeroDisablesSuppression(t *testing.T) {
 	tmpDir := t.TempDir()
 	frameSize := 4
-	frameData := append(bytes.Repeat([]byte{0}, frameSize),
+	frameData := grayToRGB(append(bytes.Repeat([]byte{0}, frameSize),
 		append(bytes.Repeat([]byte{255}, frameSize),
-			bytes.Repeat([]byte{0}, frameSize)...)...)
+			bytes.Repeat([]byte{0}, frameSize)...)...))
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
@@ -257,9 +265,9 @@ func TestDetectorCachesZonesAcrossFrames(t *testing.T) {
 	tmpDir := t.TempDir()
 	frameSize := 4
 	// 3 frames → 2 diffs → zones consulted twice without caching.
-	frameData := append(bytes.Repeat([]byte{0}, frameSize),
+	frameData := grayToRGB(append(bytes.Repeat([]byte{0}, frameSize),
 		append(bytes.Repeat([]byte{255}, frameSize),
-			bytes.Repeat([]byte{0}, frameSize)...)...)
+			bytes.Repeat([]byte{0}, frameSize)...)...))
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
@@ -280,9 +288,9 @@ func TestDetectorCachesZonesAcrossFrames(t *testing.T) {
 func TestDetectorReloadZonesRefreshesCache(t *testing.T) {
 	tmpDir := t.TempDir()
 	frameSize := 4
-	frameData := append(bytes.Repeat([]byte{0}, frameSize),
+	frameData := grayToRGB(append(bytes.Repeat([]byte{0}, frameSize),
 		append(bytes.Repeat([]byte{255}, frameSize),
-			bytes.Repeat([]byte{0}, frameSize)...)...)
+			bytes.Repeat([]byte{0}, frameSize)...)...))
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
@@ -362,7 +370,7 @@ func (c *fakeBlockCommander) Start(url string, width, height, fps int) (framePro
 func TestDetectorExclusionZoneSuppressesEvent(t *testing.T) {
 	frameSize := 4 // 2×2 frame
 	// frame1=black, frame2=white → full diff; but whole frame is excluded → score=0, no event
-	frameData := append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...)
+	frameData := grayToRGB(append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...))
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}
@@ -384,171 +392,6 @@ func TestDetectorExclusionZoneSuppressesEvent(t *testing.T) {
 	}
 }
 
-// fakeGrabberWithJPEG writes a real JPEG to destPath so recordWithHighRes can
-// decode and re-compute the bbox from the grabbed frame content.
-type fakeGrabberWithJPEG struct {
-	mu    sync.Mutex
-	calls int
-	frame []byte
-	w, h  int
-	err   error
-}
-
-func (g *fakeGrabberWithJPEG) Grab(_ context.Context, _, destPath string) error {
-	g.mu.Lock()
-	g.calls++
-	g.mu.Unlock()
-	if g.err != nil {
-		return g.err
-	}
-	img := image.NewGray(image.Rect(0, 0, g.w, g.h))
-	copy(img.Pix, g.frame)
-	f, err := os.Create(destPath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return jpeg.Encode(f, img, &jpeg.Options{Quality: 95})
-}
-
-// TestDetectorHighResBboxRefreshesFromGrabbedFrame verifies that when a
-// high-res JPEG is grabbed, the bbox is re-computed from the grabbed frame
-// (not reused from the stale detection-frame bbox).
-func TestDetectorHighResBboxRefreshesFromGrabbedFrame(t *testing.T) {
-	// 4×1 frame: bg=[100,100,100,100], detection frame has object on LEFT (pixel 0).
-	w, h := 4, 1
-	frameSize := w * h
-	bgFrame := bytes.Repeat([]byte{100}, frameSize)
-	detectionFrame := []byte{200, 100, 100, 100} // object at pixel 0 (left)
-	frameData := append(bgFrame, detectionFrame...)
-
-	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
-	cmd := &fakeFrameCommander{process: proc}
-
-	// Grabbed JPEG has object at pixel 3 (right side).
-	grabbedFrame := []byte{100, 100, 100, 200}
-	grabber := &fakeGrabberWithJPEG{frame: grabbedFrame, w: w, h: h}
-
-	var mu sync.Mutex
-	var capturedBBoxes []BBox
-	st := newStore(t.TempDir(), func(_ string, _ time.Time, _ float64, _, _, _ string, bbox BBox) {
-		mu.Lock()
-		capturedBBoxes = append(capturedBBoxes, bbox)
-		mu.Unlock()
-	})
-
-	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
-	det := newDetector("cam", "rtsp://fake", w, h, cfg, cmd, st, discardLogger(), nil, nil, nil)
-	det.grabber = grabber
-
-	det.processFrames(context.Background())
-
-	// Wait for async recordWithHighRes to finish.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		mu.Lock()
-		n := len(capturedBBoxes)
-		mu.Unlock()
-		if n > 0 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	mu.Lock()
-	bboxes := capturedBBoxes
-	mu.Unlock()
-
-	if len(bboxes) != 1 {
-		t.Fatalf("expected 1 recorded event, got %d", len(bboxes))
-	}
-
-	// Grabbed frame had object on right (pixel 3/4 → X≥0.5).
-	// If bbox were stale from detection frame it would have X<0.5 (object was on left).
-	bbox := bboxes[0]
-	if bbox.X < 0.5 {
-		t.Errorf("bbox should reflect grabbed frame (object on right, X≥0.5), got X=%.2f — stale detection bbox was used", bbox.X)
-	}
-}
-
-// --- snapshot grabber ---
-
-type fakeSnapshotGrabber struct {
-	mu      sync.Mutex
-	calls   []snapshotGrabCall
-	err     error
-}
-
-type snapshotGrabCall struct {
-	rtspURL  string
-	destPath string
-}
-
-func (g *fakeSnapshotGrabber) Grab(_ context.Context, rtspURL, destPath string) error {
-	g.mu.Lock()
-	g.calls = append(g.calls, snapshotGrabCall{rtspURL: rtspURL, destPath: destPath})
-	g.mu.Unlock()
-	return g.err
-}
-
-func TestDetectorGrabsHighResSnapshotOnMotionEvent(t *testing.T) {
-	frameSize := 4 // 2×2 px
-	frameData := append(bytes.Repeat([]byte{0}, frameSize), bytes.Repeat([]byte{255}, frameSize)...)
-
-	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
-	cmd := &fakeFrameCommander{process: proc}
-
-	grabber := &fakeSnapshotGrabber{}
-
-	var mu sync.Mutex
-	var recorded []string
-	st := newStore(t.TempDir(), func(_ string, _ time.Time, _ float64, frame, _, _ string, _ BBox) {
-		mu.Lock()
-		recorded = append(recorded, frame)
-		mu.Unlock()
-	})
-
-	cfg := config.MotionConfig{Enabled: true, Threshold: 0.05, FPS: 1}
-	det := newDetector("cam1", "rtsp://fake", 2, 2, cfg, cmd, st, discardLogger(), nil, nil, nil)
-	det.grabber = grabber
-
-	det.processFrames(context.Background())
-
-	// Wait for async grab + record to complete.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		grabber.mu.Lock()
-		n := len(grabber.calls)
-		grabber.mu.Unlock()
-		mu.Lock()
-		r := len(recorded)
-		mu.Unlock()
-		if n > 0 && r > 0 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	grabber.mu.Lock()
-	calls := grabber.calls
-	grabber.mu.Unlock()
-
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 grab call, got %d", len(calls))
-	}
-	if calls[0].rtspURL != "rtsp://fake" {
-		t.Errorf("grab called with wrong URL: %q", calls[0].rtspURL)
-	}
-
-	// record must happen AFTER grab (event only reaches frontend with high-res ready).
-	mu.Lock()
-	n := len(recorded)
-	mu.Unlock()
-	if n != 1 {
-		t.Errorf("expected 1 recorded event after grab, got %d", n)
-	}
-}
-
 // TestDetectorBBoxUsesBackgroundSubtraction verifies that the bbox for a motion
 // event reflects where the object IS in the current frame (vs the background),
 // not where it moved from (departure region in prev).
@@ -560,7 +403,7 @@ func TestDetectorBBoxUsesBackgroundSubtraction(t *testing.T) {
 	frame0 := []byte{100, 100, 100, 100}
 	frame1 := []byte{200, 100, 100, 100}
 	frame2 := []byte{100, 100, 100, 200}
-	frameData := append(append(frame0, frame1...), frame2...)
+	frameData := grayToRGB(append(append(frame0, frame1...), frame2...))
 
 	proc := &fakeFrameProcess{r: bytes.NewReader(frameData)}
 	cmd := &fakeFrameCommander{process: proc}

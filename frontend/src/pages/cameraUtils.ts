@@ -87,3 +87,41 @@ export function parseDurationToMs(s: string | undefined, defaultMs = 30_000): nu
   if (m[2] === 'm') return n * 60_000
   return n * 1_000
 }
+
+export type SecondStep =
+  | { kind: 'same'; time: number }
+  | { kind: 'load'; rec: Recording; offsetSeconds: number; fromEnd?: boolean }
+
+// Alvo de um passo de 1 segundo (atalho Ctrl+Shift+seta) no ponteiro da régua.
+// `dir` é +1 (avança) ou -1 (retrocede). Dentro do chunk atual → {same}; ao cruzar a
+// fronteira → {load} da gravação adjacente reproduzível (pulando vãos e o chunk em
+// gravação). `fromEnd` indica que o offset é contado a partir do fim (passo pra trás).
+// Retorna null quando não há gravação naquela direção.
+export function secondStepTarget(
+  recsAsc: Recording[],
+  currentFilename: string,
+  currentTime: number,
+  currentDuration: number,
+  dir: 1 | -1,
+): SecondStep | null {
+  const curIdx = recsAsc.findIndex(r => r.filename === currentFilename)
+  if (curIdx === -1) return null
+  const newTime = currentTime + dir
+  if (newTime >= 0 && (currentDuration <= 0 || newTime <= currentDuration)) {
+    return { kind: 'same', time: newTime }
+  }
+  if (dir > 0) {
+    for (let i = curIdx + 1; i < recsAsc.length; i++) {
+      if (!recsAsc[i].is_recording) {
+        return { kind: 'load', rec: recsAsc[i], offsetSeconds: Math.max(0, newTime - currentDuration) }
+      }
+    }
+    return null
+  }
+  for (let i = curIdx - 1; i >= 0; i--) {
+    if (!recsAsc[i].is_recording) {
+      return { kind: 'load', rec: recsAsc[i], offsetSeconds: -newTime, fromEnd: true }
+    }
+  }
+  return null
+}
