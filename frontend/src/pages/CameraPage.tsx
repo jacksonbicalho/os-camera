@@ -17,7 +17,7 @@ import { useEventSource } from '../hooks/useEventSource'
 import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { useEscapeKey } from '../hooks/useEscapeKey'
-import { mergeRecordings } from './cameraUtils'
+import { mergeRecordings, secondStepTarget } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
@@ -172,6 +172,8 @@ export default function CameraPage() {
   const speedMenuRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<HTMLDivElement>(null)
   const pendingSeekRef = useRef<number | null>(null)
+  // Seconds-from-end pending seek (Ctrl+Shift+Down crossing into the previous chunk).
+  const pendingSeekFromEndRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const recPlayerRef = useRef<HTMLDivElement>(null)
   const recHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -450,6 +452,24 @@ export default function CameraPage() {
       const recs = recordingsRef.current
       if (recs.length === 0) return
       const sorted = [...recs].sort((a, b) => a.filename.localeCompare(b.filename))
+
+      // Ctrl+Shift+seta: navega segundo a segundo (↑ avança, ↓ retrocede).
+      if (e.shiftKey) {
+        const v = videoRef.current
+        if (!v || !activeRecording) return
+        const dir: 1 | -1 = e.key === 'ArrowUp' ? 1 : -1
+        const target = secondStepTarget(sorted, activeRecording.filename, v.currentTime, v.duration || recDuration, dir)
+        if (!target) return
+        if (target.kind === 'same') { v.currentTime = target.time; v.play().catch(() => {}); return }
+        setActiveEventTime(null)
+        setActiveEventId(null)
+        if (target.fromEnd) pendingSeekFromEndRef.current = target.offsetSeconds
+        else pendingSeekRef.current = target.offsetSeconds
+        openRecording(target.rec)
+        setScrollNonce(n => n + 1)
+        return
+      }
+
       const idx = activeRecording ? sorted.findIndex(r => r.filename === activeRecording.filename) : -1
       // `sorted` is ascending (oldest→newest); the timeline/list is shown in `sortOrder`.
       // Match the visual direction: ArrowDown moves to the item below in the list.
@@ -464,7 +484,7 @@ export default function CameraPage() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [activeRecording, sortOrder])
+  }, [activeRecording, sortOrder, recDuration])
 
   function handleRateChange(requested: number) {
     const options = [1, 2, 4, 8, 16, 32]
@@ -1302,7 +1322,10 @@ function toggleFullscreen() {
                       if (recHideTimerRef.current) clearTimeout(recHideTimerRef.current)
                       try { e.currentTarget.playbackRate = playbackRate } catch { /* browser limit */ }
                       e.currentTarget.muted = videoMuted
-                      if (pendingSeekRef.current !== null) {
+                      if (pendingSeekFromEndRef.current !== null) {
+                        e.currentTarget.currentTime = Math.max(0, e.currentTarget.duration - pendingSeekFromEndRef.current)
+                        pendingSeekFromEndRef.current = null
+                      } else if (pendingSeekRef.current !== null) {
                         e.currentTarget.currentTime = pendingSeekRef.current
                         pendingSeekRef.current = null
                       }

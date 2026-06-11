@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mergeRecordings, parseDurationToMs } from './cameraUtils'
+import { mergeRecordings, parseDurationToMs, secondStepTarget } from './cameraUtils'
 import type { Recording } from './cameraUtils'
 
 function rec(filename: string): Recording {
@@ -89,4 +89,44 @@ describe('parseDurationToMs', () => {
   it('"2h" → 7200000', () => expect(parseDurationToMs('2h')).toBe(7_200_000))
   it('undefined → default 30000', () => expect(parseDurationToMs(undefined)).toBe(30_000))
   it('empty string → default 30000', () => expect(parseDurationToMs('')).toBe(30_000))
+})
+
+// ─── secondStepTarget (Ctrl+Shift+seta) ─────────────────────────────────────
+
+describe('secondStepTarget', () => {
+  const recs = [
+    rec('20260506120000.mp4'), // 12:00:00
+    rec('20260506120500.mp4'), // 12:05:00
+    rec('20260506121000.mp4'), // 12:10:00
+  ]
+
+  it('avança 1s dentro do mesmo chunk', () => {
+    expect(secondStepTarget(recs, '20260506120500.mp4', 5, 300, 1))
+      .toEqual({ kind: 'same', time: 6 })
+  })
+
+  it('retrocede 1s dentro do mesmo chunk', () => {
+    expect(secondStepTarget(recs, '20260506120500.mp4', 5, 300, -1))
+      .toEqual({ kind: 'same', time: 4 })
+  })
+
+  it('avança além do fim → carrega o próximo chunk no overflow', () => {
+    const r = secondStepTarget(recs, '20260506120500.mp4', 300, 300, 1)
+    expect(r).toMatchObject({ kind: 'load', offsetSeconds: 1 })
+    expect(r && r.kind === 'load' && r.rec.filename).toBe('20260506121000.mp4')
+  })
+
+  it('retrocede antes do início → carrega o chunk anterior perto do fim', () => {
+    const r = secondStepTarget(recs, '20260506120500.mp4', 0, 300, -1)
+    expect(r).toMatchObject({ kind: 'load', offsetSeconds: 1, fromEnd: true })
+    expect(r && r.kind === 'load' && r.rec.filename).toBe('20260506120000.mp4')
+  })
+
+  it('avança no último chunk sem próximo → null', () => {
+    expect(secondStepTarget(recs, '20260506121000.mp4', 300, 300, 1)).toBeNull()
+  })
+
+  it('retrocede no primeiro chunk sem anterior → null', () => {
+    expect(secondStepTarget(recs, '20260506120000.mp4', 0, 300, -1)).toBeNull()
+  })
 })
