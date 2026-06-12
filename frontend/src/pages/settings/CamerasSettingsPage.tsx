@@ -112,7 +112,7 @@ export default function CamerasSettingsPage() {
     return (
       <SettingsLayout>
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-base font-semibold text-gray-200">Câmeras</h3>
+          <h3 className="text-h2 font-semibold text-gray-200">Câmeras</h3>
         </div>
         {loading ? (
           <p className="text-gray-500 text-sm">Carregando...</p>
@@ -145,7 +145,7 @@ export default function CamerasSettingsPage() {
   return (
     <SettingsLayout>
       <div className="flex items-center justify-between mb-6">
-        <h3 className="text-base font-semibold text-gray-200">Câmeras</h3>
+        <h3 className="text-h2 font-semibold text-gray-200">Câmeras</h3>
         {!creating && !noDb && (
           <button
             onClick={() => { setCreating(true); setError(null) }}

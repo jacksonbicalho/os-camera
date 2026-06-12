@@ -2,20 +2,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import ThemeModeNav from './ThemeModeNav'
 
-const setTheme = vi.fn()
-let currentTheme: 'dark' | 'light' | 'system' = 'dark'
+const setMode = vi.fn()
+let currentMode: 'dark' | 'light' | 'system' = 'dark'
 let osDark = true
 
 vi.mock('../contexts/ThemeContext', () => ({
-  useTheme: () => ({ theme: currentTheme, setTheme }),
-  resolveTheme: (t: 'dark' | 'light' | 'system') =>
-    t === 'system' ? (osDark ? 'dark' : 'light') : t,
+  useTheme: () => ({ mode: currentMode, setMode, theme: 'default' }),
+  resolveMode: (m: 'dark' | 'light' | 'system') =>
+    m === 'system' ? (osDark ? 'dark' : 'light') : m,
 }))
 
 afterEach(() => {
   cleanup()
-  setTheme.mockClear()
-  currentTheme = 'dark'
+  setMode.mockClear()
+  currentMode = 'dark'
   osDark = true
 })
 
@@ -23,7 +23,7 @@ const trigger = () => document.getElementById('theme-nav-current')!
 
 describe('ThemeModeNav', () => {
   it('colapsado: o gatilho mostra o modo selecionado e as opções ficam ocultas', () => {
-    currentTheme = 'dark'
+    currentMode = 'dark'
     render(<ThemeModeNav />)
     expect(trigger().textContent).toContain('Dark')
     expect(document.getElementById('theme-mode-light')).toBeNull()
@@ -31,13 +31,13 @@ describe('ThemeModeNav', () => {
   })
 
   it('o gatilho reflete o modo concreto (light/dark explícito)', () => {
-    currentTheme = 'light'
+    currentMode = 'light'
     render(<ThemeModeNav />)
     expect(trigger().textContent).toContain('Light')
   })
 
   it('com "Sistema" ativo + SO dark: gatilho e ✓ mostram Dark (não Sistema)', () => {
-    currentTheme = 'system'
+    currentMode = 'system'
     osDark = true
     render(<ThemeModeNav />)
     expect(trigger().textContent).toContain('Dark')
@@ -48,7 +48,7 @@ describe('ThemeModeNav', () => {
   })
 
   it('com "Sistema" ativo + SO light: gatilho e ✓ mostram Light', () => {
-    currentTheme = 'system'
+    currentMode = 'system'
     osDark = false
     render(<ThemeModeNav />)
     expect(trigger().textContent).toContain('Light')
@@ -61,7 +61,7 @@ describe('ThemeModeNav', () => {
     render(<ThemeModeNav />)
     fireEvent.click(trigger())
     fireEvent.click(document.getElementById('theme-mode-system')!)
-    expect(setTheme).toHaveBeenCalledWith('system')
+    expect(setMode).toHaveBeenCalledWith('system')
   })
 
   it('não exibe rótulos "Modo" nem "Tema"', () => {
@@ -90,13 +90,13 @@ describe('ThemeModeNav', () => {
     render(<ThemeModeNav />)
     fireEvent.click(trigger())
     fireEvent.click(document.getElementById('theme-mode-light')!)
-    expect(setTheme).toHaveBeenCalledWith('light')
+    expect(setMode).toHaveBeenCalledWith('light')
     // lista fecha após selecionar
     expect(document.getElementById('theme-mode-light')).toBeNull()
   })
 
   it('marca a opção ativa com aria-current', () => {
-    currentTheme = 'light'
+    currentMode = 'light'
     render(<ThemeModeNav />)
     fireEvent.click(trigger())
     expect(document.getElementById('theme-mode-light')!.getAttribute('aria-current')).toBe('true')

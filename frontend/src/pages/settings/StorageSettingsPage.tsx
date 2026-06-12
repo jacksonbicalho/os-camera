@@ -201,7 +201,7 @@ export default function StorageSettingsPage() {
   if (!isAdmin) {
     return (
       <SettingsLayout>
-        <h3 className="text-lg font-semibold text-gray-200">Armazenamento</h3>
+        <h3 className="text-h2 font-semibold text-gray-200">Armazenamento</h3>
         <p className="text-sm text-gray-500 mt-1 mb-6">Retenção, limpeza automática e espaço em disco.</p>
         <p className="text-gray-500 text-sm">Acesso restrito.</p>
       </SettingsLayout>
@@ -210,7 +210,7 @@ export default function StorageSettingsPage() {
 
   return (
     <SettingsLayout>
-      <h3 className="text-lg font-semibold text-gray-200">Armazenamento</h3>
+      <h3 className="text-h2 font-semibold text-gray-200">Armazenamento</h3>
       <p className="text-sm text-gray-500 mt-1 mb-6">Retenção, limpeza automática e espaço em disco.</p>
 
       {form ? (

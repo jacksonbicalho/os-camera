@@ -6,7 +6,7 @@ vi.mock('../../components/SettingsLayout', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 vi.mock('../../contexts/ThemeContext', () => ({
-  useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }),
+  useTheme: () => ({ mode: 'dark', setMode: vi.fn(), theme: 'default' }),
 }))
 vi.mock('../../contexts/DisplayModeContext', () => ({
   useDisplayMode: () => ({ sidebar: 'icons-text', player: 'icons-text' }),
