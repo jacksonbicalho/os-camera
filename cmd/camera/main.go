@@ -273,6 +273,10 @@ func main() {
 		}
 		camMu.Unlock()
 
+		// Backfill device info for cameras registered before the feature
+		// existed (best-effort, in the background so boot is not blocked).
+		go srv.CaptureMissingDeviceInfo(context.Background())
+
 		addr := fmt.Sprintf(":%d", cfg.Server.Port)
 		slog.Info("http server starting", "addr", addr)
 		go func() {

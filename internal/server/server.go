@@ -23,6 +23,7 @@ import (
 
 	"camera/internal/config"
 	"camera/internal/db"
+	"camera/internal/deviceinfo"
 	"camera/internal/ffprobe"
 	"camera/internal/motion"
 	"camera/internal/storage"
@@ -119,6 +120,7 @@ type Server struct {
 	monitors           map[string]*motion.Monitor
 	cpu                cpuTracker
 	cleaner            interface{ ForceClean() }
+	deviceCollectors   []deviceinfo.Collector
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
@@ -326,6 +328,8 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("GET /api/cameras/{id}/recordings", s.requireCameraAccess(s.handleRecordings))
 	s.mux.HandleFunc("GET /api/cameras/{id}/recordings/by-id/{recording_id}", s.requireCameraAccess(s.handleRecordingByID))
 	s.mux.HandleFunc("DELETE /api/cameras/{id}/recordings/{filename}", s.requireAdmin(s.handleDeleteRecording))
+	s.mux.HandleFunc("GET /api/cameras/{id}/device-info", s.requireCameraAccess(s.handleDeviceInfo))
+	s.mux.HandleFunc("POST /api/cameras/{id}/device-info/refresh", s.requireAdmin(s.handleRefreshDeviceInfo))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion", s.requireCameraAccess(s.handleMotionEvents))
 	s.mux.HandleFunc("GET /api/motion/live", s.requireFullAuth(s.handleAllMotionLive))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/live", s.requireCameraAccess(s.handleMotionLive))

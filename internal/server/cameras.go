@@ -247,6 +247,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 	if s.onCameraStart != nil {
 		go s.onCameraStart(created)
 	}
+	s.captureDeviceInfoAsync(created)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -384,6 +385,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 	}
+	s.captureDeviceInfoAsync(updated)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(cameraToDTO(updated))
