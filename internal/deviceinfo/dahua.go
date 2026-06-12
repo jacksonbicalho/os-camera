@@ -59,7 +59,7 @@ func (d *Dahua) Collect(ctx context.Context, t Target) (map[string]string, error
 	ntp := get("configManager.cgi?action=getConfig&name=NTP")
 	addRaw(ntp)
 	out["ntp.enabled"] = ntp["table.NTP.Enable"]
-	out["timezone"] = ntp["table.NTP.TimeZone"]
+	out["timezone"] = formatTimezone(ntp["table.NTP.TimeZone"])
 
 	network := get("configManager.cgi?action=getConfig&name=Network")
 	addRaw(network)
@@ -96,6 +96,34 @@ func addStream(out, enc map[string]string, outPrefix, inPrefix string) {
 			out[outPrefix+outK] = v
 		}
 	}
+}
+
+// dahuaTimezones maps the Dahua/Intelbras NTP.TimeZone index (a vendor-specific
+// convention) to its UTC offset. From the Intelbras HTTP API table.
+var dahuaTimezones = map[string]string{
+	"0": "UTC+00:00", "1": "UTC+01:00", "2": "UTC+02:00", "3": "UTC+03:00",
+	"4": "UTC+03:30", "5": "UTC+04:00", "6": "UTC+04:30", "7": "UTC+05:00",
+	"8": "UTC+05:30", "9": "UTC+05:45", "10": "UTC+06:00", "11": "UTC+06:30",
+	"12": "UTC+07:00", "13": "UTC+08:00", "14": "UTC+09:00", "15": "UTC+09:30",
+	"16": "UTC+10:00", "17": "UTC+11:00", "18": "UTC+12:00", "19": "UTC+13:00",
+	"20": "UTC-01:00", "21": "UTC-02:00", "22": "UTC-03:00", "23": "UTC-03:30",
+	"24": "UTC-04:00", "25": "UTC-05:00", "26": "UTC-06:00", "27": "UTC-07:00",
+	"28": "UTC-08:00", "29": "UTC-09:00", "30": "UTC-10:00", "31": "UTC-11:00",
+	"32": "UTC-12:00", "33": "UTC-04:30", "34": "UTC+10:30", "35": "UTC+14:00",
+	"36": "UTC-09:30", "37": "UTC+08:30", "38": "UTC+08:45", "39": "UTC+12:45",
+}
+
+// formatTimezone renders the timezone as "<index> / <offset>" (e.g.
+// "22 / UTC-03:00"), keeping the raw index visible. Unknown indexes return the
+// index alone.
+func formatTimezone(idx string) string {
+	if idx == "" {
+		return ""
+	}
+	if offset, ok := dahuaTimezones[idx]; ok {
+		return idx + " / " + offset
+	}
+	return idx
 }
 
 func firstNonEmpty(vals ...string) string {
