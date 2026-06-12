@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-REPO="jacksonbicalho/camera"
+REPO="jacksonbicalho/os-camera"
 BINARY_NAME="camera"
 
 # Defaults — sobrescritos por flags ou por install.conf (na desinstalação)
@@ -114,7 +114,7 @@ do_install() {
         cat > "$CONFIG_FILE" <<YAML
 # Configuração gerada pelo instalador. Edite conforme necessário.
 # Execute: camera init --output <este arquivo>
-# Documentação: https://github.com/jacksonbicalho/camera
+# Documentação: https://github.com/jacksonbicalho/os-camera
 
 debug: false
 timezone: UTC   # ex: America/Sao_Paulo

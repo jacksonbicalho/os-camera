@@ -5,7 +5,7 @@
 O jeito mais rápido. O script detecta a arquitetura (`amd64`, `arm64`, `arm`), baixa o binário da última release, executa o wizard de configuração e registra um serviço systemd.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh -o /tmp/camera-install.sh
+curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh -o /tmp/camera-install.sh
 sudo bash /tmp/camera-install.sh
 ```
 
@@ -48,7 +48,7 @@ O binário para Raspberry Pi 3, 4 e 5 (64-bit) é o `linux-arm64`. Para Raspberr
 
 ```bash
 # Raspberry Pi 3/4/5 (64-bit OS)
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh \
   -o /tmp/camera-install.sh
 sudo bash /tmp/camera-install.sh
 ```
@@ -92,7 +92,7 @@ services:
 
 ## Download manual
 
-Baixe o binário em [github.com/jacksonbicalho/camera/releases](https://github.com/jacksonbicalho/camera/releases):
+Baixe o binário em [github.com/jacksonbicalho/os-camera/releases](https://github.com/jacksonbicalho/os-camera/releases):
 
 | Plataforma | Arquivo |
 |---|---|
@@ -120,7 +120,7 @@ também pergunta o diretório e os parâmetros de **rotação**: tamanho de rota
 **Requisitos:** Go 1.25+, Docker, ffmpeg
 
 ```bash
-git clone https://github.com/jacksonbicalho/camera.git
+git clone https://github.com/jacksonbicalho/os-camera.git
 cd camera
 
 make build          # binário local em ./dist/
