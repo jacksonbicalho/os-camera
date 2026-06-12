@@ -4,6 +4,7 @@ import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import CameraForm from '../../components/CameraForm'
 import CameraSettingsTabs from '../../components/CameraSettingsTabs'
+import DeviceInfoPanel from '../../components/DeviceInfoPanel'
 import { type CameraFormData, type Camera, formToPayload } from '../../components/cameraFormUtils'
 import { useSettings, type CameraSettings } from '../../hooks/useSettings'
 import { authHeaders, getRole } from '../../auth'
@@ -131,6 +132,7 @@ export default function CameraDetailSettingsPage() {
                     ]
               }
             />
+            <DeviceInfoPanel cameraId={id!} isAdmin={false} />
           </div>
         )}
       </SettingsLayout>
@@ -212,6 +214,7 @@ export default function CameraDetailSettingsPage() {
                   ]
             }
           />
+          <DeviceInfoPanel cameraId={id!} isAdmin={isAdmin} />
         </div>
       )}
     </SettingsLayout>

@@ -47,7 +47,7 @@ func TestDahuaCollectIdentityAndNTP(t *testing.T) {
 		"firmware":    "2.800.0000000.1.R",
 		"hardware":    "1.00",
 		"ntp.enabled": "true",
-		"timezone":    "22",
+		"timezone":    "22 / UTC-03:00",
 		"mac":         "3c:ef:8c:11:22:33",
 	}
 	for k, v := range want {
