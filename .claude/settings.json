@@ -6,17 +6,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh scripts/hooks/story-approved.sh",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/hooks/story-approved.sh\"",
             "statusMessage": "Verificando aprovacao da story..."
           },
           {
             "type": "command",
-            "command": "sh scripts/hooks/pr-target.sh",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/hooks/pr-target.sh\"",
             "statusMessage": "Verificando target do PR..."
           },
           {
             "type": "command",
-            "command": "sh scripts/hooks/precommit-tests.sh",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/hooks/precommit-tests.sh\"",
             "statusMessage": "Rodando go build + go test -count=1..."
           }
         ]

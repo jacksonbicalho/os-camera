@@ -211,7 +211,7 @@ export default function CameraPage() {
   const recContainerRef = useCallback((node: HTMLDivElement | null) => {
     recPlayerRef.current = node
     playerZoom.setContainer(node)
-  }, [playerZoom.setContainer])
+  }, [playerZoom])
 
   useEffect(() => { recordingsRef.current = recordings }, [recordings])
   useEffect(() => { activeRecordingRef.current = activeRecording }, [activeRecording])
@@ -484,7 +484,7 @@ export default function CameraPage() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [activeRecording, sortOrder, recDuration])
+  }, [activeRecording, sortOrder, recDuration, openRecording])
 
   function handleRateChange(requested: number) {
     const options = [1, 2, 4, 8, 16, 32]
@@ -896,7 +896,7 @@ export default function CameraPage() {
   const isLive = activeRecording === null && !recordingId
 
   // Zera o zoom ao trocar de fonte (live ↔ gravação ↔ outra gravação).
-  useEffect(() => { playerZoom.reset() }, [isLive, activeRecording, recordingId, playerZoom.reset])
+  useEffect(() => { playerZoom.reset() }, [isLive, activeRecording, recordingId, playerZoom])
 
   // Live region score for the ephemeral "Analisar limiar" tool (live view only).
   const onAnalyzeScore = useCallback((data: string) => {
