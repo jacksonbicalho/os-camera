@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { useTheme, resolveTheme, type Theme } from '../contexts/ThemeContext'
+import { useTheme, resolveMode, type Mode } from '../contexts/ThemeContext'
 import { ChevronRight, Check } from './Icons'
 
-const MODE_OPTIONS: { value: Theme; label: string }[] = [
+const MODE_OPTIONS: { value: Mode; label: string }[] = [
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
   { value: 'system', label: 'Sistema' },
@@ -16,13 +16,13 @@ const MODE_OPTIONS: { value: Theme; label: string }[] = [
 // Por isso o gatilho e o ✓ mostram sempre o concreto resolvido (Light/Dark): escolher
 // Sistema destaca Dark ou Light de acordo com o SO.
 export default function ThemeModeNav() {
-  const { theme, setTheme } = useTheme()
+  const { mode, setMode } = useTheme()
   const [open, setOpen] = useState(false)
-  const effective = resolveTheme(theme)
+  const effective = resolveMode(mode)
   const current = MODE_OPTIONS.find(o => o.value === effective) ?? MODE_OPTIONS[1]
 
-  const select = (value: Theme) => {
-    setTheme(value)
+  const select = (value: Mode) => {
+    setMode(value)
     setOpen(false)
   }
 

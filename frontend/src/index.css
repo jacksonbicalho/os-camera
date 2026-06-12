@@ -1,10 +1,61 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   DESIGN TOKENS — base estrutural do tema.
+
+   Organização: TEMA → MODO → valores. Hoje há um único tema ("padrão"); os
+   valores abaixo (no @theme) são o conjunto de DARK, e o bloco [data-mode=
+   "light"] sobrescreve só o que muda no modo claro. Para adicionar um tema novo
+   no futuro: outro conjunto de valores (sem refatorar componentes).
+
+   - Tipografia: a escala vira utilitários Tailwind (text-h1, text-body, …).
+   - Cor semântica: papéis (surface/text/primary/…) viram utilitários
+     (bg-surface, text-muted, border-default, …). A migração das cores cruas
+     (bg-gray-900/text-white) para esses papéis é incremental — fora desta story.
+   ============================================================================ */
+@theme {
+  /* — Tipografia: escala (size + line-height; peso via classe font-*) — */
+  --text-display: 1.875rem;  --text-display--line-height: 2.25rem;
+  --text-h1: 1.5rem;         --text-h1--line-height: 2rem;
+  --text-h2: 1.25rem;        --text-h2--line-height: 1.75rem;
+  --text-h3: 1rem;           --text-h3--line-height: 1.5rem;
+  --text-h4: 0.8125rem;      --text-h4--line-height: 1.125rem;
+  --text-body: 0.875rem;     --text-body--line-height: 1.375rem;
+  --text-caption: 0.75rem;   --text-caption--line-height: 1rem;
+
+  /* — Cor semântica (valores = DARK, o modo padrão) — */
+  --color-background: #111827;          /* fundo da app */
+  --color-surface: #1f2937;     /* cards/painéis */
+  --color-surface-2: #374151;   /* superfície 2ª / hover */
+  --color-foreground: #f9fafb;        /* texto principal */
+  --color-muted: #9ca3af;       /* texto secundário/mudo */
+  --color-faint: #6b7280;       /* texto terciário/legendas */
+  --color-border: #374151;     /* bordas (border-default) */
+  --color-primary: #2563eb;     /* ação primária */
+  --color-primary-strong: #1d4ed8;
+  --color-on-primary: #ffffff;  /* texto sobre primary */
+  --color-danger: #dc2626;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+}
+
+/* Modo CLARO: sobrescreve apenas os tokens semânticos que mudam (accents como
+   primary/danger seguem vívidos). Os tokens de tipografia são iguais nos dois. */
+[data-mode="light"] {
+  --color-background: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-2: #e2e8f0;
+  --color-foreground: #0f172a;
+  --color-muted: #64748b;
+  --color-faint: #94a3b8;
+  --color-border: #cbd5e1;
+}
+
 /* Tema "light" = tema CLARO moderno (paleta slate fria). A app hardcoda cores
    dark; aqui invertemos a rampa de cinzas (fundos escuros→claros, textos gray-*
    claros→escuros) e mapeamos o branco dos títulos para slate-900 — tudo via
    variáveis Tailwind v4, sem reescrever componentes. */
-[data-theme="light"] {
+[data-mode="light"] {
   --color-gray-950: #f8fafc;  /* slate-50  — fundo da app */
   --color-gray-900: #ffffff;  /* white     — cards/superfícies */
   --color-gray-800: #e2e8f0;  /* slate-200 — superfícies 2ª / hover / bordas de card */
@@ -39,22 +90,22 @@
 }
 /* Exceção: texto branco sobre fundo de destaque (botões/badges) ou sobre vídeo
    (overlay bg-white/10) continua branco. */
-[data-theme="light"] [class*="bg-blue-"].text-white,
-[data-theme="light"] [class*="bg-green-"].text-white,
-[data-theme="light"] [class*="bg-red-"].text-white,
-[data-theme="light"] [class*="bg-indigo-"].text-white,
-[data-theme="light"] [class*="bg-violet-"].text-white,
-[data-theme="light"] [class*="bg-amber-"].text-white,
-[data-theme="light"] [class*="bg-white"].text-white {
+[data-mode="light"] [class*="bg-blue-"].text-white,
+[data-mode="light"] [class*="bg-green-"].text-white,
+[data-mode="light"] [class*="bg-red-"].text-white,
+[data-mode="light"] [class*="bg-indigo-"].text-white,
+[data-mode="light"] [class*="bg-violet-"].text-white,
+[data-mode="light"] [class*="bg-amber-"].text-white,
+[data-mode="light"] [class*="bg-white"].text-white {
   color: #fff;
 }
-[data-theme="light"] body {
+[data-mode="light"] body {
   background-color: #f8fafc;
   color: #0f172a;
 }
 /* Elevação sutil em superfícies de card (bg-gray-900 → branco) arredondadas,
    para separá-las do fundo slate-50 — padrão de UI clara moderna. */
-[data-theme="light"] [class*="bg-gray-900"][class*="rounded"] {
+[data-mode="light"] [class*="bg-gray-900"][class*="rounded"] {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.10);
 }
 

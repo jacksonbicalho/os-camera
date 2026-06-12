@@ -18,7 +18,7 @@ export default function SettingsSection({
 }: SettingsSectionProps) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-      <p className="text-xs text-gray-400 uppercase tracking-wider font-medium px-5 pt-4 pb-3 border-b border-gray-800">
+      <p className="text-h4 text-gray-400 uppercase tracking-wider font-medium px-5 pt-4 pb-3 border-b border-gray-800">
         {title}
       </p>
 

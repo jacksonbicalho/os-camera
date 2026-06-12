@@ -96,7 +96,7 @@ export default function UsersSettingsPage() {
     <SettingsLayout>
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h3 className="text-lg font-semibold text-gray-200">Usuários</h3>
+          <h3 className="text-h2 font-semibold text-gray-200">Usuários</h3>
           <p className="text-sm text-gray-500 mt-1">Gerencie usuários e permissões de acesso.</p>
         </div>
         {!creating && (
