@@ -115,7 +115,7 @@ O fluxo acima é automatizado pelos slash commands em `.claude/commands/`:
 
 | Comando | O que faz |
 |---|---|
-| `/story <tipo>(<escopo>): <descrição>` | Cria story file + branch a partir de develop (passo 1 do fluxo). |
+| `/story <descrição livre>` | Cria story file + branch a partir de develop (passo 1 do fluxo). Passe **só a descrição**; Claude decide tipo/escopo/slug. |
 | `/release-pr [vX.Y.Z]` | Valida release file e abre PR develop → master (após todas as histórias `[✓]`). |
 | `/release-tag` | Roda `./scripts/release.sh` em master após o PR de release ser mergeado. |
 
@@ -123,15 +123,26 @@ Use os commands em vez de executar os passos manualmente — eles validam pré-c
 
 ### Hooks de pre-commit (`.claude/settings.json`)
 
-Hooks `PreToolUse` (matcher `Bash`, versionados no repo) impõem o fluxo automaticamente:
+Hooks `PreToolUse` (matcher `Bash`, versionados no repo) impõem o fluxo automaticamente. O `settings.json` só **chama scripts** versionados em `scripts/hooks/` (a lógica vive lá, não inline):
 
-| Gate | Bloqueia quando |
-|---|---|
-| Aprovação da story | `git commit` em branch de história cuja story não tem `[x] Aprovado`. |
-| Target do PR | `gh pr create --base master` a partir de branch que não seja `develop`/`release/*`. |
-| Testes backend | `git commit` quando `go build ./...` ou `go test -count=1 ./...` falham. |
+| Gate | Script | Bloqueia quando |
+|---|---|---|
+| Aprovação da story | `scripts/hooks/story-approved.sh` | `git commit` em branch de história cuja story não tem `[x] Aprovado`. |
+| Target do PR | `scripts/hooks/pr-target.sh` | `gh pr create --base master` a partir de branch que não seja `develop`/`release/*`. |
+| Testes backend | `scripts/hooks/precommit-tests.sh` | `git commit` quando `go build ./...` ou `go test -count=1 ./...` falham. |
 
-O gate de testes roda no host (Go instalado), **sem cache** (`-count=1`) — só execução limpa pega testes dependentes de `time.Now()` (o cache do Go não rastreia o relógio). Escopo é backend; o frontend segue coberto pelo CI. Hooks só recarregam no início da sessão do Claude Code: alterações em `settings.json` valem a partir da próxima sessão.
+O gate de testes roda no host (Go instalado), **sem cache** (`-count=1`) — só execução limpa pega testes dependentes de `time.Now()` (o cache do Go não rastreia o relógio). Escopo é backend; o frontend segue coberto pelo CI. Hooks só recarregam no início da sessão do Claude Code: alterações em `settings.json` (ou nos scripts de hook) valem a partir da próxima sessão.
+
+### Scripts de workflow (`scripts/`)
+
+Encadeiam o fluxo por história. **Checkboxes usam `[]` para não-marcado** (e `[x]` para marcado).
+
+| Script | Quem roda | O que faz |
+|---|---|---|
+| `check.sh` | Claude | "CI local": `go build`+`go test` sempre; `frontend-check.sh` se `frontend/` mudou (vs develop). Se tudo verde, marca o **1º Critério de Aceitação** da story `[x]`. |
+| `story-approval.sh` | **Navigator** (`! scripts/story-approval.sh`) | Interativo: percorre os Critérios de Aceitação, pergunta sobre cada não-marcado e marca conforme a resposta; no fim, oferece marcar `[x] Aprovado`. |
+| `commit.sh` | Claude | Commita o que está staged usando o heading `#` da story como mensagem (já é `tipo(escopo): desc`); exige `[x] Aprovado`; adiciona `Co-Authored-By`. |
+| `push-pr.sh` | Claude | Push + `gh pr create --base develop`. Só com tree limpa + story aprovada; idempotente (não recria PR). **Não mergeia** — isso é do `merge-when-green.sh`. |
 
 ### Merge pós-PR
 
