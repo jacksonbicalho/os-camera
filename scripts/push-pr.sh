@@ -36,5 +36,23 @@ if [ -n "$existing" ]; then
 fi
 
 title=$(grep -m1 '^# ' "$story" | sed 's/^# *//')
-gh pr create --base develop --head "$branch" --title "$title" \
-    --body "$(printf '%s\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)' "$title")"
+
+# Corpo do PR montado a partir das seções da story (Contexto + Solução), para
+# o PR já nascer com uma descrição rica em vez de só o título.
+section() {
+    awk -v sec="$1" '
+        $0 ~ "^## " sec { f=1; next }
+        /^## / { f=0 }
+        f { print }
+    ' "$story"
+}
+nl=$'\n'
+contexto=$(section 'Contexto')
+solucao=$(section 'Solu')
+body=""
+[ -n "$contexto" ] && body+="## Contexto${nl}${contexto}${nl}${nl}"
+[ -n "$solucao" ] && body+="## Solução${nl}${solucao}${nl}${nl}"
+[ -z "$body" ] && body="${title}${nl}${nl}"
+body+="🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+
+gh pr create --base develop --head "$branch" --title "$title" --body "$body"
