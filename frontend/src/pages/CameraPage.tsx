@@ -18,7 +18,7 @@ import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { useDebugTools } from '../hooks/useDebugTools'
-import { mergeRecordings, secondStepTarget } from './cameraUtils'
+import { applySameChunkStep, loadedMetadataSeek, mergeRecordings, secondStepTarget } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
@@ -177,6 +177,9 @@ export default function CameraPage() {
   const pendingSeekRef = useRef<number | null>(null)
   // Seconds-from-end pending seek (Ctrl+Shift+Down crossing into the previous chunk).
   const pendingSeekFromEndRef = useRef<number | null>(null)
+  // Sinaliza que o próximo load veio de um passo Ctrl+Shift+seta que cruzou a
+  // fronteira do chunk: o vídeo deve carregar parado, sem autoplay.
+  const stepPauseRef = useRef(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const recPlayerRef = useRef<HTMLDivElement>(null)
   const recHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -463,11 +466,12 @@ export default function CameraPage() {
         const dir: 1 | -1 = e.key === 'ArrowUp' ? 1 : -1
         const target = secondStepTarget(sorted, activeRecording.filename, v.currentTime, v.duration || recDuration, dir)
         if (!target) return
-        if (target.kind === 'same') { v.currentTime = target.time; v.play().catch(() => {}); return }
+        if (target.kind === 'same') { applySameChunkStep(v, target.time); return }
         setActiveEventTime(null)
         setActiveEventId(null)
         if (target.fromEnd) pendingSeekFromEndRef.current = target.offsetSeconds
         else pendingSeekRef.current = target.offsetSeconds
+        stepPauseRef.current = true
         openRecording(target.rec)
         setScrollNonce(n => n + 1)
         return
@@ -1325,13 +1329,18 @@ function toggleFullscreen() {
                       if (recHideTimerRef.current) clearTimeout(recHideTimerRef.current)
                       try { e.currentTarget.playbackRate = playbackRate } catch { /* browser limit */ }
                       e.currentTarget.muted = videoMuted
-                      if (pendingSeekFromEndRef.current !== null) {
-                        e.currentTarget.currentTime = Math.max(0, e.currentTarget.duration - pendingSeekFromEndRef.current)
-                        pendingSeekFromEndRef.current = null
-                      } else if (pendingSeekRef.current !== null) {
-                        e.currentTarget.currentTime = pendingSeekRef.current
-                        pendingSeekRef.current = null
-                      }
+                      const stepPaused = stepPauseRef.current
+                      stepPauseRef.current = false
+                      const { seekTo, shouldPlay } = loadedMetadataSeek(
+                        e.currentTarget.duration,
+                        pendingSeekFromEndRef.current,
+                        pendingSeekRef.current,
+                        stepPaused,
+                      )
+                      pendingSeekFromEndRef.current = null
+                      pendingSeekRef.current = null
+                      if (seekTo !== null) e.currentTarget.currentTime = seekTo
+                      if (!shouldPlay) { e.currentTarget.pause(); return }
                       e.currentTarget.play().catch((err: unknown) => {
                         if ((err as { name?: string })?.name === 'NotAllowedError') setRecPlayBlocked(true)
                       })
