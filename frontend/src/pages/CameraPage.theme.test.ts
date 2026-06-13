@@ -20,4 +20,12 @@ describe('CameraPage — migração para tokens de tema', () => {
     const matches = source.match(GRAY_RAMP) ?? []
     expect(matches).toEqual([])
   })
+
+  // Letterbox do vídeo deve ser theme-aware (bg-background), não preto puro — senão
+  // no modo light sobram barras pretas ao redor do vídeo. Overlays/scrims translúcidos
+  // (bg-black/70, bg-black/60…) seguem corretos sobre vídeo e são preservados.
+  it('não usa bg-black sólido no letterbox (só bg-black/NN translúcido é permitido)', () => {
+    const matches = source.match(/bg-black(?!\/)/g) ?? []
+    expect(matches).toEqual([])
+  })
 })

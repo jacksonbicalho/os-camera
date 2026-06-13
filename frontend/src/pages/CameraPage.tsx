@@ -1270,7 +1270,7 @@ function toggleFullscreen() {
                   onPointerMove={playerZoom.onPointerMove}
                   onPointerUp={playerZoom.onPointerUp}
                 >
-                  <HLSPlayer ref={hlsPlayerRef} src={liveUrl} containerClassName="w-full h-full" className="w-full h-full bg-black" cameraId={id} muted={videoMuted} segmentSeconds={cam?.hls_segment_seconds} onGoToEvent={handleGoToEvent} />
+                  <HLSPlayer ref={hlsPlayerRef} src={liveUrl} containerClassName="w-full h-full" className="w-full h-full bg-background" cameraId={id} muted={videoMuted} segmentSeconds={cam?.hls_segment_seconds} onGoToEvent={handleGoToEvent} />
                   {playerZoom.isZoomed && (
                     <button
                       onClick={playerZoom.reset}
@@ -1307,7 +1307,7 @@ function toggleFullscreen() {
                 >
                   <video
                     ref={videoRef}
-                    className={`w-full h-full bg-black ${playerZoom.isZoomed ? 'cursor-grab' : 'cursor-pointer'}`}
+                    className={`w-full h-full bg-background ${playerZoom.isZoomed ? 'cursor-grab' : 'cursor-pointer'}`}
                     playsInline
                     onClick={() => { if (playerZoom.consumeDrag()) return; togglePlayRecording() }}
                     onPlay={() => { setRecPlaying(true); setRecPlayBlocked(false); setLastFrameDataUrl(null); showRecControls() }}
@@ -1395,7 +1395,7 @@ function toggleFullscreen() {
                   {lastFrameDataUrl && (
                     <img
                       src={lastFrameDataUrl}
-                      className="absolute inset-0 w-full h-full object-contain bg-black pointer-events-none"
+                      className="absolute inset-0 w-full h-full object-contain bg-background pointer-events-none"
                       aria-hidden
                     />
                   )}
