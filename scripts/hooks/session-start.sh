@@ -12,7 +12,7 @@ GUARDRAILS DO FLUXO (os-camera) — leia antes de agir:
 3. Rode testes SEMPRE via scripts versionados: `bash scripts/check.sh` (nunca `docker run ... node` nem `go test` crus).
 4. CRITÉRIOS DE ACEITAÇÃO: o driver NÃO os marca. Só o `scripts/check.sh` marca o 1º (verdes). Os demais critérios E o `[x] Aprovado` são marcados pelo NAVIGATOR via `scripts/story-approval.sh`. Preencha a seção `## Revisão` SEM tocar nos checkboxes dos critérios.
 5. Nenhum commit antes de `[x] Aprovado`. Commit via `scripts/commit.sh`.
-6. Após aprovação + push, abra o PR direto com `scripts/push-pr.sh` (base develop), SEM perguntar. O MERGE (`scripts/merge-when-green.sh <PR#>`) só com o "ok" explícito do navigator.
+6. Após aprovação + push, abra o PR (`scripts/push-pr.sh`, base develop) E mergeie quando verde (`scripts/merge-when-green.sh <PR#>`) — direto, SEM perguntar em nenhum dos dois. Só o corte de release (`develop → master`) depende do navigator.
 7. `master` e `develop` são protegidos: nunca commit/push direto.
 EOF
 )

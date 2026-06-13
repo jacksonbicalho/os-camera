@@ -84,8 +84,8 @@ EOF
 
    > ⚠️ **O driver NÃO marca os Critérios de Aceitação.** Apenas o **1º critério** (verdes) é marcado automaticamente pelo `scripts/check.sh`. **Todos os demais critérios** e o `[x] Aprovado` são marcados pelo **navigator** via `scripts/story-approval.sh`. O driver pode preencher a seção `## Revisão`, mas **sem tocar nos checkboxes dos critérios**.
 
-7. Com a aprovação do navigator (`[x] Aprovado`), commitar com mensagem semântica na branch e fazer `git push origin <branch>`. **Aguardar autorização explícita do navigator antes de abrir o PR** — a aprovação libera o commit/push, mas não o `gh pr create`. Só abrir o PR quando o navigator pedir. O PR **sempre** tem `--base develop` (nunca `master`).
-8. Atualizar o arquivo de release correspondente em `releases/`: preencher a branch e o número do PR na tabela, marcar `[~]` (aguardando aprovação no GitHub). O merge não é feito individualmente — acontece em lote quando o navigator liberar a release (merge em `develop`, depois PR `develop → master`).
+7. Com a aprovação do navigator (`[x] Aprovado`), o ciclo roda **direto, sem novas perguntas**: commitar (mensagem semântica) → `git push origin <branch>` → abrir o PR (`scripts/push-pr.sh`, **sempre `--base develop`**, nunca `master`) → mergear quando o CI ficar verde (`scripts/merge-when-green.sh <PR#>`). A aprovação da story autoriza, de uma vez, commit + push + PR + merge-quando-verde. **Apenas o corte de release** (`develop → master`) depende de autorização explícita do navigator.
+8. Atualizar o arquivo de release correspondente em `releases/`: preencher a branch e o número do PR na tabela, marcar `[~]`; o `merge-when-green.sh` marca `[~]→[✓]` ao mergear em `develop`. O **corte de release** (PR `develop → master`) é o passo que aguarda o navigator liberar.
 
 ### Histórias
 
