@@ -103,4 +103,21 @@ describe('ThemeModeNav', () => {
     expect(document.getElementById('theme-mode-dark')!.getAttribute('aria-current')).toBeNull()
     expect(document.getElementById('theme-mode-system')!.getAttribute('aria-current')).toBeNull()
   })
+
+  it('hover no container abre o flyout sem precisar clicar', () => {
+    render(<ThemeModeNav />)
+    expect(document.getElementById('theme-mode-light')).toBeNull()
+    fireEvent.mouseEnter(document.getElementById('theme-mode-nav')!)
+    expect(document.getElementById('theme-mode-light')).toBeTruthy()
+    expect(document.getElementById('theme-mode-dark')).toBeTruthy()
+    expect(document.getElementById('theme-mode-system')).toBeTruthy()
+  })
+
+  it('sair do container (mouse leave) fecha o flyout', () => {
+    render(<ThemeModeNav />)
+    fireEvent.mouseEnter(document.getElementById('theme-mode-nav')!)
+    expect(document.getElementById('theme-mode-light')).toBeTruthy()
+    fireEvent.mouseLeave(document.getElementById('theme-mode-nav')!)
+    expect(document.getElementById('theme-mode-light')).toBeNull()
+  })
 })

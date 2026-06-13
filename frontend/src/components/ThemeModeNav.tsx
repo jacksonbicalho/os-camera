@@ -27,7 +27,12 @@ export default function ThemeModeNav() {
   }
 
   return (
-    <div className="border-t border-gray-700 relative">
+    <div
+      id="theme-mode-nav"
+      className="border-t border-gray-700 relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
       <button
         id="theme-nav-current"
         type="button"
