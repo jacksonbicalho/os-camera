@@ -125,3 +125,33 @@ export function secondStepTarget(
   }
   return null
 }
+
+// Vídeo mínimo que o passo Ctrl+Shift+seta precisa manipular.
+export interface SteppableVideo {
+  currentTime: number
+  play(): unknown
+  pause(): void
+}
+
+// Aplica um passo de 1s dentro do mesmo chunk: posiciona no tempo alvo e mantém
+// pausado. O atalho Ctrl+Shift+seta navega segundo a segundo com o vídeo parado —
+// nunca dá play.
+export function applySameChunkStep(v: SteppableVideo, time: number): void {
+  v.currentTime = time
+  v.pause()
+}
+
+// Calcula a posição de seek e se deve reproduzir ao carregar a metadata de uma
+// gravação. `stepPaused` indica que o load veio de um passo Ctrl+Shift+seta que
+// cruzou a fronteira do chunk — nesse caso mantém o vídeo parado.
+export function loadedMetadataSeek(
+  duration: number,
+  pendingFromEnd: number | null,
+  pending: number | null,
+  stepPaused: boolean,
+): { seekTo: number | null; shouldPlay: boolean } {
+  let seekTo: number | null = null
+  if (pendingFromEnd !== null) seekTo = Math.max(0, duration - pendingFromEnd)
+  else if (pending !== null) seekTo = pending
+  return { seekTo, shouldPlay: !stepPaused }
+}

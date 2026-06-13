@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mergeRecordings, parseDurationToMs, secondStepTarget } from './cameraUtils'
+import { applySameChunkStep, loadedMetadataSeek, mergeRecordings, parseDurationToMs, secondStepTarget } from './cameraUtils'
 import type { Recording } from './cameraUtils'
 
 function rec(filename: string): Recording {
@@ -128,5 +128,56 @@ describe('secondStepTarget', () => {
 
   it('retrocede no primeiro chunk sem anterior → null', () => {
     expect(secondStepTarget(recs, '20260506120000.mp4', 0, 300, -1)).toBeNull()
+  })
+})
+
+// ─── applySameChunkStep (Ctrl+Shift+seta, mesmo chunk) ───────────────────────
+
+describe('applySameChunkStep', () => {
+  function fakeVideo() {
+    const calls = { played: 0, paused: 0 }
+    return {
+      currentTime: 0,
+      play() { calls.played++ },
+      pause() { calls.paused++ },
+      calls,
+    }
+  }
+
+  it('posiciona o vídeo no tempo alvo', () => {
+    const v = fakeVideo()
+    applySameChunkStep(v, 42)
+    expect(v.currentTime).toBe(42)
+  })
+
+  it('mantém pausado: nunca dá play, sempre pause', () => {
+    const v = fakeVideo()
+    applySameChunkStep(v, 10)
+    expect(v.calls.played).toBe(0)
+    expect(v.calls.paused).toBe(1)
+  })
+})
+
+// ─── loadedMetadataSeek (seek + intenção de play ao carregar metadata) ───────
+
+describe('loadedMetadataSeek', () => {
+  it('pendingFromEnd → seek a partir do fim, reproduz por padrão', () => {
+    expect(loadedMetadataSeek(300, 5, null, false)).toEqual({ seekTo: 295, shouldPlay: true })
+  })
+
+  it('pending normal → seek absoluto, reproduz por padrão', () => {
+    expect(loadedMetadataSeek(300, null, 12, false)).toEqual({ seekTo: 12, shouldPlay: true })
+  })
+
+  it('sem pending → sem seek, reproduz por padrão', () => {
+    expect(loadedMetadataSeek(300, null, null, false)).toEqual({ seekTo: null, shouldPlay: true })
+  })
+
+  it('stepPaused → não reproduz (atalho mantém parado ao cruzar chunk)', () => {
+    expect(loadedMetadataSeek(300, null, 12, true)).toEqual({ seekTo: 12, shouldPlay: false })
+  })
+
+  it('fromEnd nunca fica negativo', () => {
+    expect(loadedMetadataSeek(3, 10, null, false)).toEqual({ seekTo: 0, shouldPlay: true })
   })
 })
