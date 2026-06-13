@@ -17,6 +17,7 @@ import { useEventSource } from '../hooks/useEventSource'
 import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { useDebugTools } from '../hooks/useDebugTools'
 import { mergeRecordings, secondStepTarget } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
@@ -156,16 +157,18 @@ export default function CameraPage() {
   const [thumbFlash, setThumbFlash] = useState<Set<number>>(new Set())
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [showDebug, setShowDebug] = useState(false)
+  // Painel de Debug + ferramentas efêmeras ("Analisar limiar" desenha uma região sobre
+  // o vídeo ao vivo e mostra o score/limiar em tempo real). closeDebug reseta tudo.
+  const {
+    showDebug, setShowDebug, closeDebug,
+    showDebugChart, setShowDebugChart,
+    analyzeMode, setAnalyzeMode,
+    analyzeBox, setAnalyzeBox,
+    analyzeScore, setAnalyzeScore,
+  } = useDebugTools()
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false)
   const [debugStats, setDebugStats] = useState<{ fps: number; dropped: number; hlsStats: HLSStats | null; lagMs: number } | null>(null)
-  const [showDebugChart, setShowDebugChart] = useState(false)
   const [debugPos, setDebugPos] = useState({ x: 8, y: 8 })
-  // Ferramenta efêmera "Analisar limiar": desenha uma região sobre o vídeo ao vivo
-  // e mostra o score/limiar dela em tempo real, sem salvar como zona.
-  const [analyzeMode, setAnalyzeMode] = useState(false)
-  const [analyzeBox, setAnalyzeBox] = useState<BboxRect | null>(null)
-  const [analyzeScore, setAnalyzeScore] = useState<number | null>(null)
   // When the timeline pointer is parked over a gap, the UTC ms with no recording.
   const [noRecordingAt, setNoRecordingAt] = useState<number | null>(null)
   const debugDragRef = useRef<{ startMouseX: number; startMouseY: number; startPosX: number; startPosY: number } | null>(null)
@@ -239,7 +242,7 @@ export default function CameraPage() {
   }
 
   useEscapeKey(closeSnapshotModal, !!snapshotEvent)
-  useEscapeKey(() => setShowDebug(false), showDebug)
+  useEscapeKey(closeDebug, showDebug)
   useEscapeKey(() => setDetectionModal(null), detectionModal !== null)
 
   function openSnapshotModal(ev: MotionEvent) {
@@ -1213,7 +1216,7 @@ function toggleFullscreen() {
                   <div className="w-px h-4 bg-surface-2 mx-0.5" />
                   {/* Debug */}
                   <button
-                    onClick={() => setShowDebug(d => !d)}
+                    onClick={() => showDebug ? closeDebug() : setShowDebug(true)}
                     title="Debug"
                     className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${showDebug ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
                   >
@@ -1463,7 +1466,7 @@ function toggleFullscreen() {
                   onMouseDown={handleDebugDragStart}
                 >
                   <span className="text-xs font-semibold text-foreground uppercase tracking-widest">Debug</span>
-                  <button onClick={() => setShowDebug(false)} className="ml-6 text-faint hover:text-foreground transition-colors">
+                  <button onClick={closeDebug} className="ml-6 text-faint hover:text-foreground transition-colors">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
