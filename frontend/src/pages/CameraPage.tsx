@@ -23,7 +23,7 @@ import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
 import { zoneThresholdLabel } from './settings/zoneThreshold'
-import { filterRecordings, recordingsCount } from './recordingsFilter'
+import { adjacentRecording, filterRecordings, nextRecording, recordingsCount } from './recordingsFilter'
 import { videoDownloadName } from './videoDownload'
 import { recordingsForEventWindow } from './eventRecordings'
 import { useMarkActiveEventRead } from '../hooks/useMarkActiveEventRead'
@@ -196,6 +196,7 @@ export default function CameraPage() {
   const selectedDateRef = useRef(selectedDate)
   const visibleEventsRef = useRef<typeof visibleEvents>([])
   const continuousPlayRef = useRef(continuousPlay)
+  const onlyMotionRef = useRef(onlyMotion)
   const recordingsDisplayPageRef = useRef(recordingsDisplayPage)
   const eventsPageRef = useRef(eventsPage)
   const sortedEventsRef = useRef<MotionEvent[]>([])
@@ -457,7 +458,10 @@ export default function CameraPage() {
       e.preventDefault()
       const recs = recordingsRef.current
       if (recs.length === 0) return
-      const sorted = [...recs].sort((a, b) => a.filename.localeCompare(b.filename))
+      const onlyMotion = onlyMotionRef.current
+      // Navegação (Ctrl+seta e Ctrl+Shift+seta) percorre apenas a lista visível:
+      // com o filtro ligado, só gravações com movimento.
+      const sorted = [...filterRecordings(recs, onlyMotion)].sort((a, b) => a.filename.localeCompare(b.filename))
 
       // Ctrl+Shift+seta: navega segundo a segundo (↑ avança, ↓ retrocede).
       if (e.shiftKey) {
@@ -477,16 +481,13 @@ export default function CameraPage() {
         return
       }
 
-      const idx = activeRecording ? sorted.findIndex(r => r.filename === activeRecording.filename) : -1
-      // `sorted` is ascending (oldest→newest); the timeline/list is shown in `sortOrder`.
-      // Match the visual direction: ArrowDown moves to the item below in the list.
-      const step = sortOrder === 'asc' ? 1 : -1
-      const nextIdx = e.key === 'ArrowDown' ? idx + step : idx - step
-      if (nextIdx < 0 || nextIdx >= sorted.length) return
-      const labeledEv = firstLabeledEventForRecording(sorted[nextIdx], recordingsRef.current, sortedEventsRef.current)
+      if (!activeRecording) return
+      const next = adjacentRecording(recs, activeRecording.filename, e.key, sortOrder, onlyMotion)
+      if (!next) return
+      const labeledEv = firstLabeledEventForRecording(next, recordingsRef.current, sortedEventsRef.current)
       setActiveEventTime(labeledEv?.time ?? null)
       setActiveEventId(labeledEv?.id ?? null)
-      openRecording(sorted[nextIdx])
+      openRecording(next)
       setScrollNonce(n => n + 1)
     }
     document.addEventListener('keydown', onKey)
@@ -1043,6 +1044,7 @@ function toggleFullscreen() {
   visibleEventsRef.current = visibleEvents
   sortedEventsRef.current = sortedEvents
   continuousPlayRef.current = continuousPlay
+  onlyMotionRef.current = onlyMotion
   recordingsDisplayPageRef.current = recordingsDisplayPage
   eventsPageRef.current = eventsPage
 
@@ -1372,12 +1374,13 @@ function toggleFullscreen() {
                         return
                       }
                       if (!activeRecording) return
-                      const asc = [...recordingsRef.current].sort((a, b) => a.filename.localeCompare(b.filename))
-                      const idx = asc.findIndex(r => r.filename === activeRecording.filename)
-                      const next = asc[idx + 1]
-                      if (next && !next.is_recording) {
+                      const onlyMotion = onlyMotionRef.current
+                      const next = nextRecording(recordingsRef.current, activeRecording.filename, onlyMotion)
+                      if (next) {
+                        const pool = filterRecordings(recordingsRef.current, onlyMotion)
+                          .sort((a, b) => a.filename.localeCompare(b.filename))
                         const displayedCount = recordingsDisplayPageRef.current * PAGE_SIZE
-                        const isVisible = recordingsRef.current.slice(0, displayedCount).some(r => r.filename === next.filename)
+                        const isVisible = pool.slice(0, displayedCount).some(r => r.filename === next.filename)
                         if (!isVisible) setRecordingsDisplayPage(p => p + 1)
                         openRecording(next)
                       }
@@ -1851,7 +1854,7 @@ function toggleFullscreen() {
           )}
 
           <VerticalTimeline
-            recordings={recordings}
+            recordings={filteredRecordings}
             motionEvents={motionEvents}
             activeRecording={activeRecording}
             activeTime={
