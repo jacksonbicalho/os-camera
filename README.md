@@ -1,7 +1,7 @@
 # camera
 
-[![CI](https://github.com/jacksonbicalho/camera/actions/workflows/ci.yml/badge.svg)](https://github.com/jacksonbicalho/camera/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/jacksonbicalho/camera?include_prereleases&label=release)](https://github.com/jacksonbicalho/camera/releases/latest)
+[![CI](https://github.com/jacksonbicalho/os-camera/actions/workflows/ci.yml/badge.svg)](https://github.com/jacksonbicalho/os-camera/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/jacksonbicalho/os-camera?include_prereleases&label=release)](https://github.com/jacksonbicalho/os-camera/releases/latest)
 [![Go 1.25](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](https://go.dev)
 
 Sistema de monitoramento residencial via RTSP. Um único binário estático grava câmeras em chunks MP4, serve live view em HLS, detecta movimento por análise de frames e expõe uma interface web embarcada. Toda a configuração é gerenciada via interface web e persistida em SQLite — sem edição manual de arquivos de câmera.
@@ -39,7 +39,7 @@ Sistema de monitoramento residencial via RTSP. Um único binário estático grav
 ## Instalação rápida (Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh -o /tmp/camera-install.sh
+curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh -o /tmp/camera-install.sh
 sudo bash /tmp/camera-install.sh
 ```
 
@@ -51,7 +51,7 @@ O script detecta a arquitetura (`amd64`, `arm64`, `arm`), baixa o binário da ú
 **Alternativa via git clone:**
 
 ```bash
-git clone --depth 1 https://github.com/jacksonbicalho/camera.git /tmp/camera-install
+git clone --depth 1 https://github.com/jacksonbicalho/os-camera.git /tmp/camera-install
 sudo bash /tmp/camera-install/scripts/install.sh
 rm -rf /tmp/camera-install
 ```
@@ -59,7 +59,7 @@ rm -rf /tmp/camera-install
 **Caminhos customizáveis:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/camera/master/scripts/install.sh -o /tmp/camera-install.sh
+curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh -o /tmp/camera-install.sh
 sudo bash /tmp/camera-install.sh \
       --install-dir /usr/local/bin \
       --config-dir  /etc/camera \
@@ -120,7 +120,7 @@ services:
 
 ## Download manual
 
-Baixe o binário da [última release](https://github.com/jacksonbicalho/camera/releases/latest) para sua plataforma:
+Baixe o binário da [última release](https://github.com/jacksonbicalho/os-camera/releases/latest) para sua plataforma:
 
 | Plataforma | Arquivo |
 |---|---|
@@ -197,7 +197,7 @@ Variáveis de ambiente sobrescrevem campos específicos:
 **Requisitos:** Go 1.25+, Docker, ffmpeg
 
 ```bash
-git clone https://github.com/jacksonbicalho/camera.git
+git clone https://github.com/jacksonbicalho/os-camera.git
 cd camera
 
 # Binário local

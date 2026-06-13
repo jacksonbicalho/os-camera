@@ -1,20 +1,21 @@
 ---
 description: Cria story file + branch a partir de develop seguindo o fluxo XP/TDD do CLAUDE.md
-argument-hint: <tipo>(<escopo>): <descrição curta>
+argument-hint: <descrição livre da história>
 ---
 
 Crie uma story file e branch para iniciar uma nova história, seguindo estritamente o fluxo XP/TDD descrito em CLAUDE.md.
 
-**Input do navigator:** `$ARGUMENTS`
+**Input do navigator:** `$ARGUMENTS` — apenas uma **descrição livre**. Você (Claude) decide tipo, escopo e descrição curta.
 
 ## Passos
 
-1. **Parse o input.**
-   - Esperado: `<tipo>(<escopo>): <descrição>` (ex: `fix(motion): bbox desalinhado`) OU apenas `<tipo>: <descrição>` OU apenas `<descrição>`.
-   - Se o tipo não estiver claro, use AskUserQuestion com as opções: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
-   - Se o escopo não estiver claro mas o tipo sim, prossiga sem escopo.
+1. **Decida tipo, escopo e descrição.** A partir da descrição livre, infira:
+   - o **tipo**: `feat` (nova funcionalidade), `fix` (bug), `refactor`, `test`, `docs`, `chore` (build/config/tooling);
+   - o **escopo** (opcional): o pacote/área afetada, se óbvio (ex: `motion`, `deviceinfo`, `timeline`);
+   - uma **descrição curta** em pt-BR para o título.
+   - **Não pergunte ao navigator** — decida. Só use AskUserQuestion se a descrição for genuinamente ambígua a ponto de mudar o tipo/escopo.
 
-2. **Gere o slug.** A partir da descrição, crie um slug kebab-case curto (max ~40 chars, sem stopwords). Ex: "bbox desalinhado no high-res" → `bbox-desalinhado-hires`.
+2. **Gere o slug.** Kebab-case curto a partir da descrição (max ~40 chars, sem stopwords). Ex: "bbox desalinhado no high-res" → `bbox-desalinhado-hires`.
 
 3. **Verifique pré-condições.**
    - `git branch --show-current` deve ser `develop` (ou aceite trocar — pergunte).
@@ -25,7 +26,7 @@ Crie uma story file e branch para iniciar uma nova história, seguindo estritame
 
 5. **Crie a branch.** `git checkout -b <tipo>/<slug>` (sem escopo no nome da branch — só `<tipo>/<slug>`).
 
-6. **Crie a story file.** Em `stories/YYYYMMDDHHmm_<tipo>_<slug_underscore>.md` (timestamp via `date +%Y%m%d%H%M`, slug com `_` em vez de `-`):
+6. **Crie a story file.** Em `stories/YYYYMMDDHHmm_<tipo>_<slug_underscore>.md` (timestamp via `date +%Y%m%d%H%M`, slug com `_` em vez de `-`). O **primeiro critério é sempre o "verdes"** (auto-marcado por `scripts/check.sh`):
 
 ```markdown
 # <tipo>(<escopo>): <descrição>
@@ -40,15 +41,16 @@ Crie uma story file e branch para iniciar uma nova história, seguindo estritame
 
 ## Critérios de Aceitação
 
-- [ ] <critério 1>
-- [ ] <critério 2>
+- [] Backend e (se aplicável) frontend verdes (auto: `scripts/check.sh`)
+- [] <critério 2>
+- [] <critério 3>
 
 ## Revisão
 
-- [ ] Aprovado
+- [] Aprovado
 ```
 
-7. **Reporte.** Confirme branch ativa, caminho do story file, e indique que está pronto pra eu começar a investigar/escrever testes (red phase).
+7. **Reporte.** Confirme branch ativa, caminho do story file, e indique que está pronto pra começar a investigar/escrever testes (red phase).
 
 ## Restrições
 

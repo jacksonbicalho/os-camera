@@ -17,7 +17,8 @@ import { useEventSource } from '../hooks/useEventSource'
 import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { useEscapeKey } from '../hooks/useEscapeKey'
-import { mergeRecordings, secondStepTarget } from './cameraUtils'
+import { useDebugTools } from '../hooks/useDebugTools'
+import { applySameChunkStep, loadedMetadataSeek, mergeRecordings, secondStepTarget } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
@@ -156,16 +157,18 @@ export default function CameraPage() {
   const [thumbFlash, setThumbFlash] = useState<Set<number>>(new Set())
   const [deleteTarget, setDeleteTarget] = useState<{ rec: Recording; hasMotion: boolean } | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [showDebug, setShowDebug] = useState(false)
+  // Painel de Debug + ferramentas efêmeras ("Analisar limiar" desenha uma região sobre
+  // o vídeo ao vivo e mostra o score/limiar em tempo real). closeDebug reseta tudo.
+  const {
+    showDebug, setShowDebug, closeDebug,
+    showDebugChart, setShowDebugChart,
+    analyzeMode, setAnalyzeMode,
+    analyzeBox, setAnalyzeBox,
+    analyzeScore, setAnalyzeScore,
+  } = useDebugTools()
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false)
   const [debugStats, setDebugStats] = useState<{ fps: number; dropped: number; hlsStats: HLSStats | null; lagMs: number } | null>(null)
-  const [showDebugChart, setShowDebugChart] = useState(false)
   const [debugPos, setDebugPos] = useState({ x: 8, y: 8 })
-  // Ferramenta efêmera "Analisar limiar": desenha uma região sobre o vídeo ao vivo
-  // e mostra o score/limiar dela em tempo real, sem salvar como zona.
-  const [analyzeMode, setAnalyzeMode] = useState(false)
-  const [analyzeBox, setAnalyzeBox] = useState<BboxRect | null>(null)
-  const [analyzeScore, setAnalyzeScore] = useState<number | null>(null)
   // When the timeline pointer is parked over a gap, the UTC ms with no recording.
   const [noRecordingAt, setNoRecordingAt] = useState<number | null>(null)
   const debugDragRef = useRef<{ startMouseX: number; startMouseY: number; startPosX: number; startPosY: number } | null>(null)
@@ -174,6 +177,9 @@ export default function CameraPage() {
   const pendingSeekRef = useRef<number | null>(null)
   // Seconds-from-end pending seek (Ctrl+Shift+Down crossing into the previous chunk).
   const pendingSeekFromEndRef = useRef<number | null>(null)
+  // Sinaliza que o próximo load veio de um passo Ctrl+Shift+seta que cruzou a
+  // fronteira do chunk: o vídeo deve carregar parado, sem autoplay.
+  const stepPauseRef = useRef(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const recPlayerRef = useRef<HTMLDivElement>(null)
   const recHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -211,7 +217,7 @@ export default function CameraPage() {
   const recContainerRef = useCallback((node: HTMLDivElement | null) => {
     recPlayerRef.current = node
     playerZoom.setContainer(node)
-  }, [playerZoom.setContainer])
+  }, [playerZoom])
 
   useEffect(() => { recordingsRef.current = recordings }, [recordings])
   useEffect(() => { activeRecordingRef.current = activeRecording }, [activeRecording])
@@ -239,7 +245,7 @@ export default function CameraPage() {
   }
 
   useEscapeKey(closeSnapshotModal, !!snapshotEvent)
-  useEscapeKey(() => setShowDebug(false), showDebug)
+  useEscapeKey(closeDebug, showDebug)
   useEscapeKey(() => setDetectionModal(null), detectionModal !== null)
 
   function openSnapshotModal(ev: MotionEvent) {
@@ -460,11 +466,12 @@ export default function CameraPage() {
         const dir: 1 | -1 = e.key === 'ArrowUp' ? 1 : -1
         const target = secondStepTarget(sorted, activeRecording.filename, v.currentTime, v.duration || recDuration, dir)
         if (!target) return
-        if (target.kind === 'same') { v.currentTime = target.time; v.play().catch(() => {}); return }
+        if (target.kind === 'same') { applySameChunkStep(v, target.time); return }
         setActiveEventTime(null)
         setActiveEventId(null)
         if (target.fromEnd) pendingSeekFromEndRef.current = target.offsetSeconds
         else pendingSeekRef.current = target.offsetSeconds
+        stepPauseRef.current = true
         openRecording(target.rec)
         setScrollNonce(n => n + 1)
         return
@@ -484,7 +491,7 @@ export default function CameraPage() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [activeRecording, sortOrder, recDuration])
+  }, [activeRecording, sortOrder, recDuration, openRecording])
 
   function handleRateChange(requested: number) {
     const options = [1, 2, 4, 8, 16, 32]
@@ -896,7 +903,7 @@ export default function CameraPage() {
   const isLive = activeRecording === null && !recordingId
 
   // Zera o zoom ao trocar de fonte (live ↔ gravação ↔ outra gravação).
-  useEffect(() => { playerZoom.reset() }, [isLive, activeRecording, recordingId, playerZoom.reset])
+  useEffect(() => { playerZoom.reset() }, [isLive, activeRecording, recordingId, playerZoom])
 
   // Live region score for the ephemeral "Analisar limiar" tool (live view only).
   const onAnalyzeScore = useCallback((data: string) => {
@@ -1046,18 +1053,18 @@ function toggleFullscreen() {
           <div className={`relative flex flex-col min-w-0 h-full ${activePanel ? 'flex-1' : 'w-full'}`}>
             <div
               ref={playerRef}
-              className={`flex flex-col h-full bg-gray-900 border rounded-lg overflow-hidden transition-all duration-300 ${
-                !isLive ? 'border-blue-600 ring-1 ring-blue-600' : 'border-gray-800'
+              className={`flex flex-col h-full bg-background border rounded-lg overflow-hidden transition-all duration-300 ${
+                !isLive ? 'border-blue-600 ring-1 ring-blue-600' : 'border-border'
               }`}
             >
-              <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-gray-700 min-w-0">
-                <span className={`inline-flex items-center justify-center rounded px-2 py-1 text-[10px] font-bold leading-none shrink-0 ${isLive ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400'}`}>
+              <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-border min-w-0">
+                <span className={`inline-flex items-center justify-center rounded px-2 py-1 text-[10px] font-bold leading-none shrink-0 ${isLive ? 'bg-red-600 text-white' : 'bg-surface text-muted'}`}>
                   {isLive ? 'AO VIVO' : 'Reprodução'}
                 </span>
                 {!isLive && activeRecording && (() => {
                   const ev = activeEventIdx >= 0 ? visibleEvents[activeEventIdx] : null
                   return (
-                    <span className="text-sm text-gray-300 min-w-0 truncate">
+                    <span className="text-sm text-foreground min-w-0 truncate">
                       {cam?.name ?? id}
                       {' · '}
                       <span className="tabular-nums">{formatRecordingDateTime(activeRecording.start, timezone)}</span>
@@ -1066,24 +1073,24 @@ function toggleFullscreen() {
                     </span>
                   )
                 })()}
-                {isLive && <span className="font-medium text-sm text-gray-200 truncate">{cam?.name ?? id}</span>}
+                {isLive && <span className="font-medium text-sm text-foreground truncate">{cam?.name ?? id}</span>}
                 <div className="ml-auto shrink-0 flex items-center gap-1">
                   {/* Voltar ao vivo — visível só durante reprodução */}
                   {!isLive && (
                     <button
                       onClick={() => { setNoRecordingAt(null); setActiveRecording(null); navigate(`/camera/live/${id}`, { replace: true }); setActivePanel(null) }}
                       title="Voltar ao vivo"
-                      className="p-1 transition-colors cursor-pointer text-gray-400 hover:text-gray-200"
+                      className="p-1 transition-colors cursor-pointer text-muted hover:text-foreground"
                     >
                       <span className="text-[9px] font-bold leading-none tracking-wide">AO VIVO</span>
                     </button>
                   )}
-                  {!isLive && <div className="w-px h-4 bg-gray-700 mx-0.5" />}
+                  {!isLive && <div className="w-px h-4 bg-surface-2 mx-0.5" />}
                   {/* Mute */}
                   <button
                     onClick={() => setVideoMuted(m => { const next = !m; if (videoRef.current) videoRef.current.muted = next; return next })}
                     title={videoMuted ? 'Ativar áudio' : 'Silenciar'}
-                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${!videoMuted ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${!videoMuted ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
                   >
                     {playerBtn(
                       videoMuted ? <VolumeX className="w-[18px] h-[18px]" /> : <Volume2 className="w-[18px] h-[18px]" />,
@@ -1096,13 +1103,13 @@ function toggleFullscreen() {
                       <button
                         onClick={() => setSpeedMenuOpen(o => !o)}
                         title={`Velocidade ${playbackRate}×`}
-                        className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${playbackRate > 1 ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                        className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${playbackRate > 1 ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
                       >
                         {playerBtn(
                           <>
                             <Gauge className="w-4 h-4" />
                             {playbackRate > 1 && (
-                              <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                              <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-surface-2 text-foreground rounded-full px-0.5">
                                 {playbackRate}×
                               </span>
                             )}
@@ -1111,14 +1118,14 @@ function toggleFullscreen() {
                         )}
                       </button>
                       {speedMenuOpen && (
-                        <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 py-1 min-w-[4rem]">
+                        <div className="absolute right-0 top-full mt-1 bg-surface border border-border rounded shadow-lg z-50 py-1 min-w-[4rem]">
                           {[1, 2, 4, 8, 16, 32]
                             .filter(v => browserMaxRate === null || v <= browserMaxRate)
                             .map(v => (
                               <button
                                 key={v}
                                 onClick={() => { handleRateChange(v); setSpeedMenuOpen(false) }}
-                                className={`w-full text-left px-3 py-1 text-xs ${v === playbackRate ? 'text-blue-400 font-semibold' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
+                                className={`w-full text-left px-3 py-1 text-xs ${v === playbackRate ? 'text-blue-400 font-semibold' : 'text-foreground hover:text-foreground hover:bg-surface-2'}`}
                               >
                                 {v}×
                               </button>
@@ -1132,12 +1139,12 @@ function toggleFullscreen() {
                     <button
                       onClick={() => setContinuousPlay(v => !v)}
                       title={continuousPlay ? 'Desativar reprodução contínua' : 'Ativar reprodução contínua'}
-                      className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${continuousPlay ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                      className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${continuousPlay ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
                     >
                       {playerBtn(<Repeat className="w-4 h-4" />, 'Contínua')}
                     </button>
                   )}
-                  <div className="w-px h-4 bg-gray-700 mx-0.5" />
+                  <div className="w-px h-4 bg-surface-2 mx-0.5" />
                   {/* Recordings */}
                   {(cam?.recording_enabled !== false) && (recordingsTotal > 0 || recordings.length > 0) && (
                     <button
@@ -1152,11 +1159,11 @@ function toggleFullscreen() {
                         }
                       }}
                       title="Gravações"
-                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'recordings' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'recordings' ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
                     >
                       {playerShowIcon && <Film className="w-4 h-4" />}
                       {!playerShowLabel && (recordingsTotal || recordings.length) > 0 && (
-                        <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-surface-2 text-foreground rounded-full px-0.5">
                           {recordingsTotal || recordings.length}
                         </span>
                       )}
@@ -1164,7 +1171,7 @@ function toggleFullscreen() {
                         <>
                           <span className="text-[11px] leading-none">Gravações</span>
                           {(recordingsTotal || recordings.length) > 0 && (
-                            <span className="inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                            <span className="inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] text-[9px] font-bold bg-surface-2 text-foreground rounded-full px-0.5">
                               {recordingsTotal || recordings.length}
                             </span>
                           )}
@@ -1184,18 +1191,18 @@ function toggleFullscreen() {
                         }
                       }}
                       title="Eventos de movimento"
-                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'events' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'events' ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
                     >
                       {playerShowIcon && <Zap className="w-4 h-4" />}
                       {!playerShowLabel && (
-                        <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-surface-2 text-foreground rounded-full px-0.5">
                           {sortedEvents.length}
                         </span>
                       )}
                       {playerShowLabel && (
                         <>
                           <span className="text-[11px] leading-none">Eventos</span>
-                          <span className="inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+                          <span className="inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] text-[9px] font-bold bg-surface-2 text-foreground rounded-full px-0.5">
                             {sortedEvents.length}
                           </span>
                         </>
@@ -1206,16 +1213,16 @@ function toggleFullscreen() {
                   <button
                     onClick={() => setActivePanel(p => p === 'calendar' ? null : 'calendar')}
                     title={isToday ? 'Calendário' : `Calendário · ${format(selectedDate, "d MMM", { locale: ptBR })}`}
-                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'calendar' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'calendar' ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
                   >
                     {playerBtn(<CalendarDays className="w-4 h-4" />, 'Calendário')}
                   </button>
-                  <div className="w-px h-4 bg-gray-700 mx-0.5" />
+                  <div className="w-px h-4 bg-surface-2 mx-0.5" />
                   {/* Debug */}
                   <button
-                    onClick={() => setShowDebug(d => !d)}
+                    onClick={() => showDebug ? closeDebug() : setShowDebug(true)}
                     title="Debug"
-                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${showDebug ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${showDebug ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
                   >
                     {playerBtn(<Code2 className="w-4 h-4" />, 'Debug')}
                   </button>
@@ -1224,7 +1231,7 @@ function toggleFullscreen() {
                     <button
                       onClick={() => navigate(`/settings/cameras/${id}`, { state: { from: `/cameras/${id}`, editing: true } })}
                       title="Configurar câmera"
-                      className="flex items-center gap-1 px-1 py-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-1 py-1 text-muted hover:text-foreground transition-colors cursor-pointer"
                     >
                       {playerBtn(<Settings className="w-4 h-4" />, 'Câmera')}
                     </button>
@@ -1233,14 +1240,14 @@ function toggleFullscreen() {
                   <button
                     onClick={toggleFullscreen}
                     title="Tela inteira"
-                    className="flex items-center gap-1 px-1 py-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+                    className="flex items-center gap-1 px-1 py-1 text-muted hover:text-foreground transition-colors cursor-pointer"
                   >
                     {playerBtn(<Maximize className="w-4 h-4" />, 'Expandir')}
                   </button>
                   <button
                     onClick={takeSnapshot}
                     title="Tirar snapshot"
-                    className="flex items-center gap-1 px-1 py-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+                    className="flex items-center gap-1 px-1 py-1 text-muted hover:text-foreground transition-colors cursor-pointer"
                   >
                     {playerBtn(<CameraCapture className="w-4 h-4" />, 'Snapshot')}
                   </button>
@@ -1248,7 +1255,7 @@ function toggleFullscreen() {
                     <button
                       onClick={downloadVideo}
                       title="Baixar vídeo"
-                      className="flex items-center gap-1 px-1 py-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-1 py-1 text-muted hover:text-foreground transition-colors cursor-pointer"
                     >
                       {playerBtn(
                         <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
@@ -1270,7 +1277,7 @@ function toggleFullscreen() {
                   onPointerMove={playerZoom.onPointerMove}
                   onPointerUp={playerZoom.onPointerUp}
                 >
-                  <HLSPlayer ref={hlsPlayerRef} src={liveUrl} containerClassName="w-full h-full" className="w-full h-full bg-black" cameraId={id} muted={videoMuted} segmentSeconds={cam?.hls_segment_seconds} onGoToEvent={handleGoToEvent} />
+                  <HLSPlayer ref={hlsPlayerRef} src={liveUrl} containerClassName="w-full h-full" className="w-full h-full bg-background" cameraId={id} muted={videoMuted} segmentSeconds={cam?.hls_segment_seconds} onGoToEvent={handleGoToEvent} />
                   {playerZoom.isZoomed && (
                     <button
                       onClick={playerZoom.reset}
@@ -1307,7 +1314,7 @@ function toggleFullscreen() {
                 >
                   <video
                     ref={videoRef}
-                    className={`w-full h-full bg-black ${playerZoom.isZoomed ? 'cursor-grab' : 'cursor-pointer'}`}
+                    className={`w-full h-full bg-background ${playerZoom.isZoomed ? 'cursor-grab' : 'cursor-pointer'}`}
                     playsInline
                     onClick={() => { if (playerZoom.consumeDrag()) return; togglePlayRecording() }}
                     onPlay={() => { setRecPlaying(true); setRecPlayBlocked(false); setLastFrameDataUrl(null); showRecControls() }}
@@ -1322,13 +1329,18 @@ function toggleFullscreen() {
                       if (recHideTimerRef.current) clearTimeout(recHideTimerRef.current)
                       try { e.currentTarget.playbackRate = playbackRate } catch { /* browser limit */ }
                       e.currentTarget.muted = videoMuted
-                      if (pendingSeekFromEndRef.current !== null) {
-                        e.currentTarget.currentTime = Math.max(0, e.currentTarget.duration - pendingSeekFromEndRef.current)
-                        pendingSeekFromEndRef.current = null
-                      } else if (pendingSeekRef.current !== null) {
-                        e.currentTarget.currentTime = pendingSeekRef.current
-                        pendingSeekRef.current = null
-                      }
+                      const stepPaused = stepPauseRef.current
+                      stepPauseRef.current = false
+                      const { seekTo, shouldPlay } = loadedMetadataSeek(
+                        e.currentTarget.duration,
+                        pendingSeekFromEndRef.current,
+                        pendingSeekRef.current,
+                        stepPaused,
+                      )
+                      pendingSeekFromEndRef.current = null
+                      pendingSeekRef.current = null
+                      if (seekTo !== null) e.currentTarget.currentTime = seekTo
+                      if (!shouldPlay) { e.currentTarget.pause(); return }
                       e.currentTarget.play().catch((err: unknown) => {
                         if ((err as { name?: string })?.name === 'NotAllowedError') setRecPlayBlocked(true)
                       })
@@ -1385,7 +1397,7 @@ function toggleFullscreen() {
                     <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
                       <div className="px-4 py-2.5 rounded-lg bg-black/75 text-center">
                         <div className="text-sm font-medium text-white">Sem gravação neste horário</div>
-                        <div className="mt-0.5 text-xs text-gray-300 tabular-nums">
+                        <div className="mt-0.5 text-xs text-foreground tabular-nums">
                           {new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(noRecordingAt))}
                         </div>
                       </div>
@@ -1395,7 +1407,7 @@ function toggleFullscreen() {
                   {lastFrameDataUrl && (
                     <img
                       src={lastFrameDataUrl}
-                      className="absolute inset-0 w-full h-full object-contain bg-black pointer-events-none"
+                      className="absolute inset-0 w-full h-full object-contain bg-background pointer-events-none"
                       aria-hidden
                     />
                   )}
@@ -1433,9 +1445,9 @@ function toggleFullscreen() {
             {/* Persistent progress bar — always visible during recording playback */}
             {!isLive && recDuration > 0 && (
               <div className="flex items-center gap-2 px-1 py-1.5">
-                <span className="text-xs text-gray-500 tabular-nums shrink-0">{formatRecTime(recCurrentTime)}</span>
+                <span className="text-xs text-faint tabular-nums shrink-0">{formatRecTime(recCurrentTime)}</span>
                 <div
-                  className="flex-1 h-1.5 rounded-full bg-gray-700 cursor-pointer relative group"
+                  className="flex-1 h-1.5 rounded-full bg-surface-2 cursor-pointer relative group"
                   onClick={e => {
                     if (!videoRef.current || !recDuration) return
                     const rect = e.currentTarget.getBoundingClientRect()
@@ -1448,90 +1460,90 @@ function toggleFullscreen() {
                     style={{ width: `${(recCurrentTime / recDuration) * 100}%` }}
                   />
                 </div>
-                <span className="text-xs text-gray-500 tabular-nums shrink-0">{formatRecTime(recDuration)}</span>
+                <span className="text-xs text-faint tabular-nums shrink-0">{formatRecTime(recDuration)}</span>
               </div>
             )}
 
             {showDebug && (
               <div
                 style={{ right: debugPos.x, top: debugPos.y }}
-                className="absolute z-30 bg-gray-900 border border-gray-700 rounded-lg shadow-xl select-none flex flex-col"
+                className="absolute z-30 bg-background border border-border rounded-lg shadow-xl select-none flex flex-col"
               >
                 {/* Header — drag handle */}
                 <div
-                  className="flex items-center justify-between px-4 py-2 border-b border-gray-700 cursor-move"
+                  className="flex items-center justify-between px-4 py-2 border-b border-border cursor-move"
                   onMouseDown={handleDebugDragStart}
                 >
-                  <span className="text-xs font-semibold text-gray-300 uppercase tracking-widest">Debug</span>
-                  <button onClick={() => setShowDebug(false)} className="ml-6 text-gray-500 hover:text-white transition-colors">
+                  <span className="text-xs font-semibold text-foreground uppercase tracking-widest">Debug</span>
+                  <button onClick={closeDebug} className="ml-6 text-faint hover:text-foreground transition-colors">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
                 {/* Stats */}
                 <div className="px-4 py-3 flex flex-col gap-3 min-w-64">
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Stream</p>
+                    <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-1.5">Stream</p>
                     <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-                      <span className="text-xs text-gray-500">Codec</span>
-                      <span className="text-sm text-gray-200 font-mono">{cam?.video_codec || '—'}</span>
-                      <span className="text-xs text-gray-500">Resolução</span>
-                      <span className="text-sm text-gray-200 font-mono">{cam?.width && cam.height ? `${cam.width}×${cam.height}` : '—'}</span>
-                      <span className="text-xs text-gray-500">Áudio</span>
-                      <span className="text-sm text-gray-200">{cam?.has_audio == null ? '—' : cam.has_audio ? 'sim' : 'não'}</span>
+                      <span className="text-xs text-faint">Codec</span>
+                      <span className="text-sm text-foreground font-mono">{cam?.video_codec || '—'}</span>
+                      <span className="text-xs text-faint">Resolução</span>
+                      <span className="text-sm text-foreground font-mono">{cam?.width && cam.height ? `${cam.width}×${cam.height}` : '—'}</span>
+                      <span className="text-xs text-faint">Áudio</span>
+                      <span className="text-sm text-foreground">{cam?.has_audio == null ? '—' : cam.has_audio ? 'sim' : 'não'}</span>
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Reprodução</p>
+                    <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-1.5">Reprodução</p>
                     <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
                       {!isLive && (
                         <>
-                          <span className="text-xs text-gray-500">Posição</span>
-                          <span className="text-sm text-gray-200 font-mono tabular-nums">{formatRecTime(recCurrentTime)} / {formatRecTime(recDuration)}</span>
-                          <span className="text-xs text-gray-500">Velocidade</span>
-                          <span className="text-sm text-gray-200 font-mono tabular-nums">{playbackRate}×</span>
+                          <span className="text-xs text-faint">Posição</span>
+                          <span className="text-sm text-foreground font-mono tabular-nums">{formatRecTime(recCurrentTime)} / {formatRecTime(recDuration)}</span>
+                          <span className="text-xs text-faint">Velocidade</span>
+                          <span className="text-sm text-foreground font-mono tabular-nums">{playbackRate}×</span>
                         </>
                       )}
-                      <span className="text-xs text-gray-500">FPS</span>
-                      <span className="text-sm text-gray-200 font-mono tabular-nums">{debugStats ? `${debugStats.fps} fps` : '—'}</span>
-                      <span className="text-xs text-gray-500">Descartados</span>
-                      <span className={`text-sm font-mono tabular-nums ${debugStats && debugStats.dropped > 0 ? 'text-yellow-400' : 'text-gray-200'}`}>
+                      <span className="text-xs text-faint">FPS</span>
+                      <span className="text-sm text-foreground font-mono tabular-nums">{debugStats ? `${debugStats.fps} fps` : '—'}</span>
+                      <span className="text-xs text-faint">Descartados</span>
+                      <span className={`text-sm font-mono tabular-nums ${debugStats && debugStats.dropped > 0 ? 'text-yellow-400' : 'text-foreground'}`}>
                         {debugStats ? debugStats.dropped : '—'}
                       </span>
-                      <span className="text-xs text-gray-500">CPU</span>
-                      <span className={`text-sm font-mono tabular-nums ${debugStats && debugStats.lagMs > 150 ? 'text-red-400' : debugStats && debugStats.lagMs > 50 ? 'text-yellow-400' : 'text-gray-200'}`}>
+                      <span className="text-xs text-faint">CPU</span>
+                      <span className={`text-sm font-mono tabular-nums ${debugStats && debugStats.lagMs > 150 ? 'text-red-400' : debugStats && debugStats.lagMs > 50 ? 'text-yellow-400' : 'text-foreground'}`}>
                         {debugStats ? `${debugStats.lagMs} ms` : '—'}
                       </span>
                     </div>
                   </div>
                   {isLive && (
                     <div>
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Rede</p>
+                      <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-1.5">Rede</p>
                       <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-                        <span className="text-xs text-gray-500">Bitrate</span>
-                        <span className="text-sm text-gray-200 font-mono tabular-nums">{debugStats?.hlsStats ? `${debugStats.hlsStats.bandwidthKbps} kbps` : '—'}</span>
-                        <span className="text-xs text-gray-500">Latência</span>
-                        <span className="text-sm text-gray-200 font-mono tabular-nums">{debugStats?.hlsStats ? `${debugStats.hlsStats.latencySeconds.toFixed(1)} s` : '—'}</span>
+                        <span className="text-xs text-faint">Bitrate</span>
+                        <span className="text-sm text-foreground font-mono tabular-nums">{debugStats?.hlsStats ? `${debugStats.hlsStats.bandwidthKbps} kbps` : '—'}</span>
+                        <span className="text-xs text-faint">Latência</span>
+                        <span className="text-sm text-foreground font-mono tabular-nums">{debugStats?.hlsStats ? `${debugStats.hlsStats.latencySeconds.toFixed(1)} s` : '—'}</span>
                       </div>
                     </div>
                   )}
                   {cam?.motion && (
                     <div>
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Movimento</p>
+                      <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-1.5">Movimento</p>
                       <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-                        <span className="text-xs text-gray-500">FPS captura</span>
-                        <span className="text-sm text-gray-200 font-mono tabular-nums">{cam.motion.fps ?? '—'}</span>
+                        <span className="text-xs text-faint">FPS captura</span>
+                        <span className="text-sm text-foreground font-mono tabular-nums">{cam.motion.fps ?? '—'}</span>
                         {(cam.motion.capture_width ?? 0) > 0 && (
                           <>
-                            <span className="text-xs text-gray-500">Resolução</span>
-                            <span className="text-sm text-gray-200 font-mono">{cam.motion.capture_width}×{cam.motion.capture_height}</span>
+                            <span className="text-xs text-faint">Resolução</span>
+                            <span className="text-sm text-foreground font-mono">{cam.motion.capture_width}×{cam.motion.capture_height}</span>
                           </>
                         )}
-                        <span className="text-xs text-gray-500">Limiar</span>
-                        <span className="text-sm text-gray-200 font-mono tabular-nums">{effectiveThreshold}</span>
+                        <span className="text-xs text-faint">Limiar</span>
+                        <span className="text-sm text-foreground font-mono tabular-nums">{effectiveThreshold}</span>
                         {debugMotionValue !== null && effectiveThreshold > 0 && (
                           <>
-                            <span className="text-xs text-gray-500">{debugMotionValue.label}</span>
-                            <span className="text-sm text-gray-200 font-mono tabular-nums">
+                            <span className="text-xs text-faint">{debugMotionValue.label}</span>
+                            <span className="text-sm text-foreground font-mono tabular-nums">
                               {(() => {
                                 const v = debugMotionValue.score
                                 if (v <= 0) return '—'
@@ -1543,7 +1555,7 @@ function toggleFullscreen() {
                           </>
                         )}
                       </div>
-                      <label className="mt-3 flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 cursor-pointer transition-colors">
+                      <label className="mt-3 flex items-center gap-1.5 text-xs text-muted hover:text-foreground cursor-pointer transition-colors">
                         <input
                           type="checkbox"
                           checked={showDebugChart}
@@ -1553,7 +1565,7 @@ function toggleFullscreen() {
                         gráfico limiar
                       </label>
                       {isLive && (
-                        <label className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 cursor-pointer transition-colors">
+                        <label className="mt-2 flex items-center gap-1.5 text-xs text-muted hover:text-foreground cursor-pointer transition-colors">
                           <input
                             type="checkbox"
                             checked={analyzeMode}
@@ -1571,7 +1583,7 @@ function toggleFullscreen() {
                 </div>
                 {/* Gráfico — abaixo dos stats, só quando checkbox ativo */}
                 {showDebugChart && cam?.motion && (
-                  <div className="border-t border-gray-700 p-3 min-w-[640px]">
+                  <div className="border-t border-border p-3 min-w-[640px]">
                     {!isLive && (
                       <p className="text-xs text-yellow-500/80 mb-2">scores ao vivo — não reflete a gravação em curso</p>
                     )}
@@ -1585,17 +1597,17 @@ function toggleFullscreen() {
 
           {/* Painel lateral condicional */}
           {activePanel && (
-            <div className="w-72 shrink-0 border-l border-gray-800 bg-gray-900 flex flex-col h-full">
+            <div className="w-72 shrink-0 border-l border-border bg-background flex flex-col h-full">
               {(activePanel === 'recordings' || activePanel === 'events' || activePanel === 'calendar') && (
                 <>
-                  <div className="flex items-center border-b border-gray-800 shrink-0">
+                  <div className="flex items-center border-b border-border shrink-0">
                     <button
                       id="tab-recordings"
                       onClick={() => setActivePanel('recordings')}
                       className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
                         activePanel === 'recordings'
                           ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
-                          : 'text-gray-500 hover:text-gray-300'
+                          : 'text-faint hover:text-foreground'
                       }`}
                     >
                       <span>Gravações</span>
@@ -1607,7 +1619,7 @@ function toggleFullscreen() {
                       className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
                         activePanel === 'events'
                           ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
-                          : 'text-gray-500 hover:text-gray-300'
+                          : 'text-faint hover:text-foreground'
                       }`}
                     >
                       <span>Eventos</span>
@@ -1619,7 +1631,7 @@ function toggleFullscreen() {
                       className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
                         activePanel === 'calendar'
                           ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
-                          : 'text-gray-500 hover:text-gray-300'
+                          : 'text-faint hover:text-foreground'
                       }`}
                     >
                       <span>{format(selectedDate, "MMM", { locale: ptBR })}</span>
@@ -1628,14 +1640,14 @@ function toggleFullscreen() {
                     <button
                       onClick={() => setActivePanel(null)}
                       title="Fechar"
-                      className="px-2.5 py-2 text-gray-600 hover:text-gray-300 transition-colors shrink-0"
+                      className="px-2.5 py-2 text-faint hover:text-foreground transition-colors shrink-0"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
                   {activePanel === 'recordings' ? (
                     <>
-                    <label className="flex items-center gap-2 px-3 py-2 text-xs text-gray-400 hover:text-gray-200 border-b border-gray-800 cursor-pointer transition-colors shrink-0">
+                    <label className="flex items-center gap-2 px-3 py-2 text-xs text-muted hover:text-foreground border-b border-border cursor-pointer transition-colors shrink-0">
                       <input
                         type="checkbox"
                         checked={onlyMotion}
@@ -1666,7 +1678,7 @@ function toggleFullscreen() {
                                   ? 'opacity-50'
                                   : isActive
                                     ? 'bg-blue-900/40 border-l-2 border-blue-500'
-                                    : 'hover:bg-gray-800'
+                                    : 'hover:bg-surface'
                               }`}
                             >
                               <button
@@ -1681,7 +1693,7 @@ function toggleFullscreen() {
                                 }}
                                 className="flex-1 flex items-center justify-between text-left disabled:cursor-not-allowed"
                               >
-                                <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-gray-300'}`}>
+                                <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-foreground'}`}>
                                   {formatRecordingTime(rec.start, timezone)}
                                 </span>
                                 <div className="flex items-center gap-2 shrink-0 ml-2">
@@ -1690,7 +1702,7 @@ function toggleFullscreen() {
                                   )}
                                   {rec.is_recording
                                     ? <span className="text-xs text-red-400 font-medium">● REC</span>
-                                    : <span className="text-xs text-gray-500">▶ MP4</span>
+                                    : <span className="text-xs text-faint">▶ MP4</span>
                                   }
                                 </div>
                               </button>
@@ -1698,7 +1710,7 @@ function toggleFullscreen() {
                                 <button
                                   onClick={() => setDeleteTarget({ rec, hasMotion })}
                                   title="Excluir gravação"
-                                  className="ml-2 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="ml-2 text-faint hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1732,11 +1744,11 @@ function toggleFullscreen() {
                             ref={isActive ? (el) => { if (el) activeEventItemRef.current = el } : null}
                             onClick={() => { playEventAt(ev); setScrollNonce(n => n + 1) }}
                             className={`group w-full flex flex-col px-3 py-2 transition-colors text-left ${
-                              isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-gray-800'
+                              isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-surface'
                             }`}
                           >
                             <div className="flex items-center justify-between w-full gap-2">
-                              <span className={`text-sm tabular-nums ${isActive ? 'text-blue-300' : 'text-gray-300'}`}>
+                              <span className={`text-sm tabular-nums ${isActive ? 'text-blue-300' : 'text-foreground'}`}>
                                 {formatRecordingTime(ev.time, timezone)}
                               </span>
                               <div className="flex items-center gap-1.5 min-w-0">
@@ -1746,7 +1758,7 @@ function toggleFullscreen() {
                                     tabIndex={-1}
                                     title="Baixar vídeo(s) do evento"
                                     onClick={(e) => { e.stopPropagation(); downloadEventVideos(ev) }}
-                                    className="shrink-0 text-gray-500 hover:text-gray-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="shrink-0 text-faint hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                                   >
                                     <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
                                       <path d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -1765,11 +1777,11 @@ function toggleFullscreen() {
                                     {ev.label}
                                   </span>
                                 )}
-                                <span className="text-xs text-gray-500 shrink-0">[{(ev.score * 100).toFixed(1)}%]</span>
+                                <span className="text-xs text-faint shrink-0">[{(ev.score * 100).toFixed(1)}%]</span>
                               </div>
                             </div>
                             <div className="flex items-center justify-between gap-2 mt-1">
-                              <span className="text-xs text-gray-400 truncate">
+                              <span className="text-xs text-muted truncate">
                                 {ev.color ? ev.label : 'Movimento'}
                               </span>
                               {thumbURL && (
@@ -1777,7 +1789,7 @@ function toggleFullscreen() {
                                   key={`thumb-${ev.id}-${thumbOverride ?? bust ?? 0}`}
                                   src={thumbURL}
                                   alt="snapshot"
-                                  className="w-16 h-10 object-cover rounded cursor-zoom-in border border-gray-700 shrink-0"
+                                  className="w-16 h-10 object-cover rounded cursor-zoom-in border border-border shrink-0"
                                   style={thumbFlash.has(ev.id) ? { animation: 'thumb-flash 0.9s ease-out' } : undefined}
                                   onClick={e => { e.stopPropagation(); openSnapshotModal(ev) }}
                                 />
@@ -1819,15 +1831,15 @@ function toggleFullscreen() {
                             </div>
                           )}
                           classNames={{
-                            root: 'text-gray-200 text-sm',
-                            month_caption: 'text-base text-gray-200 font-medium',
+                            root: 'text-foreground text-sm',
+                            month_caption: 'text-base text-foreground font-medium',
                             month_grid: 'mt-2',
-                            day: 'text-gray-300 hover:bg-gray-700 rounded',
+                            day: 'text-foreground hover:bg-surface-2 rounded',
                             day_button: 'w-8 h-8 flex items-center justify-center rounded',
                             selected: 'bg-blue-600 text-white rounded',
                             today: 'text-blue-400 font-semibold',
-                            outside: 'text-gray-600',
-                            disabled: 'text-gray-700',
+                            outside: 'text-faint',
+                            disabled: 'text-faint',
                           }}
                         />
                       </div>
@@ -1862,21 +1874,21 @@ function toggleFullscreen() {
           onClick={() => setDetectionModal(null)}
         >
           <div
-            className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-72 p-5"
+            className="bg-background border border-border rounded-xl shadow-2xl w-72 p-5"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-200">Detecções de objetos</h3>
+              <h3 className="text-sm font-semibold text-foreground">Detecções de objetos</h3>
               <button
                 onClick={() => setDetectionModal(null)}
-                className="text-gray-500 hover:text-gray-300 text-lg leading-none"
+                className="text-faint hover:text-foreground text-lg leading-none"
               >✕</button>
             </div>
             <div className="space-y-2">
               {detectionModal.map(d => (
                 <div key={d.label} className="flex items-center justify-between">
                   <span className={`text-sm font-medium ${d.custom_model ? 'text-emerald-300' : 'text-violet-300'}`}>{d.label}</span>
-                  <div className="flex items-center gap-3 text-xs text-gray-400">
+                  <div className="flex items-center gap-3 text-xs text-muted">
                     <span>{(d.confidence * 100).toFixed(1)}%</span>
                     <span>{d.frame_count} frames</span>
                   </div>
@@ -1908,7 +1920,7 @@ function toggleFullscreen() {
               />
             </div>
 
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-muted">
               {formatRecordingTime(snapshotEvent.time, timezone)} — score: {(snapshotEvent.score * 100).toFixed(1)}%
             </p>
 
@@ -1925,7 +1937,7 @@ function toggleFullscreen() {
                     onChange={e => setAnnLabel(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && saveAnnotation()}
                     autoFocus
-                    className="flex-1 bg-gray-800 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-emerald-500"
+                    className="flex-1 bg-surface text-foreground text-sm rounded px-3 py-1.5 border border-border focus:outline-none focus:border-emerald-500"
                   />
                   <button
                     onClick={saveAnnotation}
@@ -1936,16 +1948,16 @@ function toggleFullscreen() {
                   </button>
                   <button
                     onClick={() => setAnnBox(null)}
-                    className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded"
+                    className="px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-2 text-foreground rounded"
                   >
                     Cancelar
                   </button>
                 </>
               )}
               {!annSaveOk && !annBox && existingAnn && (
-                <span className="text-xs text-gray-400 flex items-center gap-2">
+                <span className="text-xs text-muted flex items-center gap-2">
                   {existingAnnLabel
-                    ? <><span className="font-medium text-gray-300">{existingAnnLabel}</span> · Arraste para substituir</>
+                    ? <><span className="font-medium text-foreground">{existingAnnLabel}</span> · Arraste para substituir</>
                     : 'Região salva · Arraste para substituir'
                   }
                   {existingAnnId && (
@@ -1959,11 +1971,11 @@ function toggleFullscreen() {
                 </span>
               )}
               {!annSaveOk && !annBox && !existingAnn && (
-                <span className="text-xs text-gray-500">Arraste para marcar · mova · redimensione · rotacione</span>
+                <span className="text-xs text-faint">Arraste para marcar · mova · redimensione · rotacione</span>
               )}
               <button
                 onClick={closeSnapshotModal}
-                className="ml-auto px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded"
+                className="ml-auto px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-2 text-foreground rounded"
               >
                 Fechar
               </button>
@@ -1989,7 +2001,7 @@ function toggleFullscreen() {
       >
         <button
           onClick={downloadPendingSnap}
-          className="self-start px-4 py-1.5 text-xs text-gray-200 border border-gray-600 rounded hover:bg-gray-700 transition-colors"
+          className="self-start px-4 py-1.5 text-xs text-foreground border border-border rounded hover:bg-surface-2 transition-colors"
         >
           Baixar snapshot
         </button>

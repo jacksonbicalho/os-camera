@@ -82,8 +82,10 @@ EOF
 
    > ⚠️ **Nenhum commit pode ser feito antes de o navigator marcar `[x] Aprovado`.** O driver apresenta o resultado, o navigator revisa o código e aprova — só então o commit acontece.
 
-7. Com a aprovação do navigator (`[x] Aprovado`), commitar com mensagem semântica na branch e fazer `git push origin <branch>`. **Aguardar autorização explícita do navigator antes de abrir o PR** — a aprovação libera o commit/push, mas não o `gh pr create`. Só abrir o PR quando o navigator pedir. O PR **sempre** tem `--base develop` (nunca `master`).
-8. Atualizar o arquivo de release correspondente em `releases/`: preencher a branch e o número do PR na tabela, marcar `[~]` (aguardando aprovação no GitHub). O merge não é feito individualmente — acontece em lote quando o navigator liberar a release (merge em `develop`, depois PR `develop → master`).
+   > ⚠️ **O driver NÃO marca os Critérios de Aceitação.** Apenas o **1º critério** (verdes) é marcado automaticamente pelo `scripts/check.sh`. **Todos os demais critérios** e o `[x] Aprovado` são marcados pelo **navigator** via `scripts/story-approval.sh`. O driver pode preencher a seção `## Revisão`, mas **sem tocar nos checkboxes dos critérios**.
+
+7. Com a aprovação do navigator (`[x] Aprovado`), o ciclo roda **direto, sem novas perguntas**: commitar (mensagem semântica) → `git push origin <branch>` → abrir o PR (`scripts/push-pr.sh`, **sempre `--base develop`**, nunca `master`) → mergear quando o CI ficar verde (`scripts/merge-when-green.sh <PR#>`). A aprovação da story autoriza, de uma vez, commit + push + PR + merge-quando-verde. **Apenas o corte de release** (`develop → master`) depende de autorização explícita do navigator.
+8. Atualizar o arquivo de release correspondente em `releases/`: preencher a branch e o número do PR na tabela, marcar `[~]`; o `merge-when-green.sh` marca `[~]→[✓]` ao mergear em `develop`. O **corte de release** (PR `develop → master`) é o passo que aguarda o navigator liberar.
 
 ### Histórias
 
@@ -115,7 +117,7 @@ O fluxo acima é automatizado pelos slash commands em `.claude/commands/`:
 
 | Comando | O que faz |
 |---|---|
-| `/story <tipo>(<escopo>): <descrição>` | Cria story file + branch a partir de develop (passo 1 do fluxo). |
+| `/story <descrição livre>` | Cria story file + branch a partir de develop (passo 1 do fluxo). Passe **só a descrição**; Claude decide tipo/escopo/slug. |
 | `/release-pr [vX.Y.Z]` | Valida release file e abre PR develop → master (após todas as histórias `[✓]`). |
 | `/release-tag` | Roda `./scripts/release.sh` em master após o PR de release ser mergeado. |
 
@@ -123,15 +125,26 @@ Use os commands em vez de executar os passos manualmente — eles validam pré-c
 
 ### Hooks de pre-commit (`.claude/settings.json`)
 
-Hooks `PreToolUse` (matcher `Bash`, versionados no repo) impõem o fluxo automaticamente:
+Hooks `PreToolUse` (matcher `Bash`, versionados no repo) impõem o fluxo automaticamente. O `settings.json` só **chama scripts** versionados em `scripts/hooks/` (a lógica vive lá, não inline):
 
-| Gate | Bloqueia quando |
-|---|---|
-| Aprovação da story | `git commit` em branch de história cuja story não tem `[x] Aprovado`. |
-| Target do PR | `gh pr create --base master` a partir de branch que não seja `develop`/`release/*`. |
-| Testes backend | `git commit` quando `go build ./...` ou `go test -count=1 ./...` falham. |
+| Gate | Script | Bloqueia quando |
+|---|---|---|
+| Aprovação da story | `scripts/hooks/story-approved.sh` | `git commit` em branch de história cuja story não tem `[x] Aprovado`. |
+| Target do PR | `scripts/hooks/pr-target.sh` | `gh pr create --base master` a partir de branch que não seja `develop`/`release/*`. |
+| Testes backend | `scripts/hooks/precommit-tests.sh` | `git commit` quando `go build ./...` ou `go test -count=1 ./...` falham. |
 
-O gate de testes roda no host (Go instalado), **sem cache** (`-count=1`) — só execução limpa pega testes dependentes de `time.Now()` (o cache do Go não rastreia o relógio). Escopo é backend; o frontend segue coberto pelo CI. Hooks só recarregam no início da sessão do Claude Code: alterações em `settings.json` valem a partir da próxima sessão.
+O gate de testes roda no host (Go instalado), **sem cache** (`-count=1`) — só execução limpa pega testes dependentes de `time.Now()` (o cache do Go não rastreia o relógio). Escopo é backend; o frontend segue coberto pelo CI. Hooks só recarregam no início da sessão do Claude Code: alterações em `settings.json` (ou nos scripts de hook) valem a partir da próxima sessão.
+
+### Scripts de workflow (`scripts/`)
+
+Encadeiam o fluxo por história. **Checkboxes usam `[]` para não-marcado** (e `[x]` para marcado).
+
+| Script | Quem roda | O que faz |
+|---|---|---|
+| `check.sh` | Claude | "CI local": `go build`+`go test` sempre; `frontend-check.sh` se `frontend/` mudou (vs develop). Se tudo verde, marca o **1º Critério de Aceitação** da story `[x]`. |
+| `story-approval.sh` | **Navigator** (`! scripts/story-approval.sh`) | Interativo: percorre os Critérios de Aceitação, pergunta sobre cada não-marcado e marca conforme a resposta; no fim, oferece marcar `[x] Aprovado`. |
+| `commit.sh` | Claude | Commita o que está staged usando o heading `#` da story como mensagem (já é `tipo(escopo): desc`); exige `[x] Aprovado`; adiciona `Co-Authored-By`. |
+| `push-pr.sh` | Claude | Push + `gh pr create --base develop`. Só com tree limpa + story aprovada; idempotente (não recria PR). **Não mergeia** — isso é do `merge-when-green.sh`. |
 
 ### Merge pós-PR
 
@@ -204,6 +217,12 @@ make rpi                                              # alias para linux-arm64 (
 SPA React/Vite/Tailwind. Páginas principais: `LoginPage` → `DashboardPage` → `CameraPage` / `StatsPage`. Seção de configurações em `/settings/*` com sidebar lateral (padrão GitHub Settings). Token JWT em `localStorage` (`auth.ts`). Em desenvolvimento, Vite faz proxy de `/api` e `/stream` para `localhost:8080`.
 
 **Todo componente/elemento da UI deve ter um `id` único e estável.** Botões, painéis, itens de navegação, abas, o ponteiro da timeline etc. recebem um `id` descritivo (ex: `sidebar-settings`, `events-panel`, `timeline-pointer`, `theme-mode-dark`). Facilita testes, automação e referência inequívoca em revisões — ao criar ou alterar um elemento, garanta o `id`.
+
+**Design tokens e tema (`src/index.css`).** Base estrutural organizada como **tema → modo → valores**. Os tokens vivem num bloco `@theme` do Tailwind v4 (geram utilitários):
+- **Tipografia**: escala `text-display/h1/h2/h3/h4/body/caption` (size + line-height) → use os utilitários (`text-h2`, `text-h4`…) em vez de tamanhos soltos (`text-lg`/`text-xs`).
+- **Cor semântica**: papéis `bg-background`, `bg-surface`, `bg-surface-2`, `text-foreground`, `text-muted`, `text-faint`, `border-border`, `bg-primary`/`text-on-primary`, `bg-danger/success/warning`. Os valores no `@theme` são o **modo dark** (padrão); `[data-mode="light"]` sobrescreve **só** os tokens semânticos que mudam (accents seguem vívidos). A migração das cores cruas (`bg-gray-900`/`text-white`) para esses papéis é **incremental** — boa parte do app ainda usa as classes Tailwind diretas, com o bloco legado `[data-mode="light"]` remapeando a rampa de cinzas.
+
+**Color mode ≠ tema.** `dark`/`light`/`system` são **modos de cor**; o **tema** é a identidade (paleta + tipografia). `ThemeContext` (`contexts/ThemeContext.tsx`) expõe `mode`/`setMode` (modo) e `theme` (hoje só `'default'`); aplica `data-mode` (resolvido dark/light) no `<html>`. A preferência persistida (`users.theme`) guarda o **modo**; quando houver um 2º tema, entra um campo de tema. **Adicionar um tema** no futuro = novo conjunto de valores de tokens (sem refatorar componentes).
 
 Rotas de settings por câmera: `/settings/cameras/:id` (detalhes) → `/settings/cameras/:id/motion` (detecção de movimento) → `/settings/cameras/:id/motion/zones` (zonas de exclusão — sub-página de motion).
 
@@ -297,9 +316,10 @@ Modelos pré-baixados na imagem: `yolov8n` e `yolo11n`. Com GPU RTX 3050 (4GB VR
 | `internal/streaming` | Gera playlist HLS ao vivo em `{segments_path}/{camera_id}/index.m3u8`. Modo padrão: janela de 5 segmentos de 2s. Modo DVR (quando `camera.hls_dvr_seconds > 0`): mantém todos os segmentos da janela DVR, adiciona `EXT-X-PROGRAM-DATE-TIME` para seek por timestamp. `hls_dvr_seconds`, `hls_segment_seconds` e `hls_list_size` são configurados por câmera via UI. |
 | `internal/motion` | Detecta movimento via ffmpeg pipe raw. O pipe entrega frames **RGB full-res** (`format=rgb24`); cada frame é reduzido a cinza na resolução de diff (`downscaleRGBToGray`, default 1/4) em memória para o cálculo do diff/bbox, enquanto o frame full-res original é mantido para o snapshot. Expõe dois canais: `Events()` para eventos acima do limiar e `RawScores()` para o score bruto de cada frame diff. A cada evento persiste no banco (`motion_events`) e salva um JPEG anotado (`_motion.jpg`) com bounding box e score: o snapshot é o **próprio frame que disparou** (anotado in-place por `annotateRGBFrame`, full-res colorido), então o box sempre coincide com o sujeito — **não há mais grab RTSP assíncrono** (que capturava segundos depois e desalinhava o box). **`motion.ndjson` não é mais escrito** — todos os eventos vão direto para o banco; o arquivo é lido apenas como fallback legado. |
 | `internal/storage` | `Cleaner` com retenção diferenciada por categoria e suporte a drives S3. Quando o banco está disponível: `syncRecordings()` varre o filesystem e sincroniza MP4s para a tabela `recordings` (`INSERT OR IGNORE`), atualizando `has_motion` via join com `motion_events`; `cleanFromDB()` consulta `recordings` para decisões de exclusão — inclui `AND ended_at IS NOT NULL` para nunca processar o arquivo em gravação. Ação configurável por categoria (`delete` ou `send_to_drive`): `uploadAndPurge()` faz upload S3, apaga o MP4 e chama `purgeMotionAssets()`. `purgeMotionAssets()` busca `frame_path` no banco, apaga os JPEGs do disco e deleta as linhas de `motion_events`. `slugify()` converte o nome da câmera para prefixo do objeto S3, transliterando acentos (`ã→a`, `ç→c`, etc.) via mapa estático. Sem banco: consulta `motion.ndjson` diretamente. |
-| `internal/db` | Acesso ao SQLite (`modernc.org/sqlite`). Executa migrations em `internal/db/migrations/` na inicialização. Tabelas: `cameras`, `camera_recording_config`, `camera_motion_config`, `camera_motion_zones`, `users` (com `must_change_password`), `settings`, `recordings`, `motion_events`, `drives`, `retention_config`, `user_notifications` (notificações persistidas por usuário; FK `users` ON DELETE CASCADE). Coluna `users.theme` (preferência de tema da UI, default `dark`). |
+| `internal/db` | Acesso ao SQLite (`modernc.org/sqlite`). Executa migrations em `internal/db/migrations/` na inicialização. Tabelas: `cameras`, `camera_recording_config`, `camera_motion_config`, `camera_motion_zones`, `users` (com `must_change_password`), `settings`, `recordings`, `motion_events`, `drives`, `retention_config`, `user_notifications` (notificações persistidas por usuário; FK `users` ON DELETE CASCADE), `camera_device_info` (metadados de hardware capturados pelo `internal/deviceinfo`, **EAV**: `(camera_id, key, value, collected_at)`, PK `(camera_id, key)`; cada captura é um snapshot completo — `SaveDeviceInfo` faz delete+insert numa tx, removendo chaves que sumiram; FK `cameras` ON DELETE CASCADE). Coluna `users.theme` (preferência de tema da UI, default `dark`). |
 | `internal/ffprobe` | Executa e parseia saída JSON do ffprobe para detectar codec, áudio e dimensões do stream. |
-| `internal/server` | HTTP server com JWT HS256 (segredo gerado a cada boot, expira em 24h). O claim `must_change_password=true` bloqueia todos os endpoints exceto `POST /api/auth/change-password`. Serve API REST, arquivos de gravação (incluindo snapshots `_motion.jpg`), segmentos HLS e a SPA React. Endpoints SSE de movimento: `/api/cameras/{id}/motion/live`, `/api/cameras/{id}/motion/scores` e `/api/cameras/{id}/motion/region-score` (score por zona/região, usado pelo canvas de zonas). `GET /api/stats` usa `SUM(size_bytes)` da tabela `recordings` quando banco disponível. `PUT /api/settings/cameras/reorder` (admin) — reordena câmeras em lote via `{"ids":[...]}`. A rota estática `/reorder` é registrada antes de `PUT /api/settings/cameras/{id}` para ter precedência no mux do Go 1.22+. `display_order` não é aceito nos endpoints de create/update; o update preserva a ordem existente da câmera. Notificações por usuário (escopadas ao usuário do JWT, não admin-only): `GET /api/notifications` (lista + `unread_count`), `POST /api/notifications/{id}/read`, `POST /api/notifications/read-all`, `DELETE /api/notifications/{id}`, `DELETE /api/notifications`. Preferências do usuário: `GET /api/me/preferences` (`{theme}`) e `PUT /api/me/preferences` (`{theme: dark|moderno}`, valida o valor). |
+| `internal/deviceinfo` | Captura metadados de hardware/manutenção da câmera logo após o cadastro. Saída é um **`map[string]string` plano de chaves namespaced** (`model`, `serial`, `firmware`, `mac`, `ntp.enabled`, `timezone`, `stream.main.gop`, `stream.sub.*`, e no futuro `capability.zoom`, `url.config`, `ptz.*`) + o dump bruto completo sob `raw.*` — EAV, então modelos diferentes guardam o que expõem sem mudar schema. Extensível por família via interface `Collector` (`Name`/`Detect`/`Collect`) — o "tipo". Hoje só o collector `dahua` (CGI Intelbras/Dahua, cliente HTTP digest em `cgi.go`); a função `Collect` escolhe o primeiro collector que dá `Detect`, marca `collector=<nome>` e mescla as chaves `stream.main.*` do `ffprobe` por cima (preenche só as ausentes; fallback `collector=generic` quando nenhum casa). |
+| `internal/server` | HTTP server com JWT HS256 (segredo gerado a cada boot, expira em 24h). O claim `must_change_password=true` bloqueia todos os endpoints exceto `POST /api/auth/change-password`. Serve API REST, arquivos de gravação (incluindo snapshots `_motion.jpg`), segmentos HLS e a SPA React. Endpoints SSE de movimento: `/api/cameras/{id}/motion/live`, `/api/cameras/{id}/motion/scores` e `/api/cameras/{id}/motion/region-score` (score por zona/região, usado pelo canvas de zonas). `GET /api/stats` usa `SUM(size_bytes)` da tabela `recordings` quando banco disponível. `PUT /api/settings/cameras/reorder` (admin) — reordena câmeras em lote via `{"ids":[...]}`. A rota estática `/reorder` é registrada antes de `PUT /api/settings/cameras/{id}` para ter precedência no mux do Go 1.22+. `display_order` não é aceito nos endpoints de create/update; o update preserva a ordem existente da câmera. Notificações por usuário (escopadas ao usuário do JWT, não admin-only): `GET /api/notifications` (lista + `unread_count`), `POST /api/notifications/{id}/read`, `POST /api/notifications/read-all`, `DELETE /api/notifications/{id}`, `DELETE /api/notifications`. Preferências do usuário: `GET /api/me/preferences` (`{theme}`) e `PUT /api/me/preferences` (`{theme: dark|moderno}`, valida o valor). Device info: `GET /api/cameras/{id}/device-info` (responde `{collected_at, values:{...}}`; 404 se nunca capturado) e `POST /api/cameras/{id}/device-info/refresh` (admin; recoleta sob demanda). A coleta dispara automaticamente em background no cadastro da câmera (`captureDeviceInfoAsync` em `handleCreateCamera`). |
 | `internal/config` | Lê o arquivo de bootstrap (`camera.yaml`) com porta, `db_path`, storage e credenciais do admin. Variáveis de ambiente sobrescrevem campos específicos (ver abaixo). |
 | `internal/logger` | `stdout`: JSON em stdout. `file`: um arquivo por nível (`debug.log`, `info.log`, `warn.log`, `error.log`) no diretório configurado, cada um com **rotação** via `gopkg.in/natefinch/lumberjack.v2`. Knobs no `camera.yaml` seção `log:` (`max_size_mb`, `max_age_days`, `max_backups`, `compress`); defaults 50 MB / 30 dias / 10 arquivos / gzip on, aplicados via accessors `…OrDefault()` em `config.LogConfig` (ponteiros distinguem ausente de `0`=ilimitado). Rotação só vale para `output: file`. |
 | `frontend/` | SPA React/Vite/Tailwind embutida via `go:embed all:dist`. `ChangePasswordPage` — tela obrigatória no primeiro login; bloqueia acesso ao restante da UI enquanto `must_change_password=true` no JWT. |

@@ -10,7 +10,7 @@ export default function ServerSettingsPage() {
 
   return (
     <SettingsLayout>
-      <h3 className="text-lg font-semibold text-gray-200">Servidor</h3>
+      <h3 className="text-h2 font-semibold text-gray-200">Servidor</h3>
       <p className="text-sm text-gray-500 mt-1 mb-6">Porta, JWT e configurações de rede.</p>
       {!isAdmin ? (
         <p className="text-gray-500 text-sm">Acesso restrito.</p>

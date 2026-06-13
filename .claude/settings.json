@@ -1,22 +1,33 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/hooks/session-start.sh\"",
+            "statusMessage": "Carregando guardrails do fluxo..."
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "input=$(cat); cmd=$(echo \"$input\" | jq -r '.tool_input.command'); echo \"$cmd\" | grep -q 'git commit' || exit 0; branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); [ \"$branch\" = \"master\" ] || [ \"$branch\" = \"develop\" ] && exit 0; desc=$(echo \"$branch\" | sed 's|^[^/]*/||' | tr '-' '_'); story=$(ls stories/*.md 2>/dev/null | grep -i \"$desc\" | tail -1); [ -z \"$story\" ] && exit 0; grep -qE '^-? *\\[x\\] Aprovado' \"$story\" && exit 0; echo \"❌ Story nao aprovada: $story\"; echo \"   Navigator precisa marcar [x] Aprovado antes de commitar.\"; exit 1",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/hooks/story-approved.sh\"",
             "statusMessage": "Verificando aprovacao da story..."
           },
           {
             "type": "command",
-            "command": "input=$(cat); cmd=$(echo \"$input\" | jq -r '.tool_input.command'); echo \"$cmd\" | grep -q 'gh pr create' || exit 0; echo \"$cmd\" | grep -q -- '--base master' || exit 0; branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); [ \"$branch\" = \"develop\" ] && exit 0; case \"$branch\" in release/*) exit 0 ;; esac; echo \"❌ PRs de feature devem usar --base develop, nao --base master.\"; echo \"   Excecao: branches release/* e develop podem abrir PR para master.\"; exit 1",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/hooks/pr-target.sh\"",
             "statusMessage": "Verificando target do PR..."
           },
           {
             "type": "command",
-            "command": "input=$(cat); cmd=$(echo \"$input\" | jq -r '.tool_input.command'); echo \"$cmd\" | grep -q 'git commit' || exit 0; out=$(go build ./... 2>&1 && go test -count=1 ./... 2>&1); [ $? -eq 0 ] && exit 0; echo \"❌ Build/testes falharam — commit bloqueado. Corrija antes de commitar:\"; echo \"$out\" | grep -E 'FAIL|error|cannot' | head -20; exit 1",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/hooks/precommit-tests.sh\"",
             "statusMessage": "Rodando go build + go test -count=1..."
           }
         ]

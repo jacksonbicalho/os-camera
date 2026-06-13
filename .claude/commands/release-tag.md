@@ -25,7 +25,7 @@ Cria a tag de release executando o script `./scripts/release.sh`, após o PR `re
 ## Tag
 
 - vX.Y.Z-rc.N publicada em YYYY-MM-DDTHH:MM:SSZ
-- GitHub Actions: https://github.com/jacksonbicalho/camera/actions
+- GitHub Actions: https://github.com/jacksonbicalho/os-camera/actions
 ```
 
 6. **Mergeie master de volta em develop.** Sem este passo, `git describe` em develop não encontra a nova tag (que fica no merge commit de master) e retorna a versão anterior — quebrando a versão exibida no modo dev.

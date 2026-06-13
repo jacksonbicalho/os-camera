@@ -1,8 +1,8 @@
 import SettingsLayout from '../../components/SettingsLayout'
 import { useDisplayMode, useSetDisplayMode, type DisplayMode } from '../../contexts/DisplayModeContext'
-import { useTheme, type Theme } from '../../contexts/ThemeContext'
+import { useTheme, type Mode } from '../../contexts/ThemeContext'
 
-const THEME_OPTIONS: { value: Theme; label: string }[] = [
+const THEME_OPTIONS: { value: Mode; label: string }[] = [
   { value: 'dark', label: 'Dark' },
   { value: 'light', label: 'Light' },
   { value: 'system', label: 'Sistema' },
@@ -44,11 +44,11 @@ function ModeRadioGroup({
 export default function AppearanceSettingsPage() {
   const mode = useDisplayMode()
   const set = useSetDisplayMode()
-  const { theme, setTheme } = useTheme()
+  const { mode: colorMode, setMode } = useTheme()
 
   return (
     <SettingsLayout>
-      <h3 className="text-lg font-semibold text-gray-200">Aparência</h3>
+      <h3 className="text-h2 font-semibold text-gray-200">Aparência</h3>
       <p className="text-sm text-gray-500 mt-1 mb-6">Controla como botões e rótulos são exibidos na interface.</p>
 
       <div className="flex flex-col gap-6">
@@ -62,8 +62,8 @@ export default function AppearanceSettingsPage() {
               <label key={opt.value} className="flex items-center gap-2 cursor-pointer select-none group">
                 <input
                   type="radio"
-                  checked={theme === opt.value}
-                  onChange={() => setTheme(opt.value)}
+                  checked={colorMode === opt.value}
+                  onChange={() => setMode(opt.value)}
                   className="accent-blue-500 cursor-pointer"
                 />
                 <span className="text-sm text-gray-300 group-hover:text-white transition-colors">

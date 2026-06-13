@@ -12,7 +12,7 @@ import type { Notification } from "../contexts/NotificationContext"
 import ConfirmDialog from "./ConfirmDialog"
 import EventsPanelHeader from "./EventsPanelHeader"
 import ThemeModeNav from "./ThemeModeNav"
-import { Bell, X, Check, BarChart2, Settings, CircleUser, CameraLogo, Cctv } from "./Icons"
+import { Bell, X, Check, Settings, CircleUser, CameraLogo, Cctv } from "./Icons"
 
 interface SidebarProps {
   username?: string
@@ -194,31 +194,6 @@ function SidebarInjectedItem({ item, displayMode }: {
   )
 }
 
-function NavIcon({ to, title, id, label, children, end, displayMode }: {
-  to: string; title: string; id?: string; label?: string
-  children: React.ReactNode; end?: boolean
-  displayMode: 'icons-only' | 'icons-text' | 'text-only'
-}) {
-  const showIcon = displayMode !== 'text-only'
-  const showLabel = displayMode !== 'icons-only'
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      id={id}
-      title={title}
-      className={({ isActive }) =>
-        `flex items-center gap-2 rounded-lg transition-colors ${
-          showLabel ? 'w-full px-3 h-9' : 'justify-center w-10 h-10'
-        } ${isActive ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`
-      }
-    >
-      {showIcon && children}
-      {showLabel && label && <span className="text-sm truncate">{label}</span>}
-    </NavLink>
-  )
-}
-
 const ADMIN_SETTINGS_LINKS = [
   { to: "/settings/cameras",    label: "Câmeras" },
   { to: "/settings/discover",   label: "Rastrear câmeras" },
@@ -250,14 +225,14 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
   const camerasPanelRef = useRef<HTMLDivElement>(null)
   const { open: camerasOpen, setOpen: setCamerasOpen, ref: camerasRef } = useDropdown(camerasPanelRef)
   const camerasButtonRef = useRef<HTMLButtonElement>(null)
-  const [camerasPos, setCamerasPos] = useState({ bottom: 0, left: 0 })
+  const [camerasPos, setCamerasPos] = useState({ top: 0, left: 0 })
   const [cameraList, setCameraList] = useState<{ id: string; name: string }[]>([])
   const camerasActive = location.pathname.startsWith("/camera")
 
   function openCameras() {
     if (camerasButtonRef.current) {
       const r = camerasButtonRef.current.getBoundingClientRect()
-      setCamerasPos({ bottom: window.innerHeight - r.bottom, left: r.right + 8 })
+      setCamerasPos({ top: r.top, left: r.right + 8 })
     }
     if (!camerasOpen) {
       fetch('/api/cameras', { headers: authHeaders() })
@@ -457,25 +432,8 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
         </div>
       </div>
 
-      {/* Injected camera items */}
-      {items.length > 0 && (
-        <div className={`flex flex-col ${itemsAlign} gap-1 py-2 border-b border-gray-800 flex-none`}>
-          {items.map(item => <SidebarInjectedItem key={item.id} item={item} displayMode={sidebarMode} />)}
-        </div>
-      )}
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Bottom: Stats + Settings + User */}
-      <div className={`flex flex-col ${itemsAlign} gap-1 pb-3 flex-none`}>
-
-        {/* Stats */}
-        <NavIcon id="sidebar-stats" to="/stats" title="Estatísticas" label="Estatísticas" displayMode={sidebarMode}>
-          <BarChart2 className="w-5 h-5" />
-        </NavIcon>
-
-        {/* Cameras */}
+      {/* Câmeras — logo abaixo do sino */}
+      <div className={`flex flex-col ${itemsAlign} py-1 border-b border-gray-800 flex-none`}>
         <div ref={camerasRef} className={showLabel ? 'w-full' : undefined}>
           <button
             id="sidebar-cameras"
@@ -495,7 +453,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
         {camerasOpen && createPortal(
           <div
             ref={camerasPanelRef}
-            style={{ position: 'fixed', bottom: camerasPos.bottom, left: camerasPos.left, zIndex: 9999 }}
+            style={{ position: 'fixed', top: camerasPos.top, left: camerasPos.left, zIndex: 9999 }}
             className="w-48 bg-gray-800 border border-gray-700 rounded shadow-lg"
           >
             <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-700 font-medium">Câmeras</div>
@@ -520,6 +478,20 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
           </div>,
           document.body
         )}
+      </div>
+
+      {/* Injected camera items */}
+      {items.length > 0 && (
+        <div className={`flex flex-col ${itemsAlign} gap-1 py-2 border-b border-gray-800 flex-none`}>
+          {items.map(item => <SidebarInjectedItem key={item.id} item={item} displayMode={sidebarMode} />)}
+        </div>
+      )}
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Bottom: Settings + User */}
+      <div id="sidebar-bottom" className={`flex flex-col ${itemsAlign} gap-1 pb-3 flex-none`}>
 
         {/* Settings */}
         <div ref={settingsRef} className={showLabel ? 'w-full' : undefined}>
@@ -554,6 +526,20 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             {settingsLinks.map(({ to, label }) => (
               <Fragment key={to}>
                 {to === '/settings/about' && <ThemeModeNav />}
+                {to === '/settings/about' && (
+                  <Link
+                    to="/stats"
+                    id="settings-stats"
+                    onClick={() => setSettingsOpen(false)}
+                    className={`block px-3 py-2 text-sm transition-colors ${
+                      location.pathname.startsWith('/stats')
+                        ? 'bg-gray-700 text-white'
+                        : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                    }`}
+                  >
+                    Estatísticas
+                  </Link>
+                )}
                 <Link
                   to={to}
                   onClick={() => setSettingsOpen(false)}

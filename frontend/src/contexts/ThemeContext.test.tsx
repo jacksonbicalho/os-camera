@@ -4,7 +4,7 @@ import { ThemeProvider, useTheme } from './ThemeContext'
 
 afterEach(() => {
   cleanup()
-  document.documentElement.removeAttribute('data-theme')
+  document.documentElement.removeAttribute('data-mode')
 })
 
 // jsdom doesn't implement matchMedia; install a controllable mock.
@@ -30,25 +30,27 @@ vi.mock('../auth', () => ({
 const mockFetch = vi.fn()
 global.fetch = mockFetch
 
+// dark/light/system are COLOR MODES; the theme identity is separate ("default").
 function Probe() {
-  const { theme, setTheme } = useTheme()
+  const { mode, setMode, theme } = useTheme()
   return (
     <>
+      <span data-testid="mode">{mode}</span>
       <span data-testid="theme">{theme}</span>
-      <button onClick={() => setTheme('light')}>set-light</button>
-      <button onClick={() => setTheme('dark')}>set-dark</button>
+      <button onClick={() => setMode('light')}>set-light</button>
     </>
   )
 }
 
 describe('ThemeContext', () => {
-  it('loads the saved theme and applies data-theme on <html>', async () => {
+  it('loads the saved color mode and applies data-mode on <html>; theme is "default"', async () => {
     mockFetch.mockResolvedValue({ status: 200, json: async () => ({ theme: 'light' }) })
 
     render(<ThemeProvider><Probe /></ThemeProvider>)
 
-    await waitFor(() => expect(screen.getByTestId('theme').textContent).toBe('light'))
-    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+    await waitFor(() => expect(screen.getByTestId('mode').textContent).toBe('light'))
+    expect(document.documentElement.getAttribute('data-mode')).toBe('light')
+    expect(screen.getByTestId('theme').textContent).toBe('default')
   })
 
   it('"system" resolves to dark when the OS prefers dark', async () => {
@@ -57,8 +59,8 @@ describe('ThemeContext', () => {
 
     render(<ThemeProvider><Probe /></ThemeProvider>)
 
-    await waitFor(() => expect(screen.getByTestId('theme').textContent).toBe('system'))
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    await waitFor(() => expect(screen.getByTestId('mode').textContent).toBe('system'))
+    expect(document.documentElement.getAttribute('data-mode')).toBe('dark')
   })
 
   it('"system" resolves to light when the OS prefers light', async () => {
@@ -67,22 +69,22 @@ describe('ThemeContext', () => {
 
     render(<ThemeProvider><Probe /></ThemeProvider>)
 
-    await waitFor(() => expect(screen.getByTestId('theme').textContent).toBe('system'))
-    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+    await waitFor(() => expect(screen.getByTestId('mode').textContent).toBe('system'))
+    expect(document.documentElement.getAttribute('data-mode')).toBe('light')
   })
 
-  it('setTheme applies and persists via PUT', async () => {
+  it('setMode applies data-mode and persists via PUT (as the preference value)', async () => {
     mockFetch.mockResolvedValue({ status: 200, json: async () => ({ theme: 'dark' }) })
 
     render(<ThemeProvider><Probe /></ThemeProvider>)
-    await waitFor(() => expect(screen.getByTestId('theme').textContent).toBe('dark'))
+    await waitFor(() => expect(screen.getByTestId('mode').textContent).toBe('dark'))
 
     mockFetch.mockClear()
     mockFetch.mockResolvedValue({ status: 200, json: async () => ({}) })
     act(() => { fireEvent.click(screen.getByText('set-light')) })
 
-    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
-    expect(screen.getByTestId('theme').textContent).toBe('light')
+    expect(document.documentElement.getAttribute('data-mode')).toBe('light')
+    expect(screen.getByTestId('mode').textContent).toBe('light')
 
     const put = mockFetch.mock.calls.find(
       (c: unknown[]) => c[0] === '/api/me/preferences' && (c[1] as RequestInit)?.method === 'PUT'
