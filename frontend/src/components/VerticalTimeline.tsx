@@ -340,21 +340,21 @@ export default function VerticalTimeline({
 
   if (N === 0) {
     return (
-      <div id="vertical-timeline" className={`w-[72px] shrink-0 h-full rounded-lg bg-zinc-950 border border-zinc-800 ${className ?? ''}`} style={outerStyle} />
+      <div id="vertical-timeline" className={`w-[72px] shrink-0 h-full rounded-lg bg-background border border-border ${className ?? ''}`} style={outerStyle} />
     )
   }
 
   return (
-    <div id="vertical-timeline" className={`w-[72px] shrink-0 h-full rounded-lg bg-zinc-950 border border-zinc-800 flex flex-col ${className ?? ''}`} style={outerStyle}>
+    <div id="vertical-timeline" className={`w-[72px] shrink-0 h-full rounded-lg bg-background border border-border flex flex-col ${className ?? ''}`} style={outerStyle}>
       {/* Zoom controls */}
       <div
-        className="flex items-center justify-between px-1 py-1 border-b border-zinc-800 shrink-0"
+        className="flex items-center justify-between px-1 py-1 border-b border-border shrink-0"
         onMouseDown={e => e.stopPropagation()}
       >
         <button
           onClick={() => setZoom(z => ZOOM_LEVELS[Math.max(0, ZOOM_LEVELS.indexOf(z) - 1)])}
           disabled={zoomIdx === 0}
-          className="w-7 h-7 flex items-center justify-center text-amber-400 hover:text-amber-200 disabled:opacity-25 disabled:cursor-not-allowed transition-colors rounded hover:bg-zinc-800"
+          className="w-7 h-7 flex items-center justify-center text-amber-400 hover:text-amber-200 disabled:opacity-25 disabled:cursor-not-allowed transition-colors rounded hover:bg-surface-2"
           title="Diminuir zoom"
         >
           <ZoomOut className="w-4 h-4" />
@@ -363,7 +363,7 @@ export default function VerticalTimeline({
         <button
           onClick={() => setZoom(z => ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, ZOOM_LEVELS.indexOf(z) + 1)])}
           disabled={zoomIdx === ZOOM_LEVELS.length - 1}
-          className="w-7 h-7 flex items-center justify-center text-amber-400 hover:text-amber-200 disabled:opacity-25 disabled:cursor-not-allowed transition-colors rounded hover:bg-zinc-800"
+          className="w-7 h-7 flex items-center justify-center text-amber-400 hover:text-amber-200 disabled:opacity-25 disabled:cursor-not-allowed transition-colors rounded hover:bg-surface-2"
           title="Aumentar zoom"
         >
           <ZoomIn className="w-4 h-4" />
@@ -399,8 +399,8 @@ export default function VerticalTimeline({
                   backgroundColor: rec.is_recording
                     ? 'rgba(239,68,68,0.15)'
                     : isActive
-                      ? '#1e3a5f'
-                      : '#1f2937',
+                      ? 'rgba(37,99,235,0.35)'
+                      : 'var(--color-surface)',
                 }}
               />
             )
