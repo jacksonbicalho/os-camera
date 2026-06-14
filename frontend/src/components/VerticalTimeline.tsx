@@ -23,7 +23,8 @@ interface VerticalTimelineProps {
 
 const BASE_PX_PER_MIN = 3
 const BAR_MAX_W = 44
-const LABEL_W = 28
+const LABEL_W = 56 // largura da coluna de rótulo — comporta "HH:MM:SS" legível
+const TL_W = LABEL_W + BAR_MAX_W + 2 // largura total da régua
 const ZOOM_LEVELS = [1, 2, 4, 8, 16, 32, 64]
 const CHUNK_FALLBACK_MS = 5 * 60_000
 const DAY_MINUTES = 24 * 60
@@ -151,30 +152,51 @@ export default function VerticalTimeline({
   const rangeToY = (startMin: number, endMin: number) =>
     sortOrder === 'desc' ? (totalMinutes - endMin) * pxPerMin : startMin * pxPerMin
 
-  const fmt = new Intl.DateTimeFormat('pt-BR', {
-    timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false,
-  })
   const fmtSec = new Intl.DateTimeFormat('pt-BR', {
     timeZone: timezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   })
 
-  type TickType = 'hour' | 'half' | 'quarter' | 'five' | 'minute'
+  type TickType = 'hour' | 'half' | 'quarter' | 'five' | 'minute' | 'second'
   interface Tick { min: number; type: TickType; label?: string }
   const ticks: Tick[] = []
   for (let m = 0; m < totalMinutes; m++) {
     const absMin = firstMin + m
     if (absMin % 60 === 0) {
-      ticks.push({ min: m, type: 'hour', label: fmt.format(new Date(absMin * 60_000)) })
+      ticks.push({ min: m, type: 'hour', label: fmtSec.format(new Date(absMin * 60_000)) })
     } else if (absMin % 30 === 0) {
-      ticks.push({ min: m, type: 'half', label: zoom >= 2 ? fmt.format(new Date(absMin * 60_000)) : undefined })
+      ticks.push({ min: m, type: 'half', label: zoom >= 2 ? fmtSec.format(new Date(absMin * 60_000)) : undefined })
     } else if (zoom >= 2 && absMin % 15 === 0) {
-      ticks.push({ min: m, type: 'quarter', label: zoom >= 8 ? fmt.format(new Date(absMin * 60_000)) : undefined })
+      ticks.push({ min: m, type: 'quarter', label: zoom >= 8 ? fmtSec.format(new Date(absMin * 60_000)) : undefined })
     } else if (zoom >= 4 && absMin % 5 === 0) {
-      ticks.push({ min: m, type: 'five', label: zoom >= 8 ? fmt.format(new Date(absMin * 60_000)) : undefined })
+      ticks.push({ min: m, type: 'five', label: zoom >= 8 ? fmtSec.format(new Date(absMin * 60_000)) : undefined })
     } else if (zoom >= 8) {
       // Every minute once zoomed in — turns the timeline into a fine ruler so the
       // pointer can be dragged to a precise second within a chunk.
-      ticks.push({ min: m, type: 'minute', label: zoom >= 16 ? fmt.format(new Date(absMin * 60_000)) : undefined })
+      ticks.push({ min: m, type: 'minute', label: zoom >= 16 ? fmtSec.format(new Date(absMin * 60_000)) : undefined })
+    }
+  }
+
+  // Marcas de SEGUNDO entre os minutos: aparecem assim que houver espaço legível
+  // — critério ADAPTATIVO por pixels/segundo, não por um nível de zoom fixo. Pega
+  // o passo mais fino (1/5/10/15/30s) cujo rótulo ainda fica legível. Geradas só
+  // na janela visível para não criar milhares de elementos no dia todo.
+  const MIN_LABEL_PX = 14
+  const pxPerSec = pxPerMin / 60
+  let secStep = 0
+  for (const step of [1, 5, 10, 15, 30]) {
+    if (step * pxPerSec >= MIN_LABEL_PX) { secStep = step; break }
+  }
+  if (secStep > 0) {
+    const winPx = viewportH > 0 ? viewportH : 1200 // fallback quando o viewport ainda não foi medido
+    const a = sortOrder === 'desc' ? totalMinutes - (scrollTop + winPx) / pxPerMin : scrollTop / pxPerMin
+    const b = sortOrder === 'desc' ? totalMinutes - scrollTop / pxPerMin : (scrollTop + winPx) / pxPerMin
+    const fromM = Math.max(0, Math.floor(Math.min(a, b)) - 1)
+    const toM = Math.min(totalMinutes, Math.ceil(Math.max(a, b)) + 1)
+    for (let m = fromM; m < toM; m++) {
+      const baseMs = (firstMin + m) * 60_000
+      for (let s = secStep; s < 60; s += secStep) {
+        ticks.push({ min: m + s / 60, type: 'second', label: fmtSec.format(new Date(baseMs + s * 1000)) })
+      }
     }
   }
 
@@ -184,6 +206,7 @@ export default function VerticalTimeline({
     quarter: { color: 'rgba(245,158,11,0.12)', left: LABEL_W },
     five:    { color: 'rgba(245,158,11,0.07)', left: LABEL_W },
     minute:  { color: 'rgba(245,158,11,0.05)', left: LABEL_W },
+    second:  { color: 'rgba(245,158,11,0.10)', left: LABEL_W },
   }
 
   const seekAtY = useCallback((clientY: number) => {
@@ -340,12 +363,12 @@ export default function VerticalTimeline({
 
   if (N === 0) {
     return (
-      <div id="vertical-timeline" className={`w-[72px] shrink-0 h-full rounded-lg bg-background border border-border ${className ?? ''}`} style={outerStyle} />
+      <div id="vertical-timeline" className={`w-[102px] shrink-0 h-full rounded-lg bg-background border border-border ${className ?? ''}`} style={outerStyle} />
     )
   }
 
   return (
-    <div id="vertical-timeline" className={`w-[72px] shrink-0 h-full rounded-lg bg-background border border-border flex flex-col ${className ?? ''}`} style={outerStyle}>
+    <div id="vertical-timeline" className={`w-[102px] shrink-0 h-full rounded-lg bg-background border border-border flex flex-col ${className ?? ''}`} style={outerStyle}>
       {/* Zoom controls */}
       <div
         className="flex items-center justify-between px-1 py-1 border-b border-border shrink-0"
@@ -380,7 +403,7 @@ export default function VerticalTimeline({
         <div
           ref={containerRef}
           className="relative cursor-pointer"
-          style={{ width: 72, height: totalMinutes * pxPerMin }}
+          style={{ width: TL_W, height: totalMinutes * pxPerMin }}
           onMouseDown={e => { isDragging.current = true; seekAtY(e.clientY) }}
           onMouseMove={e => { if (isDragging.current) seekAtY(e.clientY) }}
           onMouseUp={() => { isDragging.current = false }}
@@ -432,7 +455,7 @@ export default function VerticalTimeline({
               <div
                 key={`tick-${type}-${min}`}
                 className="absolute right-0 pointer-events-none"
-                style={{ top: minToY(min), left, height: 1, backgroundColor: color }}
+                style={{ top: minToY(min), left, height: type === 'hour' ? 2 : 1, backgroundColor: color }}
               />
             )
           })}
@@ -441,15 +464,16 @@ export default function VerticalTimeline({
           {ticks.filter(t => t.label).map(({ min, type, label }) => (
             <span
               key={`label-${type}-${min}`}
-              className="absolute pointer-events-none leading-none select-none"
+              className="absolute pointer-events-none leading-none select-none tabular-nums"
               style={{
-                fontSize: type === 'hour' ? 8 : 7,
+                fontSize: type === 'hour' ? 11 : 10,
+                fontWeight: type === 'hour' ? 600 : 400,
                 top: minToY(min) + 1,
-                left: 1,
-                width: LABEL_W - 2,
+                left: 2,
+                width: LABEL_W - 3,
                 overflow: 'hidden',
                 whiteSpace: 'nowrap',
-                color: type === 'hour' ? 'rgba(245,158,11,0.65)' : 'rgba(245,158,11,0.35)',
+                color: type === 'hour' ? 'rgb(252,211,77)' : 'rgba(252,211,77,0.75)',
               }}
             >
               {label}
