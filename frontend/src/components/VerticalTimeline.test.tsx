@@ -89,6 +89,44 @@ describe('VerticalTimeline — ponteiro arrastável', () => {
     }
   })
 
+  it('renderiza a gravação ativa por último entre os chunks do mesmo minuto', () => {
+    // dois chunks no mesmo minuto (23:00); o ativo é o mais antigo
+    const sameMin = [rec(1, '2026-06-10T23:00:00Z'), rec(2, '2026-06-10T23:00:05Z')]
+    const active = sameMin[0]
+    const { container } = render(
+      <VerticalTimeline
+        recordings={sameMin}
+        motionEvents={[]}
+        activeRecording={active}
+        activeTime={active.start}
+        timezone="UTC"
+        onSeek={vi.fn()}
+      />,
+    )
+    const blocks = Array.from(container.querySelectorAll('[data-rec]'))
+    expect(blocks.length).toBe(2)
+    // o ativo deve ser desenhado por último (fica por cima, bloco azul visível)
+    expect(blocks[blocks.length - 1].getAttribute('data-rec')).toBe(active.filename)
+  })
+
+  it('a gravação ativa tem altura mínima visível mesmo em zoom baixo', () => {
+    const recs = [rec(1, '2026-06-10T23:00:00Z')]
+    const { container } = render(
+      <VerticalTimeline
+        recordings={recs}
+        motionEvents={[]}
+        activeRecording={recs[0]}
+        activeTime={recs[0].start}
+        timezone="UTC"
+        onSeek={vi.fn()}
+      />,
+    )
+    const block = container.querySelector(`[data-rec="${recs[0].filename}"]`) as HTMLElement
+    expect(block).toBeTruthy()
+    // sem o mínimo, um chunk de 10s no zoom 1 teria ~3px e sumiria sob o ponteiro
+    expect(parseFloat(block.style.height)).toBeGreaterThanOrEqual(20)
+  })
+
   it('arrastar o ponteiro chama onSeek (scrubber)', () => {
     const onSeek = vi.fn()
     const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
