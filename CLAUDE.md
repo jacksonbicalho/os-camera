@@ -154,7 +154,9 @@ Encadeiam o fluxo por história. **Checkboxes usam `[]` para não-marcado** (e `
 
 `scripts/merge-when-green.sh <PR#>` colapsa o ciclo pós-PR numa única invocação (economia de tokens): aguarda o CI em silêncio, mergeia em `develop`, sincroniza o branch local, deleta a branch da história e marca `[~]→[✓]` na linha do PR no release file mais recente. Imprime só o resumo. **Recusa** PRs com base `master` (releases são aprovadas à mão) e é idempotente em PR já mergeado. É a primitiva chamada pelo `push-pr.sh` ao final, mas também pode ser invocada avulsa (ex.: retomar após um fix de CI num PR já aberto).
 
-`scripts/release-tag.sh [--dry-run]` colapsa o **corte de release** (após o PR develop→master já mergeado): cria/envia a tag via `release.sh` (confirmação automática), aguarda o workflow Release publicar **em silêncio** (poll de `gh release view`), mergeia `master→develop` (passo pós-tag) e imprime uma linha (`RELEASED <versão> | assets: N | develop sincronizado`). `--dry-run` só mostra a versão que sairia. Substitui o ciclo manual com `gh run watch`.
+`scripts/release-tag.sh [--dry-run]` colapsa o **corte de release** (após o PR develop→master já mergeado): cria/envia a tag via `release.sh` (confirmação automática), aguarda o workflow Release publicar **em silêncio** (poll de `gh release view`), mergeia `master→develop` (passo pós-tag), **rotaciona o release file** (chama `rotate-release-next.sh`) e imprime uma linha (`RELEASED <versão> | assets: N | develop sincronizado | release file rotacionado`). `--dry-run` só mostra a versão que sairia. Substitui o ciclo manual com `gh run watch`.
+
+`scripts/rotate-release-next.sh <version>` opera só sobre `releases/` (sem git/gh; testável via `RELEASES_DIR`): no corte, **(a)** carimba o `*_next.md` atual com `Publicada: <version>` e o renomeia para `<timestamp>_<version>.md` (cada arquivo = uma release publicada) e **(b)** cria um novo `<agora>_next.md` com `Base: <version>` (a recém-publicada) no topo. Chamado pelo `release-tag.sh`.
 
 ### Release
 
@@ -170,7 +172,7 @@ O script lê os commits convencionais desde a última tag, determina o bump (`fe
 `releases/` (gitignored) agrupa histórias em uma release antes de mergeá-las.
 
 **Fluxo:**
-1. Criar `releases/YYYYMMDDHHmm_vX.Y.Z.md` com as histórias planejadas.
+1. O arquivo de planejamento se chama **`releases/YYYYMMDDHHmm_next.md`** (sem versão — o bump só é conhecido no corte). As histórias planejadas entram nele. No corte, o `rotate-release-next.sh` (via `release-tag.sh`) carimba esse `_next.md` com a versão publicada, renomeia para `<timestamp>_<version>.md` e abre um `_next.md` novo já com `Base: <version>` no topo. **Nunca nomear o arquivo de planejamento com a versão na frente.**
 2. Ao concluir cada história, preencher branch e PR na tabela e marcar `[~]` (aguardando aprovação no GitHub — PR targeta `develop`).
 3. Após aprovação no GitHub, marcar `[x]`.
 4. Quando todas estiverem `[x]`, o navigator diz **"pode mergear a release"** — Claude itera a lista, mergeia cada PR em `develop` em sequência, deleta a branch local (`git branch -d <branch>`) e marca `[✓]`. O GitHub deleta a branch remota automaticamente após o merge (setting "Automatically delete head branches" ativo).
@@ -351,6 +353,7 @@ O diretório `amostras/` (listado no `.gitignore`) é reservado para arquivos qu
 
 ## Manutenção contínua
 
+- **Decisões de fluxo se registram neste `CLAUDE.md`** — ele é a fonte canônica. A memória do Claude é só atalho/ponteiro: nunca deixe uma regra de workflow apenas na memória.
 - **Ao adicionar ou alterar qualquer funcionalidade**, revise este `CLAUDE.md` e atualize as seções afetadas.
 - **Ao adicionar ou alterar qualquer campo de configuração**, atualize `camera.yaml.example` com o novo campo, valor de exemplo e comentário com a variável de ambiente correspondente (se houver).
 
