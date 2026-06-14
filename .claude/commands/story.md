@@ -54,7 +54,7 @@ Crie uma story file e branch para iniciar uma nova história, seguindo estritame
 - [] Aprovado
 ```
 
-7. **Reporte e aguarde a revisão da história.** Confirme branch ativa e caminho do story file. **NÃO inicie a implementação (nem o red phase).** A história precisa ser revisada pelo navigator antes: peça para ele revisar e marcar `[x] História revisada` na story. Monitore o arquivo da story em background (grep case-insensitive, ex.: `^- \[[xX]\] História revisada`) e só prossiga para o passo 8 quando esse campo estiver marcado.
+7. **Reporte e aguarde a revisão da história.** Confirme branch ativa e caminho do story file. **NÃO inicie a implementação (nem o red phase).** A história precisa ser revisada pelo navigator antes: peça para ele revisar e marcar `[x] História revisada` na story. Rode **`scripts/await-review.sh` em background** (bloqueia até `[x] História revisada`) e só prossiga para o passo 8 quando ele retornar.
 
 8. **Red phase (somente após `[x] História revisada`).** Aí sim escreva o teste que falha e siga o ciclo TDD red → green → refactor do CLAUDE.md.
 
@@ -63,5 +63,5 @@ Crie uma story file e branch para iniciar uma nova história, seguindo estritame
 - NÃO comece a implementar — só prepare o ambiente.
 - NÃO commite a story file ainda (será junto com a implementação).
 - **NÃO inicie a implementação antes de o navigator marcar `[x] História revisada`.** Monitore o arquivo em background.
-- Ao final, ao pedir `./scripts/story-approval.sh`, apenas monitore o arquivo e **só siga** (commit/push/PR/merge) quando **todos os critérios de aceitação E `[x] Aprovado`** estiverem marcados.
+- Ao final, ao pedir `./scripts/story-approval.sh`, rode **`scripts/await-approval.sh` em background** e **só siga** (commit/push/PR/merge) quando ele retornar (todos os critérios E `[x] Aprovado` marcados).
 - Se o navigator pedir uma branch a partir de master ou de outra branch que não develop, confirme com AskUserQuestion antes.
