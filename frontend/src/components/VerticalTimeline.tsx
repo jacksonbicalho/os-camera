@@ -25,6 +25,7 @@ const BASE_PX_PER_MIN = 3
 const BAR_MAX_W = 44
 const LABEL_W = 56 // largura da coluna de rótulo — comporta "HH:MM:SS" legível
 const TL_W = LABEL_W + BAR_MAX_W + 2 // largura total da régua
+const MIN_ACTIVE_PX = 26 // altura mínima do bloco da gravação ativa (visível em qualquer zoom, acima da banda do ponteiro)
 const ZOOM_LEVELS = [1, 2, 4, 8, 16, 32, 64]
 const CHUNK_FALLBACK_MS = 5 * 60_000
 const DAY_MINUTES = 24 * 60
@@ -409,16 +410,24 @@ export default function VerticalTimeline({
           onMouseUp={() => { isDragging.current = false }}
           onMouseLeave={() => { isDragging.current = false }}
         >
-          {/* Recording backgrounds */}
-          {recRanges.map(({ rec, startMin, endMin }) => {
+          {/* Recording backgrounds — a ativa é desenhada por último para ficar por
+              cima dos chunks-irmãos do mesmo minuto (bloco azul sempre visível). */}
+          {[...recRanges]
+            .sort((a, b) => Number(a.rec.filename === activeFilename) - Number(b.rec.filename === activeFilename))
+            .map(({ rec, startMin, endMin }) => {
             const isActive = activeRecording?.filename === rec.filename
+            const rawH = (endMin - startMin) * pxPerMin
+            // a gravação ativa tem altura mínima para ficar visível em qualquer
+            // zoom (no zoom baixo a fatia seria fina demais e some sob o ponteiro).
+            const h = isActive ? Math.max(rawH, MIN_ACTIVE_PX) : rawH
             return (
               <div
                 key={rec.filename}
+                data-rec={rec.filename}
                 className="absolute left-0 right-0 pointer-events-none"
                 style={{
                   top: rangeToY(startMin, endMin),
-                  height: (endMin - startMin) * pxPerMin,
+                  height: h,
                   backgroundColor: rec.is_recording
                     ? 'rgba(239,68,68,0.15)'
                     : isActive
