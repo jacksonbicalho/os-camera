@@ -147,6 +147,8 @@ Encadeiam o fluxo por história. **Checkboxes usam `[]` para não-marcado** (e `
 |---|---|---|
 | `check.sh` | Claude | "CI local": `go build`+`go test` sempre; `frontend-check.sh` se `frontend/` mudou (vs develop). Se tudo verde, marca o **1º Critério de Aceitação** da story `[x]`. |
 | `story-approval.sh` | **Navigator** (`! scripts/story-approval.sh`) | Interativo: percorre os Critérios de Aceitação, pergunta sobre cada não-marcado e marca conforme a resposta; no fim, oferece marcar `[x] Aprovado`. |
+| `await-review.sh [story]` | Claude (background) | Bloqueia até `[x] História revisada` na story (padrão ancorado, case-insensitive, imune a menções na prosa). Resolve a story pela branch atual. Usado no passo 2 do fluxo (gate de revisão antes de implementar). |
+| `await-approval.sh [story]` | Claude (background) | Bloqueia até **nenhum** Critério de Aceitação desmarcado **e** `[x] Aprovado`. Usado no passo 8 (gate final antes de commit/push/PR/merge). |
 | `commit.sh` | Claude | Commita o que está staged usando o heading `#` da story como mensagem (já é `tipo(escopo): desc`); exige `[x] Aprovado`; adiciona `Co-Authored-By`. |
 | `push-pr.sh` | Claude | **Orquestra o ciclo pós-aprovação:** push + `gh pr create --base develop` + aguarda o CI e mergeia (chama `merge-when-green.sh`). Só com tree limpa + story aprovada; idempotente (não recria PR; re-roda após fix). `--no-merge` só abre o PR sem mergear. CI vermelho: propaga erro sem mergear. |
 
