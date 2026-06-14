@@ -65,6 +65,30 @@ describe('VerticalTimeline — ponteiro arrastável', () => {
     expect(document.getElementById('timeline-pointer-time')!.textContent).toMatch(/^\d{2}:\d{2}:\d{2}$/)
   })
 
+  it('a régua exibe rótulos em HH:MM:SS, sincronizados com o ponteiro', () => {
+    const { container } = renderTimeline()
+    const rulerLabels = Array.from(container.querySelectorAll('span'))
+      .filter(s => s.id !== 'timeline-pointer-time' && /^\d{2}:\d{2}:\d{2}$/.test(s.textContent ?? ''))
+    expect(rulerLabels.length).toBeGreaterThan(0)
+    // marca de hora cheia no formato completo
+    expect(rulerLabels.some(s => s.textContent === '00:00:00')).toBe(true)
+  })
+
+  it('mostra os segundos entre os minutos no zoom alto', () => {
+    const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 })
+    try {
+      const { container, getByTitle } = renderTimeline()
+      const zoomIn = getByTitle('Aumentar zoom')
+      for (let i = 0; i < 6; i++) fireEvent.click(zoomIn) // 1→64×
+      const texts = Array.from(container.querySelectorAll('span')).map(s => s.textContent ?? '')
+      // rótulos de segundo (segundos != 00) entre os minutos
+      expect(texts.some(t => /^\d{2}:\d{2}:(05|10|15|30|45)$/.test(t))).toBe(true)
+    } finally {
+      if (desc) Object.defineProperty(HTMLElement.prototype, 'clientHeight', desc)
+    }
+  })
+
   it('arrastar o ponteiro chama onSeek (scrubber)', () => {
     const onSeek = vi.fn()
     const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
