@@ -41,19 +41,27 @@ Crie uma story file e branch para iniciar uma nova história, seguindo estritame
 
 ## Critérios de Aceitação
 
-- [] Backend e (se aplicável) frontend verdes (auto: `scripts/check.sh`)
+- [] Backend e frontend verdes (auto: `scripts/check.sh`)
 - [] <critério 2>
 - [] <critério 3>
+
+## Revisão da história (antes de implementar)
+
+- [] História revisada
 
 ## Revisão
 
 - [] Aprovado
 ```
 
-7. **Reporte.** Confirme branch ativa, caminho do story file, e indique que está pronto pra começar a investigar/escrever testes (red phase).
+7. **Reporte e aguarde a revisão da história.** Confirme branch ativa e caminho do story file. **NÃO inicie a implementação (nem o red phase).** A história precisa ser revisada pelo navigator antes: peça para ele revisar e marcar `[x] História revisada` na story. Monitore o arquivo da story em background (grep case-insensitive, ex.: `^- \[[xX]\] História revisada`) e só prossiga para o passo 8 quando esse campo estiver marcado.
+
+8. **Red phase (somente após `[x] História revisada`).** Aí sim escreva o teste que falha e siga o ciclo TDD red → green → refactor do CLAUDE.md.
 
 ## Restrições
 
 - NÃO comece a implementar — só prepare o ambiente.
 - NÃO commite a story file ainda (será junto com a implementação).
+- **NÃO inicie a implementação antes de o navigator marcar `[x] História revisada`.** Monitore o arquivo em background.
+- Ao final, ao pedir `./scripts/story-approval.sh`, apenas monitore o arquivo e **só siga** (commit/push/PR/merge) quando **todos os critérios de aceitação E `[x] Aprovado`** estiverem marcados.
 - Se o navigator pedir uma branch a partir de master ou de outra branch que não develop, confirme com AskUserQuestion antes.

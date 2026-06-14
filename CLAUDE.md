@@ -70,22 +70,26 @@ EOF
 
 > ⚠️ **OBRIGATÓRIO:** Antes de escrever qualquer linha de código ou teste, o driver DEVE criar o arquivo de história E abrir a branch (use `/story`). Sem exceção — nem para bugs simples, nem para "pequenas correções".
 
-1. Criar `stories/YYYYMMDDHHmm_<descricao>.md` e abrir uma branch a partir de `develop`: `git checkout -b <tipo>/<descricao-curta> develop`. Se a história cobrir mais de um assunto independente, questionar o navigator antes de continuar — histórias devem ser pequenas e focadas.
-2. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.
-3. Implementar o mínimo para o teste passar (**green**).
-4. Refatorar se necessário, mantendo os testes verdes (**refactor**).
-5. Executar a suíte de testes (obrigatório antes de apresentar ao navigator):
+1. Criar `stories/YYYYMMDDHHmm_<descricao>.md` e abrir uma branch a partir de `develop`: `git checkout -b <tipo>/<descricao-curta> develop`. Se a história cobrir mais de um assunto independente, questionar o navigator antes de continuar — histórias devem ser pequenas e focadas. O 1º Critério de Aceitação é **sempre** `- [] Backend e frontend verdes (auto: scripts/check.sh)` (sem "se aplicável").
+2. **Revisão da história (antes de implementar).** A história inclui o campo `- [] História revisada`. O driver apresenta o plano e **aguarda o navigator marcar `[x] História revisada`** — monitorando o arquivo da story em background (grep case-insensitive). **Nenhuma linha de código ou teste antes disso.**
+
+   > ⚠️ **O driver NÃO inicia o red phase enquanto `História revisada` não estiver `[x]`.** O navigator revisa o plano (Contexto/Solução/Critérios) primeiro; só então a implementação começa.
+
+3. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.
+4. Implementar o mínimo para o teste passar (**green**).
+5. Refatorar se necessário, mantendo os testes verdes (**refactor**).
+6. Executar a suíte de testes (obrigatório antes de apresentar ao navigator):
    - Backend: `go test ./...` + `go build ./...`
    - Frontend: `yarn lint` + `yarn test --run` + `yarn build` (em `frontend/`)
    - Nunca prosseguir se qualquer um desses falhar.
-6. Adicionar seção `## Revisão` na história e **aguardar aprovação explícita do navigator**.
+7. Adicionar seção `## Revisão` na história e **aguardar aprovação explícita do navigator**.
 
    > ⚠️ **Nenhum commit pode ser feito antes de o navigator marcar `[x] Aprovado`.** O driver apresenta o resultado, o navigator revisa o código e aprova — só então o commit acontece.
 
    > ⚠️ **O driver NÃO marca os Critérios de Aceitação.** Apenas o **1º critério** (verdes) é marcado automaticamente pelo `scripts/check.sh`. **Todos os demais critérios** e o `[x] Aprovado` são marcados pelo **navigator** via `scripts/story-approval.sh`. O driver pode preencher a seção `## Revisão`, mas **sem tocar nos checkboxes dos critérios**.
 
-7. Com a aprovação do navigator (`[x] Aprovado`), o ciclo roda **direto, sem novas perguntas**: commitar (mensagem semântica) → `git push origin <branch>` → abrir o PR (`scripts/push-pr.sh`, **sempre `--base develop`**, nunca `master`) → mergear quando o CI ficar verde (`scripts/merge-when-green.sh <PR#>`). A aprovação da story autoriza, de uma vez, commit + push + PR + merge-quando-verde. **Apenas o corte de release** (`develop → master`) depende de autorização explícita do navigator.
-8. Atualizar o arquivo de release correspondente em `releases/`: preencher a branch e o número do PR na tabela, marcar `[~]`; o `merge-when-green.sh` marca `[~]→[✓]` ao mergear em `develop`. O **corte de release** (PR `develop → master`) é o passo que aguarda o navigator liberar.
+8. Com a aprovação do navigator, o ciclo roda **direto, sem novas perguntas** — mas o driver **só segue quando TODOS os Critérios de Aceitação E `[x] Aprovado` estiverem marcados** (apenas monitorar o arquivo após pedir `scripts/story-approval.sh`): commitar (mensagem semântica) → `git push origin <branch>` → abrir o PR (`scripts/push-pr.sh`, **sempre `--base develop`**, nunca `master`) → mergear quando o CI ficar verde (`scripts/merge-when-green.sh <PR#>`). A aprovação da story autoriza, de uma vez, commit + push + PR + merge-quando-verde. **Apenas o corte de release** (`develop → master`) depende de autorização explícita do navigator.
+9. Atualizar o arquivo de release correspondente em `releases/`: preencher a branch e o número do PR na tabela, marcar `[~]`; o `merge-when-green.sh` marca `[~]→[✓]` ao mergear em `develop`. O **corte de release** (PR `develop → master`) é o passo que aguarda o navigator liberar.
 
 ### Histórias
 
