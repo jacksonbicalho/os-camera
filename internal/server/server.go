@@ -319,7 +319,7 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("GET /api/settings/cameras/{id}/analysis", s.requireAdmin(s.handleGetCameraAnalysisConfig))
 	s.mux.HandleFunc("PUT /api/settings/cameras/{id}/analysis", s.requireAdmin(s.handleUpdateCameraAnalysisConfig))
 
-	streamHandler := http.StripPrefix("/stream/", http.FileServer(http.Dir(s.cfg.SegmentsPath)))
+	streamHandler := http.StripPrefix("/stream/", noCachePlaylist(http.FileServer(http.Dir(s.cfg.SegmentsPath))))
 	s.mux.Handle("/stream/", s.requireStreamAccess(streamHandler))
 
 	recHandler := http.StripPrefix("/recordings/", http.FileServer(http.Dir(s.cfg.RecordingsPath)))
@@ -434,6 +434,22 @@ func (s *Server) requireCameraAccess(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		next(w, r)
+	})
+}
+
+// noCachePlaylist prevents browsers from caching the HLS playlist. The
+// playlist is served by a plain file server (only Last-Modified), which makes
+// it heuristically cacheable — after a long stall the browser would keep
+// replaying a frozen playlist from disk cache instead of revalidating. Segments
+// (.ts) have unique, immutable names and stay cacheable.
+func noCachePlaylist(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".m3u8") {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
