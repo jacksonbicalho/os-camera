@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applySameChunkStep, loadedMetadataSeek, mergeRecordings, parseDurationToMs, secondStepTarget } from './cameraUtils'
+import { applySameChunkStep, frameStepTime, loadedMetadataSeek, mergeRecordings, parseDurationToMs, secondStepTarget } from './cameraUtils'
 import type { Recording } from './cameraUtils'
 
 function rec(filename: string): Recording {
@@ -179,5 +179,27 @@ describe('loadedMetadataSeek', () => {
 
   it('fromEnd nunca fica negativo', () => {
     expect(loadedMetadataSeek(3, 10, null, false)).toEqual({ seekTo: 0, shouldPlay: true })
+  })
+})
+
+// ─── frameStepTime (←/→ frame a frame) ──────────────────────────────────────
+
+describe('frameStepTime', () => {
+  const fd = 1 / 30
+
+  it('avança um frame', () => {
+    expect(frameStepTime(5, 300, fd, 1)).toBeCloseTo(5 + fd, 5)
+  })
+
+  it('retrocede um frame', () => {
+    expect(frameStepTime(5, 300, fd, -1)).toBeCloseTo(5 - fd, 5)
+  })
+
+  it('satura no fim (não passa da duração)', () => {
+    expect(frameStepTime(300, 300, fd, 1)).toBe(300)
+  })
+
+  it('satura no início (não fica negativo)', () => {
+    expect(frameStepTime(0, 300, fd, -1)).toBe(0)
   })
 })

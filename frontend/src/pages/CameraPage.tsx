@@ -18,7 +18,7 @@ import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { useDebugTools } from '../hooks/useDebugTools'
-import { applySameChunkStep, loadedMetadataSeek, mergeRecordings, secondStepTarget } from './cameraUtils'
+import { applySameChunkStep, frameStepTime, loadedMetadataSeek, mergeRecordings, secondStepTarget } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
@@ -181,6 +181,9 @@ export default function CameraPage() {
   // fronteira do chunk: o vídeo deve carregar parado, sem autoplay.
   const stepPauseRef = useRef(false)
   const videoRef = useRef<HTMLVideoElement>(null)
+  // Duração de 1 frame da gravação ativa, estimada via requestVideoFrameCallback
+  // (fallback ~1/30s). Usada pelo passo frame a frame (←/→).
+  const frameDurationRef = useRef(1 / 30)
   const recPlayerRef = useRef<HTMLDivElement>(null)
   const recHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hlsPlayerRef = useRef<HLSPlayerHandle>(null)
@@ -453,6 +456,19 @@ export default function CameraPage() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // ←/→ (sem modificador): passo frame a frame na gravação ativa.
+      if (!e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey &&
+          (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        const t = e.target as HTMLElement | null
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+        const v = videoRef.current
+        if (!v || !activeRecording) return
+        e.preventDefault()
+        v.pause()
+        const dir: 1 | -1 = e.key === 'ArrowRight' ? 1 : -1
+        v.currentTime = frameStepTime(v.currentTime, v.duration || recDuration, frameDurationRef.current, dir)
+        return
+      }
       if (!e.ctrlKey) return
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
       e.preventDefault()
@@ -493,6 +509,26 @@ export default function CameraPage() {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [activeRecording, sortOrder, recDuration, openRecording])
+
+  // Estima a duração de 1 frame da gravação ativa via requestVideoFrameCallback
+  // (delta de mediaTime entre frames apresentados durante a reprodução). Cacheia
+  // em frameDurationRef para o passo frame a frame; fallback mantém 1/30s.
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || typeof v.requestVideoFrameCallback !== 'function') return
+    let last = -1
+    let handle = 0
+    const cb: VideoFrameRequestCallback = (_now, meta) => {
+      if (last >= 0) {
+        const d = meta.mediaTime - last
+        if (d > 0.001 && d < 1) frameDurationRef.current = d
+      }
+      last = meta.mediaTime
+      handle = v.requestVideoFrameCallback(cb)
+    }
+    handle = v.requestVideoFrameCallback(cb)
+    return () => { v.cancelVideoFrameCallback?.(handle) }
+  }, [activeRecording])
 
   function handleRateChange(requested: number) {
     const options = [1, 2, 4, 8, 16, 32]
