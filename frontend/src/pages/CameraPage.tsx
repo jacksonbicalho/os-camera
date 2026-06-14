@@ -456,8 +456,8 @@ export default function CameraPage() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      // ←/→ (sem modificador): passo frame a frame na gravação ativa.
-      if (!e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey &&
+      // Ctrl+←/→: passo frame a frame na gravação ativa.
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey &&
           (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         const t = e.target as HTMLElement | null
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
