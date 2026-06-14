@@ -141,6 +141,21 @@ export function applySameChunkStep(v: SteppableVideo, time: number): void {
   v.pause()
 }
 
+// Novo tempo ao pular um frame (←/→) dentro da gravação atual. `dir` é +1
+// (avança) ou -1 (retrocede). Clampa em [0, duration] — frame step não cruza
+// chunk; nas bordas, satura.
+export function frameStepTime(
+  currentTime: number,
+  duration: number,
+  frameDuration: number,
+  dir: 1 | -1,
+): number {
+  const next = currentTime + dir * frameDuration
+  if (next < 0) return 0
+  if (duration > 0 && next > duration) return duration
+  return next
+}
+
 // Calcula a posição de seek e se deve reproduzir ao carregar a metadata de uma
 // gravação. `stepPaused` indica que o load veio de um passo Ctrl+Shift+seta que
 // cruzou a fronteira do chunk — nesse caso mantém o vídeo parado.
