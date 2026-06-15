@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import { authHeaders } from '../../auth'
 import { Loader2, Search } from '../../components/Icons'
+import { Button } from '@/components/ui/button'
 
 interface DiscoveryResult {
   ip: string
@@ -109,11 +110,7 @@ export default function DiscoverPage() {
               ONVIF WS-Discovery (multicast UDP) + varredura de porta 554 na subnet local
             </p>
           </div>
-          <button
-            onClick={handleScan}
-            disabled={status === 'scanning'}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-          >
+          <Button id="discover-scan" onClick={handleScan} disabled={status === 'scanning'}>
             {status === 'scanning' ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -125,7 +122,7 @@ export default function DiscoverPage() {
                 Rastrear
               </>
             )}
-          </button>
+          </Button>
         </div>
 
         {status === 'scanning' && (
@@ -173,19 +170,13 @@ export default function DiscoverPage() {
                       <td className="px-4 py-2.5 text-foreground">{r.name || <span className="text-muted-foreground">—</span>}</td>
                       <td className="px-4 py-2.5 text-right">
                         {adding?.idx === i ? (
-                          <button
-                            onClick={() => setAdding(null)}
-                            className="px-3 py-1 text-muted-foreground hover:text-white border border-border rounded text-[11px] font-medium transition-colors"
-                          >
+                          <Button variant="outline" size="sm" onClick={() => setAdding(null)}>
                             Cancelar
-                          </button>
+                          </Button>
                         ) : (
-                          <button
-                            onClick={() => startAdding(i)}
-                            className="px-3 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded text-[11px] font-medium transition-colors"
-                          >
+                          <Button size="sm" onClick={() => startAdding(i)}>
                             Adicionar
-                          </button>
+                          </Button>
                         )}
                       </td>
                     </tr>
@@ -209,12 +200,9 @@ export default function DiscoverPage() {
                               onKeyDown={e => e.key === 'Enter' && confirmCreds(r)}
                               className={inputClass}
                             />
-                            <button
-                              onClick={() => confirmCreds(r)}
-                              className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-medium transition-colors"
-                            >
+                            <Button size="sm" onClick={() => confirmCreds(r)}>
                               Confirmar
-                            </button>
+                            </Button>
                           </div>
                         </td>
                       </tr>

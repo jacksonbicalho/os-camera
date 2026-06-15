@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { login, mustChangePassword } from '../auth'
 import { CameraLogo } from '../components/Icons'
+import { Button } from '@/components/ui/button'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
@@ -56,13 +57,9 @@ export default function LoginPage() {
             />
           </div>
           {error && <p className="text-red-400 text-sm">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded px-4 py-2 text-sm font-medium transition-colors"
-          >
+          <Button id="login-submit" type="submit" disabled={loading}>
             {loading ? 'Entrando...' : 'Entrar'}
-          </button>
+          </Button>
         </form>
       </div>
     </div>

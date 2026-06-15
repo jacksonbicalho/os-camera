@@ -4,6 +4,7 @@ import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import UserForm, { type UserFormData } from '../../components/UserForm'
 import { authHeaders, onUnauthorized } from '../../auth'
+import { Button } from '@/components/ui/button'
 
 interface Camera {
   id: string
@@ -103,12 +104,14 @@ export default function UserDetailSettingsPage() {
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex justify-end">
-            <button
+            <Button
+              id="user-edit"
+              variant="outline"
+              size="sm"
               onClick={() => { setEditing(true); setError(null) }}
-              className="px-3 py-1.5 text-xs bg-surface-2 hover:bg-accent border border-border text-foreground hover:text-white rounded transition-colors"
             >
               Editar
-            </button>
+            </Button>
           </div>
           <SettingsSection
             title="Conta"

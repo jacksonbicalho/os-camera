@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 
 interface Camera {
   id: string
@@ -104,20 +105,12 @@ export default function UserForm({ cameras, initial, onSave, onCancel, saving }:
       )}
 
       <div className="flex gap-2 pt-1">
-        <button
-          type="submit"
-          disabled={saving}
-          className="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors"
-        >
+        <Button id="user-form-save" type="submit" size="sm" disabled={saving}>
           {saving ? 'Salvando...' : 'Salvar'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-4 py-1.5 text-xs text-gray-300 hover:text-white border border-gray-600 rounded transition-colors"
-        >
+        </Button>
+        <Button id="user-form-cancel" type="button" size="sm" variant="outline" onClick={onCancel}>
           Cancelar
-        </button>
+        </Button>
       </div>
     </form>
   )

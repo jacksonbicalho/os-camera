@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getUsername, changePassword, login, clearToken, getRole, authHeaders, mustChangePassword } from '../auth'
 import AppLayout from '../components/AppLayout'
+import { Button } from '@/components/ui/button'
 
 export default function ChangePasswordPage() {
   const [password, setPassword] = useState('')
@@ -75,13 +76,9 @@ export default function ChangePasswordPage() {
           />
         </div>
         {error && <p className="text-red-400 text-sm">{error}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded px-4 py-2 text-sm font-medium transition-colors"
-        >
+        <Button id="change-password-submit" type="submit" disabled={loading}>
           {loading ? 'Salvando...' : 'Definir nova senha'}
-        </button>
+        </Button>
       </form>
     </div>
   )
