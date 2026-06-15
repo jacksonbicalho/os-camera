@@ -4,6 +4,7 @@ import BboxCanvas, { type BboxRect } from '../../components/BboxCanvas'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { useSettings, type CameraSettings } from '../../hooks/useSettings'
 import { authHeaders, getToken } from '../../auth'
+import { Button } from '@/components/ui/button'
 
 interface AnalysisConfig {
   enabled: boolean
@@ -61,14 +62,16 @@ function ReanalyzePanel() {
         {err && <p className="text-xs text-red-400 mt-1">{err}</p>}
         {done && <p className="text-xs text-green-400 mt-1">Re-análise agendada — será processada na próxima limpeza do storage.</p>}
       </div>
-      <button
+      <Button
+        id="analysis-reanalyze"
         type="button"
+        variant="secondary"
+        className="shrink-0"
         onClick={handleReanalyze}
         disabled={busy}
-        className="px-4 py-2 bg-surface-2 hover:bg-accent text-white text-sm rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
       >
         {busy ? 'Aguarde...' : 'Re-analisar tudo'}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -610,13 +613,9 @@ export default function AnalysisSettingsPage() {
             {error && <p className="text-sm text-red-400">{error}</p>}
             {saved && <p className="text-sm text-green-400">Salvo</p>}
             {!error && !saved && <span />}
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
+            <Button id="analysis-save" type="submit" disabled={saving}>
               {saving ? 'Salvando...' : 'Salvar'}
-            </button>
+            </Button>
           </div>
         </form>
 

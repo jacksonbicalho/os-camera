@@ -4,6 +4,7 @@ import SettingsLayout from '../../components/SettingsLayout'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import UserForm, { type UserFormData } from '../../components/UserForm'
 import { authHeaders, onUnauthorized } from '../../auth'
+import { Button } from '@/components/ui/button'
 
 interface Camera {
   id: string
@@ -100,12 +101,14 @@ export default function UsersSettingsPage() {
           <p className="text-sm text-muted-foreground mt-1">Gerencie usuários e permissões de acesso.</p>
         </div>
         {!creating && (
-          <button
+          <Button
+            id="user-create"
+            size="sm"
+            className="shrink-0"
             onClick={() => { setCreating(true); setError(null) }}
-            className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors shrink-0"
           >
             + Novo usuário
-          </button>
+          </Button>
         )}
       </div>
 
@@ -159,12 +162,14 @@ export default function UsersSettingsPage() {
                   >
                     Editar
                   </Link>
-                  <button
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
                     onClick={() => setDeleteId(user.id)}
-                    className="px-3 py-1 text-xs text-red-500 hover:text-red-400 border border-border rounded transition-colors"
                   >
                     Remover
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>

@@ -8,6 +8,7 @@ import DeviceInfoPanel from '../../components/DeviceInfoPanel'
 import { type CameraFormData, type Camera, formToPayload } from '../../components/cameraFormUtils'
 import { useSettings, type CameraSettings } from '../../hooks/useSettings'
 import { authHeaders, getRole } from '../../auth'
+import { Button } from '@/components/ui/button'
 
 function fmtHasAudio(v: boolean | null): string {
   if (v === null) return 'auto'
@@ -163,12 +164,14 @@ export default function CameraDetailSettingsPage() {
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex justify-end">
-            <button
+            <Button
+              id="camera-edit"
+              variant="outline"
+              size="sm"
               onClick={() => { setEditing(true); setError(null) }}
-              className="px-3 py-1.5 text-xs bg-surface-2 hover:bg-accent border border-border text-foreground hover:text-white rounded transition-colors"
             >
               Editar
-            </button>
+            </Button>
           </div>
           <SettingsSection
             title="Identificação"

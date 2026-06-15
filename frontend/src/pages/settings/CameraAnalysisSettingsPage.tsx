@@ -4,6 +4,7 @@ import SettingsLayout from '../../components/SettingsLayout'
 import CameraSettingsTabs from '../../components/CameraSettingsTabs'
 import { useSettings, type CameraSettings } from '../../hooks/useSettings'
 import { authHeaders } from '../../auth'
+import { Button } from '@/components/ui/button'
 
 export default function CameraAnalysisSettingsPage() {
   const { id } = useParams<{ id: string }>()
@@ -86,13 +87,9 @@ export default function CameraAnalysisSettingsPage() {
             {error && <p className="text-sm text-red-400">{error}</p>}
             {saved && <p className="text-sm text-green-400">Salvo</p>}
             {!error && !saved && <span />}
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
+            <Button id="camera-analysis-save" onClick={handleSave} disabled={saving}>
               {saving ? 'Salvando...' : 'Salvar'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

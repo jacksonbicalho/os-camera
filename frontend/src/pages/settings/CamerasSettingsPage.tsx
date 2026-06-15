@@ -6,6 +6,7 @@ import CameraForm from '../../components/CameraForm'
 import { type Camera, type CameraFormData, formToPayload } from '../../components/cameraFormUtils'
 import { authHeaders, onUnauthorized, getRole, getToken } from '../../auth'
 import { Plus, GripVertical, ChevronRight, Pencil, Trash2 } from '../../components/Icons'
+import { Button } from '@/components/ui/button'
 
 export default function CamerasSettingsPage() {
   const navigate = useNavigate()
@@ -147,13 +148,14 @@ export default function CamerasSettingsPage() {
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-h2 font-semibold text-foreground">Câmeras</h3>
         {!creating && !noDb && (
-          <button
+          <Button
+            id="camera-create"
+            size="sm"
             onClick={() => { setCreating(true); setError(null) }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             Nova câmera
-          </button>
+          </Button>
         )}
       </div>
 
@@ -229,13 +231,15 @@ export default function CamerasSettingsPage() {
                 >
                   <Pencil className="w-4 h-4" />
                 </Link>
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
                   onClick={() => setDeleteId(cam.id)}
                   title="Remover"
-                  className="p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
-                </button>
+                </Button>
               </div>
             </div>
           ))}

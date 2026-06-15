@@ -4,6 +4,7 @@ import ConfirmDialog from '../../components/ConfirmDialog'
 import { useSettings } from '../../hooks/useSettings'
 import { authHeaders, getRole } from '../../auth'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
+import { Button } from '@/components/ui/button'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -291,10 +292,9 @@ export default function StorageSettingsPage() {
 
           <div className="flex justify-end items-center gap-3 pt-1">
             {storageSaved && <span className="text-xs text-green-400">Salvo</span>}
-            <button onClick={handleStorageSave} disabled={storageSaving}
-              className="text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded">
+            <Button id="storage-save" onClick={handleStorageSave} disabled={storageSaving}>
               {storageSaving ? 'Salvando...' : 'Salvar'}
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
@@ -309,10 +309,9 @@ export default function StorageSettingsPage() {
       <div className="mt-6">
         <div className="flex items-center justify-between mb-3">
           <h4 className="text-sm font-semibold text-foreground">Drives</h4>
-          <button onClick={openCreateDrive}
-            className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded">
+          <Button id="drive-add" onClick={openCreateDrive} size="sm">
             + Adicionar drive
-          </button>
+          </Button>
         </div>
 
         {drives.length === 0 ? (
@@ -329,8 +328,8 @@ export default function StorageSettingsPage() {
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => openEditDrive(dr)} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1">Editar</button>
-                  <button onClick={() => setConfirmDelete(dr)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Excluir</button>
+                  <Button variant="ghost" size="sm" onClick={() => openEditDrive(dr)}>Editar</Button>
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(dr)} className="text-destructive hover:text-destructive">Excluir</Button>
                 </div>
               </div>
             ))}
@@ -369,13 +368,14 @@ export default function StorageSettingsPage() {
               ))}
             </div>
             <div className="flex justify-end gap-2 mt-5">
-              <button onClick={() => setShowDriveForm(false)} className="text-sm text-muted-foreground hover:text-foreground px-4 py-2">Cancelar</button>
-              <button
+              <Button id="drive-cancel" variant="ghost" onClick={() => setShowDriveForm(false)}>Cancelar</Button>
+              <Button
+                id="drive-save"
                 onClick={handleDriveSave}
                 disabled={driveSaving || !driveForm.name || !driveForm.bucket || (!editDrive && (!driveForm.access_key || !driveForm.secret_key))}
-                className="text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded">
+              >
                 {driveSaving ? 'Salvando...' : 'Salvar'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

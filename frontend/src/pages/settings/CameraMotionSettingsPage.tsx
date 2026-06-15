@@ -8,6 +8,7 @@ import { useSettings, type CameraSettings } from '../../hooks/useSettings'
 import { useMotionPeak, type MotionDailyPeak } from '../../hooks/useMotionPeak'
 import { emptyForm, formToPayload, type Camera, type CameraFormData } from '../../components/cameraFormUtils'
 import { authHeaders, getRole } from '../../auth'
+import { Button } from '@/components/ui/button'
 
 function formatScore(v: number): string {
   if (v <= 0) return '—'
@@ -308,13 +309,9 @@ function MotionFormContent({ cam, id, peak, reload }: MotionFormContentProps) {
       )}
 
       <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={saving}
-          className="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors"
-        >
+        <Button id="motion-save" type="submit" size="sm" disabled={saving}>
           {saving ? 'Salvando...' : 'Salvar'}
-        </button>
+        </Button>
         {saved && <span className="text-xs text-green-400">Salvo</span>}
       </div>
 

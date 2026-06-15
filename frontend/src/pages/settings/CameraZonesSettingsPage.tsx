@@ -8,6 +8,7 @@ import { authHeaders, getRole, getToken } from '../../auth'
 import { useSettings } from '../../hooks/useSettings'
 import { useEventSource } from '../../hooks/useEventSource'
 import { zoneThresholdLabel } from './zoneThreshold'
+import { Button } from '@/components/ui/button'
 
 interface Zone {
   x: number
@@ -816,20 +817,13 @@ export default function CameraZonesSettingsPage() {
 
           {isAdmin && (
             <div className="flex gap-3 items-center">
-              <button
-                onClick={save}
-                disabled={saving}
-                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
-              >
+              <Button id="zones-save" onClick={save} disabled={saving}>
                 {saving ? 'Salvando...' : 'Salvar zonas'}
-              </button>
+              </Button>
               {zones.length > 0 && (
-                <button
-                  onClick={() => setConfirmClear(true)}
-                  className="px-4 py-2 text-sm bg-surface-2 hover:bg-accent text-foreground rounded-lg transition-colors"
-                >
+                <Button id="zones-clear" variant="outline" onClick={() => setConfirmClear(true)}>
                   Limpar todas
-                </button>
+                </Button>
               )}
               {zones.length > 0 && (
                 <span className="text-xs text-muted-foreground">{zones.length} zona{zones.length !== 1 ? 's' : ''}</span>
