@@ -38,6 +38,18 @@
   --color-success: #2e7d32;
   --color-warning: #ed6c02;
 
+  /* — shadcn/ui: papéis mapeados para a MESMA paleta Material acima (sem duplicar
+       sistema de cor). `background`/`foreground`/`primary`/`border` já existem. — */
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #2c2c2c;
+  --color-secondary-foreground: rgba(255, 255, 255, 0.87);
+  --color-accent: #2c2c2c;
+  --color-accent-foreground: rgba(255, 255, 255, 0.87);
+  --color-destructive: #d32f2f;
+  --color-destructive-foreground: #ffffff;
+  --color-input: rgba(255, 255, 255, 0.12);
+  --color-ring: #1976d2;
+
   /* — Rampa de cinza NEUTRA Material (DARK) — substitui o slate azulado do Tailwind.
        É o que 90% da UI usa (bg-gray-900, text-gray-400…). 950=fundo app, 900/800=
        superfícies, 700/600=bordas, 500–200=textos claros. — */
@@ -81,6 +93,13 @@
   --color-muted: rgba(0, 0, 0, 0.60);
   --color-faint: rgba(0, 0, 0, 0.38);
   --color-border: rgba(0, 0, 0, 0.12);
+
+  /* shadcn/ui no claro (primary/ring/destructive seguem vívidos = iguais ao dark) */
+  --color-secondary: #eeeeee;
+  --color-secondary-foreground: rgba(0, 0, 0, 0.87);
+  --color-accent: #eeeeee;
+  --color-accent-foreground: rgba(0, 0, 0, 0.87);
+  --color-input: rgba(0, 0, 0, 0.12);
 }
 
 /* Modo CLARO Material: a app hardcoda cores dark, então aqui invertemos a rampa de

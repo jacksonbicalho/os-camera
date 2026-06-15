@@ -15,6 +15,9 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Alias @ → src (shadcn/ui) — paths resolve relativo ao tsconfig (sem baseUrl, deprecado no TS 6) */
+    "paths": { "@/*": ["./src/*"] },
+
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
