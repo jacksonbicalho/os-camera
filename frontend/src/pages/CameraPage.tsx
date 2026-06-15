@@ -1112,7 +1112,7 @@ function toggleFullscreen() {
             <div
               ref={playerRef}
               className={`flex flex-col h-full bg-background border rounded-lg overflow-hidden transition-all duration-300 ${
-                !isLive ? 'border-blue-600 ring-1 ring-blue-600' : 'border-border'
+                !isLive ? 'border-primary ring-1 ring-primary' : 'border-border'
               }`}
             >
               <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-border min-w-0">
@@ -1148,7 +1148,7 @@ function toggleFullscreen() {
                   <button
                     onClick={() => setVideoMuted(m => { const next = !m; if (videoRef.current) videoRef.current.muted = next; return next })}
                     title={videoMuted ? 'Ativar áudio' : 'Silenciar'}
-                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${!videoMuted ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
+                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${!videoMuted ? 'text-primary' : 'text-muted hover:text-foreground'}`}
                   >
                     {playerBtn(
                       videoMuted ? <VolumeX className="w-[18px] h-[18px]" /> : <Volume2 className="w-[18px] h-[18px]" />,
@@ -1161,7 +1161,7 @@ function toggleFullscreen() {
                       <button
                         onClick={() => setSpeedMenuOpen(o => !o)}
                         title={`Velocidade ${playbackRate}×`}
-                        className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${playbackRate > 1 ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
+                        className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${playbackRate > 1 ? 'text-primary' : 'text-muted hover:text-foreground'}`}
                       >
                         {playerBtn(
                           <>
@@ -1183,7 +1183,7 @@ function toggleFullscreen() {
                               <button
                                 key={v}
                                 onClick={() => { handleRateChange(v); setSpeedMenuOpen(false) }}
-                                className={`w-full text-left px-3 py-1 text-xs ${v === playbackRate ? 'text-blue-400 font-semibold' : 'text-foreground hover:text-foreground hover:bg-surface-2'}`}
+                                className={`w-full text-left px-3 py-1 text-xs ${v === playbackRate ? 'text-primary font-semibold' : 'text-foreground hover:text-foreground hover:bg-surface-2'}`}
                               >
                                 {v}×
                               </button>
@@ -1197,7 +1197,7 @@ function toggleFullscreen() {
                     <button
                       onClick={() => setContinuousPlay(v => !v)}
                       title={continuousPlay ? 'Desativar reprodução contínua' : 'Ativar reprodução contínua'}
-                      className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${continuousPlay ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
+                      className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${continuousPlay ? 'text-primary' : 'text-muted hover:text-foreground'}`}
                     >
                       {playerBtn(<Repeat className="w-4 h-4" />, 'Contínua')}
                     </button>
@@ -1217,7 +1217,7 @@ function toggleFullscreen() {
                         }
                       }}
                       title="Gravações"
-                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'recordings' ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
+                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'recordings' ? 'text-primary' : 'text-muted hover:text-foreground'}`}
                     >
                       {playerShowIcon && <Film className="w-4 h-4" />}
                       {!playerShowLabel && (recordingsTotal || recordings.length) > 0 && (
@@ -1249,7 +1249,7 @@ function toggleFullscreen() {
                         }
                       }}
                       title="Eventos de movimento"
-                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'events' ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
+                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'events' ? 'text-primary' : 'text-muted hover:text-foreground'}`}
                     >
                       {playerShowIcon && <Zap className="w-4 h-4" />}
                       {!playerShowLabel && (
@@ -1271,7 +1271,7 @@ function toggleFullscreen() {
                   <button
                     onClick={() => setActivePanel(p => p === 'calendar' ? null : 'calendar')}
                     title={isToday ? 'Calendário' : `Calendário · ${format(selectedDate, "d MMM", { locale: ptBR })}`}
-                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'calendar' ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
+                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'calendar' ? 'text-primary' : 'text-muted hover:text-foreground'}`}
                   >
                     {playerBtn(<CalendarDays className="w-4 h-4" />, 'Calendário')}
                   </button>
@@ -1280,7 +1280,7 @@ function toggleFullscreen() {
                   <button
                     onClick={() => showDebug ? closeDebug() : setShowDebug(true)}
                     title="Debug"
-                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${showDebug ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
+                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${showDebug ? 'text-primary' : 'text-muted hover:text-foreground'}`}
                   >
                     {playerBtn(<Code2 className="w-4 h-4" />, 'Debug')}
                   </button>
@@ -1515,7 +1515,7 @@ function toggleFullscreen() {
                   }}
                 >
                   <div
-                    className="absolute inset-y-0 left-0 rounded-full bg-blue-500 pointer-events-none group-hover:bg-blue-400 transition-colors"
+                    className="absolute inset-y-0 left-0 rounded-full bg-primary pointer-events-none group-hover:bg-primary transition-colors"
                     style={{ width: `${(recCurrentTime / recDuration) * 100}%` }}
                   />
                 </div>
@@ -1665,7 +1665,7 @@ function toggleFullscreen() {
                       onClick={() => setActivePanel('recordings')}
                       className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
                         activePanel === 'recordings'
-                          ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
+                          ? 'text-primary border-b-2 border-primary -mb-px'
                           : 'text-faint hover:text-foreground'
                       }`}
                     >
@@ -1677,7 +1677,7 @@ function toggleFullscreen() {
                       onClick={() => setActivePanel('events')}
                       className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
                         activePanel === 'events'
-                          ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
+                          ? 'text-primary border-b-2 border-primary -mb-px'
                           : 'text-faint hover:text-foreground'
                       }`}
                     >
@@ -1689,7 +1689,7 @@ function toggleFullscreen() {
                       onClick={() => setActivePanel('calendar')}
                       className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
                         activePanel === 'calendar'
-                          ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
+                          ? 'text-primary border-b-2 border-primary -mb-px'
                           : 'text-faint hover:text-foreground'
                       }`}
                     >
@@ -1736,7 +1736,7 @@ function toggleFullscreen() {
                                 rec.is_recording
                                   ? 'opacity-50'
                                   : isActive
-                                    ? 'bg-blue-900/40 border-l-2 border-blue-500'
+                                    ? 'bg-primary/10 border-l-2 border-primary'
                                     : 'hover:bg-surface'
                               }`}
                             >
@@ -1752,7 +1752,7 @@ function toggleFullscreen() {
                                 }}
                                 className="flex-1 flex items-center justify-between text-left disabled:cursor-not-allowed"
                               >
-                                <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-foreground'}`}>
+                                <span className={`text-sm ${isActive && !rec.is_recording ? 'text-primary' : 'text-foreground'}`}>
                                   {formatRecordingTime(rec.start, timezone)}
                                 </span>
                                 <div className="flex items-center gap-2 shrink-0 ml-2">
@@ -1803,11 +1803,11 @@ function toggleFullscreen() {
                             ref={isActive ? (el) => { if (el) activeEventItemRef.current = el } : null}
                             onClick={() => { playEventAt(ev); setScrollNonce(n => n + 1) }}
                             className={`group w-full flex flex-col px-3 py-2 transition-colors text-left ${
-                              isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-surface'
+                              isActive ? 'bg-primary/10 border-l-2 border-primary' : 'hover:bg-surface'
                             }`}
                           >
                             <div className="flex items-center justify-between w-full gap-2">
-                              <span className={`text-sm tabular-nums ${isActive ? 'text-blue-300' : 'text-foreground'}`}>
+                              <span className={`text-sm tabular-nums ${isActive ? 'text-primary' : 'text-foreground'}`}>
                                 {formatRecordingTime(ev.time, timezone)}
                               </span>
                               <div className="flex items-center gap-1.5 min-w-0">
@@ -1832,7 +1832,7 @@ function toggleFullscreen() {
                                   </>
                                 )}
                                 {ev.label && !ev.color && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 border border-blue-700/50 truncate">
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/40 truncate">
                                     {ev.label}
                                   </span>
                                 )}
@@ -1884,7 +1884,7 @@ function toggleFullscreen() {
                           }}}
                           footer={(!isToday || !calendarOnCurrentMonth) && (
                             <div className="flex justify-center pt-1">
-                              <button onClick={() => { setSelectedDate(new Date()); setCalendarMonth(new Date()) }} className="text-xs font-medium text-blue-400 hover:text-blue-300 transition-colors">
+                              <button onClick={() => { setSelectedDate(new Date()); setCalendarMonth(new Date()) }} className="text-xs font-medium text-primary hover:text-primary transition-colors">
                                 Hoje
                               </button>
                             </div>
@@ -1896,7 +1896,7 @@ function toggleFullscreen() {
                             day: 'text-foreground hover:bg-surface-2 rounded',
                             day_button: 'w-8 h-8 flex items-center justify-center rounded',
                             selected: 'bg-blue-600 text-white rounded',
-                            today: 'text-blue-400 font-semibold',
+                            today: 'text-primary font-semibold',
                             outside: 'text-faint',
                             disabled: 'text-faint',
                           }}
