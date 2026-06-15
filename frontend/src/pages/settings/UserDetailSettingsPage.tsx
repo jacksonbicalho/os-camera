@@ -69,12 +69,12 @@ export default function UserDetailSettingsPage() {
   return (
     <SettingsLayout>
       <div className="mb-6">
-        <nav className="flex items-center gap-1.5 text-xs text-gray-500 mb-4">
-          <Link to="/settings/users" className="hover:text-gray-300 transition-colors">Usuários</Link>
+        <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-4">
+          <Link to="/settings/users" className="hover:text-foreground transition-colors">Usuários</Link>
           <span>/</span>
-          <span className="text-gray-300">{user?.username ?? '...'}</span>
+          <span className="text-foreground">{user?.username ?? '...'}</span>
         </nav>
-        <div className="flex items-center justify-end border-b border-gray-800 pb-2">
+        <div className="flex items-center justify-end border-b border-border pb-2">
           <Link
             to="/settings/users/new"
             className="mb-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
@@ -91,7 +91,7 @@ export default function UserDetailSettingsPage() {
       )}
 
       {loading ? (
-        <p className="text-gray-500 text-sm">Carregando...</p>
+        <p className="text-muted-foreground text-sm">Carregando...</p>
       ) : !user ? null : editing ? (
         <UserForm
           cameras={cameras}
@@ -105,7 +105,7 @@ export default function UserDetailSettingsPage() {
           <div className="flex justify-end">
             <button
               onClick={() => { setEditing(true); setError(null) }}
-              className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded transition-colors"
+              className="px-3 py-1.5 text-xs bg-surface-2 hover:bg-accent border border-border text-foreground hover:text-white rounded transition-colors"
             >
               Editar
             </button>

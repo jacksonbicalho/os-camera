@@ -632,21 +632,21 @@ export default function CameraZonesSettingsPage() {
       <CameraSettingsTabs id={id!} active="zones" camName={cam?.name} />
 
       {isAdmin && (
-        <p className="text-xs text-gray-500 mb-5">
+        <p className="text-xs text-muted-foreground mb-5">
           Arraste em área vazia para criar uma zona. Clique numa zona para selecioná-la. Arraste os cantos para redimensionar. Use o círculo acima para rotacionar. Clique no × na zona selecionada para excluí-la.
         </p>
       )}
 
       {isAdmin && !settings ? (
-        <p className="text-gray-500 text-sm">Carregando...</p>
+        <p className="text-muted-foreground text-sm">Carregando...</p>
       ) : isAdmin && !cam ? (
-        <p className="text-gray-500 text-sm">Câmera não encontrada.</p>
+        <p className="text-muted-foreground text-sm">Câmera não encontrada.</p>
       ) : loading ? (
-        <p className="text-gray-500 text-sm">Carregando zonas...</p>
+        <p className="text-muted-foreground text-sm">Carregando zonas...</p>
       ) : (
         <div className="flex flex-col gap-4">
           <div
-            className="relative bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
+            className="relative bg-surface border border-border rounded-lg overflow-hidden"
             style={{ aspectRatio: '16/9' }}
           >
             <canvas
@@ -663,28 +663,28 @@ export default function CameraZonesSettingsPage() {
           </div>
 
           {isAdmin && selectedZone && (
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 flex flex-col gap-4">
+            <div className="bg-surface border border-border rounded-lg p-4 flex flex-col gap-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-gray-200 flex items-center gap-2">
+                <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
                   <span
                     className="inline-block w-3 h-3 rounded-sm flex-shrink-0"
                     style={{ backgroundColor: selectedZone.color ?? (selectedZone.type === 'detect' ? '#f97316' : '#ef4444') }}
                   />
                   Zona {selectedIdx! + 1}
                   {selectedZone.type === 'detect' && (
-                    <span className="text-xs text-gray-400 font-normal">detecção independente</span>
+                    <span className="text-xs text-muted-foreground font-normal">detecção independente</span>
                   )}
                 </h3>
                 {sseURL && (
                   <div className="flex items-center gap-3 flex-wrap">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-gray-500">Ao vivo:</span>
+                      <span className="text-xs text-muted-foreground">Ao vivo:</span>
                       <span className="text-sm font-mono text-yellow-400 min-w-[6ch]">
                         {regionScore !== null ? regionScore.toFixed(4) : '—'}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-gray-500">Pico:</span>
+                      <span className="text-xs text-muted-foreground">Pico:</span>
                       <span className="text-sm font-mono text-orange-400 min-w-[6ch]">
                         {peakScore !== null ? peakScore.toFixed(4) : '—'}
                       </span>
@@ -695,18 +695,18 @@ export default function CameraZonesSettingsPage() {
 
               <div className="flex gap-6 flex-wrap">
                 <div className="flex flex-col gap-1 min-w-40">
-                  <label className="text-xs text-gray-400">Nome (opcional)</label>
+                  <label className="text-xs text-muted-foreground">Nome (opcional)</label>
                   <input
                     type="text"
                     value={selectedZone.label ?? ''}
                     onChange={e => updateSelectedZone({ label: e.target.value || undefined })}
                     placeholder="ex: entrada"
-                    className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-600 w-full"
+                    className="bg-surface-2 border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-border w-full"
                   />
                 </div>
 
                 <div className="flex flex-col gap-1 min-w-32">
-                  <label className="text-xs text-gray-400">Rotação (graus)</label>
+                  <label className="text-xs text-muted-foreground">Rotação (graus)</label>
                   <input
                     type="number"
                     min={0}
@@ -718,15 +718,15 @@ export default function CameraZonesSettingsPage() {
                       d = ((d % 360) + 360) % 360
                       updateSelectedZone({ rotation_deg: d })
                     }}
-                    className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-600 w-28"
+                    className="bg-surface-2 border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-border w-28"
                   />
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <span className="text-xs text-gray-400">Tipo</span>
+                  <span className="text-xs text-muted-foreground">Tipo</span>
                   <div className="flex gap-4">
                     {(['exclude', 'detect'] as const).map(t => (
-                      <label key={t} className="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer">
+                      <label key={t} className="flex items-center gap-1.5 text-sm text-foreground cursor-pointer">
                         <input
                           type="radio"
                           value={t}
@@ -738,7 +738,7 @@ export default function CameraZonesSettingsPage() {
                       </label>
                     ))}
                   </div>
-                  <p className="text-xs text-gray-600 max-w-xs">
+                  <p className="text-xs text-muted-foreground max-w-xs">
                     {(selectedZone.type ?? 'exclude') === 'exclude'
                       ? 'Ignora movimento nesta região no diff global.'
                       : 'Detecta movimento nesta região de forma independente, com limiar e cooldown próprios.'}
@@ -748,37 +748,37 @@ export default function CameraZonesSettingsPage() {
                 {(selectedZone.type ?? 'exclude') === 'detect' && (
                   <>
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs text-gray-400">Limiar (0 = câmera)</label>
+                      <label className="text-xs text-muted-foreground">Limiar (0 = câmera)</label>
                       <input
                         type="number"
                         min={0} max={1} step={0.001}
                         value={selectedZone.threshold ?? 0}
                         onChange={e => updateSelectedZone({ threshold: parseFloat(e.target.value) || 0 })}
-                        className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-600 w-28"
+                        className="bg-surface-2 border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-border w-28"
                       />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs text-gray-400">Cooldown (s, 0 = câmera)</label>
+                      <label className="text-xs text-muted-foreground">Cooldown (s, 0 = câmera)</label>
                       <input
                         type="number"
                         min={0} step={1}
                         value={selectedZone.cooldown_seconds ?? 0}
                         onChange={e => updateSelectedZone({ cooldown_seconds: parseInt(e.target.value) || 0 })}
-                        className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-600 w-28"
+                        className="bg-surface-2 border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-border w-28"
                       />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs text-gray-400">FPS de amostragem (0 = câmera)</label>
+                      <label className="text-xs text-muted-foreground">FPS de amostragem (0 = câmera)</label>
                       <input
                         type="number"
                         min={0} step={1}
                         value={selectedZone.fps ?? 0}
                         onChange={e => updateSelectedZone({ fps: parseInt(e.target.value) || 0 })}
-                        className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-600 w-28"
+                        className="bg-surface-2 border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-border w-28"
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-xs text-gray-400">Escala de análise</label>
+                      <label className="text-xs text-muted-foreground">Escala de análise</label>
                       <div className="flex items-center gap-3">
                         <input
                           type="range"
@@ -787,7 +787,7 @@ export default function CameraZonesSettingsPage() {
                           onChange={e => updateSelectedZone({ scale: parseInt(e.target.value) / 100 })}
                           className="w-32 accent-blue-500"
                         />
-                        <span className="text-xs text-gray-300 font-mono w-10 text-right">
+                        <span className="text-xs text-foreground font-mono w-10 text-right">
                           {Math.round((selectedZone.scale || 1) * 100)}%
                         </span>
                       </div>
@@ -798,7 +798,7 @@ export default function CameraZonesSettingsPage() {
                         const sW = Math.max(1, Math.round(zW * sc))
                         const sH = Math.max(1, Math.round(zH * sc))
                         return (
-                          <p className="text-xs text-gray-600">
+                          <p className="text-xs text-muted-foreground">
                             {sc < 1 ? `${zW} × ${zH} px → ${sW} × ${sH} px` : `${zW} × ${zH} px`}
                           </p>
                         )
@@ -826,19 +826,19 @@ export default function CameraZonesSettingsPage() {
               {zones.length > 0 && (
                 <button
                   onClick={() => setConfirmClear(true)}
-                  className="px-4 py-2 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors"
+                  className="px-4 py-2 text-sm bg-surface-2 hover:bg-accent text-foreground rounded-lg transition-colors"
                 >
                   Limpar todas
                 </button>
               )}
               {zones.length > 0 && (
-                <span className="text-xs text-gray-600">{zones.length} zona{zones.length !== 1 ? 's' : ''}</span>
+                <span className="text-xs text-muted-foreground">{zones.length} zona{zones.length !== 1 ? 's' : ''}</span>
               )}
             </div>
           )}
 
           {!isAdmin && zones.length > 0 && (
-            <p className="text-xs text-gray-600">{zones.length} zona{zones.length !== 1 ? 's' : ''}</p>
+            <p className="text-xs text-muted-foreground">{zones.length} zona{zones.length !== 1 ? 's' : ''}</p>
           )}
         </div>
       )}

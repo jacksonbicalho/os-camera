@@ -93,9 +93,9 @@ export default function CameraDetailSettingsPage() {
       <SettingsLayout>
         <CameraSettingsTabs id={id!} active="detail" camName={viewerCam?.name} />
         {viewerLoading ? (
-          <p className="text-gray-500 text-sm">Carregando...</p>
+          <p className="text-muted-foreground text-sm">Carregando...</p>
         ) : !viewerCam ? (
-          <p className="text-gray-500 text-sm">Câmera não encontrada.</p>
+          <p className="text-muted-foreground text-sm">Câmera não encontrada.</p>
         ) : (
           <div className="flex flex-col gap-4">
             <SettingsSection
@@ -150,9 +150,9 @@ export default function CameraDetailSettingsPage() {
       )}
 
       {!settings ? (
-        <p className="text-gray-500 text-sm">Carregando...</p>
+        <p className="text-muted-foreground text-sm">Carregando...</p>
       ) : !cam ? (
-        <p className="text-gray-500 text-sm">Câmera não encontrada.</p>
+        <p className="text-muted-foreground text-sm">Câmera não encontrada.</p>
       ) : editing ? (
         <CameraForm
           initial={cam}
@@ -165,7 +165,7 @@ export default function CameraDetailSettingsPage() {
           <div className="flex justify-end">
             <button
               onClick={() => { setEditing(true); setError(null) }}
-              className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded transition-colors"
+              className="px-3 py-1.5 text-xs bg-surface-2 hover:bg-accent border border-border text-foreground hover:text-white rounded transition-colors"
             >
               Editar
             </button>

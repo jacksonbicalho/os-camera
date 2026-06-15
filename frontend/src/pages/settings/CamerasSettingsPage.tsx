@@ -112,28 +112,28 @@ export default function CamerasSettingsPage() {
     return (
       <SettingsLayout>
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-h2 font-semibold text-gray-200">Câmeras</h3>
+          <h3 className="text-h2 font-semibold text-foreground">Câmeras</h3>
         </div>
         {loading ? (
-          <p className="text-gray-500 text-sm">Carregando...</p>
+          <p className="text-muted-foreground text-sm">Carregando...</p>
         ) : cameras.length === 0 ? (
-          <p className="text-gray-500 text-sm">Nenhuma câmera disponível.</p>
+          <p className="text-muted-foreground text-sm">Nenhuma câmera disponível.</p>
         ) : (
           <div className="flex flex-col gap-2">
             {cameras.map(cam => (
               <Link
                 key={cam.id}
                 to={`/settings/cameras/${cam.id}`}
-                className="flex items-center gap-4 bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 hover:border-blue-600 transition-colors"
+                className="flex items-center gap-4 bg-surface border border-border rounded-lg px-4 py-3 hover:border-blue-600 transition-colors"
               >
                 <Thumbnail cameraId={cam.id} name={cam.name} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-200 truncate">{cam.name || cam.id}</p>
+                  <p className="text-sm font-medium text-foreground truncate">{cam.name || cam.id}</p>
                   <div className="flex items-center gap-1.5 mt-1">
                     <StatusBadges cam={cam} />
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-gray-600 shrink-0" />
+                <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
               </Link>
             ))}
           </div>
@@ -145,7 +145,7 @@ export default function CamerasSettingsPage() {
   return (
     <SettingsLayout>
       <div className="flex items-center justify-between mb-6">
-        <h3 className="text-h2 font-semibold text-gray-200">Câmeras</h3>
+        <h3 className="text-h2 font-semibold text-foreground">Câmeras</h3>
         {!creating && !noDb && (
           <button
             onClick={() => { setCreating(true); setError(null) }}
@@ -158,7 +158,7 @@ export default function CamerasSettingsPage() {
       </div>
 
       {noDb && (
-        <p className="text-gray-500 text-sm">Gerenciamento de câmeras requer banco de dados configurado.</p>
+        <p className="text-muted-foreground text-sm">Gerenciamento de câmeras requer banco de dados configurado.</p>
       )}
 
       {error && (
@@ -168,8 +168,8 @@ export default function CamerasSettingsPage() {
       )}
 
       {creating && (
-        <div className="mb-4 bg-gray-900 border border-gray-700 rounded-lg p-4">
-          <p className="text-xs font-medium text-gray-400 mb-3">Nova câmera</p>
+        <div className="mb-4 bg-surface border border-border rounded-lg p-4">
+          <p className="text-xs font-medium text-muted-foreground mb-3">Nova câmera</p>
           <CameraForm
             onSave={handleCreate}
             onCancel={() => {
@@ -184,9 +184,9 @@ export default function CamerasSettingsPage() {
       )}
 
       {loading ? (
-        <p className="text-gray-500 text-sm">Carregando...</p>
+        <p className="text-muted-foreground text-sm">Carregando...</p>
       ) : cameras.length === 0 && !noDb ? (
-        <p className="text-gray-500 text-sm">Nenhuma câmera configurada.</p>
+        <p className="text-muted-foreground text-sm">Nenhuma câmera configurada.</p>
       ) : (
         <div className="flex flex-col gap-2">
           {cameras.map(cam => (
@@ -198,10 +198,10 @@ export default function CamerasSettingsPage() {
               onDragLeave={() => setDragOverId(null)}
               onDrop={() => handleDrop(cam.id)}
               onDragEnd={() => { dragIdRef.current = null; setDragOverId(null) }}
-              className={`group bg-gray-900 border rounded-lg px-3 py-3 flex items-center gap-3 transition-colors ${dragOverId === cam.id ? 'border-blue-500' : 'border-gray-800 hover:border-gray-700'}`}
+              className={`group bg-surface border rounded-lg px-3 py-3 flex items-center gap-3 transition-colors ${dragOverId === cam.id ? 'border-blue-500' : 'border-border hover:border-border'}`}
             >
               {/* drag handle */}
-              <GripVertical className="w-4 h-4 text-gray-700 group-hover:text-gray-500 shrink-0 cursor-grab active:cursor-grabbing transition-colors" />
+              <GripVertical className="w-4 h-4 text-muted-foreground group-hover:text-muted-foreground shrink-0 cursor-grab active:cursor-grabbing transition-colors" />
 
               {/* thumbnail */}
               <Thumbnail cameraId={cam.id} name={cam.name} />
@@ -210,7 +210,7 @@ export default function CamerasSettingsPage() {
               <div className="flex-1 min-w-0">
                 <Link
                   to={`/settings/cameras/${cam.id}`}
-                  className="text-sm font-medium text-gray-200 hover:text-blue-400 transition-colors truncate block"
+                  className="text-sm font-medium text-foreground hover:text-blue-400 transition-colors truncate block"
                 >
                   {cam.name || cam.id}
                 </Link>
@@ -225,14 +225,14 @@ export default function CamerasSettingsPage() {
                   to={`/settings/cameras/${cam.id}`}
                   state={{ editing: true }}
                   title="Editar"
-                  className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                  className="p-1.5 text-muted-foreground hover:text-white hover:bg-accent rounded transition-colors"
                 >
                   <Pencil className="w-4 h-4" />
                 </Link>
                 <button
                   onClick={() => setDeleteId(cam.id)}
                   title="Remover"
-                  className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                  className="p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -258,7 +258,7 @@ export default function CamerasSettingsPage() {
             onChange={e => setDeleteData(e.target.checked)}
             className="accent-red-500"
           />
-          <span className="text-xs text-gray-300">Apagar também as gravações do disco</span>
+          <span className="text-xs text-foreground">Apagar também as gravações do disco</span>
         </label>
       </ConfirmDialog>
     </SettingsLayout>
@@ -267,7 +267,7 @@ export default function CamerasSettingsPage() {
 
 function Thumbnail({ cameraId, name }: { cameraId: string; name?: string }) {
   return (
-    <div className="w-20 h-12 shrink-0 rounded overflow-hidden bg-gray-800">
+    <div className="w-20 h-12 shrink-0 rounded overflow-hidden bg-surface-2">
       <img
         src={`/api/cameras/${cameraId}/snapshot?token=${getToken()}`}
         alt={name || cameraId}
@@ -287,7 +287,7 @@ function StatusBadges({ cam }: { cam: Camera }) {
         </span>
       )}
       {!cam.recording_enabled && (
-        <span className="px-1.5 py-0.5 text-xs rounded bg-gray-800 text-gray-500 border border-gray-700">
+        <span className="px-1.5 py-0.5 text-xs rounded bg-surface-2 text-muted-foreground border border-border">
           rec off
         </span>
       )}

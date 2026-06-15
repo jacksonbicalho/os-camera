@@ -52,10 +52,10 @@ function ReanalyzePanel() {
   }
 
   return (
-    <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 flex items-center justify-between gap-4">
+    <div className="bg-surface-2 rounded-lg border border-border p-4 flex items-center justify-between gap-4">
       <div>
-        <p className="text-sm font-medium text-gray-200">Re-analisar tudo</p>
-        <p className="text-xs text-gray-400 mt-0.5">
+        <p className="text-sm font-medium text-foreground">Re-analisar tudo</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
           Limpa as detecções existentes e re-envia todas as gravações ao serviço YOLO com o modelo atual.
         </p>
         {err && <p className="text-xs text-red-400 mt-1">{err}</p>}
@@ -65,7 +65,7 @@ function ReanalyzePanel() {
         type="button"
         onClick={handleReanalyze}
         disabled={busy}
-        className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+        className="px-4 py-2 bg-surface-2 hover:bg-accent text-white text-sm rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
       >
         {busy ? 'Aguarde...' : 'Re-analisar tudo'}
       </button>
@@ -508,21 +508,21 @@ export default function AnalysisSettingsPage() {
       <div className="space-y-6">
         <div>
           <h3 className="text-lg font-semibold text-white mb-1">Análise de vídeo</h3>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-muted-foreground">
             Serviço YOLO para detecção de objetos em gravações. Cada chunk MP4 é analisado após ser fechado.
           </p>
         </div>
 
-        <form onSubmit={handleSave} className="bg-gray-800 rounded-lg border border-gray-700 divide-y divide-gray-700">
+        <form onSubmit={handleSave} className="bg-surface-2 rounded-lg border border-border divide-y divide-border">
           <div className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-200">Ativar análise</p>
-              <p className="text-xs text-gray-500 mt-0.5">Habilita o envio de gravações para o serviço YOLO</p>
+              <p className="text-sm font-medium text-foreground">Ativar análise</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Habilita o envio de gravações para o serviço YOLO</p>
             </div>
             <button
               type="button"
               onClick={() => setCfg(c => ({ ...c, enabled: !c.enabled }))}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${cfg.enabled ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${cfg.enabled ? 'bg-blue-600' : 'bg-surface-2'}`}
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${cfg.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
@@ -531,31 +531,31 @@ export default function AnalysisSettingsPage() {
           <div className="p-4 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">URL do serviço</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">URL do serviço</label>
                 <input
                   type="url"
-                  className="w-full bg-gray-700 text-gray-200 text-sm rounded px-3 py-2 border border-gray-600 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-surface-2 text-foreground text-sm rounded px-3 py-2 border border-border focus:outline-none focus:border-ring"
                   placeholder="http://yolo:8001"
                   value={cfg.service_url}
                   onChange={e => setCfg(c => ({ ...c, service_url: e.target.value }))}
                 />
-                <p className="text-xs text-gray-500 mt-1">Endereço do container YOLO (ex: <code>http://yolo:8001</code>)</p>
+                <p className="text-xs text-muted-foreground mt-1">Endereço do container YOLO (ex: <code>http://yolo:8001</code>)</p>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Modelo</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Modelo</label>
                 {serviceOffline ? (
-                  <div className="w-full bg-gray-700 text-yellow-400 text-sm rounded px-3 py-2 border border-yellow-600">
+                  <div className="w-full bg-surface-2 text-yellow-400 text-sm rounded px-3 py-2 border border-yellow-600">
                     Serviço YOLO offline — configure a URL e verifique se o container está rodando
                   </div>
                 ) : serviceModels === null ? (
-                  <div className="w-full bg-gray-700 text-gray-400 text-sm rounded px-3 py-2 border border-gray-600">
+                  <div className="w-full bg-surface-2 text-muted-foreground text-sm rounded px-3 py-2 border border-border">
                     Carregando modelos...
                   </div>
                 ) : (
                   <>
                     <select
-                      className="w-full bg-gray-700 text-gray-200 text-sm rounded px-3 py-2 border border-gray-600 focus:outline-none focus:border-blue-500"
+                      className="w-full bg-surface-2 text-foreground text-sm rounded px-3 py-2 border border-border focus:outline-none focus:border-ring"
                       value={cfg.model}
                       onChange={e => setCfg(c => ({ ...c, model: e.target.value }))}
                     >
@@ -581,14 +581,14 @@ export default function AnalysisSettingsPage() {
                         </optgroup>
                       ))}
                     </select>
-                    <p className="text-xs text-gray-500 mt-1">n = mais rápido · x = mais preciso</p>
+                    <p className="text-xs text-muted-foreground mt-1">n = mais rápido · x = mais preciso</p>
                   </>
                 )}
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
                 Limiar de confiança ({(cfg.confidence_threshold * 100).toFixed(0)}%)
               </label>
               <input
@@ -600,7 +600,7 @@ export default function AnalysisSettingsPage() {
                 value={cfg.confidence_threshold}
                 onChange={e => setCfg(c => ({ ...c, confidence_threshold: Number(e.target.value) }))}
               />
-              <div className="flex justify-between text-xs text-gray-500 mt-0.5">
+              <div className="flex justify-between text-xs text-muted-foreground mt-0.5">
                 <span>10%</span><span>90%</span>
               </div>
             </div>
@@ -620,11 +620,11 @@ export default function AnalysisSettingsPage() {
           </div>
         </form>
 
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
-          <h4 className="text-sm font-medium text-gray-200 mb-2">Como usar</h4>
-          <ol className="text-xs text-gray-400 space-y-1 list-decimal list-inside">
-            <li>Suba o serviço YOLO: <code className="bg-gray-700 px-1 rounded">docker compose --profile yolo up -d</code></li>
-            <li>Configure a URL acima (padrão: <code className="bg-gray-700 px-1 rounded">http://yolo:8001</code>)</li>
+        <div className="bg-surface-2 rounded-lg border border-border p-4">
+          <h4 className="text-sm font-medium text-foreground mb-2">Como usar</h4>
+          <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+            <li>Suba o serviço YOLO: <code className="bg-surface-2 px-1 rounded">docker compose --profile yolo up -d</code></li>
+            <li>Configure a URL acima (padrão: <code className="bg-surface-2 px-1 rounded">http://yolo:8001</code>)</li>
             <li>Ative a análise global e, se necessário, por câmera em Configurações → Câmeras → Análise</li>
             <li>Na próxima limpeza do storage, as gravações concluídas serão analisadas automaticamente</li>
           </ol>
@@ -632,12 +632,12 @@ export default function AnalysisSettingsPage() {
 
         <ReanalyzePanel />
 
-        <div className="bg-gray-800 rounded-lg border border-gray-700 divide-y divide-gray-700">
+        <div className="bg-surface-2 rounded-lg border border-border divide-y divide-border">
           <div className="p-4">
-            <h4 className="text-sm font-semibold text-gray-200 mb-1">Fine-tuning</h4>
-            <p className="text-xs text-gray-400">
+            <h4 className="text-sm font-semibold text-foreground mb-1">Fine-tuning</h4>
+            <p className="text-xs text-muted-foreground">
               Treina um modelo personalizado usando os snapshots que você anotou nos eventos de movimento.
-              O modelo gerado (<code className="bg-gray-700 px-1 rounded">custom.pt</code>) fica disponível no seletor acima.
+              O modelo gerado (<code className="bg-surface-2 px-1 rounded">custom.pt</code>) fica disponível no seletor acima.
             </p>
           </div>
 
@@ -649,12 +649,12 @@ export default function AnalysisSettingsPage() {
           <div className="p-4 space-y-3">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-0.5">
-                <p className="text-sm text-gray-300">
+                <p className="text-sm text-foreground">
                   {annCount === null ? '…' : annCount} bounding box{annCount !== 1 ? 'es' : ''}
                   {' · '}
                   {labelCount === null ? '…' : labelCount} evento{labelCount !== 1 ? 's' : ''} rotulado{labelCount !== 1 ? 's' : ''}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   Bounding boxes + labels de texto são usados no treino
                 </p>
               </div>
@@ -668,16 +668,16 @@ export default function AnalysisSettingsPage() {
               </button>
             </div>
             <div className="flex items-center gap-3">
-              <label className="text-xs text-gray-400 shrink-0">Épocas</label>
+              <label className="text-xs text-muted-foreground shrink-0">Épocas</label>
               <input
                 type="number"
                 min={1}
                 max={200}
                 value={epochs}
                 onChange={e => setEpochs(Math.min(200, Math.max(1, Number(e.target.value) || 20)))}
-                className="w-20 bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500"
+                className="w-20 bg-surface-2 text-foreground text-sm rounded px-2 py-1 border border-border focus:outline-none focus:border-ring"
               />
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Mais épocas = aprende melhor, mas demora mais e pode decorar exemplos (overfitting) com poucos dados. Para &lt; 200 exemplos, 20–50 épocas costuma ser o ideal.
               </p>
             </div>
@@ -687,20 +687,20 @@ export default function AnalysisSettingsPage() {
             <div className="p-4 space-y-2">
               {(ftStatus.status === 'running' || ftStatus.status === 'pending') && (
                 <>
-                  <div className="flex items-center justify-between text-xs text-gray-400">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>{ftStatus.status === 'pending' ? 'Iniciando…' : `Época ${ftStatus.epoch} / ${ftStatus.total_epochs}`}</span>
                     <div className="flex items-center gap-3">
                       <span>{ftStatus.status === 'running' ? `${Math.round((ftStatus.epoch / ftStatus.total_epochs) * 100)}%` : ''}</span>
                       <button
                         type="button"
                         onClick={handleCancelFinetune}
-                        className="px-2 py-0.5 text-xs bg-gray-700 hover:bg-red-900/60 text-gray-400 hover:text-red-300 border border-gray-600 hover:border-red-700/50 rounded transition-colors"
+                        className="px-2 py-0.5 text-xs bg-surface-2 hover:bg-red-900/60 text-muted-foreground hover:text-red-300 border border-border hover:border-red-700/50 rounded transition-colors"
                       >
                         Cancelar
                       </button>
                     </div>
                   </div>
-                  <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div className="w-full bg-surface-2 rounded-full h-2">
                     <div
                       className="bg-violet-500 h-2 rounded-full transition-all"
                       style={{ width: `${Math.round((ftStatus.epoch / ftStatus.total_epochs) * 100)}%` }}
@@ -709,7 +709,7 @@ export default function AnalysisSettingsPage() {
                 </>
               )}
               {ftStatus.status === 'done' && (
-                <p className="text-sm text-green-400">Treino concluído. Modelo salvo como <code className="bg-gray-700 px-1 rounded">custom</code>.</p>
+                <p className="text-sm text-green-400">Treino concluído. Modelo salvo como <code className="bg-surface-2 px-1 rounded">custom</code>.</p>
               )}
               {ftStatus.status === 'error' && (
                 <p className="text-sm text-red-400">{ftError || ftStatus.error || 'Erro no treino'}</p>
@@ -723,15 +723,15 @@ export default function AnalysisSettingsPage() {
             </div>
           )}
         </div>
-        <div className="bg-gray-800 rounded-lg border border-gray-700 divide-y divide-gray-700">
+        <div className="bg-surface-2 rounded-lg border border-border divide-y divide-border">
           <div className="p-4 flex items-center justify-between gap-4 flex-wrap">
             <div>
-              <h4 className="text-sm font-semibold text-gray-200 mb-1">Rotular eventos</h4>
-              <p className="text-xs text-gray-400">Atribua labels de texto aos eventos de movimento para curadoria do dataset de treino.</p>
+              <h4 className="text-sm font-semibold text-foreground mb-1">Rotular eventos</h4>
+              <p className="text-xs text-muted-foreground">Atribua labels de texto aos eventos de movimento para curadoria do dataset de treino.</p>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               <select
-                className="bg-gray-700 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500"
+                className="bg-surface-2 text-foreground text-sm rounded px-3 py-1.5 border border-border focus:outline-none focus:border-ring"
                 value={labelCamID}
                 onChange={e => { setLabelCamID(e.target.value); setLabelPage(1); setLabelEvents(null); clearSelection() }}
               >
@@ -743,10 +743,10 @@ export default function AnalysisSettingsPage() {
                 placeholder="Buscar label…"
                 value={labelSearch}
                 onChange={e => { setLabelSearch(e.target.value); setLabelPage(1); clearSelection() }}
-                className="bg-gray-700 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500 w-40"
+                className="bg-surface-2 text-foreground text-sm rounded px-3 py-1.5 border border-border focus:outline-none focus:border-ring w-40"
               />
               {!showDismissed && (
-                <label className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${labelSearch ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400'}`}>
+                <label className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${labelSearch ? 'text-muted-foreground cursor-not-allowed' : 'text-muted-foreground'}`}>
                   <input
                     type="checkbox"
                     className="accent-blue-500"
@@ -757,7 +757,7 @@ export default function AnalysisSettingsPage() {
                   Sem label
                 </label>
               )}
-              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none text-gray-400">
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none text-muted-foreground">
                 <input
                   type="checkbox"
                   className="accent-yellow-500"
@@ -772,20 +772,20 @@ export default function AnalysisSettingsPage() {
           {labelCamID && (
             <div>
               {labelLoading && (
-                <div className="p-6 text-center text-xs text-gray-500">Carregando…</div>
+                <div className="p-6 text-center text-xs text-muted-foreground">Carregando…</div>
               )}
               {!labelLoading && labelEvents?.length === 0 && (
-                <div className="p-6 text-center text-xs text-gray-500">
+                <div className="p-6 text-center text-xs text-muted-foreground">
                   {showDismissed ? 'Nenhum evento ignorado.' : unlabeledOnly ? 'Nenhum evento sem label.' : 'Nenhum evento encontrado.'}
                 </div>
               )}
               {!labelLoading && (labelEvents?.length ?? 0) > 0 && (
                 <>
-                  <div className="flex items-center gap-3 px-4 py-2 bg-gray-900/40 border-b border-gray-700 text-xs text-gray-400">
-                    <label className="flex items-center gap-1.5 text-gray-500">
+                  <div className="flex items-center gap-3 px-4 py-2 bg-surface/40 border-b border-border text-xs text-muted-foreground">
+                    <label className="flex items-center gap-1.5 text-muted-foreground">
                       Por página:
                       <select
-                        className="bg-gray-700 text-gray-300 text-xs rounded px-1.5 py-0.5 border border-gray-600 focus:outline-none focus:border-blue-500"
+                        className="bg-surface-2 text-foreground text-xs rounded px-1.5 py-0.5 border border-border focus:outline-none focus:border-ring"
                         value={labelLimit}
                         onChange={e => { setLabelLimit(Number(e.target.value)); setLabelPage(1); clearSelection() }}
                       >
@@ -812,7 +812,7 @@ export default function AnalysisSettingsPage() {
                         placeholder="label para aplicar em lote…"
                         value={bulkLabel}
                         onChange={e => setBulkLabel(e.target.value)}
-                        className="flex-1 min-w-[10rem] bg-gray-800 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500"
+                        className="flex-1 min-w-[10rem] bg-surface-2 text-foreground text-sm rounded px-2 py-1 border border-border focus:outline-none focus:border-ring"
                       />
                       <button
                         type="button"
@@ -836,21 +836,21 @@ export default function AnalysisSettingsPage() {
                         type="button"
                         disabled={bulkBusy}
                         onClick={clearSelection}
-                        className="px-3 py-1 text-xs text-gray-400 hover:text-white border border-gray-600 rounded disabled:opacity-40"
+                        className="px-3 py-1 text-xs text-muted-foreground hover:text-white border border-border rounded disabled:opacity-40"
                       >
                         Limpar
                       </button>
                       {bulkError && <span className="text-xs text-red-400">{bulkError}</span>}
                     </div>
                   )}
-                  <ul className="divide-y divide-gray-700">
+                  <ul className="divide-y divide-border">
                     {labelEvents!.map(ev => {
                       const state = labelSaveState[ev.id]
                       const borderCls = state === 'saved'
                         ? 'border-green-500'
                         : state === 'error'
                         ? 'border-red-500'
-                        : 'border-gray-600'
+                        : 'border-border'
                       const isSelected = selected.has(ev.id)
                       return (
                         <li key={ev.id} className={`flex items-center gap-3 px-4 py-2 ${isSelected ? 'bg-blue-900/10' : ''}`}>
@@ -864,23 +864,23 @@ export default function AnalysisSettingsPage() {
                             <button
                               type="button"
                               onClick={() => openZoomModal(frameURL(labelCamID, ev.time, ev.frame!, eventsLoadedAtRef.current), ev.id, labelInputs[ev.id] ?? ev.label ?? '')}
-                              className="flex-shrink-0 rounded overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 hover:opacity-80 transition-opacity"
+                              className="flex-shrink-0 rounded overflow-hidden focus:outline-none focus:ring-2 focus:ring-ring hover:opacity-80 transition-opacity"
                             >
                               <img
                                 src={frameURL(labelCamID, ev.time, ev.frame, eventsLoadedAtRef.current)}
-                                className="w-40 h-24 object-cover bg-gray-900"
+                                className="w-40 h-24 object-cover bg-surface"
                                 alt=""
                               />
                             </button>
                           ) : (
-                            <div className="w-40 h-24 rounded bg-gray-900 flex-shrink-0 flex items-center justify-center text-gray-600 text-xs">
+                            <div className="w-40 h-24 rounded bg-surface flex-shrink-0 flex items-center justify-center text-muted-foreground text-xs">
                               sem frame
                             </div>
                           )}
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs text-gray-500 mb-1">
+                            <p className="text-xs text-muted-foreground mb-1">
                               {new Date(ev.time).toLocaleString()}
-                              <span className="ml-2 text-gray-600">score: {ev.score.toFixed(2)}</span>
+                              <span className="ml-2 text-muted-foreground">score: {ev.score.toFixed(2)}</span>
                             </p>
                             <input
                               type="text"
@@ -888,7 +888,7 @@ export default function AnalysisSettingsPage() {
                               value={labelInputs[ev.id] ?? ''}
                               onChange={e => setLabelInputs(s => ({ ...s, [ev.id]: e.target.value }))}
                               onBlur={() => handleLabelBlur(ev.id)}
-                              className={`w-full bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border ${borderCls} focus:outline-none focus:border-blue-500 transition-colors`}
+                              className={`w-full bg-surface-2 text-foreground text-sm rounded px-2 py-1 border ${borderCls} focus:outline-none focus:border-ring transition-colors`}
                             />
                           </div>
                           {!showDismissed && (
@@ -896,7 +896,7 @@ export default function AnalysisSettingsPage() {
                               type="button"
                               onClick={() => setRowDismissConfirm(ev)}
                               title="Ignorar este evento"
-                              className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-gray-500 hover:text-yellow-400 hover:bg-yellow-500/10 rounded transition-colors"
+                              className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-yellow-400 hover:bg-yellow-500/10 rounded transition-colors"
                             >
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
@@ -911,20 +911,20 @@ export default function AnalysisSettingsPage() {
               )}
 
               {labelTotal > labelLimit && (
-                <div className="p-3 flex items-center justify-between border-t border-gray-700">
-                  <span className="text-xs text-gray-500">{labelTotal} eventos · página {labelPage} de {Math.ceil(labelTotal / labelLimit)}</span>
+                <div className="p-3 flex items-center justify-between border-t border-border">
+                  <span className="text-xs text-muted-foreground">{labelTotal} eventos · página {labelPage} de {Math.ceil(labelTotal / labelLimit)}</span>
                   <div className="flex gap-2">
                     <button
                       onClick={() => { setLabelPage(p => Math.max(1, p - 1)); setLabelEvents(null); clearSelection() }}
                       disabled={labelPage === 1}
-                      className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="px-3 py-1 text-xs bg-surface-2 hover:bg-accent text-foreground rounded disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       ← anterior
                     </button>
                     <button
                       onClick={() => { setLabelPage(p => p + 1); setLabelEvents(null); clearSelection() }}
                       disabled={labelPage >= Math.ceil(labelTotal / labelLimit)}
-                      className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="px-3 py-1 text-xs bg-surface-2 hover:bg-accent text-foreground rounded disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       próxima →
                     </button>
@@ -970,7 +970,7 @@ export default function AnalysisSettingsPage() {
                     onChange={e => setAnnLabel(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && saveAnnotation()}
                     autoFocus
-                    className="flex-1 bg-gray-800 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-emerald-500"
+                    className="flex-1 bg-surface-2 text-foreground text-sm rounded px-3 py-1.5 border border-border focus:outline-none focus:border-emerald-500"
                   />
                   <button
                     onClick={saveAnnotation}
@@ -981,16 +981,16 @@ export default function AnalysisSettingsPage() {
                   </button>
                   <button
                     onClick={() => setAnnBox(null)}
-                    className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded"
+                    className="px-3 py-1.5 text-sm bg-surface-2 hover:bg-accent text-foreground rounded"
                   >
                     Cancelar
                   </button>
                 </>
               )}
               {!annSaveOk && !annBox && existingAnn && (
-                <span className="text-xs text-gray-400 flex items-center gap-2">
+                <span className="text-xs text-muted-foreground flex items-center gap-2">
                   {existingAnnLabel
-                    ? <><span className="font-medium text-gray-300">{existingAnnLabel}</span> · Arraste para substituir</>
+                    ? <><span className="font-medium text-foreground">{existingAnnLabel}</span> · Arraste para substituir</>
                     : 'Região salva · Arraste para substituir'
                   }
                   {existingAnnId && (
@@ -1004,11 +1004,11 @@ export default function AnalysisSettingsPage() {
                 </span>
               )}
               {!annSaveOk && !annBox && !existingAnn && (
-                <span className="text-xs text-gray-500">Arraste para marcar · mova · redimensione · rotacione</span>
+                <span className="text-xs text-muted-foreground">Arraste para marcar · mova · redimensione · rotacione</span>
               )}
               <button
                 onClick={() => closeZoomModal()}
-                className="ml-auto px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded"
+                className="ml-auto px-3 py-1.5 text-sm bg-surface-2 hover:bg-accent text-foreground rounded"
               >
                 Fechar
               </button>

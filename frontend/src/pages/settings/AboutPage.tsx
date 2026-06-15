@@ -16,10 +16,10 @@ export default function AboutPage() {
 
   return (
     <SettingsLayout>
-      <h3 className="text-h2 font-semibold text-gray-200">Sobre</h3>
-      <p className="text-sm text-gray-500 mt-1 mb-6">Versão instalada, commit e tempo de atividade.</p>
+      <h3 className="text-h2 font-semibold text-foreground">Sobre</h3>
+      <p className="text-sm text-muted-foreground mt-1 mb-6">Versão instalada, commit e tempo de atividade.</p>
       {!about ? (
-        <p className="text-gray-500 text-sm">Carregando...</p>
+        <p className="text-muted-foreground text-sm">Carregando...</p>
       ) : (
         <SettingsSection
           title="Informações do servidor"
