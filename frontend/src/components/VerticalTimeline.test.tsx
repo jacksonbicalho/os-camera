@@ -74,6 +74,13 @@ describe('VerticalTimeline — ponteiro arrastável', () => {
     expect(rulerLabels.some(s => s.textContent === '00:00:00')).toBe(true)
   })
 
+  it('usa tokens CSS (var --tl-) nos ticks e rótulos (adapta dark/light)', () => {
+    const { container } = renderTimeline()
+    const styles = Array.from(container.querySelectorAll('[style]')).map(el => el.getAttribute('style') ?? '')
+    expect(styles.some(s => s.includes('var(--tl-tick'))).toBe(true)
+    expect(styles.some(s => s.includes('var(--tl-label'))).toBe(true)
+  })
+
   it('mostra os segundos entre os minutos no zoom alto', () => {
     const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
     Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 })

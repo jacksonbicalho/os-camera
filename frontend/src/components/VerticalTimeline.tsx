@@ -202,12 +202,12 @@ export default function VerticalTimeline({
   }
 
   const tickStyle: Record<TickType, { color: string; left: number }> = {
-    hour:    { color: 'rgba(245,158,11,0.55)', left: 0 },
-    half:    { color: 'rgba(245,158,11,0.22)', left: 0 },
-    quarter: { color: 'rgba(245,158,11,0.12)', left: LABEL_W },
-    five:    { color: 'rgba(245,158,11,0.07)', left: LABEL_W },
-    minute:  { color: 'rgba(245,158,11,0.05)', left: LABEL_W },
-    second:  { color: 'rgba(245,158,11,0.10)', left: LABEL_W },
+    hour:    { color: 'var(--tl-tick-hour)', left: 0 },
+    half:    { color: 'var(--tl-tick-half)', left: 0 },
+    quarter: { color: 'var(--tl-tick-quarter)', left: LABEL_W },
+    five:    { color: 'var(--tl-tick-five)', left: LABEL_W },
+    minute:  { color: 'var(--tl-tick-minute)', left: LABEL_W },
+    second:  { color: 'var(--tl-tick-second)', left: LABEL_W },
   }
 
   const seekAtY = useCallback((clientY: number) => {
@@ -429,9 +429,9 @@ export default function VerticalTimeline({
                   top: rangeToY(startMin, endMin),
                   height: h,
                   backgroundColor: rec.is_recording
-                    ? 'rgba(239,68,68,0.15)'
+                    ? 'color-mix(in srgb, var(--color-danger) 18%, transparent)'
                     : isActive
-                      ? 'rgba(37,99,235,0.35)'
+                      ? 'color-mix(in srgb, var(--color-primary) 35%, transparent)'
                       : 'var(--color-surface)',
                 }}
               />
@@ -482,7 +482,7 @@ export default function VerticalTimeline({
                 width: LABEL_W - 3,
                 overflow: 'hidden',
                 whiteSpace: 'nowrap',
-                color: type === 'hour' ? 'rgb(252,211,77)' : 'rgba(252,211,77,0.75)',
+                color: type === 'hour' ? 'var(--tl-label-hour)' : 'var(--tl-label-sub)',
               }}
             >
               {label}
@@ -507,7 +507,7 @@ export default function VerticalTimeline({
                 style={{
                   top: bandTop,
                   height: BAND_H,
-                  backgroundColor: '#dc2626',
+                  backgroundColor: 'var(--color-danger)',
                   transition: dragging ? 'none' : 'top 0.08s ease-out',
                 }}
                 onMouseDown={e => {
