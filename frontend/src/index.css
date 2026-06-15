@@ -41,6 +41,7 @@
   /* — shadcn/ui: papéis mapeados para a MESMA paleta Material acima (sem duplicar
        sistema de cor). `background`/`foreground`/`primary`/`border` já existem. — */
   --color-primary-foreground: #ffffff;
+  --color-muted-foreground: rgba(255, 255, 255, 0.60);
   --color-secondary: #2c2c2c;
   --color-secondary-foreground: rgba(255, 255, 255, 0.87);
   --color-accent: #2c2c2c;
@@ -95,6 +96,7 @@
   --color-border: rgba(0, 0, 0, 0.12);
 
   /* shadcn/ui no claro (primary/ring/destructive seguem vívidos = iguais ao dark) */
+  --color-muted-foreground: rgba(0, 0, 0, 0.60);
   --color-secondary: #eeeeee;
   --color-secondary-foreground: rgba(0, 0, 0, 0.87);
   --color-accent: #eeeeee;
