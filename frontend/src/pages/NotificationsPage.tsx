@@ -3,6 +3,7 @@ import { ptBR } from 'date-fns/locale'
 import AppLayout from '../components/AppLayout'
 import { Check, Trash2 } from '../components/Icons'
 import { useUserNotifications, type UserNotificationType } from '../contexts/UserNotificationContext'
+import { Button } from '@/components/ui/button'
 
 const variantDot: Record<UserNotificationType, string> = {
   success: 'bg-green-500',
@@ -34,19 +35,12 @@ export default function NotificationsPage() {
           </div>
           {notifications.length > 0 && (
             <div className="flex gap-2">
-              <button
-                onClick={markAllRead}
-                disabled={unreadCount === 0}
-                className="text-sm px-3 py-1.5 rounded border border-gray-700 text-gray-300 hover:bg-gray-800 disabled:opacity-40"
-              >
+              <Button variant="outline" size="sm" onClick={markAllRead} disabled={unreadCount === 0}>
                 Marcar todas como lidas
-              </button>
-              <button
-                onClick={removeAll}
-                className="text-sm px-3 py-1.5 rounded border border-gray-700 text-red-400 hover:bg-gray-800"
-              >
+              </Button>
+              <Button variant="outline" size="sm" onClick={removeAll} className="text-destructive hover:text-destructive">
                 Limpar tudo
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -68,23 +62,27 @@ export default function NotificationsPage() {
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   {!n.read && (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => markRead(n.id)}
                       aria-label="Marcar como lida"
                       title="Marcar como lida"
-                      className="p-1.5 rounded text-gray-400 hover:text-green-400 hover:bg-gray-800"
+                      className="h-8 w-8 text-muted-foreground hover:text-green-400"
                     >
                       <Check className="w-4 h-4" />
-                    </button>
+                    </Button>
                   )}
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => remove(n.id)}
                     aria-label="Excluir"
                     title="Excluir"
-                    className="p-1.5 rounded text-gray-400 hover:text-red-400 hover:bg-gray-800"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
                   >
                     <Trash2 className="w-4 h-4" />
-                  </button>
+                  </Button>
                 </div>
               </li>
             ))}

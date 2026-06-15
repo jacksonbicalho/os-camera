@@ -7,7 +7,7 @@ import { ptBR } from "date-fns/locale";
 import type { Notification } from "../contexts/NotificationContext";
 import ConfirmDialog from "./ConfirmDialog";
 import { Bell, X, Check, Eye, MoreVertical, Trash2, ChevronDown } from "./Icons";
-import { buttonVariants } from "./ui/button";
+import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -76,16 +76,18 @@ function NotificationItem({
           {(n.score * 100).toFixed(1)}% · {relTime}
         </div>
       </div>
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={(e) => {
           e.stopPropagation();
           onRemove();
         }}
-        className="text-gray-500 hover:text-foreground flex-shrink-0 mt-0.5"
+        className="h-6 w-6 shrink-0 mt-0.5 text-muted-foreground [&_svg]:size-3.5"
         title="Excluir"
       >
-        <X className="w-3.5 h-3.5" />
-      </button>
+        <X />
+      </Button>
     </div>
   );
 }
@@ -173,18 +175,20 @@ export default function Header({ username = "usuário" }: HeaderProps) {
       <div className="flex items-center gap-4">
         {/* Sino de notificações */}
         <div className="relative" ref={bellRef}>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setBellOpen((v) => !v)}
-            className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "relative [&_svg]:size-5", unreadCount > 0 && "text-primary animate-pulse")}
+            className={cn("relative [&_svg]:size-5", unreadCount > 0 && "text-primary animate-pulse")}
             title="Notificações"
           >
-            <Bell className="w-5 h-5" />
+            <Bell />
             {unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-red-600 text-white rounded-full">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
-          </button>
+          </Button>
 
           {bellOpen && (
             <div className="absolute right-0 mt-2 w-72 bg-surface border border-border rounded shadow-lg z-50 flex flex-col max-h-96">
@@ -210,14 +214,16 @@ export default function Header({ username = "usuário" }: HeaderProps) {
 
                 {/* Kebab (···) */}
                 <div className="relative" ref={kebabRef}>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => setKebabOpen((v) => !v)}
                     disabled={!someSelected}
-                    className="flex items-center gap-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    className="h-6 w-6 text-muted-foreground [&_svg]:size-4"
                     title="Ações"
                   >
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
+                    <MoreVertical />
+                  </Button>
 
                   {kebabOpen && (
                     <div className="absolute right-0 top-full mt-1 bg-surface border border-border rounded shadow-lg z-20 whitespace-nowrap min-w-[180px]">
@@ -360,13 +366,15 @@ export default function Header({ username = "usuário" }: HeaderProps) {
 
         {/* Dropdown de usuário */}
         <div className="relative" ref={userRef}>
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setUserOpen((v) => !v)}
-            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "[&_svg]:size-4")}
+            className="[&_svg]:size-4"
           >
             {username}
-            <ChevronDown className={`w-4 h-4 transition-transform ${userOpen ? "rotate-180" : ""}`} />
-          </button>
+            <ChevronDown className={`transition-transform ${userOpen ? "rotate-180" : ""}`} />
+          </Button>
           {userOpen && (
             <div className="absolute right-0 mt-2 w-44 bg-surface border border-border rounded shadow-lg z-10">
               <Link

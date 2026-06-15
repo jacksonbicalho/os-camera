@@ -13,7 +13,7 @@ import ConfirmDialog from "./ConfirmDialog"
 import EventsPanelHeader from "./EventsPanelHeader"
 import ThemeModeNav from "./ThemeModeNav"
 import { Bell, X, Check, Settings, CircleUser, CameraLogo, Cctv } from "./Icons"
-import { buttonVariants } from "./ui/button"
+import { Button, buttonVariants } from "./ui/button"
 import { cn } from "@/lib/utils"
 
 interface SidebarProps {
@@ -83,13 +83,15 @@ function NotificationItem({
           {(n.score * 100).toFixed(1)}% · {relTime}
         </div>
       </div>
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={(e) => { e.stopPropagation(); onRemove() }}
-        className="text-gray-500 hover:text-gray-300 flex-shrink-0 mt-0.5"
+        className="h-6 w-6 shrink-0 mt-0.5 text-muted-foreground [&_svg]:size-3.5"
         title="Excluir"
       >
-        <X className="w-3.5 h-3.5" />
-      </button>
+        <X />
+      </Button>
     </div>
   )
 }
@@ -337,21 +339,22 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
       {/* Bell — logo abaixo da logo */}
       <div className={`flex flex-col ${itemsAlign} py-1 border-b border-border flex-none`}>
         <div ref={bellRef} className={showLabel ? 'w-full' : undefined}>
-          <button
+          <Button
             id="sidebar-notifications"
             ref={bellBtnRef}
+            variant="ghost"
             onClick={openBell}
-            className={`${btnBase} ${unreadCount > 0 ? "text-white animate-pulse" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"}`}
+            className={cn(btnBase, "shadow-none [&_svg]:size-5", unreadCount > 0 && "text-primary animate-pulse")}
             title="Eventos"
           >
-            {showIcon && <Bell className="w-5 h-5" />}
+            {showIcon && <Bell />}
             {showLabel && <span className="text-sm truncate">Eventos</span>}
             {unreadCount > 0 && (
               <span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-red-600 text-white rounded-full">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
-          </button>
+          </Button>
 
           {bellOpen && createPortal(
             <div
@@ -438,20 +441,17 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
       {/* Câmeras — logo abaixo do sino */}
       <div className={`flex flex-col ${itemsAlign} py-1 border-b border-border flex-none`}>
         <div ref={camerasRef} className={showLabel ? 'w-full' : undefined}>
-          <button
+          <Button
             id="sidebar-cameras"
             ref={camerasButtonRef}
+            variant={camerasActive || camerasOpen ? 'default' : 'ghost'}
             onClick={openCameras}
             title="Câmeras"
-            className={`${btnBase} ${
-              camerasActive || camerasOpen
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-            }`}
+            className={cn(btnBase, "shadow-none [&_svg]:size-5")}
           >
-            {showIcon && <Cctv className="w-5 h-5" />}
+            {showIcon && <Cctv />}
             {showLabel && <span className="text-sm truncate">Câmeras</span>}
-          </button>
+          </Button>
         </div>
         {camerasOpen && createPortal(
           <div
@@ -498,9 +498,10 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
         {/* Settings */}
         <div ref={settingsRef} className={showLabel ? 'w-full' : undefined}>
-          <button
+          <Button
             id="sidebar-settings"
             ref={settingsButtonRef}
+            variant={settingsActive || settingsOpen ? 'default' : 'ghost'}
             onClick={() => {
               if (settingsButtonRef.current) {
                 const r = settingsButtonRef.current.getBoundingClientRect()
@@ -509,15 +510,11 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
               setSettingsOpen(v => !v)
             }}
             title="Configurações"
-            className={`${btnBase} ${
-              settingsActive || settingsOpen
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-            }`}
+            className={cn(btnBase, "shadow-none [&_svg]:size-5")}
           >
-            {showIcon && <Settings className="w-5 h-5" />}
+            {showIcon && <Settings />}
             {showLabel && <span className="text-sm truncate">Configurações</span>}
-          </button>
+          </Button>
         </div>
         {settingsOpen && createPortal(
           <div
@@ -562,20 +559,21 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
         {/* User */}
         <div className={`relative ${showLabel ? 'w-full' : ''}`} ref={userRef}>
-          <button
+          <Button
             id="sidebar-user"
+            variant="ghost"
             onClick={() => setUserOpen((v) => !v)}
-            className={`relative ${btnBase} text-muted-foreground hover:bg-accent hover:text-accent-foreground`}
+            className={cn(btnBase, "shadow-none [&_svg]:size-6")}
             title={username}
           >
-            {showIcon && <CircleUser className="w-6 h-6" />}
+            {showIcon && <CircleUser />}
             {showLabel && <span className="text-sm truncate">{username}</span>}
             {userUnread > 0 && (
               <span className="absolute top-1 left-6 min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
                 {userUnread > 99 ? '99+' : userUnread}
               </span>
             )}
-          </button>
+          </Button>
 
           {userOpen && (
             <div className="absolute left-full bottom-0 ml-2 w-44 bg-surface border border-border rounded shadow-lg z-50">

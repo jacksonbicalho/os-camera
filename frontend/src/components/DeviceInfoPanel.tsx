@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { authHeaders } from '../auth'
 import { groupDeviceInfo, type DeviceInfoField } from '../pages/deviceInfoUtils'
+import { Button } from '@/components/ui/button'
 
 interface DeviceInfoData {
   collected_at: string
@@ -140,14 +141,16 @@ export default function DeviceInfoPanel({ cameraId, isAdmin }: { cameraId: strin
           )}
         </div>
         {isAdmin && (
-          <button
+          <Button
             id="device-info-refresh"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
             onClick={refresh}
             disabled={refreshing}
-            className="shrink-0 px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded transition-colors disabled:opacity-50"
           >
             {refreshing ? 'Reanalisando…' : state.kind === 'empty' ? 'Capturar agora' : 'Reanalisar'}
-          </button>
+          </Button>
         )}
       </div>
       {body}
