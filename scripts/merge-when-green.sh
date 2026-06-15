@@ -64,37 +64,35 @@ if [[ "$STATE" != "MERGED" ]]; then
     gh pr merge "$PR" --merge >/dev/null
 fi
 
-# ── sincroniza develop e remove a branch local ──────────────────────────────
+# ── sincroniza develop ──────────────────────────────────────────────────────
 git checkout develop --quiet
 git fetch origin develop --quiet
 git pull origin develop --ff-only --quiet
 MERGE_SHA="$(git rev-parse --short HEAD)"
 
-BRANCH_NOTE="branch local ausente"
-STORY_NOTE=""
-if git show-ref --verify --quiet "refs/heads/${HEAD}"; then
-    if git branch -D "$HEAD" >/dev/null 2>&1; then
-        BRANCH_NOTE="branch ${HEAD} deletada"
-        # branch deletada → apaga o story file correspondente (gitignored, acumula).
-        # Resolve pela branch igual a check.sh/commit.sh.
-        desc=$(echo "$HEAD" | sed 's|^[^/]*/||' | tr '-' '_')
-        story=$(ls stories/*.md 2>/dev/null | grep -i "$desc" | tail -1 || true)
-        if [[ -n "$story" ]]; then
-            rm -f "$story" && STORY_NOTE=" | story removido ($(basename "$story"))"
-        else
-            STORY_NOTE=" | story não encontrado"
-        fi
-    fi
-fi
-
 # ── marca [✓] no release file que contém a linha do PR ──────────────────────
-# Seleciona pelo conteúdo (não pelo nome), então funciona tanto com o
-# planejamento corrente `_next.md` quanto com arquivos já versionados `_vX.Y.Z.md`.
+# Seleciona pelo conteúdo (funciona com `_next.md` e com `_vX.Y.Z.md`).
 REL_NOTE="release file não atualizado"
+MARKED=0
 RF="$(grep -lF "#${PR} " releases/*.md 2>/dev/null | head -1 || true)"
 if [[ -n "$RF" ]]; then
     sed -i "/#${PR} /s/\[~\]/[✓]/" "$RF"
     REL_NOTE="$(basename "$RF"): #${PR} → [✓]"
+    MARKED=1
+fi
+
+# ── remove story file + branch SÓ quando a história ficou [✓] no release file ─
+# Se a marcação não rolou (linha ausente), preserva tudo para o driver resolver.
+BRANCH_NOTE="branch/story mantidos (sem [✓] no release file)"
+STORY_NOTE=""
+if [[ "$MARKED" -eq 1 ]]; then
+    BRANCH_NOTE="branch local ausente"
+    if git show-ref --verify --quiet "refs/heads/${HEAD}"; then
+        git branch -D "$HEAD" >/dev/null 2>&1 && BRANCH_NOTE="branch ${HEAD} deletada"
+    fi
+    desc=$(echo "$HEAD" | sed 's|^[^/]*/||' | tr '-' '_')
+    story=$(ls stories/*.md 2>/dev/null | grep -i "$desc" | tail -1 || true)
+    [[ -n "$story" ]] && rm -f "$story" && STORY_NOTE=" | story removido ($(basename "$story"))"
 fi
 
 echo -e "${GREEN}MERGED #${PR} → develop @ ${MERGE_SHA} | ${BRANCH_NOTE} | ${REL_NOTE}${STORY_NOTE}${RESET}"
