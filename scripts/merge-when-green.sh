@@ -71,8 +71,20 @@ git pull origin develop --ff-only --quiet
 MERGE_SHA="$(git rev-parse --short HEAD)"
 
 BRANCH_NOTE="branch local ausente"
+STORY_NOTE=""
 if git show-ref --verify --quiet "refs/heads/${HEAD}"; then
-    git branch -D "$HEAD" >/dev/null 2>&1 && BRANCH_NOTE="branch ${HEAD} deletada"
+    if git branch -D "$HEAD" >/dev/null 2>&1; then
+        BRANCH_NOTE="branch ${HEAD} deletada"
+        # branch deletada → apaga o story file correspondente (gitignored, acumula).
+        # Resolve pela branch igual a check.sh/commit.sh.
+        desc=$(echo "$HEAD" | sed 's|^[^/]*/||' | tr '-' '_')
+        story=$(ls stories/*.md 2>/dev/null | grep -i "$desc" | tail -1 || true)
+        if [[ -n "$story" ]]; then
+            rm -f "$story" && STORY_NOTE=" | story removido ($(basename "$story"))"
+        else
+            STORY_NOTE=" | story não encontrado"
+        fi
+    fi
 fi
 
 # ── marca [✓] no release file mais recente ──────────────────────────────────
@@ -83,4 +95,4 @@ if [[ -n "$RF" ]] && grep -q "#${PR} " "$RF"; then
     REL_NOTE="$(basename "$RF"): #${PR} → [✓]"
 fi
 
-echo -e "${GREEN}MERGED #${PR} → develop @ ${MERGE_SHA} | ${BRANCH_NOTE} | ${REL_NOTE}${RESET}"
+echo -e "${GREEN}MERGED #${PR} → develop @ ${MERGE_SHA} | ${BRANCH_NOTE} | ${REL_NOTE}${STORY_NOTE}${RESET}"
