@@ -156,6 +156,47 @@ export function frameStepTime(
   return next
 }
 
+// Vídeo mínimo para o passo frame a frame com serialização de seeks.
+export interface FrameSteppable {
+  currentTime: number
+  duration: number
+  seeking: boolean
+  pause(): void
+}
+
+// Resultado de um passo de frame:
+// - `busy`: havia um seek em andamento → ignorado (serialização).
+// - `applied`: pulou um frame dentro do chunk atual.
+// - `cross-forward` / `cross-back`: chegou ao fim/início do chunk → o chamador
+//   deve carregar o chunk seguinte/anterior. `overflow` é o quanto passou da
+//   borda (em segundos), pra posicionar no vizinho.
+export type FrameStepResult =
+  | { kind: 'busy' }
+  | { kind: 'applied' }
+  | { kind: 'cross-forward'; overflow: number }
+  | { kind: 'cross-back'; overflow: number }
+
+// Aplica um passo de frame (←/→) serializando os seeks: se um seek ainda está em
+// andamento (`seeking`), ignora o passo — evita a fila de seeks que, ao segurar a
+// tecla, faz o vídeo travar e dar um salto ao soltar. Dentro do chunk, pausa e
+// avança/retrocede um frame. Nas bordas, sinaliza `cross-*` para o chamador trocar
+// de gravação em vez de saturar.
+export function applyFrameStep(
+  v: FrameSteppable,
+  recDuration: number,
+  frameDuration: number,
+  dir: 1 | -1,
+): FrameStepResult {
+  if (v.seeking) return { kind: 'busy' }
+  const dur = v.duration || recDuration
+  const next = v.currentTime + dir * frameDuration
+  if (next < 0) return { kind: 'cross-back', overflow: -next }
+  if (dur > 0 && next > dur) return { kind: 'cross-forward', overflow: next - dur }
+  v.pause()
+  v.currentTime = next
+  return { kind: 'applied' }
+}
+
 // Calcula a posição de seek e se deve reproduzir ao carregar a metadata de uma
 // gravação. `stepPaused` indica que o load veio de um passo Ctrl+Shift+seta que
 // cruzou a fronteira do chunk — nesse caso mantém o vídeo parado.

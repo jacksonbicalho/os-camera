@@ -18,7 +18,7 @@ import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { useDebugTools } from '../hooks/useDebugTools'
-import { applySameChunkStep, frameStepTime, loadedMetadataSeek, mergeRecordings, secondStepTarget } from './cameraUtils'
+import { applyFrameStep, applySameChunkStep, loadedMetadataSeek, mergeRecordings, secondStepTarget } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
@@ -464,9 +464,29 @@ export default function CameraPage() {
         const v = videoRef.current
         if (!v || !activeRecording) return
         e.preventDefault()
-        v.pause()
         const dir: 1 | -1 = e.key === 'ArrowRight' ? 1 : -1
-        v.currentTime = frameStepTime(v.currentTime, v.duration || recDuration, frameDurationRef.current, dir)
+        const res = applyFrameStep(v, recDuration, frameDurationRef.current, dir)
+        if (res.kind === 'applied' || res.kind === 'busy') return
+        // chegou na borda do chunk → carrega o vizinho (próximo/anterior visível)
+        const sorted = [...filterRecordings(recordingsRef.current, onlyMotionRef.current)]
+          .sort((a, b) => a.filename.localeCompare(b.filename))
+        const curIdx = sorted.findIndex(r => r.filename === activeRecording.filename)
+        if (curIdx === -1) return
+        let target: Recording | null = null
+        if (res.kind === 'cross-forward') {
+          for (let i = curIdx + 1; i < sorted.length; i++) if (!sorted[i].is_recording) { target = sorted[i]; break }
+          if (!target) return
+          pendingSeekRef.current = res.overflow
+        } else {
+          for (let i = curIdx - 1; i >= 0; i--) if (!sorted[i].is_recording) { target = sorted[i]; break }
+          if (!target) return
+          pendingSeekFromEndRef.current = res.overflow
+        }
+        setActiveEventTime(null)
+        setActiveEventId(null)
+        stepPauseRef.current = true
+        openRecording(target)
+        setScrollNonce(n => n + 1)
         return
       }
       if (!e.ctrlKey) return
