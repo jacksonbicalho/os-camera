@@ -1,3 +1,5 @@
+import { Card } from "./ui/card";
+
 interface FieldRow {
   label: string;
   value: React.ReactNode;
@@ -17,39 +19,39 @@ export default function SettingsSection({
   children,
 }: SettingsSectionProps) {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-      <p className="text-h4 text-gray-400 uppercase tracking-wider font-medium px-5 pt-4 pb-3 border-b border-gray-800">
+    <Card className="overflow-hidden">
+      <p className="text-h4 text-muted-foreground uppercase tracking-wider font-medium px-5 pt-4 pb-3 border-b border-border">
         {title}
       </p>
 
       {groups ? (
-        <div className="divide-y divide-gray-800">
+        <div className="divide-y divide-border">
           {groups.map((group, i) => (
             <div
               key={i}
-              className={group.length === 2 ? 'grid grid-cols-2 divide-x divide-gray-800' : group.length === 3 ? 'grid grid-cols-3 divide-x divide-gray-800' : ''}
+              className={group.length === 2 ? 'grid grid-cols-2 divide-x divide-border' : group.length === 3 ? 'grid grid-cols-3 divide-x divide-border' : ''}
             >
               {group.map(({ label, value }) => (
                 <div key={label} className="px-5 py-3">
-                  <dt className="mb-1 text-xs text-gray-500">{label}</dt>
-                  <dd className="break-all font-mono text-sm text-gray-200">{value ?? '—'}</dd>
+                  <dt className="mb-1 text-xs text-muted-foreground">{label}</dt>
+                  <dd className="break-all font-mono text-sm text-foreground">{value ?? '—'}</dd>
                 </div>
               ))}
             </div>
           ))}
         </div>
       ) : (
-        <dl className="divide-y divide-gray-800">
+        <dl className="divide-y divide-border">
           {(fields ?? []).map(({ label, value }) => (
             <div key={label} className="px-5 py-3">
-              <dt className="mb-1 text-xs text-gray-500">{label}</dt>
-              <dd className="break-all font-mono text-sm text-gray-200">{value ?? '—'}</dd>
+              <dt className="mb-1 text-xs text-muted-foreground">{label}</dt>
+              <dd className="break-all font-mono text-sm text-foreground">{value ?? '—'}</dd>
             </div>
           ))}
         </dl>
       )}
 
       {children}
-    </div>
+    </Card>
   );
 }

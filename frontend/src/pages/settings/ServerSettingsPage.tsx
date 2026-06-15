@@ -10,12 +10,12 @@ export default function ServerSettingsPage() {
 
   return (
     <SettingsLayout>
-      <h3 className="text-h2 font-semibold text-gray-200">Servidor</h3>
-      <p className="text-sm text-gray-500 mt-1 mb-6">Porta, JWT e configurações de rede.</p>
+      <h3 className="text-h2 font-semibold text-foreground">Servidor</h3>
+      <p className="text-sm text-muted-foreground mt-1 mb-6">Porta, JWT e configurações de rede.</p>
       {!isAdmin ? (
-        <p className="text-gray-500 text-sm">Acesso restrito.</p>
+        <p className="text-muted-foreground text-sm">Acesso restrito.</p>
       ) : !s ? (
-        <p className="text-gray-500 text-sm">Carregando...</p>
+        <p className="text-muted-foreground text-sm">Carregando...</p>
       ) : (
         <SettingsSection
           title="Servidor web"

@@ -32,7 +32,7 @@ function ModeRadioGroup({
             onChange={() => onChange(opt.value)}
             className="accent-blue-500 cursor-pointer"
           />
-          <span className="text-sm text-gray-300 group-hover:text-white transition-colors">
+          <span className="text-sm text-foreground group-hover:text-white transition-colors">
             {opt.label}
           </span>
         </label>
@@ -48,14 +48,14 @@ export default function AppearanceSettingsPage() {
 
   return (
     <SettingsLayout>
-      <h3 className="text-h2 font-semibold text-gray-200">Aparência</h3>
-      <p className="text-sm text-gray-500 mt-1 mb-6">Controla como botões e rótulos são exibidos na interface.</p>
+      <h3 className="text-h2 font-semibold text-foreground">Aparência</h3>
+      <p className="text-sm text-muted-foreground mt-1 mb-6">Controla como botões e rótulos são exibidos na interface.</p>
 
       <div className="flex flex-col gap-6">
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 flex flex-col gap-3">
+        <div className="bg-surface border border-border rounded-lg p-5 flex flex-col gap-3">
           <div>
-            <p className="text-sm font-medium text-gray-200">Estilo</p>
-            <p className="text-xs text-gray-500 mt-0.5">Esquema de cores da interface.</p>
+            <p className="text-sm font-medium text-foreground">Estilo</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Esquema de cores da interface.</p>
           </div>
           <div className="flex gap-3 flex-wrap">
             {THEME_OPTIONS.map(opt => (
@@ -66,7 +66,7 @@ export default function AppearanceSettingsPage() {
                   onChange={() => setMode(opt.value)}
                   className="accent-blue-500 cursor-pointer"
                 />
-                <span className="text-sm text-gray-300 group-hover:text-white transition-colors">
+                <span className="text-sm text-foreground group-hover:text-white transition-colors">
                   {opt.label}
                 </span>
               </label>
@@ -74,18 +74,18 @@ export default function AppearanceSettingsPage() {
           </div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 flex flex-col gap-3">
+        <div className="bg-surface border border-border rounded-lg p-5 flex flex-col gap-3">
           <div>
-            <p className="text-sm font-medium text-gray-200">Sidebar</p>
-            <p className="text-xs text-gray-500 mt-0.5">Botões e itens da barra lateral esquerda.</p>
+            <p className="text-sm font-medium text-foreground">Sidebar</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Botões e itens da barra lateral esquerda.</p>
           </div>
           <ModeRadioGroup value={mode.sidebar} onChange={v => set('sidebar', v)} />
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 flex flex-col gap-3">
+        <div className="bg-surface border border-border rounded-lg p-5 flex flex-col gap-3">
           <div>
-            <p className="text-sm font-medium text-gray-200">Topo do player</p>
-            <p className="text-xs text-gray-500 mt-0.5">Controles acima do vídeo (mudo, velocidade, gravações…).</p>
+            <p className="text-sm font-medium text-foreground">Topo do player</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Controles acima do vídeo (mudo, velocidade, gravações…).</p>
           </div>
           <ModeRadioGroup value={mode.player} onChange={v => set('player', v)} />
         </div>
