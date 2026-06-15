@@ -528,7 +528,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             <div className="px-3 py-2 text-xs text-gray-500 border-b border-border font-medium">Configurações</div>
             {settingsLinks.map(({ to, label }) => (
               <Fragment key={to}>
-                {to === '/settings/about' && <ThemeModeNav />}
+                {to === '/settings/about' && <ThemeModeNav onSelect={() => setSettingsOpen(false)} />}
                 {to === '/settings/about' && (
                   <Link
                     to="/stats"
