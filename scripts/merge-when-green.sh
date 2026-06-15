@@ -87,10 +87,12 @@ if git show-ref --verify --quiet "refs/heads/${HEAD}"; then
     fi
 fi
 
-# ── marca [✓] no release file mais recente ──────────────────────────────────
+# ── marca [✓] no release file que contém a linha do PR ──────────────────────
+# Seleciona pelo conteúdo (não pelo nome), então funciona tanto com o
+# planejamento corrente `_next.md` quanto com arquivos já versionados `_vX.Y.Z.md`.
 REL_NOTE="release file não atualizado"
-RF="$(ls -t releases/2*_v*.md 2>/dev/null | head -1 || true)"
-if [[ -n "$RF" ]] && grep -q "#${PR} " "$RF"; then
+RF="$(grep -lF "#${PR} " releases/*.md 2>/dev/null | head -1 || true)"
+if [[ -n "$RF" ]]; then
     sed -i "/#${PR} /s/\[~\]/[✓]/" "$RF"
     REL_NOTE="$(basename "$RF"): #${PR} → [✓]"
 fi
