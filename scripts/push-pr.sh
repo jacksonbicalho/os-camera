@@ -40,6 +40,8 @@ story=$(ls stories/*.md 2>/dev/null | grep -i "$desc" | tail -1)
 grep -qE '^-? *\[x\] Aprovado' "$story" \
     || { echo "❌ Story não aprovada ([x] Aprovado): $(basename "$story")"; exit 1; }
 
+title=$(grep -m1 '^# ' "$story" | sed 's/^# *//')
+
 git push -u origin "$branch"
 
 existing=$(gh pr list --head "$branch" --base develop --state open --json number -q '.[0].number' 2>/dev/null || true)
@@ -47,8 +49,6 @@ if [ -n "$existing" ]; then
     echo "ℹ️ PR já existe para $branch: #$existing"
     prnum="$existing"
 else
-    title=$(grep -m1 '^# ' "$story" | sed 's/^# *//')
-
     # Corpo do PR montado a partir das seções da story (Contexto + Solução),
     # para o PR já nascer com uma descrição rica em vez de só o título.
     section() {
@@ -69,6 +69,14 @@ else
 
     gh pr create --base develop --head "$branch" --title "$title" --body "$body"
     prnum=$(gh pr list --head "$branch" --base develop --state open --json number -q '.[0].number')
+fi
+
+# Registra a história no release file _next (idempotente por #PR) com status [~].
+# O merge-when-green.sh marca [~]→[✓] ao mergear — e só então remove story/branch.
+rf="$(ls -t releases/*_next.md 2>/dev/null | head -1 || true)"
+if [ -n "$rf" ] && ! grep -qF "#${prnum} " "$rf"; then
+    printf '| [~]    | %s | `%s` | #%s |\n' "$title" "$branch" "$prnum" >> "$rf"
+    echo "ℹ️ release file: #$prnum registrado [~] em $(basename "$rf")"
 fi
 
 if [ "$no_merge" -eq 1 ]; then
