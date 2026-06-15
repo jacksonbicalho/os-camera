@@ -13,6 +13,8 @@ import ConfirmDialog from "./ConfirmDialog"
 import EventsPanelHeader from "./EventsPanelHeader"
 import ThemeModeNav from "./ThemeModeNav"
 import { Bell, X, Check, Settings, CircleUser, CameraLogo, Cctv } from "./Icons"
+import { buttonVariants } from "./ui/button"
+import { cn } from "@/lib/utils"
 
 interface SidebarProps {
   username?: string
@@ -61,7 +63,7 @@ function NotificationItem({
 
   return (
     <div
-      className={`flex items-start gap-2 px-3 py-2 hover:bg-gray-750 transition-colors ${
+      className={`flex items-start gap-2 px-3 py-2 hover:bg-accent transition-colors ${
         !n.read ? "border-l-2 border-blue-500" : "border-l-2 border-transparent"
       }`}
     >
@@ -116,7 +118,7 @@ function SidebarInjectedItem({ item, displayMode }: {
     : `relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors`
 
   if (item.type === 'separator') {
-    return <div className={showLabel ? 'w-full border-t border-gray-700 my-1' : 'w-8 border-t border-gray-700 my-1'} />
+    return <div className={showLabel ? 'w-full border-t border-border my-1' : 'w-8 border-t border-border my-1'} />
   }
 
   if (item.type === 'dropdown') {
@@ -127,13 +129,13 @@ function SidebarInjectedItem({ item, displayMode }: {
           onClick={() => { if (!item.disabled) setDropOpen(v => !v) }}
           disabled={item.disabled}
           title={item.title}
-          className={`${base} ${isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'} ${item.disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+          className={`${base} ${isActive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'} ${item.disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
         >
           {showIcon && item.icon}
           {showLabel && <span className="text-sm truncate">{item.title}</span>}
         </button>
         {dropOpen && (
-          <div className="absolute left-full top-0 ml-2 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 py-1 min-w-[72px]">
+          <div className="absolute left-full top-0 ml-2 bg-surface border border-border rounded-lg shadow-xl z-50 py-1 min-w-[72px]">
             {item.options.map((opt: SidebarDropdownOption, i: number) => (
               <button
                 key={i}
@@ -142,7 +144,7 @@ function SidebarInjectedItem({ item, displayMode }: {
                 className={`flex items-center justify-between gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${
                   opt.active
                     ? 'text-blue-400 font-semibold'
-                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                    : 'text-foreground hover:bg-accent hover:text-accent-foreground'
                 } ${opt.disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 <span>{opt.label}</span>
@@ -157,12 +159,15 @@ function SidebarInjectedItem({ item, displayMode }: {
     )
   }
 
-  const isActive = item.type === 'button' && item.active
-  const activeClass = isActive ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"
-  const disabledClass = (item.type === 'button' && item.disabled) ? "opacity-40 cursor-not-allowed" : ""
+  const isActive = item.type === 'button' && Boolean(item.active)
+  const navClass = (active: boolean) => cn(
+    buttonVariants({ variant: active ? 'default' : 'ghost', size: showLabel ? 'default' : 'icon' }),
+    'relative [&_svg]:size-5',
+    showLabel ? 'w-full justify-start' : 'w-10 h-10',
+  )
 
   const badge = 'badge' in item && item.badge != null ? (
-    <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-gray-700 text-gray-200 rounded-full px-0.5">
+    <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-surface-2 text-foreground rounded-full px-0.5">
       {item.badge}
     </span>
   ) : null
@@ -170,9 +175,7 @@ function SidebarInjectedItem({ item, displayMode }: {
   if (item.type === 'link') {
     return (
       <NavLink to={item.to} state={item.state} title={item.title}
-        className={({ isActive: linkActive }) =>
-          `${base} ${linkActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`
-        }
+        className={({ isActive: linkActive }) => navClass(linkActive)}
       >
         {showIcon && item.icon}
         {showLabel && <span className="text-sm truncate">{item.title}</span>}
@@ -185,7 +188,7 @@ function SidebarInjectedItem({ item, displayMode }: {
       onClick={item.onClick}
       disabled={item.disabled}
       title={item.title}
-      className={`${base} ${activeClass} ${disabledClass}`}
+      className={navClass(isActive)}
     >
       {showIcon && item.icon}
       {showLabel && <span className="text-sm truncate">{item.title}</span>}
@@ -317,28 +320,28 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
     : 'relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors'
 
   return (
-    <aside className={`${sidebarWidth} flex-none flex flex-col bg-gray-900 border-r border-gray-800`}>
+    <aside className={`${sidebarWidth} flex-none flex flex-col bg-surface border-r border-border`}>
       {/* Logo */}
       <Link
         to="/"
         id="sidebar-logo"
-        className={`flex items-center ${showLabel ? 'gap-2 px-4' : 'justify-center'} h-14 hover:opacity-80 transition-opacity border-b border-gray-800 flex-none`}
+        className={`flex items-center ${showLabel ? 'gap-2 px-4' : 'justify-center'} h-14 hover:opacity-80 transition-opacity border-b border-border flex-none`}
         title="os-camera"
       >
         <h1 className="sr-only">os-camera</h1>
         {showIcon && <CameraLogo className="w-8 h-8" />}
-        {showLabel && <span className="text-sm font-semibold text-gray-200 truncate">os-camera</span>}
+        {showLabel && <span className="text-sm font-semibold text-foreground truncate">os-camera</span>}
       </Link>
 
 
       {/* Bell — logo abaixo da logo */}
-      <div className={`flex flex-col ${itemsAlign} py-1 border-b border-gray-800 flex-none`}>
+      <div className={`flex flex-col ${itemsAlign} py-1 border-b border-border flex-none`}>
         <div ref={bellRef} className={showLabel ? 'w-full' : undefined}>
           <button
             id="sidebar-notifications"
             ref={bellBtnRef}
             onClick={openBell}
-            className={`${btnBase} ${unreadCount > 0 ? "text-white animate-pulse" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
+            className={`${btnBase} ${unreadCount > 0 ? "text-white animate-pulse" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"}`}
             title="Eventos"
           >
             {showIcon && <Bell className="w-5 h-5" />}
@@ -355,7 +358,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
               id="events-panel"
               ref={bellPanelRef}
               style={{ position: 'fixed', top: bellPos.top, left: bellPos.left, zIndex: 9999 }}
-              className="w-72 bg-gray-800 border border-gray-700 rounded shadow-lg flex flex-col max-h-[80vh]">
+              className="w-72 bg-surface border border-border rounded shadow-lg flex flex-col max-h-[80vh]">
               <EventsPanelHeader
                 allSelected={allSelected}
                 someSelected={someSelected}
@@ -414,7 +417,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
               </div>
 
               {browserSupported && (
-                <div className="border-t border-gray-700 px-3 py-2 flex items-center justify-between">
+                <div className="border-t border-border px-3 py-2 flex items-center justify-between">
                   <span className="text-xs text-gray-400">Alertas do sistema</span>
                   {browserPermission === "denied" ? (
                     <button onClick={enableBrowserNotifications} className="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer" title="Permissão negada — tentar">
@@ -433,7 +436,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
       </div>
 
       {/* Câmeras — logo abaixo do sino */}
-      <div className={`flex flex-col ${itemsAlign} py-1 border-b border-gray-800 flex-none`}>
+      <div className={`flex flex-col ${itemsAlign} py-1 border-b border-border flex-none`}>
         <div ref={camerasRef} className={showLabel ? 'w-full' : undefined}>
           <button
             id="sidebar-cameras"
@@ -442,8 +445,8 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             title="Câmeras"
             className={`${btnBase} ${
               camerasActive || camerasOpen
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
             }`}
           >
             {showIcon && <Cctv className="w-5 h-5" />}
@@ -454,9 +457,9 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
           <div
             ref={camerasPanelRef}
             style={{ position: 'fixed', top: camerasPos.top, left: camerasPos.left, zIndex: 9999 }}
-            className="w-48 bg-gray-800 border border-gray-700 rounded shadow-lg"
+            className="w-48 bg-surface border border-border rounded shadow-lg"
           >
-            <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-700 font-medium">Câmeras</div>
+            <div className="px-3 py-2 text-xs text-gray-500 border-b border-border font-medium">Câmeras</div>
             {cameraList.length === 0 ? (
               <div className="px-3 py-2 text-sm text-gray-500">Nenhuma câmera</div>
             ) : cameraList.map(cam => (
@@ -468,8 +471,8 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
                 }}
                 className={`block w-full text-left px-3 py-2 text-sm transition-colors truncate ${
                   location.pathname === `/camera/live/${cam.id}`
-                    ? 'bg-gray-700 text-white'
-                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                    ? 'bg-accent text-accent-foreground'
+                    : 'text-foreground hover:bg-accent hover:text-accent-foreground'
                 }`}
               >
                 {cam.name}
@@ -482,7 +485,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
       {/* Injected camera items */}
       {items.length > 0 && (
-        <div className={`flex flex-col ${itemsAlign} gap-1 py-2 border-b border-gray-800 flex-none`}>
+        <div className={`flex flex-col ${itemsAlign} gap-1 py-2 border-b border-border flex-none`}>
           {items.map(item => <SidebarInjectedItem key={item.id} item={item} displayMode={sidebarMode} />)}
         </div>
       )}
@@ -508,8 +511,8 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             title="Configurações"
             className={`${btnBase} ${
               settingsActive || settingsOpen
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
             }`}
           >
             {showIcon && <Settings className="w-5 h-5" />}
@@ -520,9 +523,9 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
           <div
             ref={settingsPanelRef}
             style={{ position: 'fixed', bottom: settingsPos.bottom, left: settingsPos.left, zIndex: 9999 }}
-            className="w-48 bg-gray-800 border border-gray-700 rounded shadow-lg"
+            className="w-48 bg-surface border border-border rounded shadow-lg"
           >
-            <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-700 font-medium">Configurações</div>
+            <div className="px-3 py-2 text-xs text-gray-500 border-b border-border font-medium">Configurações</div>
             {settingsLinks.map(({ to, label }) => (
               <Fragment key={to}>
                 {to === '/settings/about' && <ThemeModeNav />}
@@ -533,8 +536,8 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
                     onClick={() => setSettingsOpen(false)}
                     className={`block px-3 py-2 text-sm transition-colors ${
                       location.pathname.startsWith('/stats')
-                        ? 'bg-gray-700 text-white'
-                        : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                        ? 'bg-accent text-accent-foreground'
+                        : 'text-foreground hover:bg-accent hover:text-accent-foreground'
                     }`}
                   >
                     Estatísticas
@@ -545,8 +548,8 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
                   onClick={() => setSettingsOpen(false)}
                   className={`block px-3 py-2 text-sm transition-colors ${
                     location.pathname.startsWith(to)
-                      ? 'bg-gray-700 text-white'
-                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-foreground hover:bg-accent hover:text-accent-foreground'
                   }`}
                 >
                   {label}
@@ -562,29 +565,29 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
           <button
             id="sidebar-user"
             onClick={() => setUserOpen((v) => !v)}
-            className={`relative ${btnBase} text-gray-400 hover:bg-gray-800 hover:text-white`}
+            className={`relative ${btnBase} text-muted-foreground hover:bg-accent hover:text-accent-foreground`}
             title={username}
           >
             {showIcon && <CircleUser className="w-6 h-6" />}
             {showLabel && <span className="text-sm truncate">{username}</span>}
             {userUnread > 0 && (
-              <span className="absolute top-1 left-6 min-w-[16px] h-4 px-1 rounded-full bg-blue-600 text-white text-[10px] font-semibold flex items-center justify-center">
+              <span className="absolute top-1 left-6 min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
                 {userUnread > 99 ? '99+' : userUnread}
               </span>
             )}
           </button>
 
           {userOpen && (
-            <div className="absolute left-full bottom-0 ml-2 w-44 bg-gray-800 border border-gray-700 rounded shadow-lg z-50">
-              <div className="px-4 py-2 text-xs text-gray-500 border-b border-gray-700 truncate">{username}</div>
+            <div className="absolute left-full bottom-0 ml-2 w-44 bg-surface border border-border rounded shadow-lg z-50">
+              <div className="px-4 py-2 text-xs text-gray-500 border-b border-border truncate">{username}</div>
               <Link
                 to="/notifications"
                 onClick={() => setUserOpen(false)}
-                className="flex items-center justify-between w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                className="flex items-center justify-between w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
               >
                 <span>Notificações</span>
                 {userUnread > 0 && (
-                  <span className="min-w-[16px] h-4 px-1 rounded-full bg-blue-600 text-white text-[10px] font-semibold flex items-center justify-center">
+                  <span className="min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
                     {userUnread > 99 ? '99+' : userUnread}
                   </span>
                 )}
@@ -592,14 +595,14 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
               <Link
                 to="/change-password"
                 onClick={() => setUserOpen(false)}
-                className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                className="block w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
               >
                 Alterar senha
               </Link>
-              <div className="border-t border-gray-700" />
+              <div className="border-t border-border" />
               <button
                 onClick={logout}
-                className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                className="block w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
               >
                 Sair
               </button>
