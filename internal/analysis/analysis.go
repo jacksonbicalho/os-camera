@@ -64,6 +64,54 @@ func (c *Client) Analyze(ctx context.Context, req AnalyzeRequest) ([]Detection, 
 	return result.Detections, nil
 }
 
+// --- State classification ---
+
+type ClassPrediction struct {
+	Label string  `json:"label"`
+	Prob  float64 `json:"prob"`
+}
+
+type ClassifyRequest struct {
+	Path  string `json:"path"`
+	Model string `json:"model,omitempty"`
+}
+
+type classifyResponse struct {
+	Predictions []ClassPrediction `json:"predictions"`
+	Top         string            `json:"top"`
+}
+
+// StateClassifier é o que o runner de estado precisa do serviço YOLO (injetável).
+type StateClassifier interface {
+	Classify(ctx context.Context, req ClassifyRequest) ([]ClassPrediction, error)
+}
+
+// Classify roda o classificador de estado num crop e retorna as probabilidades por classe.
+func (c *Client) Classify(ctx context.Context, req ClassifyRequest) ([]ClassPrediction, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/classify", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("yolo service returned %d", resp.StatusCode)
+	}
+	var result classifyResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return result.Predictions, nil
+}
+
 // --- Models ---
 
 type ModelInfo struct {

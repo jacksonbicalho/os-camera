@@ -167,6 +167,15 @@ func DeleteStateClassifier(database *DB, id int64) error {
 	return err
 }
 
+// RecordStateTransition appends a confirmed state to a classifier's history.
+func RecordStateTransition(database *DB, classifierID int64, state string, confidence float64) error {
+	_, err := database.Exec(
+		`INSERT INTO camera_state_history (classifier_id, state, confidence) VALUES (?, ?, ?)`,
+		classifierID, state, confidence,
+	)
+	return err
+}
+
 // GetCurrentState returns the latest state of a classifier, or nil when none yet.
 func GetCurrentState(database *DB, classifierID int64) (*stateclass.State, error) {
 	row := database.QueryRow(

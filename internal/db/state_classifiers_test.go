@@ -104,3 +104,20 @@ func TestGetCurrentStateEmpty(t *testing.T) {
 		t.Fatalf("expected nil state, got %+v", st)
 	}
 }
+
+func TestRecordStateTransitionReflectsInCurrent(t *testing.T) {
+	database := openTestDB(t)
+	seedCamera(t, database, "cam1")
+	id, _ := db.CreateStateClassifier(database, makeClassifier("cam1"))
+
+	if err := db.RecordStateTransition(database, id, "aberto", 0.91); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	st, err := db.GetCurrentState(database, id)
+	if err != nil || st == nil {
+		t.Fatalf("get current: %v %v", err, st)
+	}
+	if st.State != "aberto" || st.Confidence != 0.91 {
+		t.Fatalf("unexpected state: %+v", st)
+	}
+}
