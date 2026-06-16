@@ -61,3 +61,22 @@ jobs:
 
       - name: Build
         run: cd frontend && yarn build
+
+  yolo:
+    name: YOLO service
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Os testes stubam torch/ultralytics/cv2 via sys.modules, então só precisam
+      # de fastapi/pydantic/pyyaml/httpx/pytest — sem torch/GPU.
+      - name: Install test deps
+        run: pip install fastapi pydantic pyyaml httpx pytest
+
+      - name: Test
+        run: cd services/yolo && python -m pytest -q

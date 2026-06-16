@@ -92,7 +92,10 @@ Nunca afirmar que os testes do frontend passaram sem ter rodado o comando acima 
 
 Microserviço Python/FastAPI opcional para análise de gravações e fine-tuning. Expõe:
 - `POST /analyze` — inferência YOLO em arquivo MP4
-- `POST /finetune` / `GET /finetune/status/{id}` / `DELETE /finetune/{id}` — treino assíncrono
+- `POST /finetune` / `GET /finetune/status/{id}` / `DELETE /finetune/{id}` — treino assíncrono (detecção)
+- **State classification** (`yolov8n-cls`): `POST /classify` (imagem/crop → `{predictions:[{label,prob}], top}`), `POST /classify/train` (treina a partir de samples `{image_path,label}`, dataset em **pastas por classe**, assíncrono — status pelo mesmo `GET /finetune/status/{id}`; guard de tamanho barra `l`/`x`), `GET /classify/models`.
+
+**Testes do serviço:** `services/yolo/test_main.py` (pytest). As deps pesadas (torch/ultralytics/cv2) são **stubadas via `sys.modules`** antes de importar `main`, então os testes rodam numa imagem Python slim sem GPU. Rodam via `scripts/yolo-check.sh` (Docker), acionado pelo `scripts/check.sh` quando `services/yolo/` muda, e por um job dedicado no CI (`.github/workflows/ci.yml`).
 
 **Subir o serviço:**
 

@@ -114,6 +114,33 @@ class FinetuneStatusResponse(BaseModel):
     error: str = ""
 
 
+# ── classificação de estado (state classification) ──────────────────────────
+class ClassifyRequest(BaseModel):
+    path: str
+    model: str = "custom-cls"
+
+
+class ClassPrediction(BaseModel):
+    label: str
+    prob: float
+
+
+class ClassifyResponse(BaseModel):
+    predictions: list[ClassPrediction]
+    top: str
+
+
+class ClassifySample(BaseModel):
+    image_path: str
+    label: str
+
+
+class ClassifyTrainRequest(BaseModel):
+    samples: list[ClassifySample]
+    base_model: str = "yolov8n-cls"
+    epochs: int = 20
+
+
 def _build_dataset(annotations: list[AnnotationItem], work_dir: Path) -> Path:
     """Build a YOLO-format dataset directory from annotation items."""
     images_dir = work_dir / "images" / "train"
@@ -209,6 +236,114 @@ def _run_finetune(job_id: str, req: FinetuneRequest):
             shutil.copy2(best, dest)
             # Invalidate cached model so next analyze uses the new weights
             _models.pop("custom", None)
+
+        set_job(status="done")
+    except StopIteration:
+        set_job(status="cancelled")
+    except Exception as e:
+        set_job(status="error", error=str(e))
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        with _jobs_lock:
+            _cancel_events.pop(job_id, None)
+
+
+# Modelos de classificação disponíveis (ultralytics expõe variantes -cls p/ v8 e 11).
+_CLS_GROUPS = [
+    ("YOLOv8-cls", ["yolov8n-cls", "yolov8s-cls", "yolov8m-cls", "yolov8l-cls", "yolov8x-cls"]),
+    ("YOLO11-cls", ["yolo11n-cls", "yolo11s-cls", "yolo11m-cls", "yolo11l-cls", "yolo11x-cls"]),
+]
+
+
+def _cls_size(model_name: str) -> str:
+    """n/s/m/l/x a partir de um nome como 'yolov8n-cls'."""
+    return model_name.replace("-cls", "")[-1:]
+
+
+def _build_classify_model_list() -> list[dict]:
+    result = []
+    for group, names in _CLS_GROUPS:
+        for name in names:
+            size = _cls_size(name)
+            if _DEVICE == "cuda":
+                can_infer = _VRAM_GB >= _INFER_VRAM[size]
+                can_train = _VRAM_GB >= _FINETUNE_VRAM[size]
+            else:
+                can_infer = True              # CPU sempre infere (lento)
+                can_train = size in ("n", "s")  # classify n/s treina rápido até em CPU
+            result.append({"name": name, "group": group, "inference": can_infer, "finetune": can_train})
+    if (MODEL_DIR / "custom-cls.pt").exists():
+        result.insert(0, {"name": "custom-cls", "group": "Custom", "inference": True, "finetune": False})
+    return result
+
+
+def _build_classify_dataset(samples: list[ClassifySample], work_dir: Path) -> tuple[Path, list[str]]:
+    """Monta um dataset de classificação ultralytics: <root>/{train,val}/<classe>/*.
+
+    Exige ≥2 classes. Levanta ValueError se < 2 classes ou nenhuma imagem legível.
+    """
+    labels = list(dict.fromkeys(s.label for s in samples))
+    if len(labels) < 2:
+        raise ValueError(f"classification needs at least 2 classes, got {len(labels)}")
+    for split in ("train", "val"):
+        for label in labels:
+            (work_dir / split / label).mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for i, s in enumerate(samples):
+        src = Path(s.image_path)
+        if not src.is_file():
+            print(f"[classify] WARNING: cannot read image {s.image_path!r}", flush=True)
+            continue
+        ext = src.suffix or ".jpg"
+        for split in ("train", "val"):
+            shutil.copy2(src, work_dir / split / s.label / f"{i:06d}{ext}")
+        copied += 1
+    if copied == 0:
+        raise ValueError(f"no images could be read from {len(samples)} sample(s)")
+    print(f"[classify] dataset ready: {copied} image(s), classes={labels}", flush=True)
+    return work_dir, labels
+
+
+def _run_classify_train(job_id: str, req: ClassifyTrainRequest):
+    work_dir = Path(f"/tmp/classify_{job_id}")
+    work_dir.mkdir(parents=True, exist_ok=True)
+    cancel_event = _cancel_events[job_id]
+
+    def set_job(**kwargs):
+        with _jobs_lock:
+            _jobs[job_id].update(kwargs)
+
+    try:
+        set_job(status="running")
+        root, _labels = _build_classify_dataset(req.samples, work_dir / "data")
+
+        model = YOLO(req.base_model + ".pt")
+
+        class EpochCallback:
+            def __call__(self, trainer):
+                with _jobs_lock:
+                    _jobs[job_id]["epoch"] = trainer.epoch + 1
+                if cancel_event.is_set():
+                    raise StopIteration("cancelled")
+
+        model.add_callback("on_train_epoch_end", EpochCallback())
+        model.train(
+            data=str(root),
+            epochs=req.epochs,
+            imgsz=224,
+            batch=16,
+            project=str(work_dir / "runs"),
+            name="train",
+            exist_ok=True,
+            verbose=False,
+        )
+
+        best = work_dir / "runs" / "train" / "weights" / "best.pt"
+        if best.exists():
+            dest = Path("/models/custom-cls.pt")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(best, dest)
+            _models.pop("custom-cls", None)
 
         set_job(status="done")
     except StopIteration:
@@ -329,3 +464,46 @@ def finetune_status(job_id: str):
         total_epochs=job["total_epochs"],
         error=job.get("error", ""),
     )
+
+
+@app.get("/classify/models")
+def list_classify_models():
+    return {
+        "device": _DEVICE,
+        "vram_gb": _VRAM_GB,
+        "models": _build_classify_model_list(),
+    }
+
+
+@app.post("/classify", response_model=ClassifyResponse)
+def classify(req: ClassifyRequest):
+    if not os.path.isfile(req.path):
+        raise HTTPException(status_code=404, detail=f"file not found: {req.path}")
+
+    model = get_model(req.model)
+    results = model.predict(req.path, verbose=False)
+    r = results[0]
+    raw = r.probs.data if hasattr(r.probs, "data") else r.probs
+    probs = [float(p) for p in raw]
+    names = model.names
+    preds = [ClassPrediction(label=names[i], prob=round(p, 4)) for i, p in enumerate(probs)]
+    preds.sort(key=lambda p: -p.prob)
+    return ClassifyResponse(predictions=preds, top=preds[0].label if preds else "")
+
+
+@app.post("/classify/train", response_model=FinetuneResponse)
+def classify_train(req: ClassifyTrainRequest):
+    if not req.samples:
+        raise HTTPException(status_code=400, detail="samples list is empty")
+    size = _cls_size(req.base_model)
+    if size in ("l", "x"):
+        raise HTTPException(status_code=400, detail=f"model size {size!r} too large for training (use n/s/m)")
+
+    job_id = str(uuid.uuid4())
+    with _jobs_lock:
+        _jobs[job_id] = {"status": "pending", "epoch": 0, "total_epochs": req.epochs, "error": ""}
+        _cancel_events[job_id] = threading.Event()
+
+    t = threading.Thread(target=_run_classify_train, args=(job_id, req), daemon=True)
+    t.start()
+    return FinetuneResponse(job_id=job_id)

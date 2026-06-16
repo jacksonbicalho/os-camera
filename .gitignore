@@ -12,3 +12,7 @@ releases/
 motion_zones.json
 amostras/
 .cache/
+
+# Python (serviço YOLO)
+__pycache__/
+*.pyc
