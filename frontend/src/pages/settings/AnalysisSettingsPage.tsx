@@ -548,7 +548,7 @@ export default function AnalysisSettingsPage() {
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Modelo</label>
                 {serviceOffline ? (
-                  <div className="w-full bg-surface-2 text-yellow-400 text-sm rounded px-3 py-2 border border-yellow-600">
+                  <div className="w-full bg-surface-2 text-amber-400 text-sm rounded px-3 py-2 border border-amber-600">
                     Serviço YOLO offline — configure a URL e verifique se o container está rodando
                   </div>
                 ) : serviceModels === null ? (
@@ -641,7 +641,7 @@ export default function AnalysisSettingsPage() {
           </div>
 
           {modelNoFinetune && (
-            <div className="px-4 py-2 bg-yellow-900/40 border-b border-yellow-700 text-yellow-300 text-xs">
+            <div className="px-4 py-2 bg-amber-900/40 border-b border-amber-700 text-amber-300 text-xs">
               O modelo <strong>{activeBase}</strong> não suporta fine-tuning na GPU disponível. Selecione um modelo menor (ex: yolov8n, yolo11n).
             </div>
           )}
@@ -759,7 +759,7 @@ export default function AnalysisSettingsPage() {
               <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none text-muted-foreground">
                 <input
                   type="checkbox"
-                  className="accent-yellow-500"
+                  className="accent-amber-500"
                   checked={showDismissed}
                   onChange={e => { setShowDismissed(e.target.checked); setLabelPage(1); setLabelEvents(null); clearSelection() }}
                 />
@@ -826,7 +826,7 @@ export default function AnalysisSettingsPage() {
                           type="button"
                           disabled={bulkBusy}
                           onClick={() => setBulkConfirm({ action: 'dismiss' })}
-                          className="px-3 py-1 text-xs bg-yellow-700 hover:bg-yellow-600 text-white rounded disabled:opacity-40"
+                          className="px-3 py-1 text-xs bg-amber-700 hover:bg-amber-600 text-white rounded disabled:opacity-40"
                         >
                           Ignorar
                         </button>
@@ -895,7 +895,7 @@ export default function AnalysisSettingsPage() {
                               type="button"
                               onClick={() => setRowDismissConfirm(ev)}
                               title="Ignorar este evento"
-                              className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-yellow-400 hover:bg-yellow-500/10 rounded transition-colors"
+                              className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-amber-400 hover:bg-amber-500/10 rounded transition-colors"
                             >
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
