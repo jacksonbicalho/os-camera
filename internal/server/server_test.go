@@ -1390,8 +1390,8 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 	if resp.Defaults.ChunkDuration != "5m" {
 		t.Errorf("expected chunk_duration 5m, got %q", resp.Defaults.ChunkDuration)
 	}
-	if resp.Defaults.ReconnectInterval != "10s" {
-		t.Errorf("expected reconnect_interval 10s, got %q", resp.Defaults.ReconnectInterval)
+	if resp.Defaults.ReconnectInterval != "2s" {
+		t.Errorf("expected reconnect_interval 2s, got %q", resp.Defaults.ReconnectInterval)
 	}
 	if len(resp.Cameras) != 2 {
 		t.Fatalf("expected 2 cameras, got %d", len(resp.Cameras))

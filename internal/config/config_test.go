@@ -177,6 +177,17 @@ log:
 	}
 }
 
+func TestDefaultReconnectIntervalIs2s(t *testing.T) {
+	if config.DefaultReconnectInterval != 2*time.Second {
+		t.Errorf("expected DefaultReconnectInterval 2s, got %v", config.DefaultReconnectInterval)
+	}
+	// Sem override por câmera, o efetivo cai no default.
+	var cam config.CameraConfig
+	if got := cam.EffectiveReconnectInterval(); got != 2*time.Second {
+		t.Errorf("expected EffectiveReconnectInterval 2s without override, got %v", got)
+	}
+}
+
 func TestLoadParsesDebugField(t *testing.T) {
 	path := writeTempYAML(t, `debug: true`)
 
