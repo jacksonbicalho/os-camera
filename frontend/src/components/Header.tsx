@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { clearToken } from "../auth";
 import { useNotifications } from "../contexts/NotificationContext";
 import { formatDistanceToNow } from "date-fns";
@@ -108,6 +108,7 @@ export default function Header({ username = "usuário" }: HeaderProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (!bellOpen) setKebabOpen(false);
@@ -387,6 +388,7 @@ export default function Header({ username = "usuário" }: HeaderProps) {
               <div className="border-t border-border" />
               <Link
                 to="/change-password"
+                state={{ from: location.pathname }}
                 onClick={() => setUserOpen(false)}
                 className="block w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
               >

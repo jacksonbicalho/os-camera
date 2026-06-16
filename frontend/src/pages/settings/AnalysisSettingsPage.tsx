@@ -657,14 +657,14 @@ export default function AnalysisSettingsPage() {
                   Bounding boxes + labels de texto são usados no treino
                 </p>
               </div>
-              <button
+              <Button
                 type="button"
                 disabled={(!annCount && !labelCount) || ftStatus?.status === 'running' || ftStatus?.status === 'pending' || modelNoFinetune}
                 onClick={handleStartFinetune}
-                className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                className="bg-violet-600 hover:bg-violet-500 text-white shrink-0"
               >
                 Treinar agora
-              </button>
+              </Button>
             </div>
             <div className="flex items-center gap-3">
               <label className="text-xs text-muted-foreground shrink-0">Épocas</label>
@@ -813,32 +813,34 @@ export default function AnalysisSettingsPage() {
                         onChange={e => setBulkLabel(e.target.value)}
                         className="flex-1 min-w-[10rem] bg-surface-2 text-foreground text-sm rounded px-2 py-1 border border-border focus:outline-none focus:border-ring"
                       />
-                      <button
+                      <Button
                         type="button"
+                        size="sm"
                         disabled={bulkBusy}
                         onClick={() => setBulkConfirm({ action: 'label', label: bulkLabel })}
-                        className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-40"
                       >
                         Aplicar label
-                      </button>
+                      </Button>
                       {!showDismissed && (
-                        <button
+                        <Button
                           type="button"
+                          size="sm"
                           disabled={bulkBusy}
                           onClick={() => setBulkConfirm({ action: 'dismiss' })}
-                          className="px-3 py-1 text-xs bg-amber-700 hover:bg-amber-600 text-white rounded disabled:opacity-40"
+                          className="bg-amber-700 hover:bg-amber-600 text-white"
                         >
                           Ignorar
-                        </button>
+                        </Button>
                       )}
-                      <button
+                      <Button
                         type="button"
+                        size="sm"
+                        variant="outline"
                         disabled={bulkBusy}
                         onClick={clearSelection}
-                        className="px-3 py-1 text-xs text-muted-foreground hover:text-white border border-border rounded disabled:opacity-40"
                       >
                         Limpar
-                      </button>
+                      </Button>
                       {bulkError && <span className="text-xs text-red-400">{bulkError}</span>}
                     </div>
                   )}
@@ -971,19 +973,21 @@ export default function AnalysisSettingsPage() {
                     autoFocus
                     className="flex-1 bg-surface-2 text-foreground text-sm rounded px-3 py-1.5 border border-border focus:outline-none focus:border-emerald-500"
                   />
-                  <button
+                  <Button
+                    size="sm"
                     onClick={saveAnnotation}
                     disabled={annSaving}
-                    className="px-3 py-1.5 text-sm bg-emerald-700 hover:bg-emerald-600 text-white rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="bg-emerald-700 hover:bg-emerald-600 text-white"
                   >
                     {annSaving ? 'Salvando...' : 'Salvar'}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
                     onClick={() => setAnnBox(null)}
-                    className="px-3 py-1.5 text-sm bg-surface-2 hover:bg-accent text-foreground rounded"
                   >
                     Cancelar
-                  </button>
+                  </Button>
                 </>
               )}
               {!annSaveOk && !annBox && existingAnn && (
@@ -993,12 +997,14 @@ export default function AnalysisSettingsPage() {
                     : 'Região salva · Arraste para substituir'
                   }
                   {existingAnnId && (
-                    <button
+                    <Button
+                      size="sm"
+                      variant="outline"
                       onClick={deleteAnnotation}
-                      className="px-2 py-0.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-900/30 border border-red-700/40 rounded transition-colors"
+                      className="h-auto py-0.5 text-destructive hover:text-destructive"
                     >
                       Excluir anotação
-                    </button>
+                    </Button>
                   )}
                 </span>
               )}

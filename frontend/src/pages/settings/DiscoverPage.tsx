@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import { authHeaders } from '../../auth'
 import { Loader2, Search } from '../../components/Icons'
 import { Button } from '@/components/ui/button'
+import { findRegisteredCameraName } from './discoverDedupe'
+
+interface RegisteredCamera { id: string; name?: string; rtsp_url?: string }
 
 interface DiscoveryResult {
   ip: string
@@ -37,17 +40,17 @@ function injectCredentials(url: string, user: string, pass: string): string {
 }
 
 export default function DiscoverPage() {
-  const [status, setStatus] = useState<Status>('idle')
+  // Status inicial 'scanning': a tela já rastreia ao abrir (ver effect abaixo).
+  const [status, setStatus] = useState<Status>('scanning')
   const [results, setResults] = useState<DiscoveryResult[]>([])
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState<AddState | null>(null)
+  const [registered, setRegistered] = useState<RegisteredCamera[]>([])
   const navigate = useNavigate()
 
-  async function handleScan() {
-    setStatus('scanning')
-    setError(null)
-    setResults([])
-    setAdding(null)
+  // runScan só toca estado DEPOIS do await (assíncrono) — assim pode ser chamada do
+  // effect de montagem sem disparar setState síncrono dentro do effect.
+  const runScan = useCallback(async () => {
     try {
       const res = await fetch('/api/discover', { headers: authHeaders() })
       if (!res.ok) { setError(await res.text()); setStatus('error'); return }
@@ -57,7 +60,34 @@ export default function DiscoverPage() {
       setError(String(e))
       setStatus('error')
     }
+  }, [])
+
+  // Botão "Rastrear": reset síncrono (permitido em handler) + dispara o scan.
+  function handleScan() {
+    setStatus('scanning')
+    setError(null)
+    setResults([])
+    setAdding(null)
+    runScan()
   }
+
+  // Ao abrir a tela: carrega as câmeras já cadastradas (para dedupe) e já inicia o
+  // rastreamento automaticamente (status já começa 'scanning'). O scan é inlinado
+  // aqui (setState só em callbacks .then/.catch) em vez de chamar runScan, para não
+  // disparar setState síncrono dentro do effect.
+  useEffect(() => {
+    fetch('/api/settings/cameras', { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then((cams: RegisteredCamera[]) => setRegistered(cams))
+      .catch(() => {})
+    fetch('/api/discover', { headers: authHeaders() })
+      .then(async res => {
+        if (!res.ok) { setError(await res.text()); setStatus('error'); return }
+        setResults(await res.json())
+        setStatus('done')
+      })
+      .catch(e => { setError(String(e)); setStatus('error') })
+  }, [])
 
   function startAdding(idx: number) {
     setAdding({ idx, user: '', pass: '', step: 'creds', streams: [] })
@@ -169,15 +199,25 @@ export default function DiscoverPage() {
                       </td>
                       <td className="px-4 py-2.5 text-foreground">{r.name || <span className="text-muted-foreground">—</span>}</td>
                       <td className="px-4 py-2.5 text-right">
-                        {adding?.idx === i ? (
-                          <Button variant="outline" size="sm" onClick={() => setAdding(null)}>
-                            Cancelar
-                          </Button>
-                        ) : (
-                          <Button size="sm" onClick={() => startAdding(i)}>
-                            Adicionar
-                          </Button>
-                        )}
+                        {(() => {
+                          const regName = findRegisteredCameraName(r.ip, registered)
+                          if (regName) {
+                            return (
+                              <span className="text-[11px] text-muted-foreground italic">
+                                Já cadastrada como “{regName}”
+                              </span>
+                            )
+                          }
+                          return adding?.idx === i ? (
+                            <Button variant="outline" size="sm" onClick={() => setAdding(null)}>
+                              Cancelar
+                            </Button>
+                          ) : (
+                            <Button size="sm" onClick={() => startAdding(i)}>
+                              Adicionar
+                            </Button>
+                          )
+                        })()}
                       </td>
                     </tr>
 
@@ -222,14 +262,16 @@ export default function DiscoverPage() {
                           <p className="text-xs text-muted-foreground mb-2">Escolha o stream:</p>
                           <div className="flex flex-wrap gap-2">
                             {adding.streams.map(s => (
-                              <button
+                              <Button
                                 key={s.url}
+                                variant="outline"
+                                size="sm"
+                                className="h-auto py-1.5"
                                 onClick={() => selectStream(r, s.url)}
-                                className="px-3 py-1.5 bg-surface hover:bg-blue-700 border border-border hover:border-blue-500 text-foreground rounded text-[11px] transition-colors"
                               >
                                 <span className="font-medium">{s.name}</span>
                                 <span className="text-muted-foreground ml-1.5 font-mono">{s.url.replace(/^rtsp:\/\/[^@]+@/, 'rtsp://…@')}</span>
-                              </button>
+                              </Button>
                             ))}
                           </div>
                         </td>

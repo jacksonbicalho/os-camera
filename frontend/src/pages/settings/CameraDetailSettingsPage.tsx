@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useLocation } from 'react-router-dom'
+import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import CameraForm from '../../components/CameraForm'
@@ -46,11 +46,16 @@ export default function CameraDetailSettingsPage() {
   const { id } = useParams<{ id: string }>()
   const isAdmin = getRole() === 'admin'
   const location = useLocation()
-  const startEditing = (location.state as { editing?: boolean } | null)?.editing ?? false
+  const navigate = useNavigate()
+  // Edição tem URL própria (/settings/cameras/edit/:id). `editing` é DERIVADO da
+  // rota — navegar p/ a URL de edição não remonta o componente, então não pode
+  // depender de useState inicial; deriva direto da location.
+  const editing = isAdmin && location.pathname.startsWith('/settings/cameras/edit/')
   const { settings, reload } = useSettings()
   const cam = settings?.cameras.find(c => c.id === id) as Camera | undefined
   const [stats, setStats] = useState<CameraStatsData | null>(null)
-  const [editing, setEditing] = useState(startEditing && isAdmin)
+
+  const stopEditing = () => { setError(null); navigate(`/settings/cameras/${id}`) }
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -84,8 +89,8 @@ export default function CameraDetailSettingsPage() {
         body: JSON.stringify(formToPayload(data)),
       })
       if (!res.ok) { setError((await res.text()).trim() || 'Erro ao atualizar câmera'); return }
-      setEditing(false)
       reload()
+      stopEditing()
     } finally { setSaving(false) }
   }
 
@@ -158,7 +163,7 @@ export default function CameraDetailSettingsPage() {
         <CameraForm
           initial={cam}
           onSave={handleUpdate}
-          onCancel={() => { setEditing(false); setError(null) }}
+          onCancel={stopEditing}
           saving={saving}
         />
       ) : (
@@ -168,7 +173,7 @@ export default function CameraDetailSettingsPage() {
               id="camera-edit"
               variant="outline"
               size="sm"
-              onClick={() => { setEditing(true); setError(null) }}
+              onClick={() => navigate(`/settings/cameras/edit/${id}`)}
             >
               Editar
             </Button>
