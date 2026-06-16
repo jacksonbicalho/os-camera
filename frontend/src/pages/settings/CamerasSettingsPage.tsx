@@ -150,7 +150,6 @@ export default function CamerasSettingsPage() {
         {!creating && !noDb && (
           <Button
             id="camera-create"
-            size="sm"
             onClick={() => { setCreating(true); setError(null) }}
           >
             <Plus className="w-3.5 h-3.5" />
@@ -200,41 +199,38 @@ export default function CamerasSettingsPage() {
               onDragLeave={() => setDragOverId(null)}
               onDrop={() => handleDrop(cam.id)}
               onDragEnd={() => { dragIdRef.current = null; setDragOverId(null) }}
-              className={`group bg-surface border rounded-lg px-3 py-3 flex items-center gap-3 transition-colors ${dragOverId === cam.id ? 'border-blue-500' : 'border-border hover:border-border'}`}
+              className={`group bg-surface border rounded-lg flex items-stretch transition-colors ${dragOverId === cam.id ? 'border-blue-500' : 'border-border hover:border-blue-600'}`}
             >
               {/* drag handle */}
-              <GripVertical className="w-4 h-4 text-muted-foreground group-hover:text-muted-foreground shrink-0 cursor-grab active:cursor-grabbing transition-colors" />
-
-              {/* thumbnail */}
-              <Thumbnail cameraId={cam.id} name={cam.name} />
-
-              {/* info */}
-              <div className="flex-1 min-w-0">
-                <Link
-                  to={`/settings/cameras/${cam.id}`}
-                  className="text-sm font-medium text-foreground hover:text-blue-400 transition-colors truncate block"
-                >
-                  {cam.name || cam.id}
-                </Link>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <StatusBadges cam={cam} />
-                </div>
+              <div className="flex items-center pl-3 shrink-0">
+                <GripVertical className="w-4 h-4 text-muted-foreground shrink-0 cursor-grab active:cursor-grabbing" />
               </div>
 
-              {/* actions */}
-              <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Link
-                  to={`/settings/cameras/${cam.id}`}
-                  state={{ editing: true }}
-                  title="Editar"
-                  className="p-1.5 text-muted-foreground hover:text-white hover:bg-accent rounded transition-colors"
-                >
-                  <Pencil className="w-4 h-4" />
-                </Link>
+              {/* card clicável: thumbnail + info (link cobre tudo, exceto a coluna de ações) */}
+              <Link
+                to={`/settings/cameras/${cam.id}`}
+                className="flex items-center gap-4 flex-1 min-w-0 pl-2 pr-3 py-4"
+              >
+                <Thumbnail cameraId={cam.id} name={cam.name} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{cam.name || cam.id}</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <StatusBadges cam={cam} />
+                  </div>
+                </div>
+              </Link>
+
+              {/* coluna de ações: sempre visível, separada do link do card */}
+              <div className="flex items-center gap-1 shrink-0 border-l border-border px-2">
+                <Button asChild variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Editar">
+                  <Link to={`/settings/cameras/edit/${cam.id}`}>
+                    <Pencil className="w-4 h-4" />
+                  </Link>
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
                   onClick={() => setDeleteId(cam.id)}
                   title="Remover"
                 >

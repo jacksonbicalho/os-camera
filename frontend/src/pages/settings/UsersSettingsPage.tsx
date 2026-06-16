@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import UserForm, { type UserFormData } from '../../components/UserForm'
+import RoleBadge from '../../components/RoleBadge'
 import { authHeaders, onUnauthorized } from '../../auth'
 import { Button } from '@/components/ui/button'
 
@@ -17,18 +18,6 @@ interface User {
   role: 'admin' | 'viewer'
   cameras: string[]
   created_at: string
-}
-
-function RoleBadge({ role }: { role: string }) {
-  return (
-    <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
-      role === 'admin'
-        ? 'bg-blue-900/50 text-blue-300 border border-blue-700/50'
-        : 'bg-surface-2 text-muted-foreground border border-border'
-    }`}>
-      {role}
-    </span>
-  )
 }
 
 export default function UsersSettingsPage() {
@@ -155,13 +144,11 @@ export default function UsersSettingsPage() {
                   </span>
                 )}
                 <div className="ml-auto flex items-center gap-1 pl-3 shrink-0">
-                  <Link
-                    to={`/settings/users/${user.id}`}
-                    state={{ editing: true }}
-                    className="px-3 py-1 text-xs text-muted-foreground hover:text-white border border-border rounded transition-colors"
-                  >
-                    Editar
-                  </Link>
+                  <Button asChild variant="outline" size="sm">
+                    <Link to={`/settings/users/${user.id}`} state={{ editing: true }}>
+                      Editar
+                    </Link>
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"

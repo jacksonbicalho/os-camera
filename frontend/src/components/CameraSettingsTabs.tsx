@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom'
 import { getRole } from '../auth'
+import { Button } from '@/components/ui/button'
+import { Plus } from './Icons'
 
 type Tab = 'detail' | 'motion' | 'zones' | 'analysis'
 
@@ -11,9 +13,9 @@ interface Props {
 
 const TABS: { key: Tab; label: string; path: (id: string) => string }[] = [
   { key: 'detail', label: 'Câmera', path: id => `/settings/cameras/${id}` },
-  { key: 'motion', label: 'Detecção de movimento', path: id => `/settings/cameras/${id}/motion` },
-  { key: 'zones', label: 'Zonas', path: id => `/settings/cameras/${id}/motion/zones` },
-  { key: 'analysis', label: 'Análise', path: id => `/settings/cameras/${id}/analysis` },
+  { key: 'motion', label: 'Detecção de movimento', path: id => `/settings/cameras/motion/${id}` },
+  { key: 'zones', label: 'Zonas', path: id => `/settings/cameras/zones/${id}` },
+  { key: 'analysis', label: 'Análise', path: id => `/settings/cameras/analysis/${id}` },
 ]
 
 export default function CameraSettingsTabs({ id, active, camName }: Props) {
@@ -42,12 +44,11 @@ export default function CameraSettingsTabs({ id, active, camName }: Props) {
           ))}
         </div>
         {isAdmin && (
-          <Link
-            to="/settings/cameras/new"
-            className="mb-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-          >
-            + nova câmera
-          </Link>
+          <Button asChild className="mb-1">
+            <Link to="/settings/cameras/new">
+              <Plus className="w-3.5 h-3.5" /> Nova câmera
+            </Link>
+          </Button>
         )}
       </div>
     </div>

@@ -3,6 +3,8 @@ import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import UserForm, { type UserFormData } from '../../components/UserForm'
+import RoleBadge from '../../components/RoleBadge'
+import { Plus } from '../../components/Icons'
 import { authHeaders, onUnauthorized } from '../../auth'
 import { Button } from '@/components/ui/button'
 
@@ -76,12 +78,11 @@ export default function UserDetailSettingsPage() {
           <span className="text-foreground">{user?.username ?? '...'}</span>
         </nav>
         <div className="flex items-center justify-end border-b border-border pb-2">
-          <Link
-            to="/settings/users/new"
-            className="mb-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-          >
-            + novo usuário
-          </Link>
+          <Button asChild size="sm" className="mb-1">
+            <Link to="/settings/users/new">
+              <Plus className="w-3.5 h-3.5" /> Novo usuário
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -100,6 +101,7 @@ export default function UserDetailSettingsPage() {
           onSave={handleUpdate}
           onCancel={() => { setEditing(false); setError(null) }}
           saving={saving}
+          onChangePassword={() => navigate('/change-password', { state: { from: location.pathname } })}
         />
       ) : (
         <div className="flex flex-col gap-4">
@@ -117,7 +119,7 @@ export default function UserDetailSettingsPage() {
             title="Conta"
             fields={[
               { label: 'Username', value: user.username },
-              { label: 'Role', value: user.role },
+              { label: 'Role', value: <RoleBadge role={user.role} /> },
               {
                 label: 'Câmeras',
                 value: user.role === 'admin'

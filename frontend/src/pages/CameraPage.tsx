@@ -1287,7 +1287,7 @@ function toggleFullscreen() {
                   {/* Settings */}
                   {isAdmin && (
                     <button
-                      onClick={() => navigate(`/settings/cameras/${id}`, { state: { from: `/cameras/${id}`, editing: true } })}
+                      onClick={() => navigate(`/settings/cameras/edit/${id}`)}
                       title="Configurar câmera"
                       className="flex items-center gap-1 px-1 py-1 text-muted hover:text-foreground transition-colors cursor-pointer"
                     >

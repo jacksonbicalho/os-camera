@@ -592,6 +592,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
               </Link>
               <Link
                 to="/change-password"
+                state={{ from: location.pathname }}
                 onClick={() => setUserOpen(false)}
                 className="block w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
               >
