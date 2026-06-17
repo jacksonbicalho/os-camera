@@ -6,6 +6,7 @@ package stateclass
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -34,6 +35,13 @@ type State struct {
 	State      string    `json:"state"`
 	Confidence float64   `json:"confidence"`
 	ChangedAt  time.Time `json:"changed_at"`
+}
+
+// ModelName é o nome do modelo de classificação DESTE classificador — um por id,
+// para os classificadores não compartilharem o mesmo `custom-cls` (estados se
+// misturariam). Usado no treino (destino) e na inferência (qual modelo carregar).
+func (c Classifier) ModelName() string {
+	return fmt.Sprintf("custom-cls-%d", c.ID)
 }
 
 // Validate retorna um erro voltado ao usuário (pt-BR) quando a config é inválida.

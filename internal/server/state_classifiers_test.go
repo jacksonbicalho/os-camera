@@ -147,8 +147,14 @@ func TestClassifierTrain(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// mock do serviço YOLO
+	// mock do serviço YOLO — captura o nome do modelo de destino do treino
+	var gotModel string
 	yolo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model string `json:"model"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		gotModel = body.Model
 		json.NewEncoder(w).Encode(map[string]string{"job_id": "j1"})
 	}))
 	defer yolo.Close()
@@ -184,6 +190,11 @@ func TestClassifierTrain(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.JobID != "j1" {
 		t.Fatalf("expected job_id j1, got %q", resp.JobID)
+	}
+	// treino deve mirar o modelo DESTE classificador (não o compartilhado)
+	wantModel := "custom-cls-" + strconv.FormatInt(created.ID, 10)
+	if gotModel != wantModel {
+		t.Fatalf("expected train model %q, got %q", wantModel, gotModel)
 	}
 
 	// < 2 classes → 400

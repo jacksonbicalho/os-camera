@@ -5,6 +5,7 @@ importar `main`, então os testes rodam numa imagem Python slim, sem GPU nem
 torch/ultralytics instalados — só fastapi/pydantic/pyyaml/httpx/pytest.
 """
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -35,6 +36,10 @@ class FakeYOLO:
 
     def train(self, **kw):
         FakeYOLO.last_train_kwargs = kw
+        # simula o best.pt para o worker conseguir salvar o modelo
+        best = Path(kw["project"]) / kw["name"] / "weights" / "best.pt"
+        best.parent.mkdir(parents=True, exist_ok=True)
+        best.write_bytes(b"trained")
 
     def add_callback(self, *a, **k):
         pass
@@ -129,6 +134,31 @@ def test_classify_train_size_guard_blocks_large(tmp_path):
         json={"samples": [sample, sample2], "base_model": "yolov8x-cls"},
     )
     assert resp.status_code == 400
+
+
+def test_classify_train_saves_to_named_model(tmp_path):
+    f = tmp_path / "a.jpg"
+    f.write_bytes(b"x")
+    samples = [
+        {"image_path": str(f), "label": "aberto"},
+        {"image_path": str(f), "label": "fechado"},
+    ]
+    resp = client.post(
+        "/classify/train",
+        json={"samples": samples, "base_model": "yolov8n-cls", "model": "custom-cls-9", "epochs": 1},
+    )
+    assert resp.status_code == 200
+    job = resp.json()["job_id"]
+    status = {}
+    for _ in range(60):
+        status = client.get(f"/finetune/status/{job}").json()
+        if status["status"] in ("done", "error"):
+            break
+        time.sleep(0.05)
+    assert status.get("status") == "done", status
+    dest = Path("/models/custom-cls-9.pt")
+    assert dest.exists(), "modelo deveria ser salvo no nome pedido"
+    dest.unlink(missing_ok=True)
 
 
 def test_classify_train_returns_job_id(tmp_path):
