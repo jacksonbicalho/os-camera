@@ -17,7 +17,7 @@ import {
   cropToBbox,
   validateClassifier,
 } from './stateClassifier'
-import { loadPickerScroll, savePickerScroll } from './eventPickerMemory'
+import { loadPicked, loadPickerScroll, savePicked, savePickerScroll } from './eventPickerMemory'
 
 function emptyClassifier(): StateClassifier {
   return {
@@ -512,17 +512,21 @@ function EventPicker({ cameraId, onPick, onClose }: {
   onPick: (ev: EventItem) => void
   onClose: () => void
 }) {
-  // "Abrir de onde parei": só a rolagem do carrossel é persistida (por câmera).
-  // A data sempre abre em hoje.
-  const [date, setDate] = useState(todayStr())
+  // "Abrir de onde parei": ao escolher uma imagem, guarda o frame + a data dela.
+  // Ao reabrir, volta para essa data e centraliza/destaca a imagem escolhida.
+  // Sem nada escolhido, abre em hoje e restaura só a rolagem salva.
+  const picked0 = loadPicked(cameraId)
+  const [date, setDate] = useState(picked0?.date ?? todayStr())
   const [events, setEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
   const [calOpen, setCalOpen] = useState(false)
+  const [pickedFrame, setPickedFrame] = useState(picked0?.frame ?? '')
   const [yy, mm, dd] = date.split('-').map(Number)
   const selectedDate = new Date(yy, mm - 1, dd)
 
   const scrollRef = useRef<HTMLDivElement>(null)
-  const pendingScrollRef = useRef<number | null>(loadPickerScroll(cameraId)) // inicial = scroll salvo
+  const selectedRef = useRef<HTMLButtonElement>(null)
+  const pendingScrollRef = useRef<number | null>(loadPickerScroll(cameraId)) // fallback = scroll salvo
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -533,12 +537,20 @@ function EventPicker({ cameraId, onPick, onClose }: {
       .finally(() => setLoading(false))
   }, [cameraId, date])
 
-  // Restaura a rolagem quando o carrossel está renderizado (inicial = scroll salvo;
-  // após trocar a data = 0).
+  // Ao renderizar o carrossel: se a imagem escolhida está nesta data, centraliza
+  // ela; senão restaura a rolagem salva (fallback de quando só houve scroll).
   useEffect(() => {
     if (loading || events.length === 0) return
-    if (pendingScrollRef.current != null && scrollRef.current) {
-      scrollRef.current.scrollLeft = pendingScrollRef.current
+    const container = scrollRef.current
+    if (!container) return
+    const sel = selectedRef.current
+    if (sel) {
+      container.scrollLeft = Math.max(0, sel.offsetLeft - (container.clientWidth - sel.clientWidth) / 2)
+      pendingScrollRef.current = null
+      return
+    }
+    if (pendingScrollRef.current != null) {
+      container.scrollLeft = pendingScrollRef.current
       pendingScrollRef.current = null
     }
   }, [events, loading])
@@ -554,6 +566,12 @@ function EventPicker({ cameraId, onPick, onClose }: {
     saveTimer.current = setTimeout(() => {
       savePickerScroll(cameraId, scrollRef.current?.scrollLeft ?? 0)
     }, 300)
+  }
+
+  function pick(ev: EventItem) {
+    setPickedFrame(ev.frame)
+    savePicked(cameraId, { frame: ev.frame, date })
+    onPick(ev)
   }
 
   return (
@@ -589,16 +607,26 @@ function EventPicker({ cameraId, onPick, onClose }: {
           <p className="text-sm text-muted-foreground">Nenhum evento com snapshot hoje.</p>
         ) : (
           <div ref={scrollRef} onScroll={onScroll} className="flex gap-2 overflow-x-auto pb-2">
-            {events.map((ev, i) => (
-              <button
-                key={i}
-                onClick={() => onPick(ev)}
-                title={new Date(ev.time).toLocaleString('pt-BR')}
-                className="shrink-0 rounded overflow-hidden border border-border hover:border-primary transition-colors"
-              >
-                <img src={eventSnapshotURL(cameraId, ev)} alt="" className="h-56 w-auto block" />
-              </button>
-            ))}
+            {events.map((ev, i) => {
+              const selected = ev.frame === pickedFrame
+              return (
+                <button
+                  key={i}
+                  ref={selected ? selectedRef : undefined}
+                  id={selected ? 'event-picker-selected' : undefined}
+                  aria-current={selected ? 'true' : undefined}
+                  onClick={() => pick(ev)}
+                  title={new Date(ev.time).toLocaleString('pt-BR')}
+                  className={`shrink-0 rounded overflow-hidden border transition-colors ${
+                    selected
+                      ? 'border-primary ring-2 ring-primary'
+                      : 'border-border hover:border-primary'
+                  }`}
+                >
+                  <img src={eventSnapshotURL(cameraId, ev)} alt="" className="h-56 w-auto block" />
+                </button>
+              )
+            })}
           </div>
         )}
       </div>

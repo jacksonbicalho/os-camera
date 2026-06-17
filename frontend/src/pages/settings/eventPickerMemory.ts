@@ -22,3 +22,34 @@ export function savePickerScroll(cameraId: string, scrollLeft: number): void {
     localStorage.setItem(key(cameraId), String(Math.max(0, Math.round(scrollLeft))))
   } catch { /* ignora storage indisponível */ }
 }
+
+// Último evento escolhido no carrossel (frame + a data em que foi escolhido), por
+// câmera. Ao reabrir, o picker volta para essa data e centraliza/destaca o frame.
+export interface PickedEvent {
+  frame: string
+  date: string
+}
+
+function pickedKey(cameraId: string): string {
+  return `state-event-picker-picked:${cameraId}`
+}
+
+// loadPicked lê o evento escolhido; null quando não há nada salvo ou é inválido.
+export function loadPicked(cameraId: string): PickedEvent | null {
+  try {
+    const raw = localStorage.getItem(pickedKey(cameraId))
+    if (raw) {
+      const p = JSON.parse(raw)
+      if (typeof p?.frame === 'string' && p.frame && typeof p?.date === 'string' && p.date) {
+        return { frame: p.frame, date: p.date }
+      }
+    }
+  } catch { /* ignora parse/storage */ }
+  return null
+}
+
+export function savePicked(cameraId: string, picked: PickedEvent): void {
+  try {
+    localStorage.setItem(pickedKey(cameraId), JSON.stringify(picked))
+  } catch { /* ignora storage indisponível */ }
+}
