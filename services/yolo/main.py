@@ -341,7 +341,7 @@ def _run_classify_train(job_id: str, req: ClassifyTrainRequest):
 
         best = work_dir / "runs" / "train" / "weights" / "best.pt"
         if best.exists():
-            dest = Path(f"/models/{req.model}.pt")
+            dest = MODEL_DIR / f"{req.model}.pt"
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(best, dest)
             _models.pop(req.model, None)  # invalida o cache desse modelo
@@ -480,6 +480,10 @@ def list_classify_models():
 def classify(req: ClassifyRequest):
     if not os.path.isfile(req.path):
         raise HTTPException(status_code=404, detail=f"file not found: {req.path}")
+    # Modelo ainda não treinado → 404 limpo (o runner ignora) em vez de o ultralytics
+    # estourar FileNotFoundError tentando carregar um .pt inexistente.
+    if not (MODEL_DIR / f"{req.model}.pt").exists():
+        raise HTTPException(status_code=404, detail=f"model '{req.model}' not trained yet")
 
     model = get_model(req.model)
     results = model.predict(req.path, verbose=False)

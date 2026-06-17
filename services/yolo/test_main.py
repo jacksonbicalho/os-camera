@@ -64,7 +64,9 @@ client = TestClient(main.app)
 
 
 # ── /classify (inferência) ──────────────────────────────────────────────────
-def test_classify_returns_probabilities(tmp_path):
+def test_classify_returns_probabilities(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "MODEL_DIR", tmp_path)
+    (tmp_path / "custom-cls.pt").write_bytes(b"model")  # modelo treinado existe
     img = tmp_path / "crop.jpg"
     img.write_bytes(b"fake")
     resp = client.post("/classify", json={"path": str(img), "model": "custom-cls"})
@@ -75,8 +77,19 @@ def test_classify_returns_probabilities(tmp_path):
     assert body["top"] == "fechado"
 
 
-def test_classify_missing_file_404():
+def test_classify_missing_file_404(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "MODEL_DIR", tmp_path)
+    (tmp_path / "custom-cls.pt").write_bytes(b"m")
     resp = client.post("/classify", json={"path": "/nope.jpg", "model": "custom-cls"})
+    assert resp.status_code == 404
+
+
+def test_classify_untrained_model_404(tmp_path, monkeypatch):
+    # modelo ainda não treinado → 404 limpo, sem estourar o ultralytics
+    monkeypatch.setattr(main, "MODEL_DIR", tmp_path)
+    img = tmp_path / "crop.jpg"
+    img.write_bytes(b"fake")
+    resp = client.post("/classify", json={"path": str(img), "model": "custom-cls-99"})
     assert resp.status_code == 404
 
 
@@ -136,7 +149,9 @@ def test_classify_train_size_guard_blocks_large(tmp_path):
     assert resp.status_code == 400
 
 
-def test_classify_train_saves_to_named_model(tmp_path):
+def test_classify_train_saves_to_named_model(tmp_path, monkeypatch):
+    models = tmp_path / "models"
+    monkeypatch.setattr(main, "MODEL_DIR", models)
     f = tmp_path / "a.jpg"
     f.write_bytes(b"x")
     samples = [
@@ -156,9 +171,7 @@ def test_classify_train_saves_to_named_model(tmp_path):
             break
         time.sleep(0.05)
     assert status.get("status") == "done", status
-    dest = Path("/models/custom-cls-9.pt")
-    assert dest.exists(), "modelo deveria ser salvo no nome pedido"
-    dest.unlink(missing_ok=True)
+    assert (models / "custom-cls-9.pt").exists(), "modelo deveria ser salvo no nome pedido"
 
 
 def test_classify_train_returns_job_id(tmp_path):
