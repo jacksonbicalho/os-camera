@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -134,16 +135,8 @@ func (s *Server) handleStateClassifierTrain(w http.ResponseWriter, r *http.Reque
 	var body struct {
 		Samples []stateengine.LabeledImage `json:"samples"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
-		return
-	}
-	labels := map[string]bool{}
-	for _, s := range body.Samples {
-		labels[s.Label] = true
-	}
-	if len(labels) < 2 {
-		http.Error(w, "são necessárias amostras de ao menos 2 classes", http.StatusBadRequest)
 		return
 	}
 
@@ -152,9 +145,32 @@ func (s *Server) handleStateClassifierTrain(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "serviço de análise não configurado", http.StatusServiceUnavailable)
 		return
 	}
-	samples, err := stateengine.SaveTrainSet(s.storageCfg.Path, cid, body.Samples)
+
+	// Com `samples` no corpo (form "Salvar e treinar"): grava os crops recebidos.
+	// Sem corpo (botão "Treinar agora" da lista): recorta server-side as amostras
+	// já persistidas em state_samples/{cid}.
+	var samples []analysis.ClassifySample
+	if len(body.Samples) > 0 {
+		samples, err = stateengine.SaveTrainSet(s.storageCfg.Path, cid, body.Samples)
+	} else {
+		classifier, gerr := db.GetStateClassifier(s.db, cid)
+		if gerr != nil {
+			http.NotFound(w, r)
+			return
+		}
+		samples, err = stateengine.BuildTrainSetFromSamples(s.storageCfg.Path, classifier)
+	}
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	labels := map[string]bool{}
+	for _, s := range samples {
+		labels[s.Label] = true
+	}
+	if len(labels) < 2 {
+		http.Error(w, "são necessárias amostras de ao menos 2 classes", http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
