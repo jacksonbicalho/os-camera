@@ -17,6 +17,7 @@ import {
   cropToBbox,
   validateClassifier,
 } from './stateClassifier'
+import { loadPickerScroll, savePickerScroll } from './eventPickerMemory'
 
 function emptyClassifier(): StateClassifier {
   return {
@@ -250,7 +251,6 @@ function ClassifierForm({
   const [training, setTraining] = useState<string>('')
   const [formError, setFormError] = useState<string>('')
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [pickerDate, setPickerDate] = useState<string>(todayStr())
 
   // Quadro principal: ao vivo (snapshot recarregado periodicamente) OU uma imagem
   // estática (evento escolhido / amostra clicada). O retângulo é desenhado sobre ela.
@@ -499,8 +499,6 @@ function ClassifierForm({
       {pickerOpen && (
         <EventPicker
           cameraId={cameraId}
-          date={pickerDate}
-          onDateChange={setPickerDate}
           onPick={ev => { showImage(eventFrameURL(cameraId, ev)); setPickerOpen(false) }}
           onClose={() => setPickerOpen(false)}
         />
@@ -509,18 +507,23 @@ function ClassifierForm({
   )
 }
 
-function EventPicker({ cameraId, date, onDateChange, onPick, onClose }: {
+function EventPicker({ cameraId, onPick, onClose }: {
   cameraId: string
-  date: string
-  onDateChange: (d: string) => void
   onPick: (ev: EventItem) => void
   onClose: () => void
 }) {
+  // "Abrir de onde parei": só a rolagem do carrossel é persistida (por câmera).
+  // A data sempre abre em hoje.
+  const [date, setDate] = useState(todayStr())
   const [events, setEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
   const [calOpen, setCalOpen] = useState(false)
   const [yy, mm, dd] = date.split('-').map(Number)
   const selectedDate = new Date(yy, mm - 1, dd)
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const pendingScrollRef = useRef<number | null>(loadPickerScroll(cameraId)) // inicial = scroll salvo
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     fetch(`/api/cameras/${cameraId}/motion?date=${date}`, { headers: authHeaders() })
@@ -529,6 +532,29 @@ function EventPicker({ cameraId, date, onDateChange, onPick, onClose }: {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [cameraId, date])
+
+  // Restaura a rolagem quando o carrossel está renderizado (inicial = scroll salvo;
+  // após trocar a data = 0).
+  useEffect(() => {
+    if (loading || events.length === 0) return
+    if (pendingScrollRef.current != null && scrollRef.current) {
+      scrollRef.current.scrollLeft = pendingScrollRef.current
+      pendingScrollRef.current = null
+    }
+  }, [events, loading])
+
+  function changeDate(d: string) {
+    pendingScrollRef.current = 0
+    setDate(d)
+    savePickerScroll(cameraId, 0)
+  }
+
+  function onScroll() {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => {
+      savePickerScroll(cameraId, scrollRef.current?.scrollLeft ?? 0)
+    }, 300)
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6" onClick={onClose}>
@@ -548,7 +574,7 @@ function EventPicker({ cameraId, date, onDateChange, onPick, onClose }: {
                     selected={selectedDate}
                     defaultMonth={selectedDate}
                     disabled={{ after: new Date() }}
-                    onSelect={d => { if (d) { onDateChange(format(d, 'yyyy-MM-dd')); setCalOpen(false) } }}
+                    onSelect={d => { if (d) { changeDate(format(d, 'yyyy-MM-dd')); setCalOpen(false) } }}
                     locale={ptBR}
                   />
                 </div>
@@ -562,7 +588,7 @@ function EventPicker({ cameraId, date, onDateChange, onPick, onClose }: {
         ) : events.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nenhum evento com snapshot hoje.</p>
         ) : (
-          <div className="flex gap-2 overflow-x-auto pb-2">
+          <div ref={scrollRef} onScroll={onScroll} className="flex gap-2 overflow-x-auto pb-2">
             {events.map((ev, i) => (
               <button
                 key={i}
