@@ -10,7 +10,7 @@ import ConfirmDialog from '../../components/ConfirmDialog'
 import BboxCanvas, { type BboxRect } from '../../components/BboxCanvas'
 import { authHeaders, onUnauthorized, getRole, getToken } from '../../auth'
 import { Button } from '@/components/ui/button'
-import { Plus, Pencil, Trash2, Camera as CameraIcon } from '../../components/Icons'
+import { Plus, Pencil, Trash2, Zap, Loader2, Camera as CameraIcon } from '../../components/Icons'
 import {
   type StateClassifier,
   bboxToCrop,
@@ -141,6 +141,41 @@ export default function CameraStatesSettingsPage() {
     await reload()
   }
 
+  // Treino a partir das amostras já salvas (corpo vazio): o servidor recorta os
+  // frames persistidos e dispara o YOLO. `trainingId` = id em treino, 'all' no lote.
+  const [trainingId, setTrainingId] = useState<number | 'all' | null>(null)
+  const [trainMsg, setTrainMsg] = useState('')
+
+  async function trainOne(cid: number): Promise<string> {
+    const res = await fetch(`/api/settings/cameras/${id}/classifiers/${cid}/train`, {
+      method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: '{}',
+    })
+    return res.ok ? '' : ((await res.text()).trim() || `erro ${res.status}`)
+  }
+
+  async function handleTrainOne(c: StateClassifier) {
+    if (trainingId != null) return
+    setTrainingId(c.id!); setTrainMsg('')
+    const err = await trainOne(c.id!)
+    setTrainMsg(err ? `Falha ao treinar "${c.name}": ${err}` : `Treino de "${c.name}" iniciado.`)
+    setTrainingId(null)
+  }
+
+  async function handleTrainAll() {
+    if (trainingId != null || items.length === 0) return
+    setTrainingId('all'); setTrainMsg('Treinando todos…')
+    let ok = 0
+    const fails: string[] = []
+    for (const c of items) {
+      const err = await trainOne(c.id!)
+      if (err) fails.push(c.name); else ok++
+    }
+    setTrainMsg(fails.length
+      ? `Treino iniciado em ${ok}; falhou: ${fails.join(', ')}`
+      : `Treino iniciado em ${ok} classificador(es).`)
+    setTrainingId(null)
+  }
+
   if (!isAdmin) {
     return (
       <SettingsLayout>
@@ -170,10 +205,23 @@ export default function CameraStatesSettingsPage() {
         <>
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-muted-foreground">Classificadores de estado (recorte fixo → estado).</p>
-            <Button id="state-classifier-new" onClick={() => { setEditing(emptyClassifier()); setError(null) }}>
-              <Plus className="w-3.5 h-3.5" /> Novo classificador
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                id="state-train-all"
+                variant="outline"
+                disabled={trainingId != null || items.length === 0}
+                title="Treina todos os classificadores a partir das amostras já salvas"
+                onClick={handleTrainAll}
+              >
+                {trainingId === 'all' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />} Treinar todos
+              </Button>
+              <Button id="state-classifier-new" onClick={() => { setEditing(emptyClassifier()); setError(null) }}>
+                <Plus className="w-3.5 h-3.5" /> Novo classificador
+              </Button>
+            </div>
           </div>
+
+          {trainMsg && <p id="state-train-msg" className="text-xs text-muted-foreground mb-3">{trainMsg}</p>}
 
           {loading ? (
             <p className="text-muted-foreground text-sm">Carregando...</p>
@@ -198,6 +246,16 @@ export default function CameraStatesSettingsPage() {
                   >
                     {states[c.id!] || '—'}
                   </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-primary"
+                    title="Treinar agora (usa as amostras já salvas)"
+                    disabled={trainingId != null}
+                    onClick={() => handleTrainOne(c)}
+                  >
+                    {trainingId === c.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                  </Button>
                   <Button variant="ghost" size="icon" className="h-8 w-8" title="Editar" onClick={() => { setEditing(c); setError(null) }}>
                     <Pencil className="w-4 h-4" />
                   </Button>
