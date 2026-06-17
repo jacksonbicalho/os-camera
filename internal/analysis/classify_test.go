@@ -41,6 +41,29 @@ func TestClient_Classify_Success(t *testing.T) {
 	}
 }
 
+func TestClient_ClassifyTrain_ReturnsJobID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/classify/train" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		var req analysis.ClassifyTrainRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		if len(req.Samples) != 2 || req.BaseModel != "yolov8n-cls" {
+			t.Errorf("unexpected train req: %+v", req)
+		}
+		json.NewEncoder(w).Encode(map[string]string{"job_id": "abc-123"})
+	}))
+	defer srv.Close()
+
+	job, err := analysis.NewClient(srv.URL).ClassifyTrain(context.Background(), analysis.ClassifyTrainRequest{
+		Samples:   []analysis.ClassifySample{{ImagePath: "/a.jpg", Label: "aberto"}, {ImagePath: "/b.jpg", Label: "fechado"}},
+		BaseModel: "yolov8n-cls",
+	})
+	if err != nil || job != "abc-123" {
+		t.Fatalf("ClassifyTrain: job=%q err=%v", job, err)
+	}
+}
+
 func TestClient_Classify_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
