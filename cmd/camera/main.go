@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"camera/frontend"
+	"camera/internal/analysis"
 	"camera/internal/config"
 	"camera/internal/db"
 	"camera/internal/exec"
@@ -25,6 +26,8 @@ import (
 	"camera/internal/motion"
 	"camera/internal/recorder"
 	"camera/internal/server"
+	"camera/internal/stateclass"
+	"camera/internal/stateengine"
 	"camera/internal/storage"
 	"camera/internal/streaming"
 	"camera/internal/zones"
@@ -258,6 +261,7 @@ func main() {
 			WithBuildInfo(commit, builtAt).
 			WithSystemConfig(cfg.Debug, cfg.Log).
 			WithSnapshotter(takeSnapshot).
+			WithFrameExtractor(extractFrame).
 			WithCameraCallbacks(startCameraProcs, stopCameraProcs).
 			WithDB(database).
 			WithProber(prober)
@@ -285,6 +289,35 @@ func main() {
 			}
 		}()
 		printStartupURLs(cfg.Server.Port)
+	}
+
+	// State classification: sobe um runner por intervalo para cada classificador
+	// habilitado, se o serviço YOLO estiver configurado. O emit (SSE/notificação)
+	// entra na S5; por ora só persiste o estado confirmado.
+	if database != nil {
+		if vacfg, err := db.GetVideoAnalysisConfig(database); err == nil && vacfg.ServiceURL != "" {
+			rtspByID := make(map[string]string, len(cameras))
+			for _, cam := range cameras {
+				rtspByID[cam.ID] = cam.RTSPURL
+			}
+			deps := stateengine.Deps{
+				Grabber:    stateengine.NewSnapshotGrabber(takeSnapshot, func(camID string) string { return rtspByID[camID] }, cfg.Storage.Path),
+				Classifier: analysis.NewClient(vacfg.ServiceURL),
+				Persist:    func(cid int64, state string, conf float64) error { return db.RecordStateTransition(database, cid, state, conf) },
+				Log:        slog,
+			}
+			var all []stateclass.Classifier
+			for _, cam := range cameras {
+				cs, err := db.ListStateClassifiers(database, cam.ID)
+				if err != nil {
+					continue
+				}
+				all = append(all, cs...)
+			}
+			if n := stateengine.StartRunners(context.Background(), all, deps); n > 0 {
+				slog.Info("state classifiers running", "count", n)
+			}
+		}
 	}
 
 	storageCfg := db.StorageSettingsFromDB(database)
@@ -357,6 +390,22 @@ func takeSnapshot(ctx context.Context, rtspURL string) ([]byte, error) {
 		"ffmpeg",
 		"-rtsp_transport", "tcp",
 		"-i", rtspURL,
+		"-frames:v", "1",
+		"-f", "image2",
+		"-vcodec", "mjpeg",
+		"-",
+	)
+	return cmd.Output()
+}
+
+// extractFrame extrai um frame LIMPO (JPEG) de um MP4 no offset dado — a gravação
+// não tem as anotações de movimento dos _motion.jpg. `-ss` antes do `-i` faz seek
+// rápido por keyframe.
+func extractFrame(ctx context.Context, path string, offsetSeconds float64) ([]byte, error) {
+	cmd := osexec.CommandContext(ctx,
+		"ffmpeg",
+		"-ss", fmt.Sprintf("%.3f", offsetSeconds),
+		"-i", path,
 		"-frames:v", "1",
 		"-f", "image2",
 		"-vcodec", "mjpeg",

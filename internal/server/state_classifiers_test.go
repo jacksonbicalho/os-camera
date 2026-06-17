@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -133,5 +134,63 @@ func TestClassifierUpdateDeleteAndState(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &list)
 	if len(list) != 0 {
 		t.Fatalf("expected empty after delete, got %d", len(list))
+	}
+}
+
+func TestClassifierTrain(t *testing.T) {
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "admin", "pw", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	cam := config.CameraConfig{ID: "cam1", Name: "Cam", RTSPURL: "rtsp://x/"}
+	if _, err := db.CreateCamera(database, cam, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// mock do serviço YOLO
+	yolo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"job_id": "j1"})
+	}))
+	defer yolo.Close()
+	if err := db.UpdateVideoAnalysisConfig(database, db.VideoAnalysisConfig{Enabled: true, ServiceURL: yolo.URL, Model: "yolov8n", ConfidenceThreshold: 0.4}); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := server.NewServer(config.ServerConfig{}, "UTC", []config.CameraConfig{cam}, discardLogger(), nil).
+		WithDB(database).
+		WithStorageConfig(config.StorageConfig{Path: t.TempDir()})
+	token := loginAndGetToken(t, srv, "admin", "pw")
+
+	w := doJSON(t, srv, http.MethodPost, "/api/settings/cameras/cam1/classifiers", token, validClassifierBody())
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &created)
+	trainPath := "/api/settings/cameras/cam1/classifiers/" + strconv.FormatInt(created.ID, 10) + "/train"
+
+	jpeg := base64.StdEncoding.EncodeToString([]byte("fake"))
+	w = doJSON(t, srv, http.MethodPost, trainPath, token, map[string]any{
+		"samples": []map[string]string{
+			{"label": "fechado", "image_b64": jpeg},
+			{"label": "aberto", "image_b64": jpeg},
+		},
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("train: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		JobID string `json:"job_id"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.JobID != "j1" {
+		t.Fatalf("expected job_id j1, got %q", resp.JobID)
+	}
+
+	// < 2 classes → 400
+	w = doJSON(t, srv, http.MethodPost, trainPath, token, map[string]any{
+		"samples": []map[string]string{{"label": "fechado", "image_b64": jpeg}},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("train com 1 classe: expected 400, got %d", w.Code)
 	}
 }

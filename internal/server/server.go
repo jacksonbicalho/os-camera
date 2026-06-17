@@ -112,6 +112,7 @@ type Server struct {
 	dailyPeakRaw       map[string]float64
 	dailyPeakDate      map[string]string
 	snapFn             func(ctx context.Context, rtspURL string) ([]byte, error)
+	frameFn            func(ctx context.Context, path string, offsetSeconds float64) ([]byte, error)
 	probedStreams      map[string]ffprobe.StreamInfo
 	db                 *db.DB
 	prober             *ffprobe.Prober
@@ -211,6 +212,11 @@ func (s *Server) WithMotionFeed(cameraID string, events <-chan motion.Event) *Se
 
 func (s *Server) WithSnapshotter(fn func(ctx context.Context, rtspURL string) ([]byte, error)) *Server {
 	s.snapFn = fn
+	return s
+}
+
+func (s *Server) WithFrameExtractor(fn func(ctx context.Context, path string, offsetSeconds float64) ([]byte, error)) *Server {
+	s.frameFn = fn
 	return s
 }
 
@@ -343,6 +349,9 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("POST /api/settings/cameras/{id}/classifiers", s.requireAdmin(s.handleStateClassifierCreate))
 	s.mux.HandleFunc("PUT /api/settings/cameras/{id}/classifiers/{cid}", s.requireAdmin(s.handleStateClassifierUpdate))
 	s.mux.HandleFunc("DELETE /api/settings/cameras/{id}/classifiers/{cid}", s.requireAdmin(s.handleStateClassifierDelete))
+	s.mux.HandleFunc("POST /api/settings/cameras/{id}/classifiers/{cid}/train", s.requireAdmin(s.handleStateClassifierTrain))
+	s.mux.HandleFunc("GET /api/settings/cameras/{id}/classifiers/{cid}/samples", s.requireAdmin(s.handleStateClassifierSamplesGet))
+	s.mux.HandleFunc("POST /api/settings/cameras/{id}/classifiers/{cid}/samples", s.requireAdmin(s.handleStateClassifierSamplesSave))
 	s.mux.HandleFunc("GET /api/cameras/{id}/classifiers/{cid}/state", s.requireCameraAccess(s.handleStateClassifierState))
 	s.mux.HandleFunc("POST /api/events/{id}/annotations", s.requireFullAuth(s.handleCreateAnnotation))
 	s.mux.HandleFunc("GET /api/events/{id}/annotations", s.requireFullAuth(s.handleListAnnotations))
@@ -358,6 +367,7 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("GET /api/settings/analysis/annotation-count", s.requireAdmin(s.handleAnnotationCount))
 
 	s.mux.HandleFunc("GET /api/cameras/{id}/snapshot", s.requireCameraAccess(s.handleSnapshot))
+	s.mux.HandleFunc("GET /api/cameras/{id}/event-frame", s.requireCameraAccess(s.handleEventFrame))
 	s.mux.HandleFunc("GET /api/cameras/{id}/stats", s.requireCameraAccess(s.handleCameraStats))
 	s.mux.HandleFunc("GET /api/stats", s.requireFullAuth(s.handleStats))
 
