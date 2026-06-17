@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -159,7 +160,10 @@ func (s *Server) handleStateClassifierTrain(w http.ResponseWriter, r *http.Reque
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	jobID, err := analysis.NewClient(cfg.ServiceURL).ClassifyTrain(ctx, analysis.ClassifyTrainRequest{
-		Samples: samples, BaseModel: "yolov8n-cls", Epochs: 20,
+		Samples:   samples,
+		BaseModel: "yolov8n-cls",
+		Epochs:    20,
+		Model:     fmt.Sprintf("custom-cls-%d", cid), // um modelo por classificador
 	})
 	if err != nil {
 		http.Error(w, "falha ao iniciar treino", http.StatusBadGateway)

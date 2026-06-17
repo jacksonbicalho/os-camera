@@ -16,13 +16,16 @@ func (g *fakeGrabber) Grab(context.Context, stateclass.Classifier) (string, func
 	return "/tmp/crop.jpg", func() {}, nil
 }
 
-// fakeClassifier devolve sempre a mesma predição de topo controlável.
+// fakeClassifier devolve sempre a mesma predição de topo controlável e guarda o
+// último modelo pedido (para checar que cada classificador usa o seu).
 type fakeClassifier struct {
-	label string
-	prob  float64
+	label     string
+	prob      float64
+	lastModel string
 }
 
-func (f *fakeClassifier) Classify(context.Context, analysis.ClassifyRequest) ([]analysis.ClassPrediction, error) {
+func (f *fakeClassifier) Classify(_ context.Context, req analysis.ClassifyRequest) ([]analysis.ClassPrediction, error) {
+	f.lastModel = req.Model
 	return []analysis.ClassPrediction{
 		{Label: f.label, Prob: f.prob},
 		{Label: "outro", Prob: 1 - f.prob},
@@ -59,6 +62,10 @@ func TestRunnerStepEmitsOnlyOnConfirmedTransition(t *testing.T) {
 	r.Step(ctx)
 	if len(persisted) != 1 || persisted[0] != "aberto" || len(emitted) != 1 {
 		t.Fatalf("esperava 1 persist+emit 'aberto', got %v / %v", persisted, emitted)
+	}
+	// usa o modelo DO PRÓPRIO classificador (id 7), não o compartilhado
+	if cls.lastModel != "custom-cls-7" {
+		t.Fatalf("esperava modelo custom-cls-7, got %q", cls.lastModel)
 	}
 	// 4º ciclo (mesmo estado): nada novo
 	r.Step(ctx)

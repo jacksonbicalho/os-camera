@@ -96,6 +96,7 @@ type ClassifyTrainRequest struct {
 	Samples   []ClassifySample `json:"samples"`
 	BaseModel string           `json:"base_model,omitempty"`
 	Epochs    int              `json:"epochs,omitempty"`
+	Model     string           `json:"model,omitempty"` // nome do modelo de destino (um por classificador)
 }
 
 // ClassifyTrain dispara o treino de um classificador de estado e retorna o job id.

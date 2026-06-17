@@ -70,7 +70,7 @@ func (r *Runner) Step(ctx context.Context) error {
 	}
 	defer cleanup()
 
-	preds, err := r.classifier.Classify(ctx, analysis.ClassifyRequest{Path: path, Model: r.cfg.Model})
+	preds, err := r.classifier.Classify(ctx, analysis.ClassifyRequest{Path: path, Model: r.cfg.ModelName()})
 	if err != nil {
 		return err
 	}
