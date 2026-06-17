@@ -99,6 +99,22 @@ export default function CameraStatesSettingsPage() {
   const [editing, setEditing] = useState<StateClassifier | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [states, setStates] = useState<Record<number, string>>({})
+
+  // Estado atual de cada classificador, em poll (~5s) — atualiza ao runner mudar.
+  useEffect(() => {
+    if (editing || items.length === 0) return
+    let cancelled = false
+    const fetchStates = () => Promise.all(items.map(c =>
+      fetch(`/api/cameras/${id}/classifiers/${c.id}/state`, { headers: authHeaders() })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => [c.id!, d?.state ?? ''] as const)
+        .catch(() => [c.id!, ''] as const)
+    )).then(entries => { if (!cancelled) setStates(Object.fromEntries(entries)) })
+    fetchStates()
+    const iv = setInterval(fetchStates, 5000)
+    return () => { cancelled = true; clearInterval(iv) }
+  }, [items, id, editing])
 
   const reload = useCallback(async () => {
     const res = await fetch(`/api/settings/cameras/${id}/classifiers`, { headers: authHeaders() })
@@ -173,6 +189,14 @@ export default function CameraStatesSettingsPage() {
                       {!c.enabled && ' · desativado'}
                     </p>
                   </div>
+                  <span
+                    className={`px-2 py-0.5 text-xs rounded border tabular-nums shrink-0 ${
+                      states[c.id!] ? 'bg-primary/15 text-primary border-primary/30' : 'bg-surface-2 text-muted-foreground border-border'
+                    }`}
+                    title="Estado atual"
+                  >
+                    {states[c.id!] || '—'}
+                  </span>
                   <Button variant="ghost" size="icon" className="h-8 w-8" title="Editar" onClick={() => { setEditing(c); setError(null) }}>
                     <Pencil className="w-4 h-4" />
                   </Button>
