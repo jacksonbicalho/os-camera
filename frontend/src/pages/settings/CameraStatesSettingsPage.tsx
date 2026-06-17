@@ -227,7 +227,7 @@ export default function CameraStatesSettingsPage() {
 interface Sample { crop: string; source: string }
 interface ClassRow { label: string; samples: Sample[] }
 
-function ClassifierForm({
+export function ClassifierForm({
   cameraId, value, onChange, onDone, onCancel,
 }: {
   cameraId: string
@@ -351,6 +351,9 @@ function ClassifierForm({
     if (!res.ok) { setFormError((await res.text()).trim() || 'Erro ao salvar'); return null }
     const saved = await res.json()
     const cid: number = saved.id ?? value.id
+    // Após criar, devolve o id ao form: os próximos saves viram PUT (mesmo
+    // recurso) em vez de criar uma linha duplicada.
+    if (isNew && cid != null) onChange({ ...value, id: cid })
     // Persiste o frame INTEIRO (source) — o crop é derivado ao reabrir.
     const samples = rows.flatMap(r => r.samples.map(s => ({ label: r.label, image_b64: s.source })))
     await fetch(`/api/settings/cameras/${cameraId}/classifiers/${cid}/samples`, {
