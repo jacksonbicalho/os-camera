@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -66,5 +67,38 @@ func TestListSamples(t *testing.T) {
 func TestSaveSamplesRejectsBadBase64(t *testing.T) {
 	if _, err := SaveSamples(t.TempDir(), 1, []LabeledImage{{Label: "x", DataB64: "!!!notbase64"}}); err == nil {
 		t.Fatal("esperava erro de base64 inválido")
+	}
+}
+
+func TestSaveSamplesNamesFileAfterFrame(t *testing.T) {
+	dir := t.TempDir()
+	jpeg := base64.StdEncoding.EncodeToString([]byte("x"))
+	out, err := SaveSamples(dir, 7, []LabeledImage{
+		{Label: "aberto", DataB64: jpeg, Frame: "20260618170515_motion.jpg"},
+		{Label: "aberto", DataB64: jpeg}, // sem frame → nome por índice
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// o arquivo com frame é nomeado pelo frame de origem
+	if _, err := os.Stat(filepath.Join(dir, "state_samples", "7", "aberto", "20260618170515_motion.jpg")); err != nil {
+		t.Fatalf("arquivo nomeado pelo frame não existe: %v", err)
+	}
+	if out[0].ImagePath == "" || out[1].ImagePath == "" {
+		t.Fatalf("paths vazios: %+v", out)
+	}
+	// ListSamples expõe a URL com o nome do frame (o front recupera o vínculo daí)
+	m, err := ListSamples(dir, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hasFrameName bool
+	for _, u := range m["aberto"] {
+		if strings.HasSuffix(u, "/20260618170515_motion.jpg") {
+			hasFrameName = true
+		}
+	}
+	if !hasFrameName {
+		t.Fatalf("ListSamples não trouxe a URL com o frame: %+v", m["aberto"])
 	}
 }

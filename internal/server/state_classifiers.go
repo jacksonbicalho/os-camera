@@ -203,6 +203,24 @@ func (s *Server) handleStateClassifierSamplesGet(w http.ResponseWriter, r *http.
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// As pastas são slugs; remapeia para os rótulos amigáveis do classificador,
+	// para o front casar com as classes do form.
+	if s.db != nil {
+		if classifier, err := db.GetStateClassifier(s.db, cid); err == nil {
+			friendly := map[string][]string{}
+			for slug, urls := range m {
+				key := slug
+				for _, c := range classifier.Classes {
+					if stateengine.Slug(c) == slug {
+						key = c
+						break
+					}
+				}
+				friendly[key] = urls
+			}
+			m = friendly
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"samples": m})
 }
