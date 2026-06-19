@@ -42,9 +42,12 @@ func ListSamples(storagePath string, classifierID int64) (map[string][]string, e
 }
 
 // LabeledImage é uma amostra de treino: o JPEG (base64, sem prefixo data:) e a classe.
+// Frame é o nome do `_motion.jpg` de origem (opcional) — persistido no nome do
+// arquivo para o front reconhecer, ao reidratar, qual evento já virou amostra.
 type LabeledImage struct {
 	Label   string `json:"label"`
 	DataB64 string `json:"image_b64"`
+	Frame   string `json:"frame,omitempty"`
 }
 
 // SaveSamples persiste as amostras (frames inteiros) em state_samples/{cid} — é o
@@ -77,17 +80,36 @@ func saveImagesTo(base string, imgs []LabeledImage) ([]analysis.ClassifySample, 
 		if err != nil {
 			return nil, fmt.Errorf("decode sample %q: %w", im.Label, err)
 		}
-		dir := filepath.Join(base, im.Label)
+		slug := Slug(im.Label)
+		dir := filepath.Join(base, slug)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, err
 		}
-		idx := counts[im.Label]
-		counts[im.Label]++
-		p := filepath.Join(dir, fmt.Sprintf("%d.jpg", idx))
+		idx := counts[slug]
+		counts[slug]++
+		name := fmt.Sprintf("%d.jpg", idx)
+		if f := sampleFrameName(im.Frame); f != "" {
+			name = f // nome do arquivo = frame de origem, para recuperar a procedência
+		}
+		p := filepath.Join(dir, name)
 		if err := os.WriteFile(p, data, 0644); err != nil {
 			return nil, err
 		}
-		out = append(out, analysis.ClassifySample{ImagePath: p, Label: im.Label})
+		// Label = slug: é a identidade da classe no treino YOLO (o runner mapeia de volta).
+		out = append(out, analysis.ClassifySample{ImagePath: p, Label: slug})
 	}
 	return out, nil
+}
+
+// sampleFrameName devolve um nome de arquivo seguro derivado do frame de origem
+// (só o basename, garantindo sufixo .jpg), ou "" quando não há frame.
+func sampleFrameName(frame string) string {
+	if frame == "" {
+		return ""
+	}
+	base := filepath.Base(frame)
+	if !strings.HasSuffix(base, ".jpg") {
+		base += ".jpg"
+	}
+	return base
 }

@@ -294,6 +294,8 @@ func main() {
 	// State classification: sobe um runner por intervalo para cada classificador
 	// habilitado, se o serviço YOLO estiver configurado. O emit (SSE/notificação)
 	// entra na S5; por ora só persiste o estado confirmado.
+	// Renomeia (idempotente) pastas de classe antigas com espaços/acentos para slug.
+	stateengine.MigrateSampleDirsToSlug(cfg.Storage.Path)
 	if database != nil {
 		if vacfg, err := db.GetVideoAnalysisConfig(database); err == nil && vacfg.ServiceURL != "" {
 			rtspByID := make(map[string]string, len(cameras))

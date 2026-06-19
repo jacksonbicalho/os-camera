@@ -82,6 +82,8 @@ func (r *Runner) Step(ctx context.Context) error {
 	if !changed {
 		return nil
 	}
+	// O modelo devolve a classe como slug; grava/emite o rótulo amigável.
+	state = FriendlyLabel(state, r.cfg.Classes)
 	if err := r.persist(r.cfg.ID, state, top.Prob); err != nil {
 		return err
 	}

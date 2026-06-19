@@ -38,6 +38,7 @@ func BuildTrainSetFromSamples(storagePath string, c stateclass.Classifier) ([]an
 			continue
 		}
 		label := l.Name()
+		slug := Slug(label) // identidade da classe no treino (pasta de origem já deve ser slug)
 		files, err := os.ReadDir(filepath.Join(srcBase, label))
 		if err != nil {
 			return nil, err
@@ -52,7 +53,7 @@ func BuildTrainSetFromSamples(storagePath string, c stateclass.Classifier) ([]an
 			if err != nil {
 				return nil, err
 			}
-			dstDir := filepath.Join(dstBase, label)
+			dstDir := filepath.Join(dstBase, slug)
 			if err := os.MkdirAll(dstDir, 0755); err != nil {
 				return nil, err
 			}
@@ -61,7 +62,7 @@ func BuildTrainSetFromSamples(storagePath string, c stateclass.Classifier) ([]an
 				return nil, err
 			}
 			idx++
-			out = append(out, analysis.ClassifySample{ImagePath: p, Label: label})
+			out = append(out, analysis.ClassifySample{ImagePath: p, Label: slug})
 		}
 	}
 	return out, nil
