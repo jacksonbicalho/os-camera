@@ -42,7 +42,7 @@ services:
     ports:
       - "8001:8001"
     restart: unless-stopped
-    shm_size: 2gb
+    shm_size: 4gb
 
 volumes:
   frontend_node_modules:
