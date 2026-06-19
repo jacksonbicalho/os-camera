@@ -11,6 +11,11 @@ import (
 // estado — somente se o classificador tem `NotifyEnabled` e apenas para os usuários
 // destinatários do canal notify (interseção com acesso à câmera; admin sempre tem).
 func notifyStateTransition(database *db.DB, c stateclass.Classifier, state string) error {
+	// Recarrega a config do banco para refletir edições de destinatários sem exigir
+	// restart (o runner passa o snapshot do boot). Fallback: o c recebido.
+	if fresh, err := db.GetStateClassifier(database, c.ID); err == nil {
+		c = fresh
+	}
 	if !c.NotifyEnabled {
 		return nil
 	}

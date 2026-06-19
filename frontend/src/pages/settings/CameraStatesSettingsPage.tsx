@@ -29,6 +29,10 @@ function emptyClassifier(): StateClassifier {
     min_consecutive: 3,
     enabled: true,
     classes: ['fechado', 'aberto'],
+    notify_enabled: true,
+    footer_enabled: false,
+    notify_user_ids: [],
+    footer_user_ids: [],
   }
 }
 
@@ -312,6 +316,58 @@ export default function CameraStatesSettingsPage() {
 interface Sample { crop: string; source: string; frame?: string }
 interface ClassRow { label: string; samples: Sample[] }
 
+// RecipientPicker: checkbox de canal (gate) + lista de usuários (Todos/Nenhum)
+// que recebem aquele canal. `id` prefixa os ids de teste/automação.
+function RecipientPicker({ id, label, enabled, onToggle, users, selected, onSelect }: {
+  id: string
+  label: string
+  enabled: boolean
+  onToggle: (v: boolean) => void
+  users: { id: number; username: string }[]
+  selected: number[]
+  onSelect: (ids: number[]) => void
+}) {
+  const toggleUser = (uid: number, on: boolean) =>
+    onSelect(on ? [...selected, uid] : selected.filter(x => x !== uid))
+  return (
+    <div>
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input
+          id={`recipient-${id}-enabled`}
+          type="checkbox"
+          className="accent-primary"
+          checked={enabled}
+          onChange={e => onToggle(e.target.checked)}
+        />
+        <span className="text-sm text-foreground">{label}</span>
+      </label>
+      {enabled && (
+        <div className="mt-2 border border-border rounded-lg p-2">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs text-muted-foreground mr-auto">{selected.length} de {users.length}</span>
+            <Button id={`recipient-${id}-all`} variant="ghost" size="sm" onClick={() => onSelect(users.map(u => u.id))}>Todos</Button>
+            <Button id={`recipient-${id}-none`} variant="ghost" size="sm" onClick={() => onSelect([])}>Nenhum</Button>
+          </div>
+          <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5">
+            {users.length === 0 && <span className="text-xs text-muted-foreground">Nenhum usuário.</span>}
+            {users.map(u => (
+              <label key={u.id} className="flex items-center gap-2 cursor-pointer text-sm text-foreground py-0.5">
+                <input
+                  type="checkbox"
+                  className="accent-primary"
+                  checked={selected.includes(u.id)}
+                  onChange={e => toggleUser(u.id, e.target.checked)}
+                />
+                {u.username}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ClassifierForm({
   cameraId, value, onChange, onDone, onCancel,
 }: {
@@ -336,6 +392,15 @@ export function ClassifierForm({
   const [training, setTraining] = useState<string>('')
   const [formError, setFormError] = useState<string>('')
   const [pickerOpen, setPickerOpen] = useState(false)
+
+  // Usuários para os destinatários de notificação/rodapé.
+  const [users, setUsers] = useState<{ id: number; username: string }[]>([])
+  useEffect(() => {
+    fetch('/api/users', { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then((us: { id: number; username: string }[]) => setUsers(us))
+      .catch(() => {})
+  }, [])
 
   // Quadro principal: ao vivo (snapshot recarregado periodicamente) OU uma imagem
   // estática (evento escolhido / amostra clicada). O retângulo é desenhado sobre ela.
@@ -565,6 +630,28 @@ export function ClassifierForm({
             <span className="text-sm text-foreground">Ativado</span>
           </label>
         </div>
+      </div>
+
+      {/* Notificação e rodapé: gate + destinatários por usuário (canais independentes) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <RecipientPicker
+          id="notify"
+          label="Enviar notificação para o usuário"
+          enabled={value.notify_enabled ?? false}
+          onToggle={v => onChange({ ...value, notify_enabled: v })}
+          users={users}
+          selected={value.notify_user_ids ?? []}
+          onSelect={ids => onChange({ ...value, notify_user_ids: ids })}
+        />
+        <RecipientPicker
+          id="footer"
+          label="Exibir no rodapé"
+          enabled={value.footer_enabled ?? false}
+          onToggle={v => onChange({ ...value, footer_enabled: v })}
+          users={users}
+          selected={value.footer_user_ids ?? []}
+          onSelect={ids => onChange({ ...value, footer_user_ids: ids })}
+        />
       </div>
 
       {/* Estados (classes) com imagem representativa */}
