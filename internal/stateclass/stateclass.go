@@ -28,6 +28,12 @@ type Classifier struct {
 	MinConsecutive         int      `json:"min_consecutive"`
 	Enabled                bool     `json:"enabled"`
 	Classes                []string `json:"classes"`
+	// Notificação/rodapé: gate por classificador + destinatários por canal
+	// (user ids vindos das chaves user_permissions state_notify/state_footer).
+	NotifyEnabled bool    `json:"notify_enabled"`
+	FooterEnabled bool    `json:"footer_enabled"`
+	NotifyUserIDs []int64 `json:"notify_user_ids"`
+	FooterUserIDs []int64 `json:"footer_user_ids"`
 }
 
 // State é o estado corrente (ou histórico) de um classificador — escrito pela S3.

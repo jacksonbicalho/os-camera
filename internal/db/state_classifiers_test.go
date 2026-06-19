@@ -1,11 +1,87 @@
 package db_test
 
 import (
+	"fmt"
+	"reflect"
 	"testing"
 
 	"camera/internal/db"
 	"camera/internal/stateclass"
 )
+
+func TestStateClassifierRecipients(t *testing.T) {
+	database := openTestDB(t)
+	seedCamera(t, database, "cam1")
+	u1, err := db.CreateUser(database, "u1", "pw", "viewer", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u2, err := db.CreateUser(database, "u2", "pw", "viewer", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c := makeClassifier("cam1")
+	c.NotifyEnabled = true
+	c.FooterEnabled = true
+	c.NotifyUserIDs = []int64{u1, u2}
+	c.FooterUserIDs = []int64{u1}
+	id, err := db.CreateStateClassifier(database, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := db.GetStateClassifier(database, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.NotifyEnabled || !got.FooterEnabled {
+		t.Fatalf("flags errados: notify=%v footer=%v", got.NotifyEnabled, got.FooterEnabled)
+	}
+	if !reflect.DeepEqual(got.NotifyUserIDs, []int64{u1, u2}) {
+		t.Fatalf("notify recipients: %v (want %v %v)", got.NotifyUserIDs, u1, u2)
+	}
+	if !reflect.DeepEqual(got.FooterUserIDs, []int64{u1}) {
+		t.Fatalf("footer recipients: %v (want %v)", got.FooterUserIDs, u1)
+	}
+
+	// update substitui flags + recipients
+	got.NotifyEnabled = false
+	got.NotifyUserIDs = []int64{u2}
+	got.FooterUserIDs = nil
+	if err := db.UpdateStateClassifier(database, got); err != nil {
+		t.Fatal(err)
+	}
+	got2, err := db.GetStateClassifier(database, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2.NotifyEnabled {
+		t.Fatal("notify deveria estar off após update")
+	}
+	if !reflect.DeepEqual(got2.NotifyUserIDs, []int64{u2}) {
+		t.Fatalf("notify após update: %v", got2.NotifyUserIDs)
+	}
+	if len(got2.FooterUserIDs) != 0 {
+		t.Fatalf("footer após update deveria estar vazio: %v", got2.FooterUserIDs)
+	}
+
+	// delete limpa as chaves em user_permissions (sem FK pro classificador)
+	if err := db.DeleteStateClassifier(database, id); err != nil {
+		t.Fatal(err)
+	}
+	for _, ch := range []string{"state_notify", "state_footer"} {
+		var n int
+		if err := database.QueryRow(
+			`SELECT COUNT(*) FROM user_permissions WHERE key = ?`, fmt.Sprintf("%s:%d", ch, id),
+		).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		if n != 0 {
+			t.Fatalf("chaves %s não limpas após delete: %d", ch, n)
+		}
+	}
+}
 
 func makeClassifier(cameraID string) stateclass.Classifier {
 	return stateclass.Classifier{

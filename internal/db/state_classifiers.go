@@ -3,9 +3,60 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 
 	"camera/internal/stateclass"
 )
+
+// Canais de destinatário (chaves em user_permissions: "{channel}:{classifierID}").
+const (
+	permNotify = "state_notify"
+	permFooter = "state_footer"
+)
+
+func permKey(channel string, classifierID int64) string {
+	return channel + ":" + strconv.FormatInt(classifierID, 10)
+}
+
+// setChannelRecipients substitui o conjunto de destinatários de um canal do
+// classificador (numa tx): apaga as chaves e reinsere as dos usuários dados.
+func setChannelRecipients(tx *sql.Tx, classifierID int64, channel string, userIDs []int64) error {
+	key := permKey(channel, classifierID)
+	if _, err := tx.Exec(`DELETE FROM user_permissions WHERE key = ?`, key); err != nil {
+		return err
+	}
+	for _, uid := range userIDs {
+		if _, err := tx.Exec(
+			`INSERT OR IGNORE INTO user_permissions (user_id, key, value) VALUES (?, ?, '1')`, uid, key,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// loadChannelRecipients lê os user ids destinatários de um canal do classificador.
+func loadChannelRecipients(q interface {
+	Query(string, ...any) (*sql.Rows, error)
+}, classifierID int64, channel string) ([]int64, error) {
+	rows, err := q.Query(
+		`SELECT user_id FROM user_permissions WHERE key = ? AND value = '1' ORDER BY user_id`,
+		permKey(channel, classifierID),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
 
 // loadClasses returns the ordered class labels of a classifier.
 func loadClasses(q interface {
@@ -32,21 +83,23 @@ func loadClasses(q interface {
 
 func scanClassifier(s interface{ Scan(...any) error }) (stateclass.Classifier, error) {
 	var c stateclass.Classifier
-	var triggerMotion, enabled int
+	var triggerMotion, enabled, notifyEnabled, footerEnabled int
 	err := s.Scan(
 		&c.ID, &c.CameraID, &c.Name, &c.Model, &c.Threshold,
 		&triggerMotion, &c.TriggerIntervalSeconds,
 		&c.CropX, &c.CropY, &c.CropW, &c.CropH,
-		&c.MinConsecutive, &enabled,
+		&c.MinConsecutive, &enabled, &notifyEnabled, &footerEnabled,
 	)
 	c.TriggerMotion = triggerMotion != 0
 	c.Enabled = enabled != 0
+	c.NotifyEnabled = notifyEnabled != 0
+	c.FooterEnabled = footerEnabled != 0
 	return c, err
 }
 
 const classifierCols = `id, camera_id, name, model, threshold,
 	trigger_motion, trigger_interval_seconds,
-	crop_x, crop_y, crop_w, crop_h, min_consecutive, enabled`
+	crop_x, crop_y, crop_w, crop_h, min_consecutive, enabled, notify_enabled, footer_enabled`
 
 // CreateStateClassifier inserts a classifier and its classes, returning the new id.
 func CreateStateClassifier(database *DB, c stateclass.Classifier) (int64, error) {
@@ -59,10 +112,11 @@ func CreateStateClassifier(database *DB, c stateclass.Classifier) (int64, error)
 	res, err := tx.Exec(
 		`INSERT INTO camera_state_classifiers
 		 (camera_id, name, model, threshold, trigger_motion, trigger_interval_seconds,
-		  crop_x, crop_y, crop_w, crop_h, min_consecutive, enabled)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  crop_x, crop_y, crop_w, crop_h, min_consecutive, enabled, notify_enabled, footer_enabled)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.CameraID, c.Name, c.Model, c.Threshold, boolToInt(c.TriggerMotion), c.TriggerIntervalSeconds,
 		c.CropX, c.CropY, c.CropW, c.CropH, c.MinConsecutive, boolToInt(c.Enabled),
+		boolToInt(c.NotifyEnabled), boolToInt(c.FooterEnabled),
 	)
 	if err != nil {
 		return 0, fmt.Errorf("insert classifier: %w", err)
@@ -72,6 +126,12 @@ func CreateStateClassifier(database *DB, c stateclass.Classifier) (int64, error)
 		return 0, err
 	}
 	if err := insertClasses(tx, id, c.Classes); err != nil {
+		return 0, err
+	}
+	if err := setChannelRecipients(tx, id, permNotify, c.NotifyUserIDs); err != nil {
+		return 0, err
+	}
+	if err := setChannelRecipients(tx, id, permFooter, c.FooterUserIDs); err != nil {
 		return 0, err
 	}
 	return id, tx.Commit()
@@ -117,6 +177,12 @@ func ListStateClassifiers(database *DB, cameraID string) ([]stateclass.Classifie
 			return nil, err
 		}
 		out[i].Classes = classes
+		if out[i].NotifyUserIDs, err = loadChannelRecipients(database, out[i].ID, permNotify); err != nil {
+			return nil, err
+		}
+		if out[i].FooterUserIDs, err = loadChannelRecipients(database, out[i].ID, permFooter); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }
@@ -130,7 +196,13 @@ func GetStateClassifier(database *DB, id int64) (stateclass.Classifier, error) {
 	if err != nil {
 		return c, err
 	}
-	c.Classes, err = loadClasses(database, id)
+	if c.Classes, err = loadClasses(database, id); err != nil {
+		return c, err
+	}
+	if c.NotifyUserIDs, err = loadChannelRecipients(database, id, permNotify); err != nil {
+		return c, err
+	}
+	c.FooterUserIDs, err = loadChannelRecipients(database, id, permFooter)
 	return c, err
 }
 
@@ -145,10 +217,12 @@ func UpdateStateClassifier(database *DB, c stateclass.Classifier) error {
 	if _, err := tx.Exec(
 		`UPDATE camera_state_classifiers SET
 		   name = ?, model = ?, threshold = ?, trigger_motion = ?, trigger_interval_seconds = ?,
-		   crop_x = ?, crop_y = ?, crop_w = ?, crop_h = ?, min_consecutive = ?, enabled = ?
+		   crop_x = ?, crop_y = ?, crop_w = ?, crop_h = ?, min_consecutive = ?, enabled = ?,
+		   notify_enabled = ?, footer_enabled = ?
 		 WHERE id = ?`,
 		c.Name, c.Model, c.Threshold, boolToInt(c.TriggerMotion), c.TriggerIntervalSeconds,
-		c.CropX, c.CropY, c.CropW, c.CropH, c.MinConsecutive, boolToInt(c.Enabled), c.ID,
+		c.CropX, c.CropY, c.CropW, c.CropH, c.MinConsecutive, boolToInt(c.Enabled),
+		boolToInt(c.NotifyEnabled), boolToInt(c.FooterEnabled), c.ID,
 	); err != nil {
 		return fmt.Errorf("update classifier: %w", err)
 	}
@@ -158,13 +232,32 @@ func UpdateStateClassifier(database *DB, c stateclass.Classifier) error {
 	if err := insertClasses(tx, c.ID, c.Classes); err != nil {
 		return err
 	}
+	if err := setChannelRecipients(tx, c.ID, permNotify, c.NotifyUserIDs); err != nil {
+		return err
+	}
+	if err := setChannelRecipients(tx, c.ID, permFooter, c.FooterUserIDs); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
-// DeleteStateClassifier removes a classifier (classes/history cascade).
+// DeleteStateClassifier removes a classifier (classes/history cascade) e limpa as
+// chaves de destinatário em user_permissions (não há FK pro classificador).
 func DeleteStateClassifier(database *DB, id int64) error {
-	_, err := database.Exec(`DELETE FROM camera_state_classifiers WHERE id = ?`, id)
-	return err
+	tx, err := database.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.Exec(`DELETE FROM camera_state_classifiers WHERE id = ?`, id); err != nil {
+		return err
+	}
+	for _, ch := range []string{permNotify, permFooter} {
+		if _, err := tx.Exec(`DELETE FROM user_permissions WHERE key = ?`, permKey(ch, id)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // RecordStateTransition appends a confirmed state to a classifier's history.

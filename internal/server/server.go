@@ -209,7 +209,6 @@ func (s *Server) WithMotionFeed(cameraID string, events <-chan motion.Event) *Se
 	return s
 }
 
-
 func (s *Server) WithSnapshotter(fn func(ctx context.Context, rtspURL string) ([]byte, error)) *Server {
 	s.snapFn = fn
 	return s
@@ -280,7 +279,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/config", s.handleClientConfig)
 	s.mux.HandleFunc("GET /api/settings", s.requireAdmin(s.handleSettings))
 	s.mux.HandleFunc("GET /api/about", s.requireFullAuth(s.handleAbout))
-s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
+	s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 
 	s.mux.HandleFunc("GET /api/discover", s.requireAdmin(s.handleDiscover))
 	s.mux.HandleFunc("POST /api/discover/streams", s.requireAdmin(s.handleDiscoverStreams))
@@ -374,6 +373,7 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	if s.frontend != nil {
 		s.mux.Handle("/", s.spaHandler())
 	}
+
 }
 
 func (s *Server) spaHandler() http.Handler {
@@ -580,14 +580,14 @@ func maskRTSP(raw string) string {
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	type motionDTO struct {
-		Enabled             bool    `json:"enabled"`
-		Threshold           float64 `json:"threshold"`
-		FPS                 int     `json:"fps"`
-		CooldownSeconds     int     `json:"cooldown_seconds"`
-		CaptureWidth         int `json:"capture_width,omitempty"`
-		CaptureHeight        int `json:"capture_height,omitempty"`
-		PlaybackLeadSeconds  int `json:"playback_lead_seconds"`
-		PlaybackTrailSeconds int `json:"playback_trail_seconds"`
+		Enabled              bool    `json:"enabled"`
+		Threshold            float64 `json:"threshold"`
+		FPS                  int     `json:"fps"`
+		CooldownSeconds      int     `json:"cooldown_seconds"`
+		CaptureWidth         int     `json:"capture_width,omitempty"`
+		CaptureHeight        int     `json:"capture_height,omitempty"`
+		PlaybackLeadSeconds  int     `json:"playback_lead_seconds"`
+		PlaybackTrailSeconds int     `json:"playback_trail_seconds"`
 	}
 	type cameraDTO struct {
 		ID                string     `json:"id"`
@@ -1177,10 +1177,10 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	for i, cam := range allCameras {
 		mn, mx := motionScoreRange(s.db, s.cfg.RecordingsPath, cam.ID, todayStart, todayEnd)
 		cs := cameraStats{
-			ID:            cam.ID,
+			ID:             cam.ID,
 			TopMotionScore: mx,
 			MinMotionScore: mn,
-			MotionEnabled: cam.EffectiveMotionConfig().Enabled,
+			MotionEnabled:  cam.EffectiveMotionConfig().Enabled,
 		}
 		if t, ok := lastRec[cam.ID]; ok {
 			ts := t

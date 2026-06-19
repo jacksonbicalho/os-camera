@@ -16,3 +16,4 @@ amostras/
 # Python (serviço YOLO)
 __pycache__/
 *.pyc
+.vscode/
