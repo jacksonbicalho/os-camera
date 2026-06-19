@@ -27,7 +27,10 @@ func TestPublishClassifierStateNotifiesAccessOnly(t *testing.T) {
 	}
 
 	srv := server.NewServer(config.ServerConfig{}, "UTC", []config.CameraConfig{cam}, discardLogger(), nil).WithDB(database)
-	srv.PublishClassifierState(stateclass.Classifier{ID: 1, CameraID: "cam1", Name: "Portão"}, "aberto", 0.9)
+	srv.PublishClassifierState(stateclass.Classifier{
+		ID: 1, CameraID: "cam1", Name: "Portão",
+		NotifyEnabled: true, NotifyUserIDs: []int64{adminID, v1ID, v2ID},
+	}, "aberto", 0.9)
 
 	count := func(uid int64) int {
 		ns, err := db.ListUserNotifications(database, uid)
@@ -49,5 +52,36 @@ func TestPublishClassifierStateNotifiesAccessOnly(t *testing.T) {
 	ns, _ := db.ListUserNotifications(database, adminID)
 	if ns[0].Title != "Portão" || ns[0].Message != "Estado: aberto" {
 		t.Fatalf("notificação inesperada: %+v", ns[0])
+	}
+}
+
+func TestPublishClassifierStateConditional(t *testing.T) {
+	database := openServerTestDB(t)
+	a, _ := db.CreateUser(database, "admin", "pw", "admin", false)
+	b, _ := db.CreateUser(database, "admin2", "pw", "admin", false)
+	cam := config.CameraConfig{ID: "cam1", Name: "Cam", RTSPURL: "rtsp://x/"}
+	if _, err := db.CreateCamera(database, cam, nil); err != nil {
+		t.Fatal(err)
+	}
+	srv := server.NewServer(config.ServerConfig{}, "UTC", []config.CameraConfig{cam}, discardLogger(), nil).WithDB(database)
+	count := func(uid int64) int {
+		ns, _ := db.ListUserNotifications(database, uid)
+		return len(ns)
+	}
+
+	// notify_enabled=false → ninguém recebe
+	srv.PublishClassifierState(stateclass.Classifier{
+		ID: 1, CameraID: "cam1", Name: "Portão", NotifyEnabled: false, NotifyUserIDs: []int64{a, b},
+	}, "aberto", 0.9)
+	if count(a) != 0 || count(b) != 0 {
+		t.Fatalf("desabilitado não deveria notificar: a=%d b=%d", count(a), count(b))
+	}
+
+	// habilitado, mas só 'a' na lista → só 'a' recebe
+	srv.PublishClassifierState(stateclass.Classifier{
+		ID: 1, CameraID: "cam1", Name: "Portão", NotifyEnabled: true, NotifyUserIDs: []int64{a},
+	}, "aberto", 0.9)
+	if count(a) != 1 || count(b) != 0 {
+		t.Fatalf("só os selecionados recebem: a=%d b=%d", count(a), count(b))
 	}
 }

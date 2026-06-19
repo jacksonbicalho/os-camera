@@ -9,6 +9,7 @@ import (
 	"image/jpeg"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"testing"
 
@@ -16,6 +17,55 @@ import (
 	"camera/internal/db"
 	"camera/internal/server"
 )
+
+// A API de classificador persiste e devolve os flags + destinatários por canal.
+func TestClassifierNotifyConfigPersisted(t *testing.T) {
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "admin", "pw", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	u1, err := db.CreateUser(database, "v1", "pw", "viewer", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cam := config.CameraConfig{ID: "cam1", Name: "Cam", RTSPURL: "rtsp://x/"}
+	if _, err := db.CreateCamera(database, cam, nil); err != nil {
+		t.Fatal(err)
+	}
+	srv := server.NewServer(config.ServerConfig{}, "UTC", []config.CameraConfig{cam}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "admin", "pw")
+
+	body := validClassifierBody()
+	body["notify_enabled"] = true
+	body["footer_enabled"] = true
+	body["notify_user_ids"] = []int64{u1}
+	body["footer_user_ids"] = []int64{u1}
+	w := doJSON(t, srv, http.MethodPost, "/api/settings/cameras/cam1/classifiers", token, body)
+	if w.Code != http.StatusOK && w.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+
+	w = doJSON(t, srv, http.MethodGet, "/api/settings/cameras/cam1/classifiers", token, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list: %d", w.Code)
+	}
+	var list []struct {
+		NotifyEnabled bool    `json:"notify_enabled"`
+		FooterEnabled bool    `json:"footer_enabled"`
+		NotifyUserIDs []int64 `json:"notify_user_ids"`
+		FooterUserIDs []int64 `json:"footer_user_ids"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &list)
+	if len(list) != 1 {
+		t.Fatalf("esperava 1 classificador, got %d", len(list))
+	}
+	if !list[0].NotifyEnabled || !list[0].FooterEnabled {
+		t.Fatalf("flags não persistidos: %+v", list[0])
+	}
+	if !reflect.DeepEqual(list[0].NotifyUserIDs, []int64{u1}) || !reflect.DeepEqual(list[0].FooterUserIDs, []int64{u1}) {
+		t.Fatalf("recipients não persistidos: %+v", list[0])
+	}
+}
 
 func setupClassifierServer(t *testing.T) (*server.Server, string, string) {
 	t.Helper()

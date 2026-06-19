@@ -7,14 +7,28 @@ import (
 	"camera/internal/stateclass"
 )
 
-// notifyStateTransition cria uma notificação persistida (sino) para cada usuário
-// com acesso à câmera — admin (todas) ou viewer com a câmera na sua lista.
+// notifyStateTransition cria uma notificação persistida (sino) na transição de
+// estado — somente se o classificador tem `NotifyEnabled` e apenas para os usuários
+// destinatários do canal notify (interseção com acesso à câmera; admin sempre tem).
 func notifyStateTransition(database *db.DB, c stateclass.Classifier, state string) error {
+	if !c.NotifyEnabled {
+		return nil
+	}
+	recipients := make(map[int64]bool, len(c.NotifyUserIDs))
+	for _, uid := range c.NotifyUserIDs {
+		recipients[uid] = true
+	}
+	if len(recipients) == 0 {
+		return nil
+	}
 	users, err := db.ListUsers(database)
 	if err != nil {
 		return err
 	}
 	for _, u := range users {
+		if !recipients[u.ID] {
+			continue
+		}
 		if u.Role != "admin" {
 			cams, err := db.GetUserCameras(database, u.ID)
 			if err != nil || !sliceContains(cams, c.CameraID) {
