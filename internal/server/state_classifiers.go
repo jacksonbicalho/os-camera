@@ -266,3 +266,39 @@ func (s *Server) handleStateClassifierState(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(st) // nil → null (estado ainda não escrito pela S3)
 }
+
+// handleFooterStates devolve, para o usuário do JWT, os classificadores que ele
+// marcou pra ver no rodapé (footer_enabled + destinatário) e o estado atual de
+// cada — filtrados por acesso à câmera (admin todas; viewer via user_cameras).
+func (s *Server) handleFooterStates(w http.ResponseWriter, r *http.Request) {
+	if s.db == nil {
+		http.Error(w, "banco de dados não configurado", http.StatusServiceUnavailable)
+		return
+	}
+	userID := s.currentUserID(r)
+	ac, _ := r.Context().Value(claimsKey).(authClaims)
+	cfs, err := db.FooterClassifiersForUser(s.db, userID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	var cams []string
+	if ac.Role != "admin" {
+		cams, _ = db.GetUserCameras(s.db, userID)
+	}
+	out := []map[string]any{}
+	for _, c := range cfs {
+		if ac.Role != "admin" && !sliceContains(cams, c.CameraID) {
+			continue
+		}
+		state := ""
+		if st, _ := db.GetCurrentState(s.db, c.ID); st != nil {
+			state = st.State
+		}
+		out = append(out, map[string]any{
+			"classifier_id": c.ID, "camera_id": c.CameraID, "name": c.Name, "state": state,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
+}

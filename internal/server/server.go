@@ -297,6 +297,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/notifications", s.requireFullAuth(s.handleDeleteAllNotifications))
 
 	// Per-user preferences (theme), scoped to the authenticated user.
+	s.mux.HandleFunc("GET /api/me/footer-states", s.requireFullAuth(s.handleFooterStates))
 	s.mux.HandleFunc("GET /api/me/preferences", s.requireFullAuth(s.handleGetPreferences))
 	s.mux.HandleFunc("PUT /api/me/preferences", s.requireFullAuth(s.handleUpdatePreferences))
 

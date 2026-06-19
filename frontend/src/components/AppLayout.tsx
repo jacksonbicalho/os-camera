@@ -5,6 +5,7 @@ import { ptBR } from 'date-fns/locale'
 import { getUsername, authHeaders } from '../auth'
 import Sidebar from './Sidebar'
 import AlertBanner from './AlertBanner'
+import FooterStates from './FooterStates'
 import { Github, CameraLogo } from './Icons'
 
 interface AppLayoutProps {
@@ -54,6 +55,9 @@ export default function AppLayout({ children, mainClassName = '', fill = false }
         <CameraLogo className="w-6 h-6 shrink-0" />
         <span className="text-sm font-semibold text-gray-300">os-camera</span>
       </div>
+
+      {/* Estado ao vivo dos classificadores marcados pelo usuário */}
+      <FooterStates />
 
       {/* Direita: info empilhada */}
       <div className="flex-1 flex flex-col gap-1.5">

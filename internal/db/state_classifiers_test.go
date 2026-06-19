@@ -9,6 +9,45 @@ import (
 	"camera/internal/stateclass"
 )
 
+func TestFooterClassifiersForUser(t *testing.T) {
+	database := openTestDB(t)
+	seedCamera(t, database, "cam1")
+	u1, _ := db.CreateUser(database, "u1", "pw", "viewer", false)
+	u2, _ := db.CreateUser(database, "u2", "pw", "viewer", false)
+
+	// c1: footer ligado + u1 destinatário → u1 vê
+	c1 := makeClassifier("cam1")
+	c1.Name = "Corredor"
+	c1.FooterEnabled = true
+	c1.FooterUserIDs = []int64{u1}
+	id1, err := db.CreateStateClassifier(database, c1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// c2: footer ligado mas só u2 → u1 não vê
+	c2 := makeClassifier("cam1")
+	c2.FooterEnabled = true
+	c2.FooterUserIDs = []int64{u2}
+	if _, err := db.CreateStateClassifier(database, c2); err != nil {
+		t.Fatal(err)
+	}
+	// c3: u1 destinatário mas footer desligado → u1 não vê
+	c3 := makeClassifier("cam1")
+	c3.FooterEnabled = false
+	c3.FooterUserIDs = []int64{u1}
+	if _, err := db.CreateStateClassifier(database, c3); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := db.FooterClassifiersForUser(database, u1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != id1 || got[0].Name != "Corredor" {
+		t.Fatalf("u1 deveria ver só o Corredor: %+v", got)
+	}
+}
+
 func TestStateClassifierRecipients(t *testing.T) {
 	database := openTestDB(t)
 	seedCamera(t, database, "cam1")
