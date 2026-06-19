@@ -241,6 +241,40 @@ func UpdateStateClassifier(database *DB, c stateclass.Classifier) error {
 	return tx.Commit()
 }
 
+// FooterClassifier é um classificador que um usuário deve ver no rodapé.
+type FooterClassifier struct {
+	ID       int64
+	CameraID string
+	Name     string
+}
+
+// FooterClassifiersForUser devolve os classificadores com `footer_enabled` em que
+// `userID` é destinatário do canal footer (chave state_footer:{id} em user_permissions).
+func FooterClassifiersForUser(database *DB, userID int64) ([]FooterClassifier, error) {
+	rows, err := database.Query(
+		`SELECT c.id, c.camera_id, c.name
+		 FROM camera_state_classifiers c
+		 JOIN user_permissions p
+		   ON p.user_id = ? AND p.value = '1' AND p.key = 'state_footer:' || c.id
+		 WHERE c.footer_enabled = 1
+		 ORDER BY c.id`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []FooterClassifier{}
+	for rows.Next() {
+		var f FooterClassifier
+		if err := rows.Scan(&f.ID, &f.CameraID, &f.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
 // DeleteStateClassifier removes a classifier (classes/history cascade) e limpa as
 // chaves de destinatário em user_permissions (não há FK pro classificador).
 func DeleteStateClassifier(database *DB, id int64) error {
