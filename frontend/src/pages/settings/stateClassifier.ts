@@ -15,6 +15,10 @@ export interface StateClassifier {
   min_consecutive: number
   enabled: boolean
   classes: string[]
+  notify_enabled?: boolean
+  footer_enabled?: boolean
+  notify_user_ids?: number[]
+  footer_user_ids?: number[]
 }
 
 type Crop = Pick<StateClassifier, 'crop_x' | 'crop_y' | 'crop_w' | 'crop_h'>

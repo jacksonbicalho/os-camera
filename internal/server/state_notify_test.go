@@ -85,3 +85,31 @@ func TestPublishClassifierStateConditional(t *testing.T) {
 		t.Fatalf("só os selecionados recebem: a=%d b=%d", count(a), count(b))
 	}
 }
+
+// A config de notificação é recarregada do banco a cada transição: edições de
+// destinatários valem sem restart (o runner passa o snapshot do boot, que pode
+// estar defasado).
+func TestPublishClassifierStateReloadsRecipients(t *testing.T) {
+	database := openServerTestDB(t)
+	u1, _ := db.CreateUser(database, "u1", "pw", "admin", false)
+	cam := config.CameraConfig{ID: "cam1", Name: "Cam", RTSPURL: "rtsp://x/"}
+	if _, err := db.CreateCamera(database, cam, nil); err != nil {
+		t.Fatal(err)
+	}
+	id, err := db.CreateStateClassifier(database, stateclass.Classifier{
+		CameraID: "cam1", Name: "Portão", Model: "custom-cls", Threshold: 0.8,
+		CropW: 0.3, CropH: 0.3, MinConsecutive: 1, Classes: []string{"aberto", "fechado"},
+		NotifyEnabled: true, NotifyUserIDs: []int64{u1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := server.NewServer(config.ServerConfig{}, "UTC", []config.CameraConfig{cam}, discardLogger(), nil).WithDB(database)
+
+	// c defasado (notify off, sem destinatários) — deve recarregar do banco e notificar u1.
+	srv.PublishClassifierState(stateclass.Classifier{ID: id, CameraID: "cam1", Name: "Portão"}, "aberto", 0.9)
+	ns, _ := db.ListUserNotifications(database, u1)
+	if len(ns) != 1 {
+		t.Fatalf("deveria recarregar a config e notificar u1, got %d", len(ns))
+	}
+}
