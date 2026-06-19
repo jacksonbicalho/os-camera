@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -92,8 +92,28 @@ function eventFrameURL(cameraId: string, ev: EventItem): string {
   return `/api/cameras/${cameraId}/event-frame?time=${encodeURIComponent(ev.time)}&token=${getToken()}`
 }
 
+// imageLoads resolve true se a URL carrega como imagem, false caso contrário.
+function imageLoads(url: string): Promise<boolean> {
+  return new Promise(res => {
+    const img = new Image()
+    img.onload = () => res(true)
+    img.onerror = () => res(false)
+    img.src = url
+  })
+}
+
+// loadEventImageURL devolve o frame LIMPO da gravação; se não houver gravação
+// cobrindo o instante (extração falha), cai no snapshot do evento (_motion.jpg,
+// com a caixa de movimento) para a adição não falhar calada. `fellBack` sinaliza.
+async function loadEventImageURL(cameraId: string, ev: EventItem): Promise<{ url: string; fellBack: boolean }> {
+  const clean = eventFrameURL(cameraId, ev)
+  if (await imageLoads(clean)) return { url: clean, fellBack: false }
+  return { url: eventSnapshotURL(cameraId, ev), fellBack: true }
+}
+
 export default function CameraStatesSettingsPage() {
-  const { id } = useParams<{ id: string }>()
+  const { id, cid } = useParams<{ id: string; cid?: string }>()
+  const navigate = useNavigate()
   const isAdmin = getRole() === 'admin'
   const [items, setItems] = useState<StateClassifier[]>([])
   const [loading, setLoading] = useState(true)
@@ -129,10 +149,17 @@ export default function CameraStatesSettingsPage() {
         if (res.status === 401) { onUnauthorized(); return [] }
         return res.ok ? res.json() : []
       })
-      .then((data: StateClassifier[]) => setItems(data))
+      .then((data: StateClassifier[]) => {
+        setItems(data)
+        // O :cid da rota é a fonte de verdade da edição (deep-link/reload/back/
+        // forward): com cid, edita o classificador; sem cid, fecha o form. É callback
+        // async, então não cai no lint set-state-in-effect. (O "Novo" não tem cid e
+        // não dispara este efeito, então não é afetado.)
+        setEditing(cid ? data.find(c => String(c.id) === cid) ?? null : null)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [id])
+  }, [id, cid])
 
   async function remove() {
     if (deleteId == null) return
@@ -198,8 +225,8 @@ export default function CameraStatesSettingsPage() {
           cameraId={id!}
           value={editing}
           onChange={setEditing}
-          onDone={() => { setEditing(null); reload() }}
-          onCancel={() => { setEditing(null); setError(null) }}
+          onDone={() => { setEditing(null); if (cid) navigate(`/settings/cameras/states/${id}`); else reload() }}
+          onCancel={() => { setEditing(null); setError(null); if (cid) navigate(`/settings/cameras/states/${id}`) }}
         />
       ) : (
         <>
@@ -256,7 +283,7 @@ export default function CameraStatesSettingsPage() {
                   >
                     {trainingId === c.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" title="Editar" onClick={() => { setEditing(c); setError(null) }}>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" title="Editar" onClick={() => { setEditing(c); setError(null); navigate(`/settings/cameras/${id}/states/edit/${c.id}`) }}>
                     <Pencil className="w-4 h-4" />
                   </Button>
                   <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" title="Remover" onClick={() => setDeleteId(c.id!)}>
@@ -282,7 +309,7 @@ export default function CameraStatesSettingsPage() {
   )
 }
 
-interface Sample { crop: string; source: string }
+interface Sample { crop: string; source: string; frame?: string }
 interface ClassRow { label: string; samples: Sample[] }
 
 export function ClassifierForm({
@@ -315,6 +342,9 @@ export function ClassifierForm({
   const [live, setLive] = useState(true)
   const [liveSrc, setLiveSrc] = useState(() => liveSnapshotURL(cameraId))
   const [staticImage, setStaticImage] = useState('')
+  // frame do evento atualmente no quadro principal (quando veio do carrossel) —
+  // usado para etiquetar a amostra capturada e saber o que já foi inserido.
+  const [pickedEventFrame, setPickedEventFrame] = useState('')
   const displaySrc = live ? liveSrc : staticImage
 
   // Ao vivo: busca o snapshot como blob e só troca a imagem quando ela já está
@@ -351,7 +381,12 @@ export function ClassifierForm({
           loaded[label] = []
           for (const u of urls) {
             // O arquivo salvo é o frame inteiro: source = ele; crop = derivado da região.
-            loaded[label].push(await captureFromUrl(`${u}?token=${getToken()}`, value))
+            // Quando o nome do arquivo é o frame de origem (_motion.jpg), recupera o
+            // vínculo para o carrossel marcar a imagem como já inserida.
+            const filename = u.split('/').pop() ?? ''
+            const frame = filename.endsWith('_motion.jpg') ? filename : undefined
+            const cap = await captureFromUrl(`${u}?token=${getToken()}`, value)
+            loaded[label].push({ ...cap, frame })
           }
         }
         setRows(rs => rs.map(r => ({ ...r, samples: loaded[r.label] ?? r.samples })))
@@ -386,13 +421,50 @@ export function ClassifierForm({
     updateRows(rows.map((r, j) => j === i ? { ...r, samples: r.samples.filter((_, m) => m !== k) } : r))
   }
 
-  // Captura o recorte do quadro principal como amostra do estado i.
+  // Captura o recorte do quadro principal como amostra do estado i. Quando o quadro
+  // veio de um evento do carrossel, etiqueta a amostra com o frame de origem.
   async function capture(i: number) {
     try {
       const s = await captureFromUrl(live ? liveSnapshotURL(cameraId) : staticImage, value)
-      updateRows(rows.map((r, j) => j === i ? { ...r, samples: [...r.samples, s] } : r))
+      const tagged = { ...s, frame: live ? undefined : (pickedEventFrame || undefined) }
+      updateRows(rows.map((r, j) => j === i ? { ...r, samples: [...r.samples, tagged] } : r))
     } catch {
       setTraining('Falha ao capturar o recorte.')
+    }
+  }
+
+  // Adiciona, de uma vez, várias imagens escolhidas no carrossel como amostras da
+  // classe `label` — cada uma recortada pela região atual e etiquetada com o frame.
+  async function addEventsToClass(events: EventItem[], label: string) {
+    try {
+      let anyFallback = false
+      const captured = await Promise.all(events.map(async ev => {
+        const { url, fellBack } = await loadEventImageURL(cameraId, ev)
+        if (fellBack) anyFallback = true
+        return { ...(await captureFromUrl(url, value)), frame: ev.frame }
+      }))
+      updateRows(rows.map(r => r.label === label ? { ...r, samples: [...r.samples, ...captured] } : r))
+      setTraining(anyFallback
+        ? 'Adicionadas. Alguns eventos não têm gravação — usei o snapshot (pode conter a caixa de movimento).'
+        : '')
+    } catch {
+      setTraining('Falha ao adicionar as imagens selecionadas.')
+    }
+    setPickerOpen(false)
+  }
+
+  // Remove do estado `label` a amostra que veio do frame `frame`.
+  function removeFromClass(frame: string, label: string) {
+    updateRows(rows.map(r => r.label === label
+      ? { ...r, samples: r.samples.filter(s => s.frame !== frame) }
+      : r))
+  }
+
+  // Mapa frame → estado a que pertence (amostras já inseridas nesta sessão).
+  const usedByFrame: Record<string, string> = {}
+  for (const r of rows) {
+    for (const s of r.samples) {
+      if (s.frame && !(s.frame in usedByFrame)) usedByFrame[s.frame] = r.label
     }
   }
 
@@ -413,7 +485,7 @@ export function ClassifierForm({
     // recurso) em vez de criar uma linha duplicada.
     if (isNew && cid != null) onChange({ ...value, id: cid })
     // Persiste o frame INTEIRO (source) — o crop é derivado ao reabrir.
-    const samples = rows.flatMap(r => r.samples.map(s => ({ label: r.label, image_b64: s.source })))
+    const samples = rows.flatMap(r => r.samples.map(s => ({ label: r.label, image_b64: s.source, frame: s.frame })))
     await fetch(`/api/settings/cameras/${cameraId}/classifiers/${cid}/samples`, {
       method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ samples }),
     })
@@ -447,7 +519,7 @@ export function ClassifierForm({
           <div className="flex items-center justify-between mb-1">
             <label className="block text-xs text-muted-foreground">Recorte (arraste o retângulo)</label>
             <div className="flex items-center gap-1">
-              <Button variant={live ? 'default' : 'ghost'} size="sm" onClick={() => setLive(true)}>Ao vivo</Button>
+              <Button variant={live ? 'default' : 'ghost'} size="sm" onClick={() => { setLive(true); setPickedEventFrame('') }}>Ao vivo</Button>
               <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>Escolher dos eventos</Button>
             </div>
           </div>
@@ -459,7 +531,7 @@ export function ClassifierForm({
               onError={e => { (e.currentTarget as HTMLImageElement).style.opacity = '0' }}
             />
             <div className="absolute inset-0">
-              <BboxCanvas box={box} onChange={handleBox} className="w-full h-full" />
+              <BboxCanvas box={box} onChange={handleBox} className="w-full h-full" rotatable={false} />
             </div>
           </div>
         </div>
@@ -518,7 +590,7 @@ export function ClassifierForm({
                     <img
                       src={s.crop}
                       alt=""
-                      onClick={() => showImage(s.source)}
+                      onClick={() => { showImage(s.source); setPickedEventFrame(s.frame ?? '') }}
                       title="Ver no quadro principal"
                       className="h-20 w-28 object-cover rounded border border-border cursor-pointer"
                     />
@@ -560,7 +632,11 @@ export function ClassifierForm({
       {pickerOpen && (
         <EventPicker
           cameraId={cameraId}
-          onPick={ev => { showImage(eventFrameURL(cameraId, ev)); setPickerOpen(false) }}
+          classes={rows.map(r => r.label).filter(Boolean)}
+          usedByFrame={usedByFrame}
+          onPick={ev => { loadEventImageURL(cameraId, ev).then(r => showImage(r.url)); setPickedEventFrame(ev.frame); setPickerOpen(false) }}
+          onAddMany={addEventsToClass}
+          onRemoveFromClass={(ev, label) => removeFromClass(ev.frame, label)}
           onClose={() => setPickerOpen(false)}
         />
       )}
@@ -568,9 +644,13 @@ export function ClassifierForm({
   )
 }
 
-function EventPicker({ cameraId, onPick, onClose }: {
+function EventPicker({ cameraId, classes, usedByFrame, onPick, onAddMany, onRemoveFromClass, onClose }: {
   cameraId: string
+  classes: string[]
+  usedByFrame: Record<string, string>
   onPick: (ev: EventItem) => void
+  onAddMany: (events: EventItem[], label: string) => void
+  onRemoveFromClass: (ev: EventItem, label: string) => void
   onClose: () => void
 }) {
   // "Abrir de onde parei": ao escolher uma imagem, guarda o frame + a data dela.
@@ -590,6 +670,20 @@ function EventPicker({ cameraId, onPick, onClose }: {
   const pendingScrollRef = useRef<number | null>(loadPickerScroll(cameraId)) // fallback = scroll salvo
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Seleção múltipla (checkbox por imagem) para adicionar várias amostras de uma vez.
+  const [checked, setChecked] = useState<EventItem[]>([])
+  const [targetLabel, setTargetLabel] = useState(classes[0] ?? '')
+  const [hideSelected, setHideSelected] = useState(false)
+  const isChecked = (ev: EventItem) => checked.some(c => c.frame === ev.frame)
+  // "Selecionado" = já inserido numa classe OU marcado no checkbox.
+  const isSelected = (ev: EventItem) => isChecked(ev) || !!usedByFrame[ev.frame]
+  function toggleChecked(ev: EventItem) {
+    setChecked(prev => prev.some(c => c.frame === ev.frame)
+      ? prev.filter(c => c.frame !== ev.frame)
+      : [...prev, ev])
+  }
+  const visibleEvents = hideSelected ? events.filter(ev => !isSelected(ev)) : events
+
   useEffect(() => {
     fetch(`/api/cameras/${cameraId}/motion?date=${date}`, { headers: authHeaders() })
       .then(r => r.ok ? r.json() : { events: [] })
@@ -597,6 +691,13 @@ function EventPicker({ cameraId, onPick, onClose }: {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [cameraId, date])
+
+  // ESC fecha o carrossel.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   // Ao renderizar o carrossel: se a imagem escolhida está nesta data, centraliza
   // ela; senão restaura a rolagem salva (fallback de quando só houve scroll).
@@ -662,32 +763,105 @@ function EventPicker({ cameraId, onPick, onClose }: {
             <Button variant="ghost" size="sm" onClick={onClose}>Fechar</Button>
           </div>
         </div>
+
+        <label className="flex items-center gap-2 text-xs text-muted-foreground mb-2 cursor-pointer select-none w-fit">
+          <input
+            type="checkbox"
+            className="accent-primary"
+            checked={hideSelected}
+            onChange={e => setHideSelected(e.target.checked)}
+          />
+          Não exibir selecionados
+        </label>
+
         {loading ? (
           <p className="text-sm text-muted-foreground">Carregando eventos…</p>
         ) : events.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nenhum evento com snapshot hoje.</p>
+        ) : visibleEvents.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Todos os eventos desta data já foram selecionados.</p>
         ) : (
           <div ref={scrollRef} onScroll={onScroll} className="flex gap-2 overflow-x-auto pb-2">
-            {events.map((ev, i) => {
+            {visibleEvents.map((ev, i) => {
               const selected = ev.frame === pickedFrame
+              const usedLabel = usedByFrame[ev.frame]
+              const highlighted = !!usedLabel || isChecked(ev) || selected
               return (
-                <button
-                  key={i}
-                  ref={selected ? selectedRef : undefined}
-                  id={selected ? 'event-picker-selected' : undefined}
-                  aria-current={selected ? 'true' : undefined}
-                  onClick={() => pick(ev)}
-                  title={new Date(ev.time).toLocaleString('pt-BR')}
-                  className={`shrink-0 rounded overflow-hidden border transition-colors ${
-                    selected
-                      ? 'border-primary ring-2 ring-primary'
-                      : 'border-border hover:border-primary'
-                  }`}
-                >
-                  <img src={eventSnapshotURL(cameraId, ev)} alt="" className="h-56 w-auto block" />
-                </button>
+                <div key={i} className="relative shrink-0">
+                  {usedLabel ? (
+                    // Já inserida: checada (indicador) + badge do estado + X que remove.
+                    <input
+                      type="checkbox"
+                      checked
+                      readOnly
+                      title={`Já adicionada em "${usedLabel}"`}
+                      className="absolute top-1.5 left-1.5 z-10 w-5 h-5 accent-primary"
+                    />
+                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={isChecked(ev)}
+                      onChange={() => toggleChecked(ev)}
+                      onClick={e => e.stopPropagation()}
+                      title="Selecionar para adicionar em lote"
+                      className="absolute top-1.5 left-1.5 z-10 w-5 h-5 accent-primary cursor-pointer"
+                    />
+                  )}
+
+                  {usedLabel && (
+                    <div className="absolute top-1.5 right-1.5 z-10 flex items-center gap-1">
+                      <span className="px-1.5 py-0.5 rounded bg-primary text-on-primary text-[11px] leading-none max-w-[8rem] truncate">
+                        {usedLabel}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); onRemoveFromClass(ev, usedLabel) }}
+                        title={`Remover de "${usedLabel}"`}
+                        className="w-5 h-5 flex items-center justify-center rounded-full bg-destructive text-white text-xs leading-none"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    ref={selected ? selectedRef : undefined}
+                    id={selected ? 'event-picker-selected' : undefined}
+                    aria-current={selected ? 'true' : undefined}
+                    onClick={() => pick(ev)}
+                    title={new Date(ev.time).toLocaleString('pt-BR')}
+                    className={`block rounded overflow-hidden border transition-colors ${
+                      highlighted ? 'border-primary ring-2 ring-primary' : 'border-border hover:border-primary'
+                    }`}
+                  >
+                    <img src={eventSnapshotURL(cameraId, ev)} alt="" className="h-56 w-auto block" />
+                  </button>
+                </div>
               )
             })}
+          </div>
+        )}
+
+        {checked.length > 0 && (
+          <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-3">
+            <span className="text-sm text-muted-foreground mr-auto">{checked.length} selecionada(s)</span>
+            <Button variant="ghost" size="sm" onClick={() => setChecked([])}>Limpar</Button>
+            <span className="text-xs text-muted-foreground">na classe</span>
+            <select
+              className="bg-surface-2 text-foreground text-sm rounded px-2 py-1.5 border border-border focus:outline-none focus:border-ring"
+              value={targetLabel}
+              onChange={e => setTargetLabel(e.target.value)}
+            >
+              {classes.length === 0 && <option value="">(defina uma classe)</option>}
+              {classes.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <Button
+              size="sm"
+              disabled={!targetLabel}
+              onClick={() => onAddMany(checked, targetLabel)}
+            >
+              Adicionar {checked.length} selecionada(s)
+            </Button>
           </div>
         )}
       </div>
