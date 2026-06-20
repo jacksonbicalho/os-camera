@@ -23,6 +23,7 @@ import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
 import CameraConfigMenu from '../components/CameraConfigMenu'
+import PlayerTitle from '../components/PlayerTitle'
 import { zoneThresholdLabel } from './settings/zoneThreshold'
 import { adjacentRecording, filterRecordings, nextRecording, recordingsCount } from './recordingsFilter'
 import { videoDownloadName } from './videoDownload'
@@ -1125,22 +1126,20 @@ function toggleFullscreen() {
               }`}
             >
               <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-border min-w-0">
-                <span className={`inline-flex items-center justify-center rounded px-2 py-1 text-[10px] font-bold leading-none shrink-0 ${isLive ? 'bg-red-600 text-white' : 'bg-surface text-muted'}`}>
-                  {isLive ? 'AO VIVO' : 'Reprodução'}
-                </span>
-                {!isLive && activeRecording && (() => {
-                  const ev = activeEventIdx >= 0 ? visibleEvents[activeEventIdx] : null
-                  return (
-                    <span className="text-sm text-foreground min-w-0 truncate">
-                      {cam?.name ?? id}
-                      {' · '}
-                      <span className="tabular-nums">{formatRecordingDateTime(activeRecording.start, timezone)}</span>
-                      {recDuration > 0 && ` · ${formatRecTime(recDuration)}`}
-                      {ev?.label && <span className="font-medium" style={{ color: ev.color ?? '#f97316' }}> · {ev.label}</span>}
-                    </span>
-                  )
-                })()}
-                {isLive && <span className="font-medium text-sm text-foreground truncate">{cam?.name ?? id}</span>}
+                <PlayerTitle
+                  isLive={isLive}
+                  name={cam?.name ?? id ?? ''}
+                  subtitle={!isLive && activeRecording ? (() => {
+                    const ev = activeEventIdx >= 0 ? visibleEvents[activeEventIdx] : null
+                    return (
+                      <>
+                        <span className="tabular-nums">{formatRecordingDateTime(activeRecording.start, timezone)}</span>
+                        {recDuration > 0 && ` · ${formatRecTime(recDuration)}`}
+                        {ev?.label && <span className="font-medium" style={{ color: ev.color ?? '#f97316' }}> · {ev.label}</span>}
+                      </>
+                    )
+                  })() : undefined}
+                />
                 <div className="ml-auto shrink-0 flex items-center gap-1">
                   {/* Voltar ao vivo — visível só durante reprodução */}
                   {!isLive && (
@@ -1155,6 +1154,7 @@ function toggleFullscreen() {
                   {!isLive && <div className="w-px h-4 bg-surface-2 mx-0.5" />}
                   {/* Mute */}
                   <button
+                    id="player-mute"
                     onClick={() => setVideoMuted(m => { const next = !m; if (videoRef.current) videoRef.current.muted = next; return next })}
                     title={videoMuted ? 'Ativar áudio' : 'Silenciar'}
                     className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${!videoMuted ? 'text-primary' : 'text-muted hover:text-foreground'}`}
@@ -1299,6 +1299,7 @@ function toggleFullscreen() {
                   )}
                   {/* Fullscreen */}
                   <button
+                    id="player-fullscreen"
                     onClick={toggleFullscreen}
                     title="Tela inteira"
                     className="flex items-center gap-1 px-1 py-1 text-muted hover:text-foreground transition-colors cursor-pointer"
@@ -1306,6 +1307,7 @@ function toggleFullscreen() {
                     {playerBtn(<Maximize className="w-4 h-4" />, 'Expandir')}
                   </button>
                   <button
+                    id="player-snapshot"
                     onClick={takeSnapshot}
                     title="Tirar snapshot"
                     className="flex items-center gap-1 px-1 py-1 text-muted hover:text-foreground transition-colors cursor-pointer"
