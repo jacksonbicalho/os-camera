@@ -174,6 +174,32 @@ def test_classify_train_saves_to_named_model(tmp_path, monkeypatch):
     assert (models / "custom-cls-9.pt").exists(), "modelo deveria ser salvo no nome pedido"
 
 
+def test_classify_train_disables_horizontal_flip(tmp_path, monkeypatch):
+    # Classes direcionais (entrando/saindo) seriam corrompidas por espelhamento
+    # horizontal — o treino de classify deve passar fliplr=0.0.
+    monkeypatch.setattr(main, "MODEL_DIR", tmp_path / "models")
+    FakeYOLO.last_train_kwargs = None
+    f = tmp_path / "a.jpg"
+    f.write_bytes(b"x")
+    samples = [
+        {"image_path": str(f), "label": "com-pessoa-entrando"},
+        {"image_path": str(f), "label": "com-pessoa-saindo"},
+    ]
+    resp = client.post(
+        "/classify/train",
+        json={"samples": samples, "base_model": "yolov8n-cls", "epochs": 1},
+    )
+    assert resp.status_code == 200
+    job = resp.json()["job_id"]
+    for _ in range(60):
+        status = client.get(f"/finetune/status/{job}").json()
+        if status["status"] in ("done", "error"):
+            break
+        time.sleep(0.05)
+    assert FakeYOLO.last_train_kwargs is not None, "model.train não foi chamado"
+    assert FakeYOLO.last_train_kwargs.get("fliplr") == 0.0
+
+
 def test_classify_train_returns_job_id(tmp_path):
     f = tmp_path / "a.jpg"
     f.write_bytes(b"x")

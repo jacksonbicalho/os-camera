@@ -333,6 +333,10 @@ def _run_classify_train(job_id: str, req: ClassifyTrainRequest):
             epochs=req.epochs,
             imgsz=224,
             batch=16,
+            # Sem espelhamento horizontal: classes direcionais (ex.: pessoa
+            # entrando vs saindo) seriam corrompidas — uma imagem espelhada de
+            # "entrando" vira visualmente "saindo", contradizendo o rótulo.
+            fliplr=0.0,
             project=str(work_dir / "runs"),
             name="train",
             exist_ok=True,
