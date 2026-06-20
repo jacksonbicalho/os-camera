@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { VolumeX, Volume2, Gauge, Repeat, Film, Zap, CalendarDays, Code2, Maximize, Play, Pause, X, Trash2, CameraCapture, ZoomOut } from '../components/Icons'
+import { VolumeX, Volume2, Gauge, Repeat, Film, Zap, Code2, Maximize, Play, Pause, X, Trash2, CameraCapture, ZoomOut } from '../components/Icons'
 import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -24,6 +24,8 @@ import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
 import CameraConfigMenu from '../components/CameraConfigMenu'
 import PlayerTitle from '../components/PlayerTitle'
+import EventFilterChips from '../components/EventFilterChips'
+import { filterEventsByCategory, eventCategory, eventTitle, type EventFilter } from './eventCategory'
 import { zoneThresholdLabel } from './settings/zoneThreshold'
 import { adjacentRecording, filterRecordings, nextRecording, recordingsCount } from './recordingsFilter'
 import { videoDownloadName } from './videoDownload'
@@ -121,7 +123,7 @@ export default function CameraPage() {
   const [activeRecording, setActiveRecording] = useState<Recording | null>(null)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [motionEvents, setMotionEvents] = useState<MotionEvent[]>([])
-  const [activePanel, setActivePanel] = useState<null | 'recordings' | 'events' | 'calendar'>(() => {
+  const [activePanel, setActivePanel] = useState<null | 'recordings' | 'events'>(() => {
     if (recordingId) return 'recordings'
     if (isLiveRoute) return null
     const state = location.state as { eventTime?: string; showRecordings?: boolean } | null
@@ -129,6 +131,7 @@ export default function CameraPage() {
     return state?.eventTime ? 'events' : null
   })
   const [eventsPage, setEventsPage] = useState(1)
+  const [eventFilter, setEventFilter] = useState<EventFilter>('todos')
   const [eventsSortOrder, setEventsSortOrder] = useState<'asc' | 'desc'>('desc')
   const [activeEventTime, setActiveEventTime] = useState<string | null>(null)
   const [activeEventId, setActiveEventId] = useState<number | null>(null)
@@ -1093,8 +1096,14 @@ function toggleFullscreen() {
       const diff = new Date(a.time).getTime() - new Date(b.time).getTime()
       return eventsSortOrder === 'asc' ? diff : -diff
     })
-  const visibleEvents = sortedEvents.slice(0, eventsPage * PAGE_SIZE)
-  const hasMoreEvents = sortedEvents.length > eventsPage * PAGE_SIZE
+  const filteredEvents = filterEventsByCategory(sortedEvents, eventFilter)
+  const visibleEvents = filteredEvents.slice(0, eventsPage * PAGE_SIZE)
+  const hasMoreEvents = filteredEvents.length > eventsPage * PAGE_SIZE
+  const eventCounts: Partial<Record<EventFilter, number>> = { todos: sortedEvents.length }
+  for (const ev of sortedEvents) {
+    const cat = eventCategory(ev)
+    eventCounts[cat] = (eventCounts[cat] ?? 0) + 1
+  }
   const activeEventIdx = activeEventId !== null
     ? visibleEvents.findIndex(e => e.id === activeEventId)
     : activeEventTime !== null
@@ -1276,14 +1285,6 @@ function toggleFullscreen() {
                       )}
                     </button>
                   )}
-                  {/* Calendar */}
-                  <button
-                    onClick={() => setActivePanel(p => p === 'calendar' ? null : 'calendar')}
-                    title={isToday ? 'Calendário' : `Calendário · ${format(selectedDate, "d MMM", { locale: ptBR })}`}
-                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'calendar' ? 'text-primary' : 'text-muted hover:text-foreground'}`}
-                  >
-                    {playerBtn(<CalendarDays className="w-4 h-4" />, 'Calendário')}
-                  </button>
                   <div className="w-px h-4 bg-surface-2 mx-0.5" />
                   {/* Debug */}
                   <button
@@ -1662,7 +1663,7 @@ function toggleFullscreen() {
           {/* Painel lateral condicional */}
           {activePanel && (
             <div className="w-72 shrink-0 border-l border-border bg-background flex flex-col h-full">
-              {(activePanel === 'recordings' || activePanel === 'events' || activePanel === 'calendar') && (
+              {(activePanel === 'recordings' || activePanel === 'events') && (
                 <>
                   <div className="flex items-center border-b border-border shrink-0">
                     <button
@@ -1688,18 +1689,6 @@ function toggleFullscreen() {
                     >
                       <span>Eventos</span>
                       <span className="tabular-nums">{sortedEvents.length}</span>
-                    </button>
-                    <button
-                      id="tab-calendar"
-                      onClick={() => setActivePanel('calendar')}
-                      className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
-                        activePanel === 'calendar'
-                          ? 'text-primary border-b-2 border-primary -mb-px'
-                          : 'text-faint hover:text-foreground'
-                      }`}
-                    >
-                      <span>{format(selectedDate, "MMM", { locale: ptBR })}</span>
-                      <span className="tabular-nums">{format(selectedDate, "d")}</span>
                     </button>
                     <button
                       onClick={() => setActivePanel(null)}
@@ -1785,7 +1774,13 @@ function toggleFullscreen() {
                       })()}
                     </ListPanel>
                     </>
-                  ) : activePanel === 'events' ? (
+                  ) : (
+                    <div className="flex flex-col flex-1 min-h-0">
+                    <EventFilterChips
+                      value={eventFilter}
+                      onChange={(f) => { setEventFilter(f); setEventsPage(1) }}
+                      counts={eventCounts}
+                    />
                     <ListPanel
                       key="events"
                       sortOrder={eventsSortOrder}
@@ -1845,19 +1840,28 @@ function toggleFullscreen() {
                               </div>
                             </div>
                             <div className="flex items-center justify-between gap-2 mt-1">
-                              <span className="text-xs text-muted truncate">
-                                {ev.color ? ev.label : 'Movimento'}
+                              <div className="flex items-center gap-2 min-w-0">
+                                {thumbURL && (
+                                  <img
+                                    key={`thumb-${ev.id}-${thumbOverride ?? bust ?? 0}`}
+                                    src={thumbURL}
+                                    alt="snapshot"
+                                    className="w-16 h-10 object-cover rounded cursor-zoom-in border border-border shrink-0"
+                                    style={thumbFlash.has(ev.id) ? { animation: 'thumb-flash 0.9s ease-out' } : undefined}
+                                    onClick={e => { e.stopPropagation(); openSnapshotModal(ev) }}
+                                  />
+                                )}
+                                <div className="flex flex-col min-w-0">
+                                  <span className="text-xs font-medium text-foreground truncate">{eventTitle(ev)}</span>
+                                  <span className="text-[11px] text-muted truncate">{cam?.name ?? id}</span>
+                                </div>
+                              </div>
+                              <span
+                                aria-hidden="true"
+                                className="shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-primary/15 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
+                              >
+                                <Play className="w-3.5 h-3.5 fill-current" />
                               </span>
-                              {thumbURL && (
-                                <img
-                                  key={`thumb-${ev.id}-${thumbOverride ?? bust ?? 0}`}
-                                  src={thumbURL}
-                                  alt="snapshot"
-                                  className="w-16 h-10 object-cover rounded cursor-zoom-in border border-border shrink-0"
-                                  style={thumbFlash.has(ev.id) ? { animation: 'thumb-flash 0.9s ease-out' } : undefined}
-                                  onClick={e => { e.stopPropagation(); openSnapshotModal(ev) }}
-                                />
-                              )}
                             </div>
                             {recDets && recDets.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-1" onClick={e => { e.stopPropagation(); setDetectionModal(recDets) }}>
@@ -1872,8 +1876,7 @@ function toggleFullscreen() {
                         )
                       })}
                     </ListPanel>
-                  ) : (
-                    <div className="flex flex-col overflow-y-auto">
+                    <div className="shrink-0 border-t border-border max-h-80 overflow-y-auto">
                       <div className="p-3">
                         <DayPicker
                           mode="single"
@@ -1907,6 +1910,7 @@ function toggleFullscreen() {
                           }}
                         />
                       </div>
+                    </div>
                     </div>
                   )}
                 </>
