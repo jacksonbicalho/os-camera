@@ -28,8 +28,9 @@ type Runner struct {
 	grabber    Grabber
 	classifier analysis.StateClassifier
 	tracker    *stateclass.Tracker
-	persist    func(classifierID int64, state string, confidence float64) error
+	persist    func(classifierID int64, state string, confidence float64, framePath string) error
 	emit       func(c stateclass.Classifier, state string, confidence float64)
+	saveFrame  func(srcPath string, cid int64, ts time.Time) (string, error)
 	log        *slog.Logger
 }
 
@@ -37,8 +38,9 @@ func NewRunner(
 	cfg stateclass.Classifier,
 	grabber Grabber,
 	classifier analysis.StateClassifier,
-	persist func(int64, string, float64) error,
+	persist func(int64, string, float64, string) error,
 	emit func(stateclass.Classifier, string, float64),
+	saveFrame func(srcPath string, cid int64, ts time.Time) (string, error),
 	log *slog.Logger,
 ) *Runner {
 	return &Runner{
@@ -48,6 +50,7 @@ func NewRunner(
 		tracker:    stateclass.NewTracker(cfg.Threshold, cfg.MinConsecutive),
 		persist:    persist,
 		emit:       emit,
+		saveFrame:  saveFrame,
 		log:        log,
 	}
 }
@@ -84,7 +87,19 @@ func (r *Runner) Step(ctx context.Context) error {
 	}
 	// O modelo devolve a classe como slug; grava/emite o rótulo amigável.
 	state = FriendlyLabel(state, r.cfg.Classes)
-	if err := r.persist(r.cfg.ID, state, top.Prob); err != nil {
+	// Persiste o frame da transição como thumbnail durável do histórico. Falha aqui
+	// não aborta o ciclo: o estado ainda é registrado, só sem thumb.
+	framePath := ""
+	if r.saveFrame != nil {
+		if fp, err := r.saveFrame(path, r.cfg.ID, time.Now().UTC()); err != nil {
+			if r.log != nil {
+				r.log.Warn("save state history frame failed", "classifier", r.cfg.ID, "error", err)
+			}
+		} else {
+			framePath = fp
+		}
+	}
+	if err := r.persist(r.cfg.ID, state, top.Prob, framePath); err != nil {
 		return err
 	}
 	if r.emit != nil {

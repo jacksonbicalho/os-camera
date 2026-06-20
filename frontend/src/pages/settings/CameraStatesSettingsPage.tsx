@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -10,7 +10,7 @@ import ConfirmDialog from '../../components/ConfirmDialog'
 import BboxCanvas, { type BboxRect } from '../../components/BboxCanvas'
 import { authHeaders, onUnauthorized, getRole, getToken } from '../../auth'
 import { Button } from '@/components/ui/button'
-import { Plus, Pencil, Trash2, Zap, Loader2, Camera as CameraIcon } from '../../components/Icons'
+import { Plus, Pencil, Trash2, Zap, Loader2, Camera as CameraIcon, CalendarDays, Film, X } from '../../components/Icons'
 import {
   type StateClassifier,
   bboxToCrop,
@@ -18,6 +18,7 @@ import {
   validateClassifier,
 } from './stateClassifier'
 import { loadPicked, loadPickerScroll, savePicked, savePickerScroll } from './eventPickerMemory'
+import { eventCleanFrameURL } from './stateEventFrames'
 
 function emptyClassifier(): StateClassifier {
   return {
@@ -110,8 +111,13 @@ function imageLoads(url: string): Promise<boolean> {
 // cobrindo o instante (extração falha), cai no snapshot do evento (_motion.jpg,
 // com a caixa de movimento) para a adição não falhar calada. `fellBack` sinaliza.
 async function loadEventImageURL(cameraId: string, ev: EventItem): Promise<{ url: string; fellBack: boolean }> {
-  const clean = eventFrameURL(cameraId, ev)
-  if (await imageLoads(clean)) return { url: clean, fellBack: false }
+  // 1. frame limpo salvo junto do snapshot (instante exato, sem defasagem)
+  const cleanFrame = eventCleanFrameURL(cameraId, ev)
+  if (await imageLoads(cleanFrame)) return { url: cleanFrame, fellBack: false }
+  // 2. eventos antigos sem _frame.jpg: extrai da gravação
+  const extracted = eventFrameURL(cameraId, ev)
+  if (await imageLoads(extracted)) return { url: extracted, fellBack: false }
+  // 3. último recurso: snapshot anotado (com a caixa de movimento)
   return { url: eventSnapshotURL(cameraId, ev), fellBack: true }
 }
 
@@ -125,6 +131,8 @@ export default function CameraStatesSettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [states, setStates] = useState<Record<number, string>>({})
+  const [historyFor, setHistoryFor] = useState<StateClassifier | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // Estado atual de cada classificador, em poll (~5s) — atualiza ao runner mudar.
   useEffect(() => {
@@ -164,6 +172,27 @@ export default function CameraStatesSettingsPage() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [id, cid])
+
+  // Deep-link do rodapé: ?history={cid} abre direto a view de Histórico do
+  // classificador. setState dentro do .then (async) para não cair no lint
+  // set-state-in-effect (mesmo padrão do efeito de edição acima).
+  useEffect(() => {
+    const h = searchParams.get('history')
+    if (!h || items.length === 0) return
+    Promise.resolve().then(() => {
+      const c = items.find(x => String(x.id) === h)
+      if (c) setHistoryFor(c)
+    })
+  }, [searchParams, items])
+
+  // closeHistory volta pra lista e limpa o ?history pra não reabrir no próximo render.
+  const closeHistory = useCallback(() => {
+    setHistoryFor(null)
+    if (searchParams.has('history')) {
+      searchParams.delete('history')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   async function remove() {
     if (deleteId == null) return
@@ -232,6 +261,8 @@ export default function CameraStatesSettingsPage() {
           onDone={() => { setEditing(null); if (cid) navigate(`/settings/cameras/states/${id}`); else reload() }}
           onCancel={() => { setEditing(null); setError(null); if (cid) navigate(`/settings/cameras/states/${id}`) }}
         />
+      ) : historyFor ? (
+        <ClassifierHistory cameraId={id!} classifier={historyFor} onBack={closeHistory} />
       ) : (
         <>
           <div className="flex items-center justify-between mb-4">
@@ -278,6 +309,16 @@ export default function CameraStatesSettingsPage() {
                     {states[c.id!] || '—'}
                   </span>
                   <Button
+                    id={`state-history-${c.id}`}
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-primary"
+                    title="Histórico de estados"
+                    onClick={() => setHistoryFor(c)}
+                  >
+                    <CalendarDays className="w-4 h-4" />
+                  </Button>
+                  <Button
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-muted-foreground hover:text-primary"
@@ -310,6 +351,107 @@ export default function CameraStatesSettingsPage() {
         onCancel={() => setDeleteId(null)}
       />
     </SettingsLayout>
+  )
+}
+
+interface HistoryEntry {
+  state: string
+  confidence: number
+  changed_at: string
+  frame: string
+  recording_available: boolean
+}
+
+// ClassifierHistory mostra as transições de estado de um classificador como grid de
+// thumbs (estado + horário). Clicar abre um lightbox com o frame em tamanho cheio; o
+// frame é o artefato durável, então vale mesmo quando a gravação já expirou. O botão
+// "Ver na gravação" navega para a câmera no instante da transição — habilitado só
+// quando ainda há gravação cobrindo aquele momento (recording_available).
+function ClassifierHistory({ cameraId, classifier, onBack }: {
+  cameraId: string
+  classifier: StateClassifier
+  onBack: () => void
+}) {
+  const navigate = useNavigate()
+  const [entries, setEntries] = useState<HistoryEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [lightbox, setLightbox] = useState<HistoryEntry | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/cameras/${cameraId}/classifiers/${classifier.id}/history?limit=200`, { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : []))
+      .then((d: HistoryEntry[]) => { if (!cancelled) setEntries(Array.isArray(d) ? d : []) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [cameraId, classifier.id])
+
+  const frameSrc = (frame: string) => `${frame}?token=${getToken()}`
+
+  return (
+    <div id="state-history">
+      <div className="mb-4">
+        <button id="state-history-back" onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground">← Voltar</button>
+        <h3 className="text-sm font-medium text-foreground mt-1">Histórico — {classifier.name}</h3>
+      </div>
+
+      {loading ? (
+        <p className="text-muted-foreground text-sm">Carregando...</p>
+      ) : entries.length === 0 ? (
+        <p className="text-muted-foreground text-sm">Nenhuma transição registrada ainda.</p>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {entries.map((e, i) => (
+            <button
+              key={i}
+              id={`state-history-thumb-${i}`}
+              className="bg-surface border border-border rounded-lg overflow-hidden text-left hover:border-primary/50 transition-colors"
+              onClick={() => setLightbox(e)}
+            >
+              <img src={frameSrc(e.frame)} alt={e.state} className="w-full aspect-video object-cover bg-black" />
+              <div className="px-2 py-1.5">
+                <p className="text-xs font-medium text-foreground truncate">{e.state}</p>
+                <p className="text-[10px] text-muted-foreground">{new Date(e.changed_at).toLocaleString()}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {lightbox && (
+        <div
+          id="state-history-lightbox"
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setLightbox(null)}
+        >
+          <div className="bg-surface rounded-lg overflow-hidden max-w-3xl w-full" onClick={ev => ev.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+              <div>
+                <p className="text-sm font-medium text-foreground">{lightbox.state}</p>
+                <p className="text-[11px] text-muted-foreground">{new Date(lightbox.changed_at).toLocaleString()}</p>
+              </div>
+              <button id="state-history-lightbox-close" onClick={() => setLightbox(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {lightbox.frame && (
+              <img src={frameSrc(lightbox.frame)} alt={lightbox.state} className="w-full max-h-[70vh] object-contain bg-black" />
+            )}
+            <div className="px-4 py-3 flex items-center justify-end">
+              <Button
+                id="state-history-watch"
+                disabled={!lightbox.recording_available}
+                title={lightbox.recording_available ? 'Abrir a gravação neste instante' : 'Gravação expirada'}
+                onClick={() => navigate(`/cameras/${cameraId}`, { state: { eventTime: lightbox.changed_at, showRecordings: true } })}
+              >
+                <Film className="w-3.5 h-3.5" /> {lightbox.recording_available ? 'Ver na gravação' : 'Gravação expirada'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

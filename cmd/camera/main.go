@@ -305,13 +305,16 @@ func main() {
 			deps := stateengine.Deps{
 				Grabber:    stateengine.NewSnapshotGrabber(takeSnapshot, func(camID string) string { return rtspByID[camID] }, cfg.Storage.Path),
 				Classifier: analysis.NewClient(vacfg.ServiceURL),
-				Persist:    func(cid int64, state string, conf float64) error { return db.RecordStateTransition(database, cid, state, conf) },
+				Persist: func(cid int64, state string, conf float64, framePath string) error {
+					return db.RecordStateTransition(database, cid, state, conf, framePath)
+				},
 				Emit: func(c stateclass.Classifier, state string, conf float64) {
 					if srv != nil {
 						srv.PublishClassifierState(c, state, conf)
 					}
 				},
-				Log: slog,
+				StoragePath: cfg.Storage.Path,
+				Log:         slog,
 			}
 			var all []stateclass.Classifier
 			for _, cam := range cameras {

@@ -122,7 +122,8 @@ export default function CameraPage() {
   const [activePanel, setActivePanel] = useState<null | 'recordings' | 'events' | 'calendar'>(() => {
     if (recordingId) return 'recordings'
     if (isLiveRoute) return null
-    const state = location.state as { eventTime?: string } | null
+    const state = location.state as { eventTime?: string; showRecordings?: boolean } | null
+    if (state?.showRecordings) return 'recordings'
     return state?.eventTime ? 'events' : null
   })
   const [eventsPage, setEventsPage] = useState(1)
@@ -605,14 +606,16 @@ export default function CameraPage() {
   // Handles same-route navigation (component doesn't remount when already on this camera)
   useEffect(() => {
     if (isLiveRoute) return
-    const state = location.state as { eventTime?: string } | null
+    const state = location.state as { eventTime?: string; showRecordings?: boolean } | null
     if (!state?.eventTime) return
     if (handledEventRef.current === state.eventTime) return // already handled by lazy init
     handledEventRef.current = state.eventTime
     pendingEventRef.current = state.eventTime
     const t = new Date(state.eventTime)
     setSelectedDate(new Date(t.getFullYear(), t.getMonth(), t.getDate()))
-    setActivePanel('events')
+    // Histórico de estado abre a lista de gravações (gravação destacada); eventos
+    // de movimento (sino) abrem o painel de eventos.
+    setActivePanel(state.showRecordings ? 'recordings' : 'events')
   }, [location.state, isLiveRoute])
 
   // Sidebar camera link: navigate to same URL with goLive state to reset to live mode
@@ -702,6 +705,9 @@ export default function CameraPage() {
         pendingEventRef.current = null
         const ev = events.find(e => e.time === pendingTime)
         if (ev) playEventAt(ev, result.recordings)
+        // Histórico de estado: não há MotionEvent nesse instante — busca a gravação
+        // que cobre o timestamp e dá seek direto (senão ficaria no ao vivo).
+        else seekToRecordingTime(pendingTime, result.recordings)
       }
     }
 
@@ -848,8 +854,12 @@ export default function CameraPage() {
     return null
   }
 
-  function playEventAt(ev: MotionEvent, recs: Recording[] = recordings, skipScroll = false) {
-    const evTime = new Date(ev.time).getTime()
+  // seekToRecordingTime resolve a gravação que cobre `timeISO` e dá seek nela (com
+  // lead de playbackLeadSeconds). Núcleo compartilhado por playEventAt (evento de
+  // movimento) e pelo deep-link de histórico de estado (que não tem MotionEvent
+  // correspondente). Retorna true quando achou gravação cobrindo o instante.
+  function seekToRecordingTime(timeISO: string, recs: Recording[]): boolean {
+    const evTime = new Date(timeISO).getTime()
     const asc = [...recs].sort((a, b) => a.filename.localeCompare(b.filename))
     for (let i = 0; i < asc.length; i++) {
       const recStart = new Date(asc[i].start).getTime()
@@ -858,8 +868,6 @@ export default function CameraPage() {
         : recStart + 5 * 60 * 1000
       if (evTime >= recStart && evTime < nextStart) {
         if (asc[i].is_recording) {
-          setActiveEventTime(ev.time)
-          setActiveEventId(ev.id ?? null)
           setActiveRecording(null)
           const leadTime = new Date(evTime - playbackLeadSeconds * 1000).toISOString()
           if (hlsPlayerRef.current) {
@@ -867,13 +875,9 @@ export default function CameraPage() {
           } else {
             pendingLiveSeekRef.current = leadTime
           }
-          if (!skipScroll) setScrollNonce(n => n + 1)
-          return
+          return true
         }
         const seekTime = Math.max(0, (evTime - recStart) / 1000 - playbackLeadSeconds)
-        setActiveEventTime(ev.time)
-        setActiveEventId(ev.id ?? null)
-        if (!skipScroll) setScrollNonce(n => n + 1)
         if (activeRecording?.filename === asc[i].filename) {
           if (videoRef.current) {
             videoRef.current.currentTime = seekTime
@@ -883,13 +887,17 @@ export default function CameraPage() {
           pendingSeekRef.current = seekTime
           openRecording(asc[i])
         }
-        return
+        return true
       }
     }
-    // Nenhuma gravação corresponde: seleciona o evento na lista sem acionar playback
+    return false
+  }
+
+  function playEventAt(ev: MotionEvent, recs: Recording[] = recordings, skipScroll = false) {
     setActiveEventTime(ev.time)
     setActiveEventId(ev.id ?? null)
     if (!skipScroll) setScrollNonce(n => n + 1)
+    seekToRecordingTime(ev.time, recs)
   }
 
   function handleGoToEvent(eventTime: string) {

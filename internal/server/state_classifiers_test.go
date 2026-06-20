@@ -12,10 +12,12 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+	"time"
 
 	"camera/internal/config"
 	"camera/internal/db"
 	"camera/internal/server"
+	"camera/internal/stateclass"
 )
 
 // A API de classificador persiste e devolve os flags + destinatários por canal.
@@ -187,6 +189,55 @@ func TestClassifierUpdateDeleteAndState(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &list)
 	if len(list) != 0 {
 		t.Fatalf("expected empty after delete, got %d", len(list))
+	}
+}
+
+func TestStateClassifierHistory(t *testing.T) {
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "admin", "pw", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	cam := config.CameraConfig{ID: "cam1", Name: "Cam", RTSPURL: "rtsp://x/"}
+	if _, err := db.CreateCamera(database, cam, nil); err != nil {
+		t.Fatal(err)
+	}
+	cid, err := db.CreateStateClassifier(database, stateclass.Classifier{
+		CameraID: "cam1", Name: "Portão", Model: "custom-cls", Threshold: 0.8,
+		CropW: 0.3, CropH: 0.3, MinConsecutive: 1, Classes: []string{"aberto", "fechado"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RecordStateTransition(database, cid, "aberto", 0.9, "/recordings/state_history/1/x.jpg"); err != nil {
+		t.Fatal(err)
+	}
+	// gravação cobrindo "agora" → recording_available true
+	now := time.Now().UTC()
+	if err := db.InsertRecording(database, db.Recording{
+		CameraID: "cam1", StartedAt: now.Add(-time.Hour), EndedAt: now.Add(time.Hour), Path: "cam1/rec.mp4",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := server.NewServer(config.ServerConfig{}, "UTC", []config.CameraConfig{cam}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "admin", "pw")
+	path := "/api/cameras/cam1/classifiers/" + strconv.FormatInt(cid, 10) + "/history"
+	w := doJSON(t, srv, http.MethodGet, path, token, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("history: %d %s", w.Code, w.Body.String())
+	}
+	var out []struct {
+		State              string  `json:"state"`
+		Confidence         float64 `json:"confidence"`
+		Frame              string  `json:"frame"`
+		RecordingAvailable bool    `json:"recording_available"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &out)
+	if len(out) != 1 {
+		t.Fatalf("esperava 1 entrada, got %d: %s", len(out), w.Body.String())
+	}
+	if out[0].State != "aberto" || out[0].Frame != "/recordings/state_history/1/x.jpg" || !out[0].RecordingAvailable {
+		t.Fatalf("entrada inesperada: %+v", out[0])
 	}
 }
 
