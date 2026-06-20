@@ -1,18 +1,21 @@
 import { useState, useRef, useEffect, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate, useLocation, Link, NavLink } from "react-router-dom"
-import { clearToken, getRole, authHeaders, onUnauthorized } from "../auth"
+import { clearToken, getRole } from "../auth"
 import { useNotifications } from "../contexts/NotificationContext"
 import { useUserNotifications } from "../contexts/UserNotificationContext"
 import { useSidebarItems, type SidebarItem, type SidebarDropdownOption } from "../contexts/SidebarContext"
-import { useDisplayMode } from "../contexts/DisplayModeContext"
+import { useDisplayMode, useSetDisplayMode } from "../contexts/DisplayModeContext"
 import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import type { Notification } from "../contexts/NotificationContext"
 import ConfirmDialog from "./ConfirmDialog"
 import EventsPanelHeader from "./EventsPanelHeader"
 import ThemeModeNav from "./ThemeModeNav"
-import { Bell, X, Check, Settings, CircleUser, CameraLogo, Cctv } from "./Icons"
+import {
+  Bell, X, Check, Settings, CircleUser, CameraLogo, Cctv,
+  Film, Map, Users, HardDrive, BarChart2, ChevronLeft,
+} from "./Icons"
 import { Button, buttonVariants } from "./ui/button"
 import { cn } from "@/lib/utils"
 
@@ -27,6 +30,21 @@ interface ConfirmState {
   danger?: boolean
   action: () => void
 }
+
+// Itens de rota da nav rail principal (mockup do redesign). Os destinos
+// Mapas/Dispositivos/Usuários/Relatórios são páginas placeholder por enquanto
+// — preenchidas nas histórias seguintes do roadmap.
+const NAV_LINKS: Array<{ id: string; to: string; label: string; icon: React.ReactNode }> = [
+  { id: "nav-live", to: "/", label: "Ao vivo", icon: <Cctv /> },
+  { id: "nav-recordings", to: "/recordings", label: "Gravações", icon: <Film /> },
+]
+
+const NAV_LINKS_AFTER_EVENTS: Array<{ id: string; to: string; label: string; icon: React.ReactNode }> = [
+  { id: "nav-maps", to: "/maps", label: "Mapas", icon: <Map /> },
+  { id: "nav-devices", to: "/devices", label: "Dispositivos", icon: <HardDrive /> },
+  { id: "nav-users", to: "/users", label: "Usuários", icon: <Users /> },
+  { id: "nav-reports", to: "/reports", label: "Relatórios", icon: <BarChart2 /> },
+]
 
 function useDropdown(extraRef?: React.RefObject<HTMLElement | null>) {
   const [open, setOpen] = useState(false)
@@ -224,28 +242,10 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
   const { open: settingsOpen, setOpen: setSettingsOpen, ref: settingsRef } = useDropdown(settingsPanelRef)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const [settingsPos, setSettingsPos] = useState({ bottom: 0, left: 0 })
-  const settingsLinks = getRole() === "admin" ? ADMIN_SETTINGS_LINKS : VIEWER_SETTINGS_LINKS
+  const role = getRole()
+  const roleLabel = role === "admin" ? "Administrador" : "Visualizador"
+  const settingsLinks = role === "admin" ? ADMIN_SETTINGS_LINKS : VIEWER_SETTINGS_LINKS
   const settingsActive = location.pathname.startsWith("/settings")
-
-  const camerasPanelRef = useRef<HTMLDivElement>(null)
-  const { open: camerasOpen, setOpen: setCamerasOpen, ref: camerasRef } = useDropdown(camerasPanelRef)
-  const camerasButtonRef = useRef<HTMLButtonElement>(null)
-  const [camerasPos, setCamerasPos] = useState({ top: 0, left: 0 })
-  const [cameraList, setCameraList] = useState<{ id: string; name: string }[]>([])
-  const camerasActive = location.pathname.startsWith("/camera")
-
-  function openCameras() {
-    if (camerasButtonRef.current) {
-      const r = camerasButtonRef.current.getBoundingClientRect()
-      setCamerasPos({ top: r.top, left: r.right + 8 })
-    }
-    if (!camerasOpen) {
-      fetch('/api/cameras', { headers: authHeaders() })
-        .then(res => { if (res.status === 401) { onUnauthorized(); return null } return res.json() })
-        .then(data => { if (Array.isArray(data)) setCameraList(data) })
-    }
-    setCamerasOpen(v => !v)
-  }
 
   const {
     notifications, unreadCount,
@@ -313,13 +313,37 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
   const items = useSidebarItems()
   const { sidebar: sidebarMode } = useDisplayMode()
+  const setDisplayMode = useSetDisplayMode()
   const showIcon = sidebarMode !== 'text-only'
   const showLabel = sidebarMode !== 'icons-only'
+  const collapsed = sidebarMode === 'icons-only'
   const sidebarWidth = sidebarMode === 'icons-only' ? 'w-14' : sidebarMode === 'icons-text' ? 'w-48' : 'w-40'
   const itemsAlign = showLabel ? 'items-stretch px-2' : 'items-center'
   const btnBase = showLabel
     ? 'relative flex items-center gap-2 w-full px-3 h-9 rounded-lg transition-colors'
     : 'relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors'
+
+  const navLinkClass = (active: boolean) => cn(
+    buttonVariants({ variant: active ? 'default' : 'ghost', size: showLabel ? 'default' : 'icon' }),
+    'relative [&_svg]:size-5',
+    showLabel ? 'w-full justify-start' : 'w-10 h-10',
+  )
+
+  function renderNavLink({ id, to, label, icon }: { id: string; to: string; label: string; icon: React.ReactNode }) {
+    return (
+      <NavLink
+        key={id}
+        id={id}
+        to={to}
+        end={to === '/'}
+        title={label}
+        className={({ isActive }) => navLinkClass(isActive)}
+      >
+        {showIcon && icon}
+        {showLabel && <span className="text-sm truncate">{label}</span>}
+      </NavLink>
+    )
+  }
 
   return (
     <aside className={`${sidebarWidth} flex-none flex flex-col bg-surface border-r border-border`}>
@@ -335,9 +359,11 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
         {showLabel && <span className="text-sm font-semibold text-foreground truncate">os-camera</span>}
       </Link>
 
+      {/* Nav rail principal */}
+      <nav id="sidebar-nav" className={`flex flex-col ${itemsAlign} gap-1 py-2`}>
+        {NAV_LINKS.map(renderNavLink)}
 
-      {/* Bell — logo abaixo da logo */}
-      <div className={`flex flex-col ${itemsAlign} py-1 border-b border-border flex-none`}>
+        {/* Eventos — sino com painel de notificações ao vivo */}
         <div ref={bellRef} className={showLabel ? 'w-full' : undefined}>
           <Button
             id="sidebar-notifications"
@@ -436,56 +462,13 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             </div>
           , document.body)}
         </div>
-      </div>
 
-      {/* Câmeras — logo abaixo do sino */}
-      <div className={`flex flex-col ${itemsAlign} py-1 border-b border-border flex-none`}>
-        <div ref={camerasRef} className={showLabel ? 'w-full' : undefined}>
-          <Button
-            id="sidebar-cameras"
-            ref={camerasButtonRef}
-            variant={camerasActive || camerasOpen ? 'default' : 'ghost'}
-            onClick={openCameras}
-            title="Câmeras"
-            className={cn(btnBase, "shadow-none [&_svg]:size-5")}
-          >
-            {showIcon && <Cctv />}
-            {showLabel && <span className="text-sm truncate">Câmeras</span>}
-          </Button>
-        </div>
-        {camerasOpen && createPortal(
-          <div
-            ref={camerasPanelRef}
-            style={{ position: 'fixed', top: camerasPos.top, left: camerasPos.left, zIndex: 9999 }}
-            className="w-48 bg-surface border border-border rounded shadow-lg"
-          >
-            <div className="px-3 py-2 text-xs text-gray-500 border-b border-border font-medium">Câmeras</div>
-            {cameraList.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-gray-500">Nenhuma câmera</div>
-            ) : cameraList.map(cam => (
-              <button
-                key={cam.id}
-                onClick={() => {
-                  setCamerasOpen(false)
-                  navigate(`/camera/live/${cam.id}`, { replace: true, state: { goLive: Date.now() } })
-                }}
-                className={`block w-full text-left px-3 py-2 text-sm transition-colors truncate ${
-                  location.pathname === `/camera/live/${cam.id}`
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-foreground hover:bg-accent hover:text-accent-foreground'
-                }`}
-              >
-                {cam.name}
-              </button>
-            ))}
-          </div>,
-          document.body
-        )}
-      </div>
+        {NAV_LINKS_AFTER_EVENTS.map(renderNavLink)}
+      </nav>
 
       {/* Injected camera items */}
       {items.length > 0 && (
-        <div className={`flex flex-col ${itemsAlign} gap-1 py-2 border-b border-border flex-none`}>
+        <div className={`flex flex-col ${itemsAlign} gap-1 py-2 border-t border-border flex-none`}>
           {items.map(item => <SidebarInjectedItem key={item.id} item={item} displayMode={sidebarMode} />)}
         </div>
       )}
@@ -493,8 +476,8 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Bottom: Settings + User */}
-      <div id="sidebar-bottom" className={`flex flex-col ${itemsAlign} gap-1 pb-3 flex-none`}>
+      {/* Bottom: Settings + Recolher + User */}
+      <div id="sidebar-bottom" className={`flex flex-col ${itemsAlign} gap-1 pb-3 border-t border-border pt-2 flex-none`}>
 
         {/* Settings */}
         <div ref={settingsRef} className={showLabel ? 'w-full' : undefined}>
@@ -557,17 +540,37 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
           document.body
         )}
 
+        {/* Recolher menu */}
+        <button
+          id="sidebar-collapse"
+          onClick={() => setDisplayMode('sidebar', collapsed ? 'icons-text' : 'icons-only')}
+          title={collapsed ? 'Expandir menu' : 'Recolher menu'}
+          className={cn(btnBase, 'text-muted-foreground hover:bg-accent hover:text-accent-foreground [&_svg]:size-5')}
+        >
+          <ChevronLeft className={collapsed ? 'rotate-180' : ''} />
+          {showLabel && <span className="text-sm truncate">Recolher menu</span>}
+        </button>
+
         {/* User */}
         <div className={`relative ${showLabel ? 'w-full' : ''}`} ref={userRef}>
           <Button
             id="sidebar-user"
             variant="ghost"
             onClick={() => setUserOpen((v) => !v)}
-            className={cn(btnBase, "shadow-none [&_svg]:size-6")}
+            className={cn(
+              btnBase,
+              'shadow-none [&_svg]:size-6',
+              showLabel && 'h-auto py-1.5',
+            )}
             title={username}
           >
             {showIcon && <CircleUser />}
-            {showLabel && <span className="text-sm truncate">{username}</span>}
+            {showLabel && (
+              <span className="flex flex-col items-start min-w-0 leading-tight">
+                <span className="text-sm text-foreground truncate max-w-full">{username}</span>
+                <span className="text-xs text-muted-foreground truncate max-w-full">{roleLabel}</span>
+              </span>
+            )}
             {userUnread > 0 && (
               <span className="absolute top-1 left-6 min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
                 {userUnread > 99 ? '99+' : userUnread}
@@ -577,7 +580,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
           {userOpen && (
             <div className="absolute left-full bottom-0 ml-2 w-44 bg-surface border border-border rounded shadow-lg z-50">
-              <div className="px-4 py-2 text-xs text-gray-500 border-b border-border truncate">{username}</div>
+              <div className="px-4 py-2 text-xs text-gray-500 border-b border-border truncate">{username} · {roleLabel}</div>
               <Link
                 to="/notifications"
                 onClick={() => setUserOpen(false)}

@@ -30,6 +30,7 @@ vi.mock('../contexts/SidebarContext', () => ({
 
 vi.mock('../contexts/DisplayModeContext', () => ({
   useDisplayMode: () => ({ sidebar: 'icons-text' }),
+  useSetDisplayMode: () => vi.fn(),
 }))
 
 // ThemeModeNav usa useTheme — substituímos por um marcador com o mesmo id.
@@ -50,16 +51,15 @@ function renderSidebar() {
 const FOLLOWS = Node.DOCUMENT_POSITION_FOLLOWING
 
 describe('Sidebar — reorganização da navegação', () => {
-  it('Câmeras fica no topo (abaixo do sino), fora da seção inferior', () => {
+  it('Eventos (sino) fica na nav rail principal, fora da seção inferior', () => {
     renderSidebar()
-    const cameras = document.getElementById('sidebar-cameras')!
     const bell = document.getElementById('sidebar-notifications')!
     const bottom = document.getElementById('sidebar-bottom')!
-    expect(cameras).toBeTruthy()
-    // não está dentro da seção inferior (Configurações/Usuário)
-    expect(bottom.contains(cameras)).toBe(false)
-    // aparece depois do sino no DOM
-    expect(bell.compareDocumentPosition(cameras) & FOLLOWS).toBeTruthy()
+    expect(bell).toBeTruthy()
+    // não está dentro da seção inferior (Configurações/Recolher/Usuário)
+    expect(bottom.contains(bell)).toBe(false)
+    // aparece antes da seção inferior no DOM
+    expect(bell.compareDocumentPosition(bottom) & FOLLOWS).toBeTruthy()
   })
 
   it('Estatísticas saiu da base e virou link /stats no flyout, entre color mode e Sobre', () => {
