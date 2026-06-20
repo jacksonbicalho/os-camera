@@ -120,6 +120,7 @@ type Server struct {
 	onCameraStop       func(string)
 	monitors           map[string]*motion.Monitor
 	cpu                cpuTracker
+	net                netTracker
 	cleaner            interface{ ForceClean() }
 	deviceCollectors   []deviceinfo.Collector
 }
@@ -1194,6 +1195,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 
 	sysMemTotal, sysMemFree := systemMemInfo()
 	cpuPct := s.cpu.percent()
+	netMbps := s.net.mbps()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
@@ -1211,6 +1213,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		"os":                          osName(),
 		"pid":                         os.Getpid(),
 		"cpu_percent":                 cpuPct,
+		"net_mbps":                    netMbps,
 		"mem_rss_bytes":               processMemRSS(),
 		"sys_mem_total_bytes":         sysMemTotal,
 		"sys_mem_free_bytes":          sysMemFree,
