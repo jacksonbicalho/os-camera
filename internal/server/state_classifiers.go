@@ -267,6 +267,42 @@ func (s *Server) handleStateClassifierState(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(st) // nil → null (estado ainda não escrito pela S3)
 }
 
+// handleStateClassifierHistory lista as transições recentes de um classificador
+// (mais novas primeiro) com o thumbnail e se a gravação daquele instante ainda existe.
+func (s *Server) handleStateClassifierHistory(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	cid, err := strconv.ParseInt(r.PathValue("cid"), 10, 64)
+	if !s.cameraExists(id) || err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	limit := 100
+	if q := r.URL.Query().Get("limit"); q != "" {
+		if n, err := strconv.Atoi(q); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	out := []map[string]any{}
+	if s.db != nil {
+		entries, err := db.ListStateHistory(s.db, cid, limit)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		for _, e := range entries {
+			out = append(out, map[string]any{
+				"state":               e.State,
+				"confidence":          e.Confidence,
+				"changed_at":          e.ChangedAt,
+				"frame":               e.FramePath,
+				"recording_available": e.RecordingAvailable,
+			})
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
+}
+
 // handleFooterStates devolve, para o usuário do JWT, os classificadores que ele
 // marcou pra ver no rodapé (footer_enabled + destinatário) e o estado atual de
 // cada — filtrados por acesso à câmera (admin todas; viewer via user_cameras).

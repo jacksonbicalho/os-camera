@@ -6,6 +6,7 @@ import (
 	"image/jpeg"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -160,5 +161,21 @@ func TestDetectorSnapshotIsDetectionFrameFullRes(t *testing.T) {
 	r, _, b, _ := img.At(w/4, h/2).RGBA()
 	if r>>8 < 150 || b>>8 > 120 {
 		t.Errorf("left-half pixel R=%d B=%d — expected yellow (R high, B low); color not preserved", r>>8, b>>8)
+	}
+
+	// Junto do _motion.jpg anotado, um _frame.jpg LIMPO do mesmo instante (full-res),
+	// usado pelo picker do carrossel.
+	cleanName := strings.Replace(r0.frame, "_motion.jpg", "_frame.jpg", 1)
+	cleanPath := filepath.Join(tmp, "cam", r0.ts.UTC().Format("2006/01/02"), cleanName)
+	cleanData, err := os.ReadFile(cleanPath)
+	if err != nil {
+		t.Fatalf("clean _frame.jpg não gravado: %v", err)
+	}
+	cleanImg, err := jpeg.Decode(bytes.NewReader(cleanData))
+	if err != nil {
+		t.Fatalf("decode clean frame: %v", err)
+	}
+	if cleanImg.Bounds().Dx() != w || cleanImg.Bounds().Dy() != h {
+		t.Fatalf("clean frame dims = %dx%d, want %dx%d", cleanImg.Bounds().Dx(), cleanImg.Bounds().Dy(), w, h)
 	}
 }

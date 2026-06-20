@@ -4,10 +4,76 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"camera/internal/db"
 	"camera/internal/stateclass"
 )
+
+func TestListStateHistory(t *testing.T) {
+	database := openTestDB(t)
+	seedCamera(t, database, "cam1")
+	id, _ := db.CreateStateClassifier(database, makeClassifier("cam1"))
+
+	// duas transições; a 2ª é a mais recente (deve vir primeiro)
+	if err := db.RecordStateTransition(database, id, "vazio", 0.8, "/recordings/state_history/1/a.jpg"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RecordStateTransition(database, id, "cheio", 0.9, "/recordings/state_history/1/b.jpg"); err != nil {
+		t.Fatal(err)
+	}
+	// registro SEM imagem (legado/falha) não deve ser listado
+	if err := db.RecordStateTransition(database, id, "semfoto", 0.7, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// gravação cobrindo "agora" → recording_available verdadeiro para ambas
+	now := time.Now().UTC()
+	if err := db.InsertRecording(database, db.Recording{
+		CameraID: "cam1", StartedAt: now.Add(-1 * time.Hour), EndedAt: now.Add(1 * time.Hour), Path: "cam1/rec.mp4",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := db.ListStateHistory(database, id, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("esperava 2 entradas, got %d", len(got))
+	}
+	if got[0].State != "cheio" || got[0].FramePath != "/recordings/state_history/1/b.jpg" {
+		t.Fatalf("mais recente primeiro esperado: %+v", got[0])
+	}
+	if !got[0].RecordingAvailable || !got[1].RecordingAvailable {
+		t.Fatalf("gravação cobre as transições — recording_available deveria ser true: %+v", got)
+	}
+}
+
+func TestListStateHistoryRecordingExpired(t *testing.T) {
+	database := openTestDB(t)
+	seedCamera(t, database, "cam1")
+	id, _ := db.CreateStateClassifier(database, makeClassifier("cam1"))
+
+	if err := db.RecordStateTransition(database, id, "vazio", 0.8, "/recordings/state_history/1/a.jpg"); err != nil {
+		t.Fatal(err)
+	}
+	// gravação antiga, não cobre "agora" → recording_available falso
+	old := time.Now().UTC().Add(-48 * time.Hour)
+	if err := db.InsertRecording(database, db.Recording{
+		CameraID: "cam1", StartedAt: old, EndedAt: old.Add(1 * time.Hour), Path: "cam1/old.mp4",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := db.ListStateHistory(database, id, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].RecordingAvailable {
+		t.Fatalf("gravação expirada — recording_available deveria ser false: %+v", got)
+	}
+}
 
 func TestFooterClassifiersForUser(t *testing.T) {
 	database := openTestDB(t)
@@ -225,7 +291,7 @@ func TestRecordStateTransitionReflectsInCurrent(t *testing.T) {
 	seedCamera(t, database, "cam1")
 	id, _ := db.CreateStateClassifier(database, makeClassifier("cam1"))
 
-	if err := db.RecordStateTransition(database, id, "aberto", 0.91); err != nil {
+	if err := db.RecordStateTransition(database, id, "aberto", 0.91, ""); err != nil {
 		t.Fatalf("record: %v", err)
 	}
 	st, err := db.GetCurrentState(database, id)

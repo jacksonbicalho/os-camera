@@ -64,19 +64,23 @@ func (g *SnapshotGrabber) Grab(ctx context.Context, c stateclass.Classifier) (st
 
 // Deps reúne as dependências para subir os runners de classificação de estado.
 type Deps struct {
-	Grabber    Grabber
-	Classifier analysis.StateClassifier
-	Persist    func(classifierID int64, state string, confidence float64) error
-	Emit       func(c stateclass.Classifier, state string, confidence float64)
-	Log        *slog.Logger
+	Grabber     Grabber
+	Classifier  analysis.StateClassifier
+	Persist     func(classifierID int64, state string, confidence float64, framePath string) error
+	Emit        func(c stateclass.Classifier, state string, confidence float64)
+	StoragePath string
+	Log         *slog.Logger
 }
 
 // StartRunners sobe, em goroutines, um Runner por classificador elegível
 // (habilitado + intervalo > 0) e retorna quantos foram iniciados.
 func StartRunners(ctx context.Context, classifiers []stateclass.Classifier, d Deps) int {
+	saveFrame := func(srcPath string, cid int64, ts time.Time) (string, error) {
+		return SaveHistoryFrame(d.StoragePath, cid, srcPath, ts)
+	}
 	sel := SelectIntervalRunners(classifiers)
 	for _, c := range sel {
-		r := NewRunner(c, d.Grabber, d.Classifier, d.Persist, d.Emit, d.Log)
+		r := NewRunner(c, d.Grabber, d.Classifier, d.Persist, d.Emit, saveFrame, d.Log)
 		go r.Run(ctx)
 	}
 	return len(sel)

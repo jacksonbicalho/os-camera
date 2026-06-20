@@ -353,6 +353,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/settings/cameras/{id}/classifiers/{cid}/samples", s.requireAdmin(s.handleStateClassifierSamplesGet))
 	s.mux.HandleFunc("POST /api/settings/cameras/{id}/classifiers/{cid}/samples", s.requireAdmin(s.handleStateClassifierSamplesSave))
 	s.mux.HandleFunc("GET /api/cameras/{id}/classifiers/{cid}/state", s.requireCameraAccess(s.handleStateClassifierState))
+	s.mux.HandleFunc("GET /api/cameras/{id}/classifiers/{cid}/history", s.requireCameraAccess(s.handleStateClassifierHistory))
 	s.mux.HandleFunc("POST /api/events/{id}/annotations", s.requireFullAuth(s.handleCreateAnnotation))
 	s.mux.HandleFunc("GET /api/events/{id}/annotations", s.requireFullAuth(s.handleListAnnotations))
 	s.mux.HandleFunc("DELETE /api/events/{id}/annotations", s.requireFullAuth(s.handleDeleteAnnotationsByEvent))

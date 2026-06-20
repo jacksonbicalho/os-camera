@@ -105,7 +105,7 @@ func TestFooterStatesEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.RecordStateTransition(database, id, "vazio", 0.9); err != nil {
+	if err := db.RecordStateTransition(database, id, "vazio", 0.9, ""); err != nil {
 		t.Fatal(err)
 	}
 

@@ -22,12 +22,12 @@ func (s *store) record(cameraID string, ts time.Time, score float64, frame, labe
 	return nil
 }
 
-func (s *store) saveJPEG(cameraID string, ts time.Time, data []byte) (name, fullPath string, err error) {
+func (s *store) saveJPEG(cameraID string, ts time.Time, suffix string, data []byte) (name, fullPath string, err error) {
 	dir := filepath.Join(s.basePath, cameraID, ts.UTC().Format("2006/01/02"))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", "", err
 	}
-	name = ts.UTC().Format("20060102150405") + "_motion.jpg"
+	name = ts.UTC().Format("20060102150405") + suffix
 	fullPath = filepath.Join(dir, name)
 	if err := os.WriteFile(fullPath, data, 0644); err != nil {
 		return "", "", err

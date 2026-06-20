@@ -71,6 +71,23 @@ func annotateRGBFrame(rgb []byte, w, h int, bbox BBox, score float64, c color.NR
 	return buf.Bytes()
 }
 
+// encodeRGBToJPEG encodes a full-res RGB24 frame as JPEG with no annotation — the
+// clean frame at the exact instant of detection, saved as the event's _frame.jpg so
+// the carousel picker shows the very frame selected (sem box/score), em vez de um
+// quadro re-extraído da gravação (que salta pro próximo keyframe e defasa).
+func encodeRGBToJPEG(rgb []byte, w, h int) []byte {
+	rgba := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for i := 0; i < w*h; i++ {
+		rgba.Pix[4*i] = rgb[3*i]
+		rgba.Pix[4*i+1] = rgb[3*i+1]
+		rgba.Pix[4*i+2] = rgb[3*i+2]
+		rgba.Pix[4*i+3] = 255
+	}
+	var buf bytes.Buffer
+	jpeg.Encode(&buf, rgba, &jpeg.Options{Quality: 85})
+	return buf.Bytes()
+}
+
 func lineThickness(w, h int) int {
 	t := (w + h) / 500
 	if t < 1 {

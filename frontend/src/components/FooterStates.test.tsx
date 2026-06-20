@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import FooterStates from './FooterStates'
 import type { FooterState } from '../hooks/useFooterStates'
 
@@ -13,20 +14,26 @@ function okJSON(data: FooterState[]) {
   return { ok: true, status: 200, json: async () => data }
 }
 
+function renderFooter() {
+  return render(<MemoryRouter><FooterStates /></MemoryRouter>)
+}
+
 describe('FooterStates', () => {
   it('renders nothing when the user has no footer classifiers', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okJSON([])))
-    const { container } = render(<FooterStates />)
+    const { container } = renderFooter()
     await waitFor(() => expect(container.querySelector('#footer-states')).toBeNull())
   })
 
-  it('lists name: state from the endpoint', async () => {
+  it('lists name: state from the endpoint, linkando ao histórico', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
       okJSON([{ classifier_id: 7, camera_id: 'cam1', name: 'Corredor', state: 'vazio' }]),
     ))
-    render(<FooterStates />)
+    renderFooter()
     expect(await screen.findByText('Corredor:')).toBeTruthy()
     expect(screen.getByText('vazio')).toBeTruthy()
+    const link = document.getElementById('footer-state-7') as HTMLAnchorElement
+    expect(link.getAttribute('href')).toBe('/settings/cameras/states/cam1?history=7')
   })
 
   it('flashes a classifier when its state changes between polls', async () => {
@@ -37,7 +44,7 @@ describe('FooterStates', () => {
       .mockResolvedValue(okJSON([{ classifier_id: 7, camera_id: 'cam1', name: 'Corredor', state: 'cheio' }]))
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<FooterStates />)
+    renderFooter()
     // resolve a 1ª busca (mount)
     await act(async () => { await Promise.resolve() })
 

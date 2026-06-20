@@ -248,9 +248,14 @@ func (d *detector) evaluateDetectZones(bg, prev, cur []byte, zs []zones.Zone, ts
 // always reflects the exact instant of detection.
 func (d *detector) saveSnapshot(ts time.Time, score float64, bbox BBox, drawRect bool, rgb []byte, fw, fh int, annColor color.NRGBA, label, recColor string) {
 	jpegData := annotateRGBFrame(rgb, fw, fh, bbox, score, annColor, drawRect)
-	frameName, _, err := d.st.saveJPEG(d.cameraID, ts, jpegData)
+	frameName, _, err := d.st.saveJPEG(d.cameraID, ts, "_motion.jpg", jpegData)
 	if err != nil {
 		d.log.Warn("motion: failed to save snapshot", "camera", d.cameraID, "error", err)
+	}
+	// Frame LIMPO (sem box/score) do mesmo instante, para o picker do carrossel exibir
+	// exatamente o quadro selecionado em vez de re-extrair da gravação (que defasa).
+	if _, _, err := d.st.saveJPEG(d.cameraID, ts, "_frame.jpg", encodeRGBToJPEG(rgb, fw, fh)); err != nil {
+		d.log.Warn("motion: failed to save clean frame", "camera", d.cameraID, "error", err)
 	}
 	if err := d.st.record(d.cameraID, ts, score, frameName, label, recColor, bbox); err != nil {
 		d.log.Error("motion: failed to record event", "camera", d.cameraID, "error", err)

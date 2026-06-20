@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"time"
 
 	"camera/internal/stateclass"
 )
@@ -295,12 +296,61 @@ func DeleteStateClassifier(database *DB, id int64) error {
 }
 
 // RecordStateTransition appends a confirmed state to a classifier's history.
-func RecordStateTransition(database *DB, classifierID int64, state string, confidence float64) error {
+// framePath é o caminho servível do thumbnail da transição ("" quando não houver).
+func RecordStateTransition(database *DB, classifierID int64, state string, confidence float64, framePath string) error {
 	_, err := database.Exec(
-		`INSERT INTO camera_state_history (classifier_id, state, confidence) VALUES (?, ?, ?)`,
-		classifierID, state, confidence,
+		`INSERT INTO camera_state_history (classifier_id, state, confidence, frame_path) VALUES (?, ?, ?, ?)`,
+		classifierID, state, confidence, framePath,
 	)
 	return err
+}
+
+// StateHistoryEntry é uma transição registrada no histórico de um classificador.
+type StateHistoryEntry struct {
+	State              string
+	Confidence         float64
+	ChangedAt          time.Time
+	FramePath          string
+	RecordingAvailable bool
+}
+
+// ListStateHistory devolve as transições mais recentes de um classificador (mais
+// novas primeiro). Só transições COM thumbnail (frame_path != '') entram — registros
+// legados sem imagem (anteriores à coluna) ou falhas de gravação do frame ficam de
+// fora. RecordingAvailable indica se ainda existe uma gravação cobrindo o instante da
+// transição — os thumbs sobrevivem à retenção das gravações, então o histórico pode
+// apontar pra vídeo já expirado. Ambos os lados da comparação passam por datetime()
+// porque recordings grava em RFC3339 e changed_at em 'YYYY-MM-DD HH:MM:SS'.
+func ListStateHistory(database *DB, classifierID int64, limit int) ([]StateHistoryEntry, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := database.Query(
+		`SELECT h.state, h.confidence, h.changed_at, h.frame_path,
+		        EXISTS(SELECT 1 FROM recordings r
+		               WHERE r.camera_id = c.camera_id
+		                 AND datetime(r.started_at) <= datetime(h.changed_at)
+		                 AND (r.ended_at IS NULL OR datetime(h.changed_at) < datetime(r.ended_at))) AS rec_avail
+		 FROM camera_state_history h
+		 JOIN camera_state_classifiers c ON c.id = h.classifier_id
+		 WHERE h.classifier_id = ? AND h.frame_path != ''
+		 ORDER BY h.changed_at DESC, h.id DESC
+		 LIMIT ?`,
+		classifierID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []StateHistoryEntry{}
+	for rows.Next() {
+		var e StateHistoryEntry
+		if err := rows.Scan(&e.State, &e.Confidence, &e.ChangedAt, &e.FramePath, &e.RecordingAvailable); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 // GetCurrentState returns the latest state of a classifier, or nil when none yet.
