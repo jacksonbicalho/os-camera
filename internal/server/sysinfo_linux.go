@@ -44,6 +44,70 @@ func (t *cpuTracker) percent() float64 {
 	return float64(delta) / (elapsed * 100) * 100
 }
 
+type netTracker struct {
+	mu        sync.Mutex
+	lastBytes uint64
+	lastAt    time.Time
+}
+
+// mbps devolve a vazão de rede agregada (rx+tx de todas as interfaces, exceto
+// loopback) em megabits por segundo, medida pelo delta entre amostras. A
+// primeira amostra devolve -1 (sem janela anterior para comparar).
+func (t *netTracker) mbps() float64 {
+	bytes, err := readNetBytes()
+	if err != nil {
+		return -1
+	}
+	now := time.Now()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.lastAt.IsZero() {
+		t.lastBytes = bytes
+		t.lastAt = now
+		return -1
+	}
+	elapsed := now.Sub(t.lastAt).Seconds()
+	delta := bytes - t.lastBytes
+	t.lastBytes = bytes
+	t.lastAt = now
+	if elapsed <= 0 {
+		return 0
+	}
+	return float64(delta) * 8 / 1e6 / elapsed
+}
+
+func readNetBytes() (uint64, error) {
+	f, err := os.Open("/proc/net/dev")
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	var total uint64
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		colon := strings.IndexByte(line, ':')
+		if colon < 0 {
+			continue
+		}
+		if strings.TrimSpace(line[:colon]) == "lo" {
+			continue
+		}
+		fields := strings.Fields(line[colon+1:])
+		if len(fields) < 16 {
+			continue
+		}
+		// fields[0]=rx bytes, fields[8]=tx bytes
+		rx, err1 := strconv.ParseUint(fields[0], 10, 64)
+		tx, err2 := strconv.ParseUint(fields[8], 10, 64)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		total += rx + tx
+	}
+	return total, nil
+}
+
 func readCPUJiffies() (uint64, error) {
 	data, err := os.ReadFile("/proc/self/stat")
 	if err != nil {

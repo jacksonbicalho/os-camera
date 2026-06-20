@@ -2273,6 +2273,33 @@ func TestGetStatsIncludesSysInfo(t *testing.T) {
 	}
 }
 
+func TestGetStatsIncludesNetMbps(t *testing.T) {
+	cfg := config.ServerConfig{}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	v, ok := payload["net_mbps"]
+	if !ok {
+		t.Fatal("expected stats payload to include net_mbps")
+	}
+	if _, isNum := v.(float64); !isNum {
+		t.Errorf("expected net_mbps to be a number, got %T", v)
+	}
+}
+
 func TestGetStatsIncludesCameraHealth(t *testing.T) {
 	cameras := []config.CameraConfig{
 		{ID: "cam1"},
