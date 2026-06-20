@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { authHeaders, onUnauthorized } from '../auth'
-import AppLayout from '../components/AppLayout'
+import SettingsLayout from '../components/SettingsLayout'
 import MotionScoreChart from '../components/MotionScoreChart'
 import { useStats } from '../hooks/useStats'
 import { formatBytes, formatDuration } from './statsUtils'
@@ -67,10 +67,9 @@ export default function StatsPage() {
   const sysMemUsed = (stats?.sys_mem_total_bytes ?? 0) - (stats?.sys_mem_free_bytes ?? 0)
 
   return (
-    <AppLayout>
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-white">Estatísticas</h2>
-      </div>
+    <SettingsLayout>
+      <h3 className="text-h2 font-semibold text-foreground">Estatísticas</h3>
+      <p className="text-sm text-muted-foreground mt-1 mb-6">Uso de disco, sistema e saúde das câmeras.</p>
 
       {!stats ? (
         <p className="text-gray-500 text-sm">Carregando...</p>
@@ -250,6 +249,6 @@ export default function StatsPage() {
 
         </div>
       )}
-    </AppLayout>
+    </SettingsLayout>
   )
 }

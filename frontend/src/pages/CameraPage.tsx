@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { VolumeX, Volume2, Gauge, Repeat, Film, Zap, CalendarDays, Code2, Settings, Maximize, Play, Pause, X, Trash2, CameraCapture, ZoomOut } from '../components/Icons'
+import { VolumeX, Volume2, Gauge, Repeat, Film, Zap, CalendarDays, Code2, Maximize, Play, Pause, X, Trash2, CameraCapture, ZoomOut } from '../components/Icons'
 import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -22,6 +22,7 @@ import { applyFrameStep, applySameChunkStep, loadedMetadataSeek, mergeRecordings
 import type { Recording, MotionEvent } from './cameraUtils'
 import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
+import CameraConfigMenu from '../components/CameraConfigMenu'
 import { zoneThresholdLabel } from './settings/zoneThreshold'
 import { adjacentRecording, filterRecordings, nextRecording, recordingsCount } from './recordingsFilter'
 import { videoDownloadName } from './videoDownload'
@@ -1292,15 +1293,9 @@ function toggleFullscreen() {
                   >
                     {playerBtn(<Code2 className="w-4 h-4" />, 'Debug')}
                   </button>
-                  {/* Settings */}
+                  {/* Settings — dropdown com as seções de config da câmera */}
                   {isAdmin && (
-                    <button
-                      onClick={() => navigate(`/settings/cameras/edit/${id}`)}
-                      title="Configurar câmera"
-                      className="flex items-center gap-1 px-1 py-1 text-muted hover:text-foreground transition-colors cursor-pointer"
-                    >
-                      {playerBtn(<Settings className="w-4 h-4" />, 'Câmera')}
-                    </button>
+                    <CameraConfigMenu cameraId={id!} showIcon={playerShowIcon} showLabel={playerShowLabel} />
                   )}
                   {/* Fullscreen */}
                   <button
