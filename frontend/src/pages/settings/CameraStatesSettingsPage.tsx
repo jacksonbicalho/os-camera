@@ -522,12 +522,12 @@ export function ClassifierForm({
   const inputCls = 'w-full bg-surface-2 text-foreground text-sm rounded px-3 py-1.5 border border-border focus:outline-none focus:border-ring'
 
   // Retângulo do recorte DERIVADO de value.crop_* — sempre reflete o que está
-  // salvo/recarregado (sem estado separado que possa divergir). w/h=0 = sem recorte
-  // (a lixeira do BboxCanvas zera; o save reclama até redesenhar).
+  // salvo/recarregado (sem estado separado que possa divergir). O recorte é
+  // obrigatório, então o BboxCanvas roda com deletable={false}: o usuário só
+  // redimensiona/posiciona, nunca apaga (handleBox nunca recebe null aqui).
   const box: BboxRect | null = value.crop_w > 0 && value.crop_h > 0 ? cropToBbox(value) : null
   function handleBox(b: BboxRect | null) {
     if (b) onChange({ ...value, ...bboxToCrop(b) })
-    else onChange({ ...value, crop_w: 0, crop_h: 0 })
   }
 
   const [rows, setRows] = useState<ClassRow[]>(value.classes.map(l => ({ label: l, samples: [] })))
@@ -553,6 +553,13 @@ export function ClassifierForm({
   // usado para etiquetar a amostra capturada e saber o que já foi inserido.
   const [pickedEventFrame, setPickedEventFrame] = useState('')
   const displaySrc = live ? liveSrc : staticImage
+
+  // Loading do quadro: o container reserva a proporção (aspect-video), então o box
+  // já abre no tamanho real; a imagem entra por cima quando carrega. `imgLoaded` é
+  // DERIVADO (guarda a última src carregada): ao trocar a fonte, deixa de bater e o
+  // spinner reaparece — sem setState em effect.
+  const [loadedSrc, setLoadedSrc] = useState('')
+  const imgLoaded = displaySrc !== '' && loadedSrc === displaySrc
 
   // Ao vivo: busca o snapshot como blob e só troca a imagem quando ela já está
   // carregada (objectURL local) — evita o "pulo"/flash do re-fetch a cada tick.
@@ -650,14 +657,18 @@ export function ClassifierForm({
         if (fellBack) anyFallback = true
         return { ...(await captureFromUrl(url, value)), frame: ev.frame }
       }))
-      updateRows(rows.map(r => r.label === label ? { ...r, samples: [...r.samples, ...captured] } : r))
+      // Updater funcional: "Adicionar todos" dispara vários onAddMany em sequência;
+      // com rows.map(closure) o segundo sobrescreveria o primeiro. Adicionar amostras
+      // não muda as classes, então não precisa do updateRows/onChange aqui.
+      setRows(prev => prev.map(r => r.label === label ? { ...r, samples: [...r.samples, ...captured] } : r))
       setTraining(anyFallback
         ? 'Adicionadas. Alguns eventos não têm gravação — usei o snapshot (pode conter a caixa de movimento).'
         : '')
     } catch {
       setTraining('Falha ao adicionar as imagens selecionadas.')
     }
-    setPickerOpen(false)
+    // Não fecha o carrossel: o usuário pode adicionar outra classificação (rodapé
+    // com uma linha por classe). Fechar só pelo botão Fechar/ESC/fundo.
   }
 
   // Remove do estado `label` a amostra que veio do frame `frame`.
@@ -720,108 +731,134 @@ export function ClassifierForm({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* Quadro principal: imagem (ao vivo / evento / amostra) + retângulo do recorte */}
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="block text-xs text-muted-foreground">Recorte (arraste o retângulo)</label>
             <div className="flex items-center gap-1">
-              <Button variant={live ? 'default' : 'ghost'} size="sm" onClick={() => { setLive(true); setPickedEventFrame('') }}>Ao vivo</Button>
-              <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>Escolher dos eventos</Button>
+              <Button id="state-frame-live" variant={live ? 'default' : 'ghost'} size="sm" onClick={() => { setLive(true); setPickedEventFrame('') }}>Ao vivo</Button>
+              <Button id="state-frame-pick-events" variant="outline" size="sm" onClick={() => setPickerOpen(true)}>Escolher dos eventos</Button>
             </div>
           </div>
-          <div className="relative w-full rounded overflow-hidden border border-border bg-black">
+          {/* O container reserva a proporção (aspect-video): o box abre no tamanho real
+              já com o spinner; a imagem entra por cima ao carregar (sem "pulo"). */}
+          <div id="state-frame" className="relative w-full aspect-video rounded overflow-hidden border border-border bg-black">
             <img
               src={displaySrc}
               alt="frame"
-              className="w-full block"
+              className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-200 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setLoadedSrc(displaySrc)}
               onError={e => { (e.currentTarget as HTMLImageElement).style.opacity = '0' }}
             />
-            <div className="absolute inset-0">
-              <BboxCanvas box={box} onChange={handleBox} className="w-full h-full" rotatable={false} />
+            {!imgLoaded && (
+              <div id="state-frame-loading" className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                <Loader2 className="w-6 h-6 animate-spin" />
+              </div>
+            )}
+            {/* O recorte só aparece junto com a imagem — escondê-lo enquanto carrega
+                evita o retângulo "flutuando" sobre o fundo preto. */}
+            <div id="state-frame-overlay" className={`absolute inset-0 transition-opacity duration-200 ${imgLoaded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+              <BboxCanvas box={box} onChange={handleBox} className="w-full h-full" rotatable={false} deletable={false} drawable={false} />
             </div>
           </div>
         </div>
 
-        {/* Campos */}
-        <div className="flex flex-col gap-3">
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">Nome</label>
-            <input className={inputCls} value={value.name} onChange={e => onChange({ ...value, name: e.target.value })} />
+        {/* Configuração do estado + Notificações (cartões lado a lado com o quadro) */}
+        <div className="flex flex-col gap-4">
+          <div id="state-config-card" className="bg-surface border border-border rounded-lg p-4 flex flex-col gap-3">
+            <h3 className="text-sm font-medium text-foreground">Configuração do estado</h3>
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Nome</label>
+              <input className={inputCls} value={value.name} onChange={e => onChange({ ...value, name: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Intervalo (s)</label>
+                <input type="number" min={1} className={inputCls} value={value.trigger_interval_seconds}
+                  onChange={e => onChange({ ...value, trigger_interval_seconds: Number(e.target.value) })} />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Limiar (0–1)</label>
+                <input type="number" min={0} max={1} step={0.05} className={inputCls} value={value.threshold}
+                  onChange={e => onChange({ ...value, threshold: Number(e.target.value) })} />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Confirmações</label>
+                <input type="number" min={1} className={inputCls} value={value.min_consecutive}
+                  onChange={e => onChange({ ...value, min_consecutive: Number(e.target.value) })} />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" className="accent-primary" checked={value.enabled}
+                onChange={e => onChange({ ...value, enabled: e.target.checked })} />
+              <span className="text-sm text-foreground">Ativado</span>
+            </label>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Intervalo (s)</label>
-              <input type="number" min={1} className={inputCls} value={value.trigger_interval_seconds}
-                onChange={e => onChange({ ...value, trigger_interval_seconds: Number(e.target.value) })} />
-            </div>
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Limiar (0–1)</label>
-              <input type="number" min={0} max={1} step={0.05} className={inputCls} value={value.threshold}
-                onChange={e => onChange({ ...value, threshold: Number(e.target.value) })} />
-            </div>
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Confirmações</label>
-              <input type="number" min={1} className={inputCls} value={value.min_consecutive}
-                onChange={e => onChange({ ...value, min_consecutive: Number(e.target.value) })} />
-            </div>
+
+          {/* Notificação e rodapé: gate + destinatários por usuário (canais independentes) */}
+          <div id="state-notify-card" className="bg-surface border border-border rounded-lg p-4 flex flex-col gap-4">
+            <h3 className="text-sm font-medium text-foreground">Notificações</h3>
+            <RecipientPicker
+              id="notify"
+              label="Enviar notificação para o usuário"
+              enabled={value.notify_enabled ?? false}
+              onToggle={v => onChange({ ...value, notify_enabled: v })}
+              users={users}
+              selected={value.notify_user_ids ?? []}
+              onSelect={ids => onChange({ ...value, notify_user_ids: ids })}
+            />
+            <RecipientPicker
+              id="footer"
+              label="Exibir no rodapé"
+              enabled={value.footer_enabled ?? false}
+              onToggle={v => onChange({ ...value, footer_enabled: v })}
+              users={users}
+              selected={value.footer_user_ids ?? []}
+              onSelect={ids => onChange({ ...value, footer_user_ids: ids })}
+            />
           </div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" className="accent-primary" checked={value.enabled}
-              onChange={e => onChange({ ...value, enabled: e.target.checked })} />
-            <span className="text-sm text-foreground">Ativado</span>
-          </label>
         </div>
       </div>
 
-      {/* Notificação e rodapé: gate + destinatários por usuário (canais independentes) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        <RecipientPicker
-          id="notify"
-          label="Enviar notificação para o usuário"
-          enabled={value.notify_enabled ?? false}
-          onToggle={v => onChange({ ...value, notify_enabled: v })}
-          users={users}
-          selected={value.notify_user_ids ?? []}
-          onSelect={ids => onChange({ ...value, notify_user_ids: ids })}
-        />
-        <RecipientPicker
-          id="footer"
-          label="Exibir no rodapé"
-          enabled={value.footer_enabled ?? false}
-          onToggle={v => onChange({ ...value, footer_enabled: v })}
-          users={users}
-          selected={value.footer_user_ids ?? []}
-          onSelect={ids => onChange({ ...value, footer_user_ids: ids })}
-        />
-      </div>
-
-      {/* Estados (classes) com imagem representativa */}
-      <div>
+      {/* Estados cadastrados: um cartão por estado com imagem representativa */}
+      <div id="state-classes">
         <div className="flex items-center justify-between mb-2">
-          <label className="block text-xs text-muted-foreground">Estados — capture o recorte que representa cada um</label>
-          <Button variant="outline" size="sm" onClick={() => updateRows([...rows, { label: '', samples: [] }])}>
-            <Plus className="w-3.5 h-3.5" /> Estado
+          <h3 className="text-sm font-medium text-foreground">Estados cadastrados</h3>
+          <Button id="state-class-add" variant="outline" size="sm" onClick={() => updateRows([...rows, { label: '', samples: [] }])}>
+            <Plus className="w-3.5 h-3.5" /> Novo estado
           </Button>
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {rows.map((r, i) => (
-            <div key={i} className="flex items-center gap-3 bg-surface border border-border rounded-lg px-3 py-4">
-              <input
-                className={inputCls + ' max-w-[12rem]'}
-                placeholder="nome do estado (ex: fechado)"
-                value={r.label}
-                onChange={e => updateRows(rows.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
-              />
-              <div className="flex items-center gap-2 flex-1 overflow-x-auto py-1">
-                {r.samples.map((s, k) => (
+            <div id={`state-card-${i}`} key={i} className="bg-surface border border-border rounded-lg p-3 flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${r.samples.length > 0 ? 'bg-success' : 'bg-muted-foreground/40'}`} />
+                <input
+                  className={inputCls + ' flex-1'}
+                  placeholder="nome do estado (ex: fechado)"
+                  value={r.label}
+                  onChange={e => updateRows(rows.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                />
+                <span className="text-xs text-muted-foreground tabular-nums shrink-0">{r.samples.length}</span>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                  onClick={() => updateRows(rows.filter((_, j) => j !== i))} title="Remover estado">
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="flex items-center gap-2 overflow-x-auto py-1 min-h-[5rem]">
+                {r.samples.map((s, k) => {
+                  // A thumb cuja imagem está no quadro principal fica destacada.
+                  const inFrame = !live && staticImage === s.source
+                  return (
                   <div key={k} className="relative shrink-0 group/thumb">
                     <img
                       src={s.crop}
                       alt=""
                       onClick={() => { showImage(s.source); setPickedEventFrame(s.frame ?? '') }}
                       title="Ver no quadro principal"
-                      className="h-20 w-28 object-cover rounded border border-border cursor-pointer"
+                      aria-current={inFrame ? 'true' : undefined}
+                      className={`h-20 w-28 object-cover rounded border cursor-pointer ${inFrame ? 'border-primary ring-2 ring-primary' : 'border-border'}`}
                     />
                     <button
                       type="button"
@@ -832,16 +869,12 @@ export function ClassifierForm({
                       ×
                     </button>
                   </div>
-                ))}
+                  )
+                })}
                 {r.samples.length === 0 && <span className="text-xs text-muted-foreground">sem imagem</span>}
               </div>
-              <span className="text-xs text-muted-foreground tabular-nums">{r.samples.length}</span>
-              <Button variant="outline" size="sm" onClick={() => capture(i)} title="Capturar o recorte do quadro principal">
-                <CameraIcon className="w-3.5 h-3.5" /> Capturar
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                onClick={() => updateRows(rows.filter((_, j) => j !== i))} title="Remover estado">
-                <Trash2 className="w-4 h-4" />
+              <Button variant="outline" size="sm" className="self-start" onClick={() => capture(i)} title="Capturar o recorte do quadro principal">
+                <CameraIcon className="w-3.5 h-3.5" /> Capturar imagem
               </Button>
             </div>
           ))}
@@ -899,17 +932,45 @@ function EventPicker({ cameraId, classes, usedByFrame, onPick, onAddMany, onRemo
   const pendingScrollRef = useRef<number | null>(loadPickerScroll(cameraId)) // fallback = scroll salvo
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Seleção múltipla (checkbox por imagem) para adicionar várias amostras de uma vez.
-  const [checked, setChecked] = useState<EventItem[]>([])
+  // Seleção múltipla por checkbox. Cada imagem marcada vai para o BALDE da
+  // classificação atual (targetLabel) — assim, trocar o dropdown não move a
+  // seleção já feita: cada classificação acumula seu próprio conjunto e ganha
+  // uma linha no rodapé. Mapa label → eventos marcados.
+  const [buckets, setBuckets] = useState<Record<string, EventItem[]>>({})
   const [targetLabel, setTargetLabel] = useState(classes[0] ?? '')
   const [hideSelected, setHideSelected] = useState(false)
-  const isChecked = (ev: EventItem) => checked.some(c => c.frame === ev.frame)
+  const bucketOf = (ev: EventItem) =>
+    Object.keys(buckets).find(label => buckets[label].some(c => c.frame === ev.frame)) ?? ''
+  const isChecked = (ev: EventItem) => bucketOf(ev) !== ''
   // "Selecionado" = já inserido numa classe OU marcado no checkbox.
   const isSelected = (ev: EventItem) => isChecked(ev) || !!usedByFrame[ev.frame]
+  // Marca/desmarca: se já está em algum balde, sai dele; senão entra no balde da
+  // classificação atual (precisa ter um estado-alvo selecionado).
   function toggleChecked(ev: EventItem) {
-    setChecked(prev => prev.some(c => c.frame === ev.frame)
-      ? prev.filter(c => c.frame !== ev.frame)
-      : [...prev, ev])
+    const current = bucketOf(ev)
+    if (current) {
+      setBuckets(prev => {
+        const next = { ...prev, [current]: prev[current].filter(c => c.frame !== ev.frame) }
+        if (next[current].length === 0) delete next[current]
+        return next
+      })
+      return
+    }
+    if (!targetLabel) return
+    setBuckets(prev => ({ ...prev, [targetLabel]: [...(prev[targetLabel] ?? []), ev] }))
+  }
+  // Linhas do rodapé: uma por classificação com seleção pendente.
+  const bucketRows = Object.entries(buckets).filter(([, evs]) => evs.length > 0)
+  function clearBucket(label: string) {
+    setBuckets(prev => { const next = { ...prev }; delete next[label]; return next })
+  }
+  function addBucket(label: string) {
+    onAddMany(buckets[label] ?? [], label)
+    clearBucket(label)
+  }
+  function addAllBuckets() {
+    for (const [label, evs] of bucketRows) onAddMany(evs, label)
+    setBuckets({})
   }
   const visibleEvents = hideSelected ? events.filter(ev => !isSelected(ev)) : events
 
@@ -966,10 +1027,23 @@ function EventPicker({ cameraId, classes, usedByFrame, onPick, onAddMany, onRemo
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6" onClick={onClose}>
-      <div className="bg-surface border border-border rounded-lg p-4 max-w-5xl w-full" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
+      {/* Sem onClick no backdrop: clicar fora NÃO fecha — só o botão Fechar ou ESC,
+          para não perder a seleção em lote por um clique acidental. */}
+      <div className="bg-surface border border-border rounded-lg p-4 max-w-5xl w-full">
         <div className="flex items-center justify-between mb-3 gap-3">
-          <h3 className="text-sm font-medium text-foreground">Escolher imagem dos eventos — clique no frame que representa o estado</h3>
+          <h3 className="text-sm font-medium text-foreground flex items-center gap-2 flex-wrap">
+            <span>Escolha imagem dos eventos para</span>
+            <select
+              id="event-picker-target"
+              className="bg-surface-2 text-foreground text-sm rounded px-2 py-1 border border-border focus:outline-none focus:border-ring"
+              value={targetLabel}
+              onChange={e => setTargetLabel(e.target.value)}
+            >
+              {classes.length === 0 && <option value="">(defina um estado)</option>}
+              {classes.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </h3>
           <div className="flex items-center gap-2 shrink-0">
             {/* Mesmo calendário (DayPicker + ptBR) da lista de gravações, em popover. */}
             <div className="relative">
@@ -1014,7 +1088,8 @@ function EventPicker({ cameraId, classes, usedByFrame, onPick, onAddMany, onRemo
             {visibleEvents.map((ev, i) => {
               const selected = ev.frame === pickedFrame
               const usedLabel = usedByFrame[ev.frame]
-              const highlighted = !!usedLabel || isChecked(ev) || selected
+              const bucket = bucketOf(ev)
+              const highlighted = !!usedLabel || !!bucket || selected
               return (
                 <div key={i} className="relative shrink-0">
                   {usedLabel ? (
@@ -1053,6 +1128,13 @@ function EventPicker({ cameraId, classes, usedByFrame, onPick, onAddMany, onRemo
                     </div>
                   )}
 
+                  {!usedLabel && bucket && (
+                    // Marcada (ainda não inserida): badge da classificação de destino.
+                    <span className="absolute top-1.5 right-1.5 z-10 px-1.5 py-0.5 rounded bg-surface-2 text-foreground border border-primary/50 text-[11px] leading-none max-w-[8rem] truncate">
+                      {bucket}
+                    </span>
+                  )}
+
                   <button
                     ref={selected ? selectedRef : undefined}
                     id={selected ? 'event-picker-selected' : undefined}
@@ -1071,26 +1153,29 @@ function EventPicker({ cameraId, classes, usedByFrame, onPick, onAddMany, onRemo
           </div>
         )}
 
-        {checked.length > 0 && (
-          <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-3">
-            <span className="text-sm text-muted-foreground mr-auto">{checked.length} selecionada(s)</span>
-            <Button variant="ghost" size="sm" onClick={() => setChecked([])}>Limpar</Button>
-            <span className="text-xs text-muted-foreground">na classe</span>
-            <select
-              className="bg-surface-2 text-foreground text-sm rounded px-2 py-1.5 border border-border focus:outline-none focus:border-ring"
-              value={targetLabel}
-              onChange={e => setTargetLabel(e.target.value)}
-            >
-              {classes.length === 0 && <option value="">(defina uma classe)</option>}
-              {classes.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <Button
-              size="sm"
-              disabled={!targetLabel}
-              onClick={() => onAddMany(checked, targetLabel)}
-            >
-              Adicionar {checked.length} selecionada(s)
-            </Button>
+        {bucketRows.length > 0 && (
+          <div className="mt-3 border-t border-border pt-3 flex flex-col gap-2">
+            {/* Uma linha por classificação com seleção pendente. */}
+            {bucketRows.map(([label, evs]) => (
+              <div key={label} id={`event-picker-row-${label}`} className="flex items-center gap-2">
+                <span className="text-sm text-foreground mr-auto">
+                  <span className="tabular-nums">{evs.length}</span> selecionada(s) em “{label}”
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => clearBucket(label)}>Limpar</Button>
+                <Button size="sm" onClick={() => addBucket(label)}>Adicionar {evs.length}</Button>
+              </div>
+            ))}
+
+            {/* Linha "todos" só quando há mais de uma classificação. */}
+            {bucketRows.length > 1 && (
+              <div id="event-picker-row-all" className="flex items-center gap-2 border-t border-border pt-2">
+                <span className="text-sm text-muted-foreground mr-auto">
+                  {bucketRows.length} classificações
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => setBuckets({})}>Limpar todos</Button>
+                <Button size="sm" onClick={addAllBuckets}>Adicionar todos</Button>
+              </div>
+            )}
           </div>
         )}
       </div>
