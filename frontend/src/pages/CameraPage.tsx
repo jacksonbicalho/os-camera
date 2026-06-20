@@ -26,6 +26,8 @@ import CameraConfigMenu from '../components/CameraConfigMenu'
 import PlayerTitle from '../components/PlayerTitle'
 import EventFilterChips from '../components/EventFilterChips'
 import { filterEventsByCategory, eventCategory, eventTitle, type EventFilter } from './eventCategory'
+import HorizontalTimeline from '../components/HorizontalTimeline'
+import type { TimelineRange } from '../components/timelineScale'
 import { zoneThresholdLabel } from './settings/zoneThreshold'
 import { adjacentRecording, filterRecordings, nextRecording, recordingsCount } from './recordingsFilter'
 import { videoDownloadName } from './videoDownload'
@@ -132,6 +134,7 @@ export default function CameraPage() {
   })
   const [eventsPage, setEventsPage] = useState(1)
   const [eventFilter, setEventFilter] = useState<EventFilter>('todos')
+  const [timelineRange, setTimelineRange] = useState<TimelineRange>('24h')
   const [eventsSortOrder, setEventsSortOrder] = useState<'asc' | 'desc'>('desc')
   const [activeEventTime, setActiveEventTime] = useState<string | null>(null)
   const [activeEventId, setActiveEventId] = useState<number | null>(null)
@@ -750,6 +753,18 @@ export default function CameraPage() {
   const calendarOnCurrentMonth =
     calendarMonth.getFullYear() === today.getFullYear() &&
     calendarMonth.getMonth() === today.getMonth()
+  // Fim da janela da timeline horizontal: agora (se hoje) ou fim do dia selecionado.
+  const timelineEndOfDayMs = (() => {
+    const d = new Date(selectedDate)
+    d.setHours(23, 59, 59, 999)
+    return d.getTime()
+  })()
+  function shiftSelectedDate(delta: number) {
+    const d = new Date(selectedDate)
+    d.setDate(d.getDate() + delta)
+    setSelectedDate(d)
+    setCalendarMonth(d)
+  }
 
   const handleLiveMotion = useCallback(() => {
     loadMotionEvents(id!, selectedDateRef.current).then(setMotionEvents)
@@ -1127,10 +1142,10 @@ function toggleFullscreen() {
     <AppLayout fill mainClassName="w-full p-3">
         <div className="flex h-full gap-0">
           {/* Coluna do player */}
-          <div className={`relative flex flex-col min-w-0 h-full ${activePanel ? 'flex-1' : 'w-full'}`}>
+          <div className={`relative flex flex-col min-w-0 h-full gap-2 ${activePanel ? 'flex-1' : 'w-full'}`}>
             <div
               ref={playerRef}
-              className={`flex flex-col h-full bg-background border rounded-lg overflow-hidden transition-all duration-300 ${
+              className={`flex flex-col flex-1 min-h-0 bg-background border rounded-lg overflow-hidden transition-all duration-300 ${
                 !isLive ? 'border-primary ring-1 ring-primary' : 'border-border'
               }`}
             >
@@ -1658,6 +1673,17 @@ function toggleFullscreen() {
               </div>
             )}
 
+            <HorizontalTimeline
+              recordings={recordings}
+              events={sortedEvents}
+              range={timelineRange}
+              onRangeChange={setTimelineRange}
+              endMs={isToday ? Date.now() : timelineEndOfDayMs}
+              dateLabel={format(selectedDate, 'dd/MM/yyyy', { locale: ptBR })}
+              onPrevDate={() => shiftSelectedDate(-1)}
+              onNextDate={() => shiftSelectedDate(1)}
+              formatTick={(ms) => format(new Date(ms), 'HH:mm')}
+            />
           </div>
 
           {/* Painel lateral condicional */}
