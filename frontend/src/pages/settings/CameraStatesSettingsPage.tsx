@@ -173,17 +173,28 @@ export default function CameraStatesSettingsPage() {
       .finally(() => setLoading(false))
   }, [id, cid])
 
-  // Deep-link do rodapé: ?history={cid} abre direto a view de Histórico do
-  // classificador. setState dentro do .then (async) para não cair no lint
-  // set-state-in-effect (mesmo padrão do efeito de edição acima).
+  // ?history={cid} é a fonte de verdade da view de Histórico (deep-link do rodapé,
+  // reload e o botão Voltar do navegador): com o param, abre; sem ele, fecha. Assim
+  // "voltar" remove o param e o efeito fecha a view. setState dentro do .then
+  // (async) para não cair no lint set-state-in-effect (mesmo padrão do efeito acima).
   useEffect(() => {
     const h = searchParams.get('history')
-    if (!h || items.length === 0) return
     Promise.resolve().then(() => {
+      if (!h) { setHistoryFor(null); return }
+      if (items.length === 0) return
       const c = items.find(x => String(x.id) === h)
       if (c) setHistoryFor(c)
     })
   }, [searchParams, items])
+
+  // openHistory abre a view de Histórico E reflete na URL (?history={cid}), para
+  // que recarregar/compartilhar/voltar funcionem (sem replace: gera entrada no
+  // histórico do navegador, então "voltar" retorna à lista).
+  const openHistory = useCallback((c: StateClassifier) => {
+    setHistoryFor(c)
+    searchParams.set('history', String(c.id))
+    setSearchParams(searchParams)
+  }, [searchParams, setSearchParams])
 
   // closeHistory volta pra lista e limpa o ?history pra não reabrir no próximo render.
   const closeHistory = useCallback(() => {
@@ -314,7 +325,7 @@ export default function CameraStatesSettingsPage() {
                     size="icon"
                     className="h-8 w-8 text-muted-foreground hover:text-primary"
                     title="Histórico de estados"
-                    onClick={() => setHistoryFor(c)}
+                    onClick={() => openHistory(c)}
                   >
                     <CalendarDays className="w-4 h-4" />
                   </Button>
