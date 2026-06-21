@@ -27,7 +27,8 @@ import PlayerTitle from '../components/PlayerTitle'
 import EventFilterChips from '../components/EventFilterChips'
 import { filterEventsByCategory, eventCategory, eventTitle, type EventFilter } from './eventCategory'
 import HorizontalTimeline from '../components/HorizontalTimeline'
-import type { TimelineRange } from '../components/timelineScale'
+import Filmstrip from '../components/Filmstrip'
+import { timelineWindow, type TimelineRange } from '../components/timelineScale'
 import { zoneThresholdLabel } from './settings/zoneThreshold'
 import { adjacentRecording, filterRecordings, nextRecording, recordingsCount } from './recordingsFilter'
 import { videoDownloadName } from './videoDownload'
@@ -1688,6 +1689,14 @@ function toggleFullscreen() {
               onSeek={handleTimelineSeek}
               onScrub={handleTimelineScrub}
               onGap={handleTimelineGap}
+            />
+
+            <Filmstrip
+              recordings={recordings}
+              win={timelineWindow(isToday ? Date.now() : timelineEndOfDayMs, timelineRange)}
+              thumbSrc={(ms) => `/api/cameras/${id}/event-frame?time=${encodeURIComponent(new Date(ms).toISOString())}&token=${getToken()}`}
+              formatTime={(ms) => format(new Date(ms), 'HH:mm:ss')}
+              onSeek={handleTimelineSeek}
             />
           </div>
 
