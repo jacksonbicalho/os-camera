@@ -335,6 +335,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/cameras/{id}/recordings", s.requireCameraAccess(s.handleRecordings))
 	s.mux.HandleFunc("GET /api/cameras/{id}/recordings/by-id/{recording_id}", s.requireCameraAccess(s.handleRecordingByID))
 	s.mux.HandleFunc("DELETE /api/cameras/{id}/recordings/{filename}", s.requireAdmin(s.handleDeleteRecording))
+	s.mux.HandleFunc("GET /api/devices", s.requireFullAuth(s.handleDevices))
+	s.mux.HandleFunc("GET /api/reports/events", s.requireFullAuth(s.handleEventReport))
 	s.mux.HandleFunc("GET /api/cameras/{id}/device-info", s.requireCameraAccess(s.handleDeviceInfo))
 	s.mux.HandleFunc("POST /api/cameras/{id}/device-info/refresh", s.requireAdmin(s.handleRefreshDeviceInfo))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion", s.requireCameraAccess(s.handleMotionEvents))
