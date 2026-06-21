@@ -27,6 +27,8 @@ const AnalysisSettingsPage = lazy(() => import('./pages/settings/AnalysisSetting
 const CameraAnalysisSettingsPage = lazy(() => import('./pages/settings/CameraAnalysisSettingsPage'))
 const AppearanceSettingsPage = lazy(() => import('./pages/settings/AppearanceSettingsPage'))
 const PlaceholderPage = lazy(() => import('./pages/PlaceholderPage'))
+const DevicesPage = lazy(() => import('./pages/DevicesPage'))
+const ReportsPage = lazy(() => import('./pages/ReportsPage'))
 
 function UnauthorizedHandler() {
   const navigate = useNavigate()
@@ -70,10 +72,9 @@ export default function App() {
       <Route path="/stats" element={<Lazy><StatsPage /></Lazy>} />
       <Route path="/recordings" element={<Lazy><PlaceholderPage title="Gravações" description="Visão global de gravações em construção." /></Lazy>} />
       <Route path="/events" element={<Lazy><PlaceholderPage title="Eventos" description="Visão global de eventos em construção." /></Lazy>} />
-      <Route path="/maps" element={<Lazy><PlaceholderPage title="Mapas" description="Planta baixa com pinos das câmeras em construção." /></Lazy>} />
-      <Route path="/devices" element={<Lazy><PlaceholderPage title="Dispositivos" description="Inventário de hardware das câmeras em construção." /></Lazy>} />
+      <Route path="/devices" element={<Lazy><DevicesPage /></Lazy>} />
       <Route path="/users" element={<Lazy><PlaceholderPage title="Usuários" description="Gestão de usuários em construção." /></Lazy>} />
-      <Route path="/reports" element={<Lazy><PlaceholderPage title="Relatórios" description="Relatórios de estatísticas de eventos em construção." /></Lazy>} />
+      <Route path="/reports" element={<Lazy><ReportsPage /></Lazy>} />
       <Route path="/notifications" element={<Lazy><NotificationsPage /></Lazy>} />
       <Route path="/settings/cameras" element={<Lazy><CamerasSettingsPage /></Lazy>} />
       <Route path="/settings/cameras/new" element={<Lazy><CamerasSettingsPage /></Lazy>} />

@@ -53,7 +53,6 @@ function renderSidebar(initialPath = '/') {
 const LINK_ITEMS: Array<[string, string, string]> = [
   ['nav-live', '/', 'Ao vivo'],
   ['nav-recordings', '/recordings', 'Gravações'],
-  ['nav-maps', '/maps', 'Mapa'],
   ['nav-devices', '/devices', 'Dispositivos'],
   ['nav-reports', '/reports', 'Relatórios'],
 ]
@@ -69,11 +68,6 @@ describe('Sidebar — nav rail principal', () => {
       expect(el!.getAttribute('href'), `${id} href`).toBe(to)
       expect(el!.textContent, `${id} label`).toContain(label)
     }
-  })
-
-  it('o item de Mapa usa o rótulo singular "Mapa"', () => {
-    renderSidebar()
-    expect(document.getElementById('nav-maps')!.textContent?.trim()).toBe('Mapa')
   })
 
   it('não duplica "Usuários" na nav (fica só no flyout de Configurações)', () => {
