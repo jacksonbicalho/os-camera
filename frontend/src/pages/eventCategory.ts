@@ -1,4 +1,4 @@
-import type { MotionEvent } from './cameraUtils'
+import type { MotionEvent, Recording } from './cameraUtils'
 
 // Categoria de um evento, derivada do label (redesign do Escopo B — chips do
 // painel de eventos). `estados` (transições de classificador de estado) não vive
@@ -12,6 +12,34 @@ export function eventCategory(ev: Pick<MotionEvent, 'label'>): EventCategory {
   if (!label) return 'movimento'
   if (/pessoa|person/i.test(label)) return 'pessoa'
   return 'ia'
+}
+
+export type RecordingCategory = EventCategory | 'continua'
+
+// Prioridade (maior → menor) para resolver a categoria de um chunk com vários
+// eventos: pessoa > ia > movimento.
+const CAT_PRIORITY: EventCategory[] = ['pessoa', 'ia', 'movimento']
+
+// recordingCategory classifica um chunk de gravação pela categoria dos eventos
+// no seu intervalo [start, start+chunk): a de maior prioridade; `continua` se
+// não houver evento. Usado para colorir o thumbnail no filmstrip (legenda).
+export function recordingCategory(
+  rec: Pick<Recording, 'start'>,
+  events: Pick<MotionEvent, 'time' | 'label'>[],
+  chunkMs: number,
+): RecordingCategory {
+  const start = Date.parse(rec.start)
+  if (Number.isNaN(start)) return 'continua'
+  const end = start + chunkMs
+  let best: EventCategory | null = null
+  for (const ev of events) {
+    const t = Date.parse(ev.time)
+    if (Number.isNaN(t) || t < start || t >= end) continue
+    const cat = eventCategory(ev)
+    if (cat === 'estados') continue
+    if (best === null || CAT_PRIORITY.indexOf(cat) < CAT_PRIORITY.indexOf(best)) best = cat
+  }
+  return best ?? 'continua'
 }
 
 // Título legível do evento por categoria, para o card do painel de eventos.

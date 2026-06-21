@@ -193,8 +193,15 @@ export default function HorizontalTimeline({
             className="absolute top-0 h-8 w-[2px] bg-white shadow-[0_0_8px_2px_rgba(255,255,255,0.45)] z-20 pointer-events-none"
             style={{ left: `${timePosFraction(playheadMs, win) * 100}%` }}
           >
-            {/* knob no topo */}
-            <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-white ring-2 ring-primary shadow" />
+            {/* knob no topo — alça de arraste (maior, com área de clique generosa) */}
+            <button
+              type="button"
+              aria-label="Arrastar ponteiro"
+              onMouseDown={(e) => { e.stopPropagation(); setDragging(true) }}
+              className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-6 h-6 flex items-center justify-center pointer-events-auto cursor-grab active:cursor-grabbing"
+            >
+              <span className="w-4 h-4 rounded-full bg-white ring-2 ring-primary shadow-md" />
+            </button>
             {/* rótulo de horário abaixo da trilha */}
             <span className="absolute top-full mt-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-semibold tabular-nums whitespace-nowrap shadow-md">
               {formatTick(playheadMs)}

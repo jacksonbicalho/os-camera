@@ -43,50 +43,27 @@ export function posToTime(fraction: number, win: TimelineWindow): number {
   return win.startMs + f * (win.endMs - win.startMs)
 }
 
-// filmstripCount devolve quantas miniaturas (largura `thumbWidth` + `gap`) cabem
-// numa faixa de largura `containerWidth`. Mínimo de 1. Base do filmstrip
-// responsivo (preenche a largura disponível).
-export function filmstripCount(containerWidth: number, thumbWidth: number, gap: number): number {
-  const fit = Math.floor((containerWidth + gap) / (thumbWidth + gap))
-  return Math.max(1, fit)
-}
-
 export interface FilmstripSample {
   ms: number
   rec: Recording
   offsetSeconds: number
 }
 
-// filmstripSamples escolhe até `count` gravações **dentro da janela** (completas,
-// ignorando o chunk em gravação), igualmente espaçadas pela lista ordenada —
-// incluindo a primeira e a última. Assim a tira fica consistente em qualquer
-// range (não depende da densidade de gravação como uma amostragem por tempo
-// faria). O ponto de cada amostra é o início do chunk (`ms = rec.start`,
-// `offset = 0`): o thumbnail (event-frame) sempre resolve para aquele chunk
-// completo e nunca "vaza" para o chunk em gravação.
+// filmstripSamples devolve **todas** as gravações completas dentro da janela
+// (ignorando o chunk em gravação), ordenadas por início. O filmstrip rola
+// (com setas) para alcançar as que não cabem na largura. O ponto de cada amostra
+// é o início do chunk (`ms = rec.start`, `offset = 0`): o thumbnail (event-frame)
+// sempre resolve para aquele chunk completo e nunca "vaza" para o chunk em gravação.
 export function filmstripSamples(
   recordings: Recording[],
   win: TimelineWindow,
-  count: number,
 ): FilmstripSample[] {
-  const inWin = recordings
+  return recordings
     .filter(r => !r.is_recording)
     .map(r => ({ rec: r, ms: Date.parse(r.start) }))
     .filter(x => !Number.isNaN(x.ms) && x.ms >= win.startMs && x.ms <= win.endMs)
     .sort((a, b) => a.ms - b.ms)
-  if (inWin.length === 0 || count < 1) return []
-
-  const out: FilmstripSample[] = []
-  const seen = new Set<number>()
-  const step = inWin.length <= count ? 1 : (inWin.length - 1) / (count - 1)
-  for (let i = 0; i < count && i < inWin.length; i++) {
-    const idx = inWin.length <= count ? i : Math.round(i * step)
-    const x = inWin[idx]
-    if (seen.has(x.rec.id)) continue
-    seen.add(x.rec.id)
-    out.push({ ms: x.ms, rec: x.rec, offsetSeconds: 0 })
-  }
-  return out
+    .map(x => ({ ms: x.ms, rec: x.rec, offsetSeconds: 0 }))
 }
 
 // Gravação (não-ativa) cujo intervalo [start, start+chunk) cobre o ms, e o

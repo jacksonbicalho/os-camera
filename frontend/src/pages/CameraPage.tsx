@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { VolumeX, Volume2, Gauge, Repeat, Zap, Code2, Maximize, Play, Pause, X, CameraCapture, ZoomOut } from '../components/Icons'
+import { VolumeX, Volume2, Gauge, Repeat, Zap, Code2, Maximize, Play, Pause, X, CameraCapture, ZoomOut, ChevronLeft } from '../components/Icons'
 import { format } from 'date-fns'
 import Calendar from '../components/Calendar'
 import { authHeaders, onUnauthorized, getToken, getRole } from '../auth'
@@ -18,14 +18,13 @@ import { useEscapeKey } from '../hooks/useEscapeKey'
 import { useDebugTools } from '../hooks/useDebugTools'
 import { applyFrameStep, applySameChunkStep, loadedMetadataSeek, mergeRecordings, secondStepTarget } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
-import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
 import CameraConfigMenu from '../components/CameraConfigMenu'
 import PlayerTitle from '../components/PlayerTitle'
 import CameraSwitcher from '../components/CameraSwitcher'
 import EventFilterChips from '../components/EventFilterChips'
 import EventDetailCard from '../components/EventDetailCard'
-import { filterEventsByCategory, eventCategory, eventTitle, type EventFilter } from './eventCategory'
+import { filterEventsByCategory, eventCategory, eventTitle, recordingCategory, type EventFilter } from './eventCategory'
 import { activeEventForPlayhead } from './activeEvent'
 import HorizontalTimeline from '../components/HorizontalTimeline'
 import Filmstrip from '../components/Filmstrip'
@@ -127,13 +126,10 @@ export default function CameraPage() {
   const [activeRecording, setActiveRecording] = useState<Recording | null>(null)
   const [sortOrder] = useState<'asc' | 'desc'>('desc')
   const [motionEvents, setMotionEvents] = useState<MotionEvent[]>([])
-  const [activePanel, setActivePanel] = useState<null | 'events' | 'timeline'>(() => {
-    if (recordingId) return 'events'
-    if (isLiveRoute) return null
-    const state = location.state as { eventTime?: string; showRecordings?: boolean } | null
-    if (state?.showRecordings) return 'events'
-    return state?.eventTime ? 'events' : null
-  })
+  // Painel de eventos fechado por padrão (ao vivo). Abre ao clicar (aba de
+  // reabrir / botão Eventos / clique num evento) ou quando a reprodução cruza um
+  // evento (efeito de seleção-segue-playback).
+  const [activePanel, setActivePanel] = useState<null | 'events' | 'timeline'>(null)
   const [eventsPage, setEventsPage] = useState(1)
   const [eventFilter, setEventFilter] = useState<EventFilter>('todos')
   const [timelineRange, setTimelineRange] = useState<TimelineRange>('24h')
@@ -761,9 +757,8 @@ export default function CameraPage() {
     d.setHours(23, 59, 59, 999)
     return d.getTime()
   })()
-  // Início da gravação mais recente do dia carregado — fallback do ponteiro quando
-  // não há reprodução ativa (mesmo critério da VerticalTimeline: ponteiro sempre
-  // visível e pronto para arrastar).
+  // Início da gravação mais recente do dia carregado — fallback do ponteiro da
+  // timeline quando não há reprodução ativa (ponteiro sempre visível e pronto).
   const latestRecordingMs = recordings.reduce<number | undefined>((max, r) => {
     const ms = Date.parse(r.start)
     if (Number.isNaN(ms)) return max
@@ -801,6 +796,11 @@ export default function CameraPage() {
     setActiveEventTime(null)
     setActiveEventId(null)
     setScrollNonce(n => n + 1)
+    // Gravação sem evento → fecha o painel; com evento, o efeito de
+    // seleção-segue-playback abre e seleciona o evento ao alcançá-lo.
+    if (recordingCategory(recording, sortedEventsRef.current, 5 * 60_000) === 'continua') {
+      setActivePanel(null)
+    }
 
     if (activeRecording?.filename === recording.filename) {
       if (videoRef.current) {
@@ -919,6 +919,7 @@ export default function CameraPage() {
   function playEventAt(ev: MotionEvent, recs: Recording[] = recordings, skipScroll = false) {
     setActiveEventTime(ev.time)
     setActiveEventId(ev.id ?? null)
+    setActivePanel(p => p ?? 'events') // abre o painel se estiver fechado
     if (!skipScroll) setScrollNonce(n => n + 1)
     seekToRecordingTime(ev.time, recs)
   }
@@ -974,7 +975,11 @@ export default function CameraPage() {
     if (nextId !== activeEventIdRef.current) {
       setActiveEventId(nextId)
       setActiveEventTime(ev?.time ?? null)
-      if (nextId !== null) setScrollNonce(n => n + 1)
+      if (nextId !== null) {
+        setScrollNonce(n => n + 1)
+        // Ao cruzar um evento com o painel fechado, abre-o com o evento selecionado.
+        setActivePanel(p => p ?? 'events')
+      }
     }
   }, [recCurrentTime, activeRecording, cam?.motion?.playback_lead_seconds, cam?.motion?.playback_trail_seconds])
 
@@ -1146,7 +1151,6 @@ function toggleFullscreen() {
       ? visibleEvents.findIndex(e => e.time === activeEventTime)
       : -1
 
-  const filteredRecordings = filterRecordings(recordings, onlyMotion)
 
   // Keep refs in sync for use inside onEnded (avoids stale closure)
   activeEventTimeRef.current = activeEventTime
@@ -1676,13 +1680,27 @@ function toggleFullscreen() {
 
             <Filmstrip
               recordings={recordings}
+              events={sortedEvents}
               win={timelineWindow(isToday ? Date.now() : timelineEndOfDayMs, timelineRange)}
               thumbSrc={(ms) => `/api/cameras/${id}/event-frame?time=${encodeURIComponent(new Date(ms).toISOString())}&token=${getToken()}`}
               formatTime={(ms) => format(new Date(ms), 'HH:mm:ss')}
               onSeek={handleTimelineSeek}
               activeRecordingId={activeRecording?.id}
+              playing={recPlaying}
             />
           </div>
+
+          {/* Reabrir o painel quando fechado */}
+          {!activePanel && (
+            <button
+              id="open-events-panel"
+              onClick={() => setActivePanel('events')}
+              title="Abrir eventos"
+              className="shrink-0 self-stretch w-6 flex items-center justify-center border-l border-border text-muted hover:text-foreground hover:bg-surface transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          )}
 
           {/* Painel lateral condicional */}
           {activePanel && (
@@ -1868,22 +1886,6 @@ function toggleFullscreen() {
             </div>
           )}
 
-          <VerticalTimeline
-            recordings={filteredRecordings}
-            motionEvents={motionEvents}
-            activeRecording={activeRecording}
-            activeTime={
-              activeRecording && !isLive
-                ? new Date(new Date(activeRecording.start).getTime() + recCurrentTime * 1000).toISOString()
-                : activeEventTime ?? null
-            }
-            timezone={timezone}
-            sortOrder={activePanel === 'events' ? eventsSortOrder : sortOrder}
-            onSeek={handleTimelineSeek}
-            onScrub={handleTimelineScrub}
-            onGap={handleTimelineGap}
-            onEventClick={activePanel === 'events' ? ev => { playEventAt(ev); setScrollNonce(n => n + 1) } : undefined}
-          />
         </div>
 
       {detectionModal && (
