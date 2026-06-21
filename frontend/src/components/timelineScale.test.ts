@@ -7,6 +7,7 @@ import {
   timelineTicks,
   posToTime,
   recordingAtMs,
+  filmstripSamples,
 } from './timelineScale'
 import type { Recording } from '../pages/cameraUtils'
 
@@ -99,5 +100,29 @@ describe('recordingAtMs', () => {
   })
   it('ignora gravação ativa (is_recording)', () => {
     expect(recordingAtMs(recs, 650_000, chunk)).toBeNull()
+  })
+})
+
+describe('filmstripSamples', () => {
+  const chunks = (n: number) => Array.from({ length: n }, (_, i) => rec(i + 1, i * 300_000))
+  it('<= count: uma amostra por gravação na janela, no início do chunk', () => {
+    const out = filmstripSamples(chunks(3), { startMs: 0, endMs: 1_000_000 }, 10)
+    expect(out.map(s => s.rec.id)).toEqual([1, 2, 3])
+    expect(out.map(s => s.ms)).toEqual([0, 300_000, 600_000])
+    expect(out.every(s => s.offsetSeconds === 0)).toBe(true)
+  })
+  it('> count: amostra igualmente espaçada incluindo a primeira e a última', () => {
+    const out = filmstripSamples(chunks(10), { startMs: 0, endMs: 3_000_000 }, 4)
+    expect(out).toHaveLength(4)
+    expect(out[0].rec.id).toBe(1)
+    expect(out[out.length - 1].rec.id).toBe(10)
+  })
+  it('ignora gravações fora da janela e o chunk em gravação (is_recording)', () => {
+    const recs = [rec(1, 0), rec(2, 300_000), rec(3, 600_000, true), rec(4, 5_000_000)]
+    const out = filmstripSamples(recs, { startMs: 0, endMs: 900_000 }, 10)
+    expect(out.map(s => s.rec.id)).toEqual([1, 2])
+  })
+  it('janela sem gravações devolve vazio', () => {
+    expect(filmstripSamples([], { startMs: 0, endMs: 900_000 }, 5)).toEqual([])
   })
 })
