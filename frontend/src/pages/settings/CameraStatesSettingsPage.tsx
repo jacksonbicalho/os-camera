@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
-import 'react-day-picker/style.css'
 import SettingsLayout from '../../components/SettingsLayout'
+import DatePicker from '../../components/DatePicker'
 import CameraSettingsTabs from '../../components/CameraSettingsTabs'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import BboxCanvas, { type BboxRect } from '../../components/BboxCanvas'
@@ -933,7 +931,6 @@ function EventPicker({ cameraId, classes, usedByFrame, onPick, onAddMany, onRemo
   const [date, setDate] = useState(picked0?.date ?? todayStr())
   const [events, setEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [calOpen, setCalOpen] = useState(false)
   const [pickedFrame, setPickedFrame] = useState(picked0?.frame ?? '')
   const [yy, mm, dd] = date.split('-').map(Number)
   const selectedDate = new Date(yy, mm - 1, dd)
@@ -1056,24 +1053,14 @@ function EventPicker({ cameraId, classes, usedByFrame, onPick, onAddMany, onRemo
             </select>
           </h3>
           <div className="flex items-center gap-2 shrink-0">
-            {/* Mesmo calendário (DayPicker + ptBR) da lista de gravações, em popover. */}
-            <div className="relative">
-              <Button variant="outline" size="sm" className="tabular-nums" onClick={() => setCalOpen(o => !o)}>
-                {format(selectedDate, 'dd/MM/yyyy', { locale: ptBR })}
-              </Button>
-              {calOpen && (
-                <div className="absolute right-0 mt-1 z-10 bg-surface border border-border rounded-lg p-2 shadow-xl">
-                  <DayPicker
-                    mode="single"
-                    selected={selectedDate}
-                    defaultMonth={selectedDate}
-                    disabled={{ after: new Date() }}
-                    onSelect={d => { if (d) { changeDate(format(d, 'yyyy-MM-dd')); setCalOpen(false) } }}
-                    locale={ptBR}
-                  />
-                </div>
-              )}
-            </div>
+            {/* Calendário unificado em popover */}
+            <DatePicker
+              id="states-date"
+              value={selectedDate}
+              onChange={d => changeDate(format(d, 'yyyy-MM-dd'))}
+              disableFuture
+              align="right"
+            />
             <Button variant="ghost" size="sm" onClick={onClose}>Fechar</Button>
           </div>
         </div>

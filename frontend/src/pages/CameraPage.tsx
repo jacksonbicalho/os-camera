@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { VolumeX, Volume2, Gauge, Repeat, Film, Zap, Code2, Maximize, Play, Pause, X, Trash2, CameraCapture, ZoomOut } from '../components/Icons'
-import { DayPicker } from 'react-day-picker'
 import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
-import 'react-day-picker/style.css'
+import Calendar from '../components/Calendar'
 import { authHeaders, onUnauthorized, getToken, getRole } from '../auth'
 import AppLayout from '../components/AppLayout'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -1918,18 +1916,12 @@ function toggleFullscreen() {
                     </ListPanel>
                     <div className="shrink-0 border-t border-border max-h-80 overflow-y-auto">
                       <div className="p-3">
-                        <DayPicker
+                        <Calendar
                           mode="single"
                           selected={selectedDate}
                           month={calendarMonth}
                           onMonthChange={setCalendarMonth}
                           onSelect={d => { if (d) { setSelectedDate(d); setCalendarMonth(d) } }}
-                          locale={ptBR}
-                          style={{ '--rdp-nav_button-width': '1.5rem', '--rdp-nav_button-height': '1.5rem', '--rdp-accent-color': '#94a3b8' } as React.CSSProperties}
-                          components={{ Chevron: ({ orientation, disabled }) => {
-                            const d = `M${orientation === 'left' ? '10 6 4 12 10 18' : orientation === 'right' ? '6 6 12 12 6 18' : orientation === 'up' ? '6 14 12 8 18 14' : '6 10 12 16 18 10'}`
-                            return <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity={disabled ? 0.5 : 1}><path d={d} /></svg>
-                          }}}
                           footer={(!isToday || !calendarOnCurrentMonth) && (
                             <div className="flex justify-center pt-1">
                               <button onClick={() => { setSelectedDate(new Date()); setCalendarMonth(new Date()) }} className="text-xs font-medium text-primary hover:text-primary transition-colors">
@@ -1937,17 +1929,6 @@ function toggleFullscreen() {
                               </button>
                             </div>
                           )}
-                          classNames={{
-                            root: 'text-foreground text-sm',
-                            month_caption: 'text-base text-foreground font-medium',
-                            month_grid: 'mt-2',
-                            day: 'text-foreground hover:bg-surface-2 rounded',
-                            day_button: 'w-8 h-8 flex items-center justify-center rounded',
-                            selected: 'bg-blue-600 text-white rounded',
-                            today: 'text-primary font-semibold',
-                            outside: 'text-faint',
-                            disabled: 'text-faint',
-                          }}
                         />
                       </div>
                     </div>
