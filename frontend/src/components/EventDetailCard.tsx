@@ -39,34 +39,32 @@ export default function EventDetailCard({ event, cameraName, durationSeconds, th
   const cat = eventCategory(event)
   return (
     <div id="event-detail-card" className="shrink-0 border-b border-border p-3 flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <span className={`text-sm font-medium ${CAT_COLOR[cat] ?? 'text-foreground'}`}>{eventTitle(event)}</span>
-      </div>
-
-      <div className="flex gap-3">
-        <button
-          id="event-detail-play"
-          onClick={onPlay}
-          className="relative shrink-0 w-28 h-16 rounded overflow-hidden border border-border bg-surface-2 group"
-          title="Reproduzir"
-        >
-          {thumbSrc && <img src={thumbSrc} alt="" className="w-full h-full object-cover" />}
-          <span className="absolute inset-0 flex items-center justify-center">
-            <span className="w-7 h-7 rounded-full bg-black/60 flex items-center justify-center text-white group-hover:bg-primary transition-colors">
-              <Play className="w-3.5 h-3.5 fill-current" />
-            </span>
+      {/* Thumbnail ocupando toda a largura */}
+      <button
+        id="event-detail-play"
+        onClick={onPlay}
+        className="relative w-full aspect-video rounded overflow-hidden border border-border bg-surface-2 group"
+        title="Reproduzir"
+      >
+        {thumbSrc && <img src={thumbSrc} alt="" className="w-full h-full object-cover" />}
+        <span className="absolute inset-0 flex items-center justify-center">
+          <span className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center text-white group-hover:bg-primary transition-colors">
+            <Play className="w-4 h-4 fill-current" />
           </span>
-        </button>
+        </span>
+      </button>
 
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs min-w-0">
-          <dt className="text-faint">Confiança</dt>
-          <dd className="text-foreground tabular-nums">{(event.score * 100).toFixed(0)}%</dd>
-          <dt className="text-faint">Duração</dt>
-          <dd className="text-foreground tabular-nums">{mmss(durationSeconds)}</dd>
-          <dt className="text-faint">Câmera</dt>
-          <dd className="text-foreground truncate">{cameraName}</dd>
-        </dl>
-      </div>
+      {/* Informações organizadas abaixo */}
+      <span className={`text-sm font-medium ${CAT_COLOR[cat] ?? 'text-foreground'}`}>{eventTitle(event)}</span>
+
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs min-w-0">
+        <dt className="text-faint">Confiança</dt>
+        <dd className="text-foreground tabular-nums">{(event.score * 100).toFixed(0)}%</dd>
+        <dt className="text-faint">Duração</dt>
+        <dd className="text-foreground tabular-nums">{mmss(durationSeconds)}</dd>
+        <dt className="text-faint">Câmera</dt>
+        <dd className="text-foreground truncate">{cameraName}</dd>
+      </dl>
 
       <div className="flex items-center gap-2">
         <Button id="event-detail-reproduzir" size="sm" className="gap-1.5" onClick={onPlay}>

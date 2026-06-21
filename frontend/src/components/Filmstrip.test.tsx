@@ -39,4 +39,11 @@ describe('Filmstrip', () => {
     render(<Filmstrip {...baseProps} recordings={[]} />)
     expect(document.getElementById('filmstrip')).toBeNull()
   })
+
+  it('destaca o thumbnail da gravação ativa', () => {
+    render(<Filmstrip {...baseProps} activeRecordingId={2} />)
+    expect(document.getElementById('filmstrip-2')!.getAttribute('aria-current')).toBe('true')
+    expect(document.getElementById('filmstrip-2')!.querySelector('img')!.className).toContain('ring-primary')
+    expect(document.getElementById('filmstrip-1')!.getAttribute('aria-current')).toBeNull()
+  })
 })

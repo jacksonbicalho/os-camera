@@ -14,6 +14,8 @@ interface FilmstripProps {
   formatTime: (ms: number) => string
   /** Seek para a gravação amostrada (clique na miniatura). */
   onSeek: (rec: Recording, offsetSeconds: number) => void
+  /** Gravação tocando — destaca o thumbnail correspondente. */
+  activeRecordingId?: number
   count?: number
 }
 
@@ -26,6 +28,7 @@ export default function Filmstrip({
   thumbSrc,
   formatTime,
   onSeek,
+  activeRecordingId,
   count = 10,
 }: FilmstripProps) {
   const [failed, setFailed] = useState<Set<number>>(new Set())
@@ -52,15 +55,21 @@ export default function Filmstrip({
 
   return (
     <div ref={measureRef} id="filmstrip" className="flex-none flex gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:bg-surface-2 [&::-webkit-scrollbar-thumb]:rounded-full">
-      {samples.map(s => (
+      {samples.map(s => {
+        const active = s.rec.id === activeRecordingId
+        const frameClass = `w-28 h-16 rounded border transition-colors bg-surface-2 ${
+          active ? 'border-primary ring-2 ring-primary' : 'border-border group-hover:border-primary'
+        }`
+        return (
         <button
           key={s.rec.id}
           id={`filmstrip-${s.rec.id}`}
+          aria-current={active ? 'true' : undefined}
           onClick={() => onSeek(s.rec, s.offsetSeconds)}
           className="shrink-0 flex flex-col items-center gap-1 group cursor-pointer"
         >
           {failed.has(s.rec.id) ? (
-            <div className="w-28 h-16 rounded border border-border bg-surface-2 flex items-center justify-center text-[10px] text-faint">
+            <div className={`${frameClass} flex items-center justify-center text-[10px] text-faint`}>
               sem prévia
             </div>
           ) : (
@@ -69,12 +78,13 @@ export default function Filmstrip({
               alt={formatTime(s.ms)}
               loading="lazy"
               onError={() => setFailed(prev => new Set(prev).add(s.rec.id))}
-              className="w-28 h-16 object-cover rounded border border-border group-hover:border-primary transition-colors bg-surface-2"
+              className={`${frameClass} object-cover`}
             />
           )}
-          <span className="text-[10px] text-muted tabular-nums">{formatTime(s.ms)}</span>
+          <span className={`text-[10px] tabular-nums ${active ? 'text-primary font-medium' : 'text-muted'}`}>{formatTime(s.ms)}</span>
         </button>
-      ))}
+        )
+      })}
     </div>
   )
 }

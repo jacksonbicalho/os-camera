@@ -26,6 +26,7 @@ import CameraSwitcher from '../components/CameraSwitcher'
 import EventFilterChips from '../components/EventFilterChips'
 import EventDetailCard from '../components/EventDetailCard'
 import { filterEventsByCategory, eventCategory, eventTitle, type EventFilter } from './eventCategory'
+import { activeEventForPlayhead } from './activeEvent'
 import HorizontalTimeline from '../components/HorizontalTimeline'
 import Filmstrip from '../components/Filmstrip'
 import { timelineWindow, type TimelineRange } from '../components/timelineScale'
@@ -959,6 +960,24 @@ export default function CameraPage() {
   const cam = settings?.cameras.find(c => c.id === id) ?? viewerCam
   const effectiveThreshold = cam?.motion?.threshold ?? 0
 
+  // Durante a reprodução, a seleção do evento segue o playhead: o evento mais
+  // próximo (dentro da janela do clipe) vira o ativo — card de detalhe + destaque
+  // na lista da aba "Linha do tempo" + scroll até ele. Sem evento próximo, limpa.
+  useEffect(() => {
+    if (!activeRecording) return
+    const playheadMs = Date.parse(activeRecording.start) + recCurrentTime * 1000
+    const lead = cam?.motion?.playback_lead_seconds ?? 0
+    const trail = cam?.motion?.playback_trail_seconds ?? 0
+    const tol = Math.max(3000, (lead + trail) * 1000)
+    const ev = activeEventForPlayhead(sortedEventsRef.current, playheadMs, tol)
+    const nextId = ev?.id ?? null
+    if (nextId !== activeEventIdRef.current) {
+      setActiveEventId(nextId)
+      setActiveEventTime(ev?.time ?? null)
+      if (nextId !== null) setScrollNonce(n => n + 1)
+    }
+  }, [recCurrentTime, activeRecording, cam?.motion?.playback_lead_seconds, cam?.motion?.playback_trail_seconds])
+
   // Score contextual para o painel de debug: evento ativo > pico da gravação > pico diário
   const debugMotionValue = (() => {
     if (!cam?.motion) return null
@@ -1661,6 +1680,7 @@ function toggleFullscreen() {
               thumbSrc={(ms) => `/api/cameras/${id}/event-frame?time=${encodeURIComponent(new Date(ms).toISOString())}&token=${getToken()}`}
               formatTime={(ms) => format(new Date(ms), 'HH:mm:ss')}
               onSeek={handleTimelineSeek}
+              activeRecordingId={activeRecording?.id}
             />
           </div>
 
