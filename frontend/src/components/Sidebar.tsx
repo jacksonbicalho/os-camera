@@ -244,7 +244,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
   const role = getRole()
   const roleLabel = role === "admin" ? "Administrador" : "Visualizador"
   const settingsLinks = role === "admin" ? ADMIN_SETTINGS_LINKS : VIEWER_SETTINGS_LINKS
-  const settingsActive = location.pathname.startsWith("/settings")
+  const settingsActive = location.pathname.startsWith("/settings") || location.pathname.startsWith("/stats")
 
   const {
     notifications, unreadCount,
@@ -474,7 +474,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
           <Button
             id="sidebar-settings"
             ref={settingsButtonRef}
-            variant={settingsActive || settingsOpen ? 'default' : 'ghost'}
+            variant={settingsActive ? 'default' : 'ghost'}
             onClick={() => {
               if (settingsButtonRef.current) {
                 const r = settingsButtonRef.current.getBoundingClientRect()

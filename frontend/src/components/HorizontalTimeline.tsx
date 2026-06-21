@@ -1,8 +1,4 @@
 import { useRef, useEffect, useState } from 'react'
-import { DayPicker } from 'react-day-picker'
-import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
-import 'react-day-picker/style.css'
 import type { Recording, MotionEvent } from '../pages/cameraUtils'
 import { eventCategory } from '../pages/eventCategory'
 import {
@@ -14,8 +10,7 @@ import {
   recordingAtMs,
   type TimelineRange,
 } from './timelineScale'
-import { Button } from './ui/button'
-import { CalendarDays } from './Icons'
+import DatePicker from './DatePicker'
 
 const RANGES: TimelineRange[] = ['1h', '6h', '24h']
 
@@ -85,17 +80,6 @@ export default function HorizontalTimeline({
   const ticks = timelineTicks(win, 7)
   const trackRef = useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = useState(false)
-  const [calOpen, setCalOpen] = useState(false)
-  const calRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!calOpen) return
-    const onDown = (e: MouseEvent) => {
-      if (calRef.current && !calRef.current.contains(e.target as Node)) setCalOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [calOpen])
 
   function seekAtClientX(clientX: number, scrub = false) {
     const el = trackRef.current
@@ -130,31 +114,8 @@ export default function HorizontalTimeline({
     <div id="horizontal-timeline" className="flex-none bg-surface border border-border rounded-lg px-3 py-2 flex flex-col gap-2">
       {/* Controles: navegação de data + seletor de janela + legenda */}
       <div className="flex items-center gap-3 flex-wrap">
-        {/* Data — botão que abre o calendário em popover (mesmo padrão dos Estados) */}
-        <div className="relative" ref={calRef}>
-          <Button
-            id="timeline-date"
-            variant="outline"
-            size="sm"
-            className="tabular-nums gap-1.5"
-            onClick={() => setCalOpen(o => !o)}
-          >
-            <CalendarDays className="w-3.5 h-3.5" />
-            {format(selectedDate, 'dd/MM/yyyy', { locale: ptBR })}
-          </Button>
-          {calOpen && (
-            <div id="timeline-date-popover" className="absolute left-0 bottom-full mb-1 z-30 bg-surface border border-border rounded-lg p-2 shadow-xl">
-              <DayPicker
-                mode="single"
-                selected={selectedDate}
-                defaultMonth={selectedDate}
-                disabled={{ after: new Date() }}
-                onSelect={d => { if (d) { onSelectDate(d); setCalOpen(false) } }}
-                locale={ptBR}
-              />
-            </div>
-          )}
-        </div>
+        {/* Data — popover do calendário unificado */}
+        <DatePicker id="timeline-date" value={selectedDate} onChange={onSelectDate} disableFuture openUp />
 
         <div id="timeline-range" className="flex items-center gap-1">
           {RANGES.map(r => (

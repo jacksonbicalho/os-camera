@@ -42,9 +42,9 @@ vi.mock('./ThemeModeNav', () => ({
 
 afterEach(() => { cleanup(); setDisplayMode.mockClear() })
 
-function renderSidebar() {
+function renderSidebar(initialPath = '/') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialPath]}>
       <Sidebar username="admin" />
     </MemoryRouter>,
   )
@@ -113,6 +113,17 @@ describe('Sidebar — nav rail principal', () => {
     const user = document.getElementById('sidebar-user')!
     expect(user.textContent).toContain('admin')
     expect(user.textContent).toContain('Administrador')
+  })
+
+  it('em /stats o botão Configurações fica aceso (active), como nos itens /settings/*', () => {
+    renderSidebar('/stats')
+    expect(document.getElementById('sidebar-settings')!.className).toContain('bg-primary')
+  })
+
+  it('abrir o flyout não acende Configurações fora de settings/stats (evita dois ícones ativos)', () => {
+    renderSidebar('/')
+    fireEvent.click(document.getElementById('sidebar-settings')!)
+    expect(document.getElementById('sidebar-settings')!.className).not.toContain('bg-primary')
   })
 
   it('"Recolher menu" alterna o modo da sidebar para compacto (persistido)', () => {
