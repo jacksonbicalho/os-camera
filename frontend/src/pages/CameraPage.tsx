@@ -759,12 +759,14 @@ export default function CameraPage() {
     d.setHours(23, 59, 59, 999)
     return d.getTime()
   })()
-  function shiftSelectedDate(delta: number) {
-    const d = new Date(selectedDate)
-    d.setDate(d.getDate() + delta)
-    setSelectedDate(d)
-    setCalendarMonth(d)
-  }
+  // Início da gravação mais recente do dia carregado — fallback do ponteiro quando
+  // não há reprodução ativa (mesmo critério da VerticalTimeline: ponteiro sempre
+  // visível e pronto para arrastar).
+  const latestRecordingMs = recordings.reduce<number | undefined>((max, r) => {
+    const ms = Date.parse(r.start)
+    if (Number.isNaN(ms)) return max
+    return max === undefined || ms > max ? ms : max
+  }, undefined)
 
   const handleLiveMotion = useCallback(() => {
     loadMotionEvents(id!, selectedDateRef.current).then(setMotionEvents)
@@ -1679,10 +1681,13 @@ function toggleFullscreen() {
               range={timelineRange}
               onRangeChange={setTimelineRange}
               endMs={isToday ? Date.now() : timelineEndOfDayMs}
-              dateLabel={format(selectedDate, 'dd/MM/yyyy', { locale: ptBR })}
-              onPrevDate={() => shiftSelectedDate(-1)}
-              onNextDate={() => shiftSelectedDate(1)}
+              selectedDate={selectedDate}
+              onSelectDate={(d) => { setSelectedDate(d); setCalendarMonth(d) }}
               formatTick={(ms) => format(new Date(ms), 'HH:mm')}
+              playheadMs={activeRecording ? Date.parse(activeRecording.start) + recCurrentTime * 1000 : isToday ? Date.now() : latestRecordingMs}
+              onSeek={handleTimelineSeek}
+              onScrub={handleTimelineScrub}
+              onGap={handleTimelineGap}
             />
           </div>
 

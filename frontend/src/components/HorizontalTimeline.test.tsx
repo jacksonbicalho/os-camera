@@ -17,21 +17,19 @@ const baseProps = {
   range: '1h' as const,
   onRangeChange: () => {},
   endMs: HOUR, // janela [0, HOUR]
-  dateLabel: '20/06/2026',
-  onPrevDate: () => {},
-  onNextDate: () => {},
+  selectedDate: new Date(0),
+  onSelectDate: () => {},
   formatTick: (ms: number) => `${ms}`,
 }
 
 describe('HorizontalTimeline', () => {
-  it('exibe seletor de janela e navegação de data', () => {
+  it('exibe seletor de janela (sem 7d) e o botão de data', () => {
     render(<HorizontalTimeline {...baseProps} />)
-    for (const r of ['1h', '6h', '24h', '7d']) {
+    for (const r of ['1h', '6h', '24h']) {
       expect(document.getElementById(`timeline-range-${r}`), r).toBeTruthy()
     }
-    expect(document.getElementById('timeline-date-prev')).toBeTruthy()
-    expect(document.getElementById('timeline-date-next')).toBeTruthy()
-    expect(document.getElementById('timeline-date-label')!.textContent).toContain('20/06/2026')
+    expect(document.getElementById('timeline-range-7d')).toBeNull()
+    expect(document.getElementById('timeline-date')!.textContent).toContain('1970')
   })
 
   it('clicar num range dispara onRangeChange', () => {
@@ -41,14 +39,11 @@ describe('HorizontalTimeline', () => {
     expect(onRangeChange).toHaveBeenCalledWith('6h')
   })
 
-  it('navegação de data dispara callbacks', () => {
-    const onPrevDate = vi.fn()
-    const onNextDate = vi.fn()
-    render(<HorizontalTimeline {...baseProps} onPrevDate={onPrevDate} onNextDate={onNextDate} />)
-    fireEvent.click(document.getElementById('timeline-date-prev')!)
-    fireEvent.click(document.getElementById('timeline-date-next')!)
-    expect(onPrevDate).toHaveBeenCalled()
-    expect(onNextDate).toHaveBeenCalled()
+  it('clicar na data abre o calendário em popover', () => {
+    render(<HorizontalTimeline {...baseProps} />)
+    expect(document.getElementById('timeline-date-popover')).toBeNull()
+    fireEvent.click(document.getElementById('timeline-date')!)
+    expect(document.getElementById('timeline-date-popover')).toBeTruthy()
   })
 
   it('posiciona marca de evento no meio da janela e omite fora', () => {
@@ -76,5 +71,33 @@ describe('HorizontalTimeline', () => {
     for (const l of ['Contínua', 'Movimento', 'Pessoa', 'IA', 'Estados']) {
       expect(legend, l).toContain(l)
     }
+  })
+
+  it('desenha o ponteiro na posição de reprodução e o omite fora da janela', () => {
+    const { rerender } = render(<HorizontalTimeline {...baseProps} playheadMs={HOUR / 2} />)
+    const p = document.getElementById('timeline-pointer')!
+    expect(p).toBeTruthy()
+    expect(p.style.left).toBe('50%')
+    rerender(<HorizontalTimeline {...baseProps} playheadMs={2 * HOUR} />)
+    expect(document.getElementById('timeline-pointer')).toBeNull()
+  })
+
+  it('clique sobre gravação faz onSeek(rec, offset); lacuna faz onGap', () => {
+    const onSeek = vi.fn()
+    const onGap = vi.fn()
+    const rec: Recording = { id: 7, filename: 'a.mp4', start: new Date(0).toISOString(), url: '', is_recording: false, has_motion: false }
+    render(<HorizontalTimeline {...baseProps} recordings={[rec]} onSeek={onSeek} onGap={onGap} />)
+    const track = document.getElementById('timeline-track')!
+    track.getBoundingClientRect = () => ({ left: 0, width: 1000, top: 0, right: 1000, bottom: 0, height: 0, x: 0, y: 0, toJSON() {} }) as DOMRect
+
+    // clientX=0 → fração 0 → ms 0 → dentro do chunk da gravação 7
+    fireEvent.click(track, { clientX: 0 })
+    expect(onSeek).toHaveBeenCalled()
+    expect(onSeek.mock.calls[0][0].id).toBe(7)
+    expect(onGap).not.toHaveBeenCalled()
+
+    // clientX=500 → ms = HOUR/2 → lacuna (chunk de 5min só cobre o início)
+    fireEvent.click(track, { clientX: 500 })
+    expect(onGap).toHaveBeenCalled()
   })
 })

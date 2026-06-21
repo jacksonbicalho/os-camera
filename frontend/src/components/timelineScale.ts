@@ -1,8 +1,9 @@
-// Escala da timeline horizontal (redesign do Escopo B). Helpers puros para
-// mapear tempo → posição dentro de uma janela [startMs, endMs]. O ponteiro e o
-// seek por clique ficam para a história #6.
+import type { Recording } from '../pages/cameraUtils'
 
-export type TimelineRange = '1h' | '6h' | '24h' | '7d'
+// Escala da timeline horizontal (redesign do Escopo B). Helpers puros para
+// mapear tempo ↔ posição dentro de uma janela [startMs, endMs].
+
+export type TimelineRange = '1h' | '6h' | '24h'
 
 export interface TimelineWindow {
   startMs: number
@@ -13,7 +14,6 @@ const RANGE_MS: Record<TimelineRange, number> = {
   '1h': 3600_000,
   '6h': 6 * 3600_000,
   '24h': 24 * 3600_000,
-  '7d': 7 * 24 * 3600_000,
 }
 
 export function timelineRangeMs(range: TimelineRange): number {
@@ -35,6 +35,30 @@ export function timePosFraction(tsMs: number, win: TimelineWindow): number {
 
 export function isInWindow(tsMs: number, win: TimelineWindow): boolean {
   return tsMs >= win.startMs && tsMs <= win.endMs
+}
+
+// Inverso de timePosFraction: fração 0..1 → timestamp (ms) na janela.
+export function posToTime(fraction: number, win: TimelineWindow): number {
+  const f = fraction < 0 ? 0 : fraction > 1 ? 1 : fraction
+  return win.startMs + f * (win.endMs - win.startMs)
+}
+
+// Gravação (não-ativa) cujo intervalo [start, start+chunk) cobre o ms, e o
+// offset em segundos dentro dela. `null` numa lacuna (sem gravação no instante).
+export function recordingAtMs(
+  recordings: Recording[],
+  ms: number,
+  chunkMs: number,
+): { rec: Recording; offsetSeconds: number } | null {
+  for (const rec of recordings) {
+    if (rec.is_recording) continue
+    const startMs = Date.parse(rec.start)
+    if (Number.isNaN(startMs)) continue
+    if (ms >= startMs && ms < startMs + chunkMs) {
+      return { rec, offsetSeconds: Math.max(0, (ms - startMs) / 1000) }
+    }
+  }
+  return null
 }
 
 // `count` timestamps uniformemente espaçados, inclusive os extremos.

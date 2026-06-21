@@ -1,3 +1,8 @@
+import { useRef, useEffect, useState } from 'react'
+import { DayPicker } from 'react-day-picker'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import 'react-day-picker/style.css'
 import type { Recording, MotionEvent } from '../pages/cameraUtils'
 import { eventCategory } from '../pages/eventCategory'
 import {
@@ -5,11 +10,14 @@ import {
   timePosFraction,
   isInWindow,
   timelineTicks,
+  posToTime,
+  recordingAtMs,
   type TimelineRange,
 } from './timelineScale'
-import { ChevronLeft, ChevronRight } from './Icons'
+import { Button } from './ui/button'
+import { CalendarDays } from './Icons'
 
-const RANGES: TimelineRange[] = ['1h', '6h', '24h', '7d']
+const RANGES: TimelineRange[] = ['1h', '6h', '24h']
 
 // Cor (bg-*) por categoria de marca na trilha e na legenda.
 const CAT_COLOR: Record<string, string> = {
@@ -37,12 +45,21 @@ interface HorizontalTimelineProps {
   onRangeChange: (r: TimelineRange) => void
   /** Fim da janela (anchor) em ms — a janela recua a duração do range. */
   endMs: number
-  /** Rótulo da data selecionada. */
-  dateLabel: string
-  onPrevDate: () => void
-  onNextDate: () => void
+  /** Data selecionada (abre o calendário em popover ao clicar). */
+  selectedDate: Date
+  onSelectDate: (d: Date) => void
   /** Formata um timestamp (ms) num rótulo de tick (ex: HH:MM). */
   formatTick: (ms: number) => string
+  /** Posição de reprodução atual (ms absolutos) — desenha o ponteiro. */
+  playheadMs?: number
+  /** Seek para uma gravação num offset (clique/arraste sobre gravação). */
+  onSeek?: (rec: Recording, offsetSeconds: number) => void
+  /** Scrub contínuo (arraste). Cai em onSeek quando ausente. */
+  onScrub?: (rec: Recording, offsetSeconds: number) => void
+  /** Posição numa lacuna (sem gravação no instante). */
+  onGap?: (ms: number) => void
+  /** Duração típica de um chunk de gravação (ms), para mapear ms → gravação. */
+  chunkMs?: number
 }
 
 // HorizontalTimeline — régua de tempo horizontal sob o player (redesign do
@@ -55,36 +72,88 @@ export default function HorizontalTimeline({
   range,
   onRangeChange,
   endMs,
-  dateLabel,
-  onPrevDate,
-  onNextDate,
+  selectedDate,
+  onSelectDate,
   formatTick,
+  playheadMs,
+  onSeek,
+  onScrub,
+  onGap,
+  chunkMs = CHUNK_FALLBACK_MS,
 }: HorizontalTimelineProps) {
   const win = timelineWindow(endMs, range)
   const ticks = timelineTicks(win, 7)
+  const trackRef = useRef<HTMLDivElement>(null)
+  const [dragging, setDragging] = useState(false)
+  const [calOpen, setCalOpen] = useState(false)
+  const calRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!calOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (calRef.current && !calRef.current.contains(e.target as Node)) setCalOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [calOpen])
+
+  function seekAtClientX(clientX: number, scrub = false) {
+    const el = trackRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    if (rect.width <= 0) return
+    const ms = posToTime((clientX - rect.left) / rect.width, win)
+    const hit = recordingAtMs(recordings, ms, chunkMs)
+    if (hit) {
+      const fn = scrub && onScrub ? onScrub : onSeek
+      fn?.(hit.rec, hit.offsetSeconds)
+    } else {
+      onGap?.(ms)
+    }
+  }
+
+  useEffect(() => {
+    if (!dragging) return
+    const onMove = (e: MouseEvent) => seekAtClientX(e.clientX, true)
+    const onUp = () => setDragging(false)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    // seekAtClientX é estável o bastante para o ciclo de drag; deps mínimas.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragging])
 
   return (
     <div id="horizontal-timeline" className="flex-none bg-surface border border-border rounded-lg px-3 py-2 flex flex-col gap-2">
       {/* Controles: navegação de data + seletor de janela + legenda */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-1">
-          <button
-            id="timeline-date-prev"
-            onClick={onPrevDate}
-            title="Dia anterior"
-            className="p-1 text-muted hover:text-foreground transition-colors"
+        {/* Data — botão que abre o calendário em popover (mesmo padrão dos Estados) */}
+        <div className="relative" ref={calRef}>
+          <Button
+            id="timeline-date"
+            variant="outline"
+            size="sm"
+            className="tabular-nums gap-1.5"
+            onClick={() => setCalOpen(o => !o)}
           >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span id="timeline-date-label" className="text-xs text-foreground tabular-nums min-w-[5.5rem] text-center">{dateLabel}</span>
-          <button
-            id="timeline-date-next"
-            onClick={onNextDate}
-            title="Próximo dia"
-            className="p-1 text-muted hover:text-foreground transition-colors"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+            <CalendarDays className="w-3.5 h-3.5" />
+            {format(selectedDate, 'dd/MM/yyyy', { locale: ptBR })}
+          </Button>
+          {calOpen && (
+            <div id="timeline-date-popover" className="absolute left-0 bottom-full mb-1 z-30 bg-surface border border-border rounded-lg p-2 shadow-xl">
+              <DayPicker
+                mode="single"
+                selected={selectedDate}
+                defaultMonth={selectedDate}
+                disabled={{ after: new Date() }}
+                onSelect={d => { if (d) { onSelectDate(d); setCalOpen(false) } }}
+                locale={ptBR}
+              />
+            </div>
+          )}
         </div>
 
         <div id="timeline-range" className="flex items-center gap-1">
@@ -112,8 +181,15 @@ export default function HorizontalTimeline({
         </div>
       </div>
 
-      {/* Trilha */}
-      <div id="timeline-track" className="relative h-8 rounded bg-surface-2/60 overflow-hidden">
+      {/* Trilha + ponteiro (ponteiro fica fora do overflow para não cortar o rótulo) */}
+      <div className="relative">
+      <div
+        id="timeline-track"
+        ref={trackRef}
+        onClick={(e) => seekAtClientX(e.clientX)}
+        onMouseDown={(e) => { setDragging(true); seekAtClientX(e.clientX, true) }}
+        className="relative h-8 rounded bg-surface-2/60 overflow-hidden cursor-pointer select-none"
+      >
         {/* Faixa de gravação contínua */}
         {recordings.map(rec => {
           const startMs = Date.parse(rec.start)
@@ -147,6 +223,23 @@ export default function HorizontalTimeline({
             />
           )
         })}
+      </div>
+
+        {/* Ponteiro de reprodução — destacado, sobre a trilha sem clipping */}
+        {playheadMs != null && isInWindow(playheadMs, win) && (
+          <div
+            id="timeline-pointer"
+            className="absolute top-0 h-8 w-[2px] bg-white shadow-[0_0_8px_2px_rgba(255,255,255,0.45)] z-20 pointer-events-none"
+            style={{ left: `${timePosFraction(playheadMs, win) * 100}%` }}
+          >
+            {/* knob no topo */}
+            <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-white ring-2 ring-primary shadow" />
+            {/* rótulo de horário abaixo da trilha */}
+            <span className="absolute top-full mt-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-semibold tabular-nums whitespace-nowrap shadow-md">
+              {formatTick(playheadMs)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Rótulos de tempo */}
