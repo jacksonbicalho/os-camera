@@ -8,6 +8,7 @@ import {
   posToTime,
   recordingAtMs,
   filmstripSamples,
+  filmstripCount,
 } from './timelineScale'
 import type { Recording } from '../pages/cameraUtils'
 
@@ -124,5 +125,14 @@ describe('filmstripSamples', () => {
   })
   it('janela sem gravações devolve vazio', () => {
     expect(filmstripSamples([], { startMs: 0, endMs: 900_000 }, 5)).toEqual([])
+  })
+})
+
+describe('filmstripCount', () => {
+  it('quantas miniaturas cabem na largura (mín. 1)', () => {
+    expect(filmstripCount(1000, 112, 8)).toBe(8) // (1000+8)/120 = 8.4 → 8
+    expect(filmstripCount(120, 112, 8)).toBe(1) // (120+8)/120 → 1
+    expect(filmstripCount(0, 112, 8)).toBe(1) // mínimo 1
+    expect(filmstripCount(1920, 112, 8)).toBe(16)
   })
 })

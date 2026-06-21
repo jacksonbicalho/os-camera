@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import type { Recording } from '../pages/cameraUtils'
-import { filmstripSamples, type TimelineWindow } from './timelineScale'
+import { filmstripSamples, filmstripCount, type TimelineWindow } from './timelineScale'
+
+const THUMB_W = 112 // w-28
+const THUMB_GAP = 8 // gap-2
 
 interface FilmstripProps {
   recordings: Recording[]
@@ -25,12 +28,30 @@ export default function Filmstrip({
   onSeek,
   count = 10,
 }: FilmstripProps) {
-  const samples = filmstripSamples(recordings, win, count)
   const [failed, setFailed] = useState<Set<number>>(new Set())
+  const [width, setWidth] = useState(0)
+  const roRef = useRef<ResizeObserver | null>(null)
+
+  // Callback ref: anexa o ResizeObserver sempre que o nó monta — inclusive
+  // quando o filmstrip só aparece depois das gravações carregarem (async). Um
+  // useEffect com deps [] perderia esse caso (o nó ainda não existe no mount).
+  const measureRef = useCallback((el: HTMLDivElement | null) => {
+    roRef.current?.disconnect()
+    if (el && typeof ResizeObserver !== 'undefined') {
+      setWidth(el.clientWidth)
+      const ro = new ResizeObserver(entries => setWidth(entries[0].contentRect.width))
+      ro.observe(el)
+      roRef.current = ro
+    }
+  }, [])
+
+  // Responsivo: preenche a largura medida; fallback (count) enquanto não mediu.
+  const effectiveCount = width > 0 ? filmstripCount(width, THUMB_W, THUMB_GAP) : count
+  const samples = filmstripSamples(recordings, win, effectiveCount)
   if (samples.length === 0) return null
 
   return (
-    <div id="filmstrip" className="flex-none flex gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:bg-surface-2 [&::-webkit-scrollbar-thumb]:rounded-full">
+    <div ref={measureRef} id="filmstrip" className="flex-none flex gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:bg-surface-2 [&::-webkit-scrollbar-thumb]:rounded-full">
       {samples.map(s => (
         <button
           key={s.rec.id}
