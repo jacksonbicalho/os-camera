@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { VolumeX, Volume2, Gauge, Repeat, Film, Zap, Code2, Maximize, Play, Pause, X, Trash2, CameraCapture, ZoomOut } from '../components/Icons'
+import { VolumeX, Volume2, Gauge, Repeat, Zap, Code2, Maximize, Play, Pause, X, CameraCapture, ZoomOut } from '../components/Icons'
 import { format } from 'date-fns'
 import Calendar from '../components/Calendar'
 import { authHeaders, onUnauthorized, getToken, getRole } from '../auth'
@@ -24,12 +24,13 @@ import CameraConfigMenu from '../components/CameraConfigMenu'
 import PlayerTitle from '../components/PlayerTitle'
 import CameraSwitcher from '../components/CameraSwitcher'
 import EventFilterChips from '../components/EventFilterChips'
+import EventDetailCard from '../components/EventDetailCard'
 import { filterEventsByCategory, eventCategory, eventTitle, type EventFilter } from './eventCategory'
 import HorizontalTimeline from '../components/HorizontalTimeline'
 import Filmstrip from '../components/Filmstrip'
 import { timelineWindow, type TimelineRange } from '../components/timelineScale'
 import { zoneThresholdLabel } from './settings/zoneThreshold'
-import { adjacentRecording, filterRecordings, nextRecording, recordingsCount } from './recordingsFilter'
+import { adjacentRecording, filterRecordings, nextRecording } from './recordingsFilter'
 import { videoDownloadName } from './videoDownload'
 import { recordingsForEventWindow } from './eventRecordings'
 import { useMarkActiveEventRead } from '../hooks/useMarkActiveEventRead'
@@ -121,15 +122,15 @@ export default function CameraPage() {
   })
   const [viewerCam, setViewerCam] = useState<CameraSettings | undefined>(undefined)
   const [recordings, setRecordings] = useState<Recording[]>([])
-  const [recordingsTotal, setRecordingsTotal] = useState(0)
+  const [, setRecordingsTotal] = useState(0)
   const [activeRecording, setActiveRecording] = useState<Recording | null>(null)
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [sortOrder] = useState<'asc' | 'desc'>('desc')
   const [motionEvents, setMotionEvents] = useState<MotionEvent[]>([])
-  const [activePanel, setActivePanel] = useState<null | 'recordings' | 'events'>(() => {
-    if (recordingId) return 'recordings'
+  const [activePanel, setActivePanel] = useState<null | 'events' | 'timeline'>(() => {
+    if (recordingId) return 'events'
     if (isLiveRoute) return null
     const state = location.state as { eventTime?: string; showRecordings?: boolean } | null
-    if (state?.showRecordings) return 'recordings'
+    if (state?.showRecordings) return 'events'
     return state?.eventTime ? 'events' : null
   })
   const [eventsPage, setEventsPage] = useState(1)
@@ -140,7 +141,7 @@ export default function CameraPage() {
   const [activeEventId, setActiveEventId] = useState<number | null>(null)
   const [scrollNonce, setScrollNonce] = useState(0)
   const [recordingsDisplayPage, setRecordingsDisplayPage] = useState(1)
-  const [onlyMotion, setOnlyMotion] = useState(false)
+  const [onlyMotion] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [continuousPlay, setContinuousPlay] = useState(false)
   const [browserMaxRate, setBrowserMaxRate] = useState<number | null>(null)
@@ -621,9 +622,9 @@ export default function CameraPage() {
     pendingEventRef.current = state.eventTime
     const t = new Date(state.eventTime)
     setSelectedDate(new Date(t.getFullYear(), t.getMonth(), t.getDate()))
-    // Histórico de estado abre a lista de gravações (gravação destacada); eventos
-    // de movimento (sino) abrem o painel de eventos.
-    setActivePanel(state.showRecordings ? 'recordings' : 'events')
+    // Aba Gravações foi removida; histórico de estado e eventos de movimento
+    // abrem o painel de eventos.
+    setActivePanel('events')
   }, [location.state, isLiveRoute])
 
   // Sidebar camera link: navigate to same URL with goLive state to reset to live mode
@@ -798,7 +799,6 @@ export default function CameraPage() {
     setNoRecordingAt(null)
     setActiveEventTime(null)
     setActiveEventId(null)
-    setActivePanel('recordings')
     setScrollNonce(n => n + 1)
 
     if (activeRecording?.filename === recording.filename) {
@@ -1128,8 +1128,6 @@ function toggleFullscreen() {
       : -1
 
   const filteredRecordings = filterRecordings(recordings, onlyMotion)
-  const displayedRecordings = filteredRecordings.slice(0, recordingsDisplayPage * PAGE_SIZE)
-  const hasMoreDisplayedRecordings = displayedRecordings.length < filteredRecordings.length
 
   // Keep refs in sync for use inside onEnded (avoids stale closure)
   activeEventTimeRef.current = activeEventTime
@@ -1239,40 +1237,6 @@ function toggleFullscreen() {
                     </button>
                   )}
                   <div className="w-px h-4 bg-surface-2 mx-0.5" />
-                  {/* Recordings */}
-                  {(cam?.recording_enabled !== false) && (recordingsTotal > 0 || recordings.length > 0) && (
-                    <button
-                      onClick={() => {
-                        const opening = activePanel !== 'recordings'
-                        setActivePanel(p => p === 'recordings' ? null : 'recordings')
-                        if (opening && recordings.length > 0) {
-                          const labeledEv = firstLabeledEventForRecording(recordings[0], recordings, sortedEventsRef.current)
-                          setActiveEventTime(labeledEv?.time ?? null)
-                          setActiveEventId(labeledEv?.id ?? null)
-                          openRecording(recordings[0])
-                        }
-                      }}
-                      title="Gravações"
-                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'recordings' ? 'text-primary' : 'text-muted hover:text-foreground'}`}
-                    >
-                      {playerShowIcon && <Film className="w-4 h-4" />}
-                      {!playerShowLabel && (recordingsTotal || recordings.length) > 0 && (
-                        <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-surface-2 text-foreground rounded-full px-0.5">
-                          {recordingsTotal || recordings.length}
-                        </span>
-                      )}
-                      {playerShowLabel && (
-                        <>
-                          <span className="text-[11px] leading-none">Gravações</span>
-                          {(recordingsTotal || recordings.length) > 0 && (
-                            <span className="inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] text-[9px] font-bold bg-surface-2 text-foreground rounded-full px-0.5">
-                              {recordingsTotal || recordings.length}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </button>
-                  )}
                   {/* Events */}
                   {sortedEvents.length > 0 && (
                     <button
@@ -1703,21 +1667,9 @@ function toggleFullscreen() {
           {/* Painel lateral condicional */}
           {activePanel && (
             <div className="w-72 shrink-0 border-l border-border bg-background flex flex-col h-full">
-              {(activePanel === 'recordings' || activePanel === 'events') && (
+              {(activePanel === 'events' || activePanel === 'timeline') && (
                 <>
                   <div className="flex items-center border-b border-border shrink-0">
-                    <button
-                      id="tab-recordings"
-                      onClick={() => setActivePanel('recordings')}
-                      className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
-                        activePanel === 'recordings'
-                          ? 'text-primary border-b-2 border-primary -mb-px'
-                          : 'text-faint hover:text-foreground'
-                      }`}
-                    >
-                      <span>Gravações</span>
-                      <span className="tabular-nums">{recordingsCount(recordings, recordingsTotal, onlyMotion)}</span>
-                    </button>
                     <button
                       id="tab-events"
                       onClick={() => setActivePanel('events')}
@@ -1731,6 +1683,18 @@ function toggleFullscreen() {
                       <span className="tabular-nums">{sortedEvents.length}</span>
                     </button>
                     <button
+                      id="tab-timeline"
+                      onClick={() => setActivePanel('timeline')}
+                      className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
+                        activePanel === 'timeline'
+                          ? 'text-primary border-b-2 border-primary -mb-px'
+                          : 'text-faint hover:text-foreground'
+                      }`}
+                    >
+                      <span>Linha do tempo</span>
+                      <span className="tabular-nums">{sortedEvents.length}</span>
+                    </button>
+                    <button
                       onClick={() => setActivePanel(null)}
                       title="Fechar"
                       className="px-2.5 py-2 text-faint hover:text-foreground transition-colors shrink-0"
@@ -1738,89 +1702,30 @@ function toggleFullscreen() {
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  {activePanel === 'recordings' ? (
-                    <>
-                    <label className="flex items-center gap-2 px-3 py-2 text-xs text-muted hover:text-foreground border-b border-border cursor-pointer transition-colors shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={onlyMotion}
-                        onChange={e => { setOnlyMotion(e.target.checked); setRecordingsDisplayPage(1) }}
-                        className="accent-blue-500 w-3 h-3"
-                      />
-                      Apenas com movimento
-                    </label>
-                    <ListPanel
-                      key="recordings"
-                      sortOrder={sortOrder}
-                      onSortOrderChange={() => { setSortOrder(o => o === 'desc' ? 'asc' : 'desc'); setRecordingsDisplayPage(1) }}
-                      hasMore={hasMoreDisplayedRecordings}
-                      onLoadMore={() => setRecordingsDisplayPage(p => p + 1)}
-                      empty={filteredRecordings.length === 0}
-                      emptyMessage={cam?.recording_enabled === false ? "Gravação desabilitada. Câmera disponível apenas ao vivo." : onlyMotion && recordings.length > 0 ? "Nenhuma gravação com movimento nesta data." : "Sem gravações nesta data."}
-                    >
-                      {(() => {
-                        return displayedRecordings.map(rec => {
-                          const isActive = activeRecording?.filename === rec.filename
-                          const hasMotion = rec.has_motion
-                          return (
-                            <div
-                              key={rec.filename}
-                              ref={isActive ? el => { if (el) activeRecordingItemRef.current = el } : null}
-                              className={`group flex items-center justify-between px-3 py-2 transition-colors ${
-                                rec.is_recording
-                                  ? 'opacity-50'
-                                  : isActive
-                                    ? 'bg-primary/10 border-l-2 border-primary'
-                                    : 'hover:bg-surface'
-                              }`}
-                            >
-                              <button
-                                disabled={rec.is_recording}
-                                onClick={() => {
-                                  if (!rec.is_recording) {
-                                    const labeledEv = firstLabeledEventForRecording(rec, recordings, sortedEventsRef.current)
-                                    setActiveEventTime(labeledEv?.time ?? null)
-                                    setActiveEventId(labeledEv?.id ?? null)
-                                    openRecording(rec)
-                                  }
-                                }}
-                                className="flex-1 flex items-center justify-between text-left disabled:cursor-not-allowed"
-                              >
-                                <span className={`text-sm ${isActive && !rec.is_recording ? 'text-primary' : 'text-foreground'}`}>
-                                  {formatRecordingTime(rec.start, timezone)}
-                                </span>
-                                <div className="flex items-center gap-2 shrink-0 ml-2">
-                                  {hasMotion && (
-                                    <span className="w-2 h-2 rounded-full bg-orange-400" title="Movimento detectado" />
-                                  )}
-                                  {rec.is_recording
-                                    ? <span className="text-xs text-red-400 font-medium">● REC</span>
-                                    : <span className="text-xs text-faint">▶ MP4</span>
-                                  }
-                                </div>
-                              </button>
-                              {isAdmin && !rec.is_recording && (
-                                <button
-                                  onClick={() => setDeleteTarget({ rec, hasMotion })}
-                                  title="Excluir gravação"
-                                  className="ml-2 text-faint hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          )
-                        })
-                      })()}
-                    </ListPanel>
-                    </>
-                  ) : (
+                  {(
                     <div className="flex flex-col flex-1 min-h-0">
-                    <EventFilterChips
-                      value={eventFilter}
-                      onChange={(f) => { setEventFilter(f); setEventsPage(1) }}
-                      counts={eventCounts}
-                    />
+                    {activePanel === 'timeline' ? (
+                      (() => {
+                        const activeEv = activeEventIdx >= 0 ? visibleEvents[activeEventIdx] : null
+                        return (
+                          <EventDetailCard
+                            event={activeEv}
+                            cameraName={cam?.name ?? id ?? ''}
+                            durationSeconds={(cam?.motion?.playback_lead_seconds ?? 0) + (cam?.motion?.playback_trail_seconds ?? 0)}
+                            thumbSrc={activeEv?.frame ? snapshotURL(id!, activeEv.time, activeEv.frame) : null}
+                            onPlay={() => { if (activeEv) { playEventAt(activeEv); setScrollNonce(n => n + 1) } }}
+                            onDownload={() => { if (activeEv) downloadEventVideos(activeEv) }}
+                            onMark={() => { if (activeEv) openSnapshotModal(activeEv) }}
+                          />
+                        )
+                      })()
+                    ) : (
+                      <EventFilterChips
+                        value={eventFilter}
+                        onChange={(f) => { setEventFilter(f); setEventsPage(1) }}
+                        counts={eventCounts}
+                      />
+                    )}
                     <ListPanel
                       key="events"
                       sortOrder={eventsSortOrder}
@@ -1916,6 +1821,7 @@ function toggleFullscreen() {
                         )
                       })}
                     </ListPanel>
+                    {activePanel === 'events' && (
                     <div className="shrink-0 border-t border-border max-h-80 overflow-y-auto">
                       <div className="p-3">
                         <Calendar
@@ -1934,6 +1840,7 @@ function toggleFullscreen() {
                         />
                       </div>
                     </div>
+                    )}
                     </div>
                   )}
                 </>
