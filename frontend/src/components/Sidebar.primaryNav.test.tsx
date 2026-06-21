@@ -53,11 +53,12 @@ function renderSidebar() {
 const LINK_ITEMS: Array<[string, string, string]> = [
   ['nav-live', '/', 'Ao vivo'],
   ['nav-recordings', '/recordings', 'Gravações'],
-  ['nav-maps', '/maps', 'Mapas'],
+  ['nav-maps', '/maps', 'Mapa'],
   ['nav-devices', '/devices', 'Dispositivos'],
-  ['nav-users', '/users', 'Usuários'],
   ['nav-reports', '/reports', 'Relatórios'],
 ]
+
+const FOLLOWS = Node.DOCUMENT_POSITION_FOLLOWING
 
 describe('Sidebar — nav rail principal', () => {
   it('renderiza os itens de navegação novos como links rotulados com id e rota', () => {
@@ -70,12 +71,41 @@ describe('Sidebar — nav rail principal', () => {
     }
   })
 
+  it('o item de Mapa usa o rótulo singular "Mapa"', () => {
+    renderSidebar()
+    expect(document.getElementById('nav-maps')!.textContent?.trim()).toBe('Mapa')
+  })
+
+  it('não duplica "Usuários" na nav (fica só no flyout de Configurações)', () => {
+    renderSidebar()
+    expect(document.getElementById('nav-users')).toBeNull()
+  })
+
   it('mantém Eventos (sino) e Configurações (flyout) com seus rótulos', () => {
     renderSidebar()
     const events = document.getElementById('sidebar-notifications')!
     const settings = document.getElementById('sidebar-settings')!
     expect(events.textContent).toContain('Eventos')
     expect(settings.textContent).toContain('Configurações')
+  })
+
+  it('Configurações fica na nav do topo (após Relatórios), fora do grupo inferior', () => {
+    renderSidebar()
+    const settings = document.getElementById('sidebar-settings')!
+    const reports = document.getElementById('nav-reports')!
+    const bottom = document.getElementById('sidebar-bottom')!
+    // não está no grupo inferior
+    expect(bottom.contains(settings)).toBe(false)
+    // aparece depois de Relatórios no DOM
+    expect(reports.compareDocumentPosition(settings) & FOLLOWS).toBeTruthy()
+  })
+
+  it('o grupo inferior contém apenas Recolher menu e o bloco de usuário', () => {
+    renderSidebar()
+    const bottom = document.getElementById('sidebar-bottom')!
+    expect(bottom.contains(document.getElementById('sidebar-collapse'))).toBe(true)
+    expect(bottom.contains(document.getElementById('sidebar-user'))).toBe(true)
+    expect(bottom.contains(document.getElementById('sidebar-settings'))).toBe(false)
   })
 
   it('bloco de usuário exibe nome e papel', () => {

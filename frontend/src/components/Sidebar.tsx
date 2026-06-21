@@ -14,7 +14,7 @@ import EventsPanelHeader from "./EventsPanelHeader"
 import ThemeModeNav from "./ThemeModeNav"
 import {
   Bell, X, Check, Settings, CircleUser, CameraLogo, Cctv,
-  Film, Map, Users, HardDrive, BarChart2, ChevronLeft,
+  Film, Map, HardDrive, BarChart2, ChevronLeft,
 } from "./Icons"
 import { Button, buttonVariants } from "./ui/button"
 import { cn } from "@/lib/utils"
@@ -40,9 +40,8 @@ const NAV_LINKS: Array<{ id: string; to: string; label: string; icon: React.Reac
 ]
 
 const NAV_LINKS_AFTER_EVENTS: Array<{ id: string; to: string; label: string; icon: React.ReactNode }> = [
-  { id: "nav-maps", to: "/maps", label: "Mapas", icon: <Map /> },
+  { id: "nav-maps", to: "/maps", label: "Mapa", icon: <Map /> },
   { id: "nav-devices", to: "/devices", label: "Dispositivos", icon: <HardDrive /> },
-  { id: "nav-users", to: "/users", label: "Usuários", icon: <Users /> },
   { id: "nav-reports", to: "/reports", label: "Relatórios", icon: <BarChart2 /> },
 ]
 
@@ -241,7 +240,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
   const settingsPanelRef = useRef<HTMLDivElement>(null)
   const { open: settingsOpen, setOpen: setSettingsOpen, ref: settingsRef } = useDropdown(settingsPanelRef)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
-  const [settingsPos, setSettingsPos] = useState({ bottom: 0, left: 0 })
+  const [settingsPos, setSettingsPos] = useState({ top: 0, left: 0 })
   const role = getRole()
   const roleLabel = role === "admin" ? "Administrador" : "Visualizador"
   const settingsLinks = role === "admin" ? ADMIN_SETTINGS_LINKS : VIEWER_SETTINGS_LINKS
@@ -328,6 +327,10 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
     'relative [&_svg]:size-5',
     showLabel ? 'w-full justify-start' : 'w-10 h-10',
   )
+  // Itens da nav baseados em <Button> (Eventos/sino, Configurações): mesmo tamanho
+  // e padding dos NavLinks para alinhar (o Button aplica buttonVariants via props).
+  const navBtnSize = showLabel ? 'default' : 'icon'
+  const navBtnExtra = cn('relative [&_svg]:size-5 shadow-none', showLabel ? 'w-full justify-start' : 'w-10 h-10')
 
   function renderNavLink({ id, to, label, icon }: { id: string; to: string; label: string; icon: React.ReactNode }) {
     return (
@@ -369,8 +372,9 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             id="sidebar-notifications"
             ref={bellBtnRef}
             variant="ghost"
+            size={navBtnSize}
             onClick={openBell}
-            className={cn(btnBase, "shadow-none [&_svg]:size-5", unreadCount > 0 && "text-primary animate-pulse")}
+            className={cn(navBtnExtra, unreadCount > 0 && "text-primary animate-pulse")}
             title="Eventos"
           >
             {showIcon && <Bell />}
@@ -464,22 +468,8 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
         </div>
 
         {NAV_LINKS_AFTER_EVENTS.map(renderNavLink)}
-      </nav>
 
-      {/* Injected camera items */}
-      {items.length > 0 && (
-        <div className={`flex flex-col ${itemsAlign} gap-1 py-2 border-t border-border flex-none`}>
-          {items.map(item => <SidebarInjectedItem key={item.id} item={item} displayMode={sidebarMode} />)}
-        </div>
-      )}
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Bottom: Settings + Recolher + User */}
-      <div id="sidebar-bottom" className={`flex flex-col ${itemsAlign} gap-1 pb-3 border-t border-border pt-2 flex-none`}>
-
-        {/* Settings */}
+        {/* Configurações — flyout com as seções de config */}
         <div ref={settingsRef} className={showLabel ? 'w-full' : undefined}>
           <Button
             id="sidebar-settings"
@@ -488,12 +478,13 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
             onClick={() => {
               if (settingsButtonRef.current) {
                 const r = settingsButtonRef.current.getBoundingClientRect()
-                setSettingsPos({ bottom: window.innerHeight - r.bottom, left: r.right + 8 })
+                setSettingsPos({ top: r.top, left: r.right + 8 })
               }
               setSettingsOpen(v => !v)
             }}
             title="Configurações"
-            className={cn(btnBase, "shadow-none [&_svg]:size-5")}
+            size={navBtnSize}
+            className={navBtnExtra}
           >
             {showIcon && <Settings />}
             {showLabel && <span className="text-sm truncate">Configurações</span>}
@@ -502,7 +493,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
         {settingsOpen && createPortal(
           <div
             ref={settingsPanelRef}
-            style={{ position: 'fixed', bottom: settingsPos.bottom, left: settingsPos.left, zIndex: 9999 }}
+            style={{ position: 'fixed', top: settingsPos.top, left: settingsPos.left, zIndex: 9999 }}
             className="w-48 bg-surface border border-border rounded shadow-lg"
           >
             <div className="px-3 py-2 text-xs text-gray-500 border-b border-border font-medium">Configurações</div>
@@ -539,6 +530,20 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
           </div>,
           document.body
         )}
+      </nav>
+
+      {/* Injected camera items */}
+      {items.length > 0 && (
+        <div className={`flex flex-col ${itemsAlign} gap-1 py-2 border-t border-border flex-none`}>
+          {items.map(item => <SidebarInjectedItem key={item.id} item={item} displayMode={sidebarMode} />)}
+        </div>
+      )}
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Bottom: Recolher + User */}
+      <div id="sidebar-bottom" className={`flex flex-col ${itemsAlign} gap-1 pb-3 border-t border-border pt-2 flex-none`}>
 
         {/* Recolher menu */}
         <button
