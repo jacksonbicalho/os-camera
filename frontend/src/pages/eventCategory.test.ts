@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { eventCategory, filterEventsByCategory, eventTitle } from './eventCategory'
+import { eventCategory, filterEventsByCategory, eventTitle, recordingCategory } from './eventCategory'
+
+describe('recordingCategory', () => {
+  const recAt = (ms: number) => ({ start: new Date(ms).toISOString() })
+  it('continua quando não há evento no chunk', () => {
+    expect(recordingCategory(recAt(0), [], 300_000)).toBe('continua')
+  })
+  it('usa a maior prioridade (pessoa > movimento) dos eventos no chunk', () => {
+    const events = [
+      { time: new Date(60_000).toISOString(), label: '' },
+      { time: new Date(120_000).toISOString(), label: 'pessoa' },
+    ]
+    expect(recordingCategory(recAt(0), events, 300_000)).toBe('pessoa')
+  })
+  it('ignora eventos fora do intervalo do chunk', () => {
+    const events = [{ time: new Date(400_000).toISOString(), label: 'pessoa' }]
+    expect(recordingCategory(recAt(0), events, 300_000)).toBe('continua')
+  })
+})
 
 describe('eventCategory', () => {
   it('sem label → movimento', () => {

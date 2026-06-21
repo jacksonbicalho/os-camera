@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import Filmstrip from './Filmstrip'
-import type { Recording } from '../pages/cameraUtils'
+import type { Recording, MotionEvent } from '../pages/cameraUtils'
 
 function rec(id: number, startMs: number): Recording {
   return { id, filename: `r${id}`, start: new Date(startMs).toISOString(), url: '', is_recording: false, has_motion: false }
@@ -11,11 +11,11 @@ afterEach(cleanup)
 
 const baseProps = {
   recordings: [rec(1, 0), rec(2, 300_000)],
+  events: [] as MotionEvent[],
   win: { startMs: 0, endMs: 600_000 },
   thumbSrc: (ms: number) => `/thumb?t=${ms}`,
   formatTime: (ms: number) => `${ms}`,
   onSeek: () => {},
-  count: 10,
 }
 
 describe('Filmstrip', () => {
@@ -40,10 +40,25 @@ describe('Filmstrip', () => {
     expect(document.getElementById('filmstrip')).toBeNull()
   })
 
-  it('destaca o thumbnail da gravação ativa', () => {
-    render(<Filmstrip {...baseProps} activeRecordingId={2} />)
-    expect(document.getElementById('filmstrip-2')!.getAttribute('aria-current')).toBe('true')
-    expect(document.getElementById('filmstrip-2')!.querySelector('img')!.className).toContain('ring-primary')
-    expect(document.getElementById('filmstrip-1')!.getAttribute('aria-current')).toBeNull()
+  it('marca a gravação ativa e pisca a borda só enquanto reproduz (mantém a cor da categoria)', () => {
+    const events = [{ id: 9, time: new Date(60_000).toISOString(), score: 0.5, label: 'pessoa' }] as MotionEvent[]
+    const { rerender } = render(<Filmstrip {...baseProps} events={events} activeRecordingId={1} playing />)
+    const t1 = document.getElementById('filmstrip-1')!
+    expect(t1.getAttribute('aria-current')).toBe('true')
+    // borda continua na cor da categoria (não vira primary/azul)
+    expect(t1.querySelector('img')!.className).toContain('border-red-500')
+    // pisca enquanto reproduz
+    expect(t1.querySelector('img')!.getAttribute('style')).toContain('filmstrip-blink')
+    // pausado → não pisca
+    rerender(<Filmstrip {...baseProps} events={events} activeRecordingId={1} playing={false} />)
+    expect(document.getElementById('filmstrip-1')!.querySelector('img')!.getAttribute('style') ?? '').not.toContain('filmstrip-blink')
+  })
+
+  it('colore o thumbnail pela categoria do chunk (legenda)', () => {
+    // evento "pessoa" dentro do chunk 1 ([0, 5min)); chunk 2 sem evento → contínua
+    const events = [{ id: 9, time: new Date(60_000).toISOString(), score: 0.5, label: 'pessoa' }] as MotionEvent[]
+    render(<Filmstrip {...baseProps} events={events} />)
+    expect(document.getElementById('filmstrip-1')!.querySelector('img')!.className).toContain('border-red-500')
+    expect(document.getElementById('filmstrip-2')!.querySelector('img')!.className).toContain('border-blue-500')
   })
 })
