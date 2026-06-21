@@ -22,6 +22,7 @@ import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
 import CameraConfigMenu from '../components/CameraConfigMenu'
 import PlayerTitle from '../components/PlayerTitle'
+import CameraSwitcher from '../components/CameraSwitcher'
 import EventFilterChips from '../components/EventFilterChips'
 import { filterEventsByCategory, eventCategory, eventTitle, type EventFilter } from './eventCategory'
 import HorizontalTimeline from '../components/HorizontalTimeline'
@@ -1151,6 +1152,7 @@ function toggleFullscreen() {
               }`}
             >
               <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-border min-w-0">
+                <CameraSwitcher />
                 <PlayerTitle
                   isLive={isLive}
                   name={cam?.name ?? id ?? ''}

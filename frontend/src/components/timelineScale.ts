@@ -43,6 +43,14 @@ export function posToTime(fraction: number, win: TimelineWindow): number {
   return win.startMs + f * (win.endMs - win.startMs)
 }
 
+// filmstripCount devolve quantas miniaturas (largura `thumbWidth` + `gap`) cabem
+// numa faixa de largura `containerWidth`. Mínimo de 1. Base do filmstrip
+// responsivo (preenche a largura disponível).
+export function filmstripCount(containerWidth: number, thumbWidth: number, gap: number): number {
+  const fit = Math.floor((containerWidth + gap) / (thumbWidth + gap))
+  return Math.max(1, fit)
+}
+
 export interface FilmstripSample {
   ms: number
   rec: Recording
