@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import AppLayout from '../components/AppLayout'
 import { authHeaders, onUnauthorized } from '../auth'
-import { categoryBuckets, type EventReport } from './reportsUtils'
+import { categoryBuckets, axisTicks, type EventReport } from './reportsUtils'
 
 const RANGES = [7, 30, 90]
 const CAT_LABEL: Record<string, string> = { movimento: 'Movimento', pessoa: 'Pessoa', ia: 'IA', estados: 'Estados' }
@@ -123,9 +123,16 @@ export default function ReportsPage() {
                 )
               })}
             </div>
-            <div className="flex justify-between mt-1 text-[9px] text-faint tabular-nums">
-              <span>{byDay[0]?.day.slice(5)}</span>
-              <span>{byDay[byDay.length - 1]?.day.slice(5)}</span>
+            <div className="relative h-3 mt-1 text-[9px] text-faint tabular-nums">
+              {axisTicks(byDay.map(d => d.day), 6).map(t => (
+                <span
+                  key={t.index}
+                  className="absolute -translate-x-1/2 whitespace-nowrap"
+                  style={{ left: `${((t.index + 0.5) / byDay.length) * 100}%` }}
+                >
+                  {t.label}
+                </span>
+              ))}
             </div>
           </>
         )}
