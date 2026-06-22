@@ -302,3 +302,57 @@ func TestRecordStateTransitionReflectsInCurrent(t *testing.T) {
 		t.Fatalf("unexpected state: %+v", st)
 	}
 }
+
+func insertTransition(t *testing.T, database *db.DB, classifierID int64, state string, conf float64, frame, changedAt string) {
+	t.Helper()
+	if _, err := database.Exec(
+		`INSERT INTO camera_state_history (classifier_id, state, confidence, frame_path, changed_at) VALUES (?, ?, ?, ?, ?)`,
+		classifierID, state, conf, frame, changedAt,
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestListCameraStateTransitions(t *testing.T) {
+	database := openTestDB(t)
+	seedCamera(t, database, "cam1")
+	seedCamera(t, database, "cam2")
+	c1, _ := db.CreateStateClassifier(database, makeClassifier("cam1"))
+	c2cfg := makeClassifier("cam1")
+	c2cfg.Name = "Garagem"
+	c2, _ := db.CreateStateClassifier(database, c2cfg)
+	other, _ := db.CreateStateClassifier(database, makeClassifier("cam2"))
+
+	// dentro do dia 2026-05-03, dois classificadores da mesma câmera
+	insertTransition(t, database, c1, "vazio", 0.8, "/recordings/state_history/1/a.jpg", "2026-05-03 10:00:00")
+	insertTransition(t, database, c2, "aberto", 0.9, "/recordings/state_history/2/b.jpg", "2026-05-03 11:00:00")
+	// sem frame_path → não entra
+	insertTransition(t, database, c1, "cheio", 0.7, "", "2026-05-03 12:00:00")
+	// fora do intervalo → não entra
+	insertTransition(t, database, c1, "cheio", 0.6, "/recordings/state_history/1/c.jpg", "2026-05-04 09:00:00")
+	// outra câmera → não entra
+	insertTransition(t, database, other, "x", 0.5, "/recordings/state_history/3/d.jpg", "2026-05-03 13:00:00")
+
+	start := time.Date(2026, 5, 3, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	got, err := db.ListCameraStateTransitions(database, "cam1", start, end)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("esperava 2 transições, got %d: %+v", len(got), got)
+	}
+	byState := map[string]db.CameraStateTransition{}
+	for _, e := range got {
+		byState[e.State] = e
+	}
+	if byState["vazio"].ClassifierID != c1 || byState["vazio"].ClassifierName != "Portão" {
+		t.Fatalf("classificador errado p/ vazio: %+v", byState["vazio"])
+	}
+	if byState["aberto"].ClassifierName != "Garagem" {
+		t.Fatalf("classifier_name esperado Garagem: %+v", byState["aberto"])
+	}
+	if byState["aberto"].FramePath != "/recordings/state_history/2/b.jpg" || byState["aberto"].Confidence != 0.9 {
+		t.Fatalf("campos errados p/ aberto: %+v", byState["aberto"])
+	}
+}

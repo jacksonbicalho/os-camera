@@ -74,6 +74,8 @@ async function loadMotionEvents(cameraId: string, date: Date): Promise<MotionEve
 }
 
 function snapshotURL(cameraId: string, eventTime: string, frame: string): string {
+  // Transições de estado já trazem o caminho servível absoluto (/recordings/...).
+  if (frame.startsWith('/')) return `${frame}?token=${getToken()}`
   const d = new Date(eventTime)
   const dateDir = `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`
   return `/recordings/${cameraId}/${dateDir}/${frame}?token=${getToken()}`
@@ -1836,7 +1838,9 @@ function toggleFullscreen() {
                                 )}
                                 <div className="flex flex-col min-w-0">
                                   <span className="text-xs font-medium text-foreground truncate">{eventTitle(ev)}</span>
-                                  <span className="text-[11px] text-muted truncate">{cam?.name ?? id}</span>
+                                  <span className="text-[11px] text-muted truncate">
+                                    {ev.kind === 'state' ? (ev.classifier_name ?? cam?.name ?? id) : (cam?.name ?? id)}
+                                  </span>
                                 </div>
                               </div>
                               <span

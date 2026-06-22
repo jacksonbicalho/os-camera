@@ -353,6 +353,51 @@ func ListStateHistory(database *DB, classifierID int64, limit int) ([]StateHisto
 	return out, rows.Err()
 }
 
+// CameraStateTransition é uma transição de estado (com thumbnail) de qualquer
+// classificador de uma câmera, usada para mesclar no feed de eventos da câmera.
+type CameraStateTransition struct {
+	ID             int64
+	ClassifierID   int64
+	ClassifierName string
+	State          string
+	Confidence     float64
+	ChangedAt      time.Time
+	FramePath      string
+}
+
+// ListCameraStateTransitions devolve as transições de estado de TODOS os
+// classificadores de uma câmera no intervalo [start, end), mais antigas primeiro.
+// Espelha o filtro de ListStateHistory (só com thumbnail, frame_path != ''). Ambos
+// os lados da comparação de tempo passam por datetime() porque changed_at é gravado
+// em 'YYYY-MM-DD HH:MM:SS' (UTC).
+func ListCameraStateTransitions(database *DB, cameraID string, start, end time.Time) ([]CameraStateTransition, error) {
+	rows, err := database.Query(
+		`SELECT h.id, c.id, c.name, h.state, h.confidence, h.changed_at, h.frame_path
+		 FROM camera_state_history h
+		 JOIN camera_state_classifiers c ON c.id = h.classifier_id
+		 WHERE c.camera_id = ? AND h.frame_path != ''
+		   AND datetime(h.changed_at) >= datetime(?)
+		   AND datetime(h.changed_at) < datetime(?)
+		 ORDER BY h.changed_at, h.id`,
+		cameraID,
+		start.UTC().Format("2006-01-02 15:04:05"),
+		end.UTC().Format("2006-01-02 15:04:05"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []CameraStateTransition{}
+	for rows.Next() {
+		var e CameraStateTransition
+		if err := rows.Scan(&e.ID, &e.ClassifierID, &e.ClassifierName, &e.State, &e.Confidence, &e.ChangedAt, &e.FramePath); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // GetCurrentState returns the latest state of a classifier, or nil when none yet.
 func GetCurrentState(database *DB, classifierID int64) (*stateclass.State, error) {
 	row := database.QueryRow(
