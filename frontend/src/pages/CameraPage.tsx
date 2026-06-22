@@ -24,7 +24,7 @@ import PlayerTitle from '../components/PlayerTitle'
 import CameraSwitcher from '../components/CameraSwitcher'
 import EventFilterChips from '../components/EventFilterChips'
 import EventDetailCard from '../components/EventDetailCard'
-import { filterEventsByCategory, eventCategory, eventTitle, recordingCategory, type EventFilter } from './eventCategory'
+import { filterEventsByCategory, eventCategory, eventCardLines, recordingCategory, type EventFilter } from './eventCategory'
 import { activeEventForPlayhead } from './activeEvent'
 import HorizontalTimeline from '../components/HorizontalTimeline'
 import Filmstrip from '../components/Filmstrip'
@@ -1836,12 +1836,15 @@ function toggleFullscreen() {
                                     onClick={e => { e.stopPropagation(); openSnapshotModal(ev) }}
                                   />
                                 )}
-                                <div className="flex flex-col min-w-0">
-                                  <span className="text-xs font-medium text-foreground truncate">{eventTitle(ev)}</span>
-                                  <span className="text-[11px] text-muted truncate">
-                                    {ev.kind === 'state' ? (ev.classifier_name ?? cam?.name ?? id) : (cam?.name ?? id)}
-                                  </span>
-                                </div>
+                                {(() => {
+                                  const lines = eventCardLines(ev, cam?.name ?? id ?? '')
+                                  return (
+                                    <div className="flex flex-col min-w-0">
+                                      <span className="text-xs font-medium text-foreground truncate">{lines.title}</span>
+                                      <span className="text-[11px] text-muted truncate">{lines.subtitle}</span>
+                                    </div>
+                                  )
+                                })()}
                               </div>
                               <span
                                 aria-hidden="true"

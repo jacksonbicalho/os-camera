@@ -7,6 +7,12 @@ function rec(id: number, startMs: number): Recording {
   return { id, filename: `r${id}`, start: new Date(startMs).toISOString(), url: '', is_recording: false, has_motion: false }
 }
 
+// O frame com borda é o pai do <img> (o img fica dentro, com overflow-hidden, para o
+// zoom de hover não vazar a borda).
+function frameOf(thumbId: string): HTMLElement {
+  return document.getElementById(thumbId)!.querySelector('img')!.parentElement as HTMLElement
+}
+
 afterEach(cleanup)
 
 const baseProps = {
@@ -46,19 +52,27 @@ describe('Filmstrip', () => {
     const t1 = document.getElementById('filmstrip-1')!
     expect(t1.getAttribute('aria-current')).toBe('true')
     // borda continua na cor da categoria (não vira primary/azul)
-    expect(t1.querySelector('img')!.className).toContain('border-red-500')
+    expect(frameOf('filmstrip-1').className).toContain('border-red-500')
     // pisca enquanto reproduz
-    expect(t1.querySelector('img')!.getAttribute('style')).toContain('filmstrip-blink')
+    expect(frameOf('filmstrip-1').getAttribute('style')).toContain('filmstrip-blink')
     // pausado → não pisca
     rerender(<Filmstrip {...baseProps} events={events} activeRecordingId={1} playing={false} />)
-    expect(document.getElementById('filmstrip-1')!.querySelector('img')!.getAttribute('style') ?? '').not.toContain('filmstrip-blink')
+    expect(frameOf('filmstrip-1').getAttribute('style') ?? '').not.toContain('filmstrip-blink')
   })
 
   it('colore o thumbnail pela categoria do chunk (legenda)', () => {
     // evento "pessoa" dentro do chunk 1 ([0, 5min)); chunk 2 sem evento → contínua
     const events = [{ id: 9, time: new Date(60_000).toISOString(), score: 0.5, label: 'pessoa' }] as MotionEvent[]
     render(<Filmstrip {...baseProps} events={events} />)
-    expect(document.getElementById('filmstrip-1')!.querySelector('img')!.className).toContain('border-red-500')
-    expect(document.getElementById('filmstrip-2')!.querySelector('img')!.className).toContain('border-blue-500')
+    expect(frameOf('filmstrip-1').className).toContain('border-red-500')
+    expect(frameOf('filmstrip-2').className).toContain('border-blue-500')
+  })
+
+  it('hover usa borda foreground (branca), não primary/azul, e dá zoom na imagem', () => {
+    render(<Filmstrip {...baseProps} />)
+    const frame = frameOf('filmstrip-1')
+    expect(frame.className).toContain('group-hover:border-foreground')
+    expect(frame.className).not.toContain('group-hover:border-primary')
+    expect(document.getElementById('filmstrip-1')!.querySelector('img')!.className).toContain('group-hover:scale-105')
   })
 })

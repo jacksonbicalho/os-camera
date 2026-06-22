@@ -18,8 +18,10 @@ export function eventCategory(ev: Pick<MotionEvent, 'label' | 'kind'>): EventCat
 export type RecordingCategory = EventCategory | 'continua'
 
 // Prioridade (maior → menor) para resolver a categoria de um chunk com vários
-// eventos: pessoa > ia > movimento.
-const CAT_PRIORITY: EventCategory[] = ['pessoa', 'ia', 'movimento']
+// eventos: pessoa > ia > movimento > estados. Detecção real predomina; um chunk cujo
+// único evento é uma transição de estado fica `estados` (verde, como na timeline) em
+// vez de cair em `continua` (azul).
+const CAT_PRIORITY: EventCategory[] = ['pessoa', 'ia', 'movimento', 'estados']
 
 // recordingCategory classifica um chunk de gravação pela categoria dos eventos
 // no seu intervalo [start, start+chunk): a de maior prioridade; `continua` se
@@ -37,7 +39,6 @@ export function recordingCategory(
     const t = Date.parse(ev.time)
     if (Number.isNaN(t) || t < start || t >= end) continue
     const cat = eventCategory(ev)
-    if (cat === 'estados') continue
     if (best === null || CAT_PRIORITY.indexOf(cat) < CAT_PRIORITY.indexOf(best)) best = cat
   }
   return best ?? 'continua'
@@ -51,6 +52,20 @@ export function eventTitle(ev: Pick<MotionEvent, 'label' | 'kind'>): string {
     case 'estados': return (ev.label ?? '').trim() || 'Estado'
     case 'ia': return (ev.label ?? '').trim() || 'Detecção IA'
   }
+}
+
+// eventCardLines devolve as duas linhas do card de evento (título em cima, subtítulo
+// embaixo). Para transições de estado mostra o classificador no título e o estado no
+// subtítulo (ex.: "Janela" / "apagada"); para os demais, a descrição do evento no
+// título e a câmera no subtítulo.
+export function eventCardLines(
+  ev: Pick<MotionEvent, 'label' | 'kind' | 'classifier_name'>,
+  cameraName: string,
+): { title: string; subtitle: string } {
+  if (ev.kind === 'state') {
+    return { title: ev.classifier_name || cameraName, subtitle: eventTitle(ev) }
+  }
+  return { title: eventTitle(ev), subtitle: cameraName }
 }
 
 export function filterEventsByCategory<T extends Pick<MotionEvent, 'label' | 'kind'>>(

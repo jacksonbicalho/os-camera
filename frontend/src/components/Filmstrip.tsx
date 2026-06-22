@@ -85,9 +85,11 @@ export default function Filmstrip({
         {samples.map(s => {
           const active = s.rec.id === activeRecordingId
           const cat = recordingCategory(s.rec, events, CHUNK_FALLBACK_MS)
-          // Mantém a borda na cor da categoria (não vira azul, pra não conflitar
-          // com a legenda). O ativo só se distingue piscando enquanto reproduz.
-          const frameClass = `w-28 h-16 rounded border-2 transition-colors bg-surface-2 ${CAT_BORDER[cat] ?? 'border-border'} group-hover:border-primary`
+          // Borda na cor da categoria (legenda). No hover vira foreground (branca) —
+          // distinta de todas as cores de categoria — e a imagem dá um zoom leve;
+          // overflow-hidden recorta o zoom dentro da borda. O ativo pisca enquanto
+          // reproduz (box-shadow, fora da borda).
+          const frameClass = `w-28 h-16 rounded border-2 overflow-hidden transition-colors bg-surface-2 ${CAT_BORDER[cat] ?? 'border-border'} group-hover:border-foreground`
           const blinkStyle = active && playing ? { animation: 'filmstrip-blink 1.1s ease-in-out infinite' } : undefined
           return (
             <button
@@ -100,14 +102,15 @@ export default function Filmstrip({
               {failed.has(s.rec.id) ? (
                 <div style={blinkStyle} className={`${frameClass} flex items-center justify-center text-[10px] text-faint`}>sem prévia</div>
               ) : (
-                <img
-                  src={thumbSrc(s.ms)}
-                  alt={formatTime(s.ms)}
-                  loading="lazy"
-                  style={blinkStyle}
-                  onError={() => setFailed(prev => new Set(prev).add(s.rec.id))}
-                  className={`${frameClass} object-cover`}
-                />
+                <div style={blinkStyle} className={frameClass}>
+                  <img
+                    src={thumbSrc(s.ms)}
+                    alt={formatTime(s.ms)}
+                    loading="lazy"
+                    onError={() => setFailed(prev => new Set(prev).add(s.rec.id))}
+                    className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                  />
+                </div>
               )}
               <span className={`text-[10px] tabular-nums px-1.5 py-0.5 rounded ${CAT_BG[cat] ?? 'bg-surface-2 text-muted'}`}>{formatTime(s.ms)}</span>
             </button>
