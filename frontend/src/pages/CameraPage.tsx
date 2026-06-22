@@ -24,7 +24,7 @@ import PlayerTitle from '../components/PlayerTitle'
 import CameraSwitcher from '../components/CameraSwitcher'
 import EventFilterChips from '../components/EventFilterChips'
 import EventDetailCard from '../components/EventDetailCard'
-import { filterEventsByCategory, eventCategory, eventCardLines, recordingCategory, type EventFilter } from './eventCategory'
+import { filterEventsByCategory, eventCategory, eventCardLines, firstEventInChunk, type EventFilter } from './eventCategory'
 import { activeEventForPlayhead } from './activeEvent'
 import HorizontalTimeline from '../components/HorizontalTimeline'
 import Filmstrip from '../components/Filmstrip'
@@ -795,14 +795,18 @@ export default function CameraPage() {
 
   function handleTimelineSeek(recording: Recording, offsetSeconds: number) {
     setNoRecordingAt(null)
+    // Chunk com evento → seleciona e dá seek direto no primeiro evento (aparece
+    // destacado na lista do painel direito, com scroll). Chunk sem evento
+    // (azul/continua) → seek pro início do chunk e fecha o painel.
+    const ev = firstEventInChunk(recording, sortedEventsRef.current, 5 * 60_000)
+    if (ev) {
+      playEventAt(ev)
+      return
+    }
     setActiveEventTime(null)
     setActiveEventId(null)
     setScrollNonce(n => n + 1)
-    // Gravação sem evento → fecha o painel; com evento, o efeito de
-    // seleção-segue-playback abre e seleciona o evento ao alcançá-lo.
-    if (recordingCategory(recording, sortedEventsRef.current, 5 * 60_000) === 'continua') {
-      setActivePanel(null)
-    }
+    setActivePanel(null)
 
     if (activeRecording?.filename === recording.filename) {
       if (videoRef.current) {
