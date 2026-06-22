@@ -64,3 +64,34 @@ func TestAggregateMotionEvents(t *testing.T) {
 		t.Errorf("by_label não deveria conter label de cam2: %+v", rep.ByLabel)
 	}
 }
+
+func TestAggregateMotionEventsFillsEmptyDays(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+	// evento só no dia 21
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID: "cam1", OccurredAt: time.Date(2026, 6, 21, 10, 0, 0, 0, time.UTC), Score: 0.5, Label: "pessoa",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	from := time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 6, 23, 0, 0, 0, 0, time.UTC) // janela contínua: 20, 21, 22
+
+	rep, err := db.AggregateMotionEvents(database, from, to, "cam1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.ByDay) != 3 {
+		t.Fatalf("esperava 3 dias contínuos (20,21,22), got %d: %+v", len(rep.ByDay), rep.ByDay)
+	}
+	if rep.ByDay[0].Day != "2026-06-20" || rep.ByDay[0].Count != 0 {
+		t.Errorf("dia 20 deveria ser zero: %+v", rep.ByDay[0])
+	}
+	if rep.ByDay[1].Day != "2026-06-21" || rep.ByDay[1].Count != 1 {
+		t.Errorf("dia 21 deveria ter 1: %+v", rep.ByDay[1])
+	}
+	if rep.ByDay[2].Day != "2026-06-22" || rep.ByDay[2].Count != 0 {
+		t.Errorf("dia 22 deveria ser zero: %+v", rep.ByDay[2])
+	}
+}

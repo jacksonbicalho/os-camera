@@ -3,7 +3,6 @@ package db
 import (
 	"fmt"
 	"regexp"
-	"sort"
 	"time"
 )
 
@@ -106,19 +105,21 @@ func AggregateMotionEvents(db *DB, from, to time.Time, cameraID string) (EventRe
 		return EventReport{}, err
 	}
 
-	days := make([]string, 0, len(dayCat))
-	for d := range dayCat {
-		days = append(days, d)
-	}
-	sort.Strings(days)
-	byDay := make([]DayCount, 0, len(days))
-	for _, d := range days {
-		counts := dayCat[d]
+	// Preenche TODOS os dias UTC da janela [from, to) — inclusive os sem evento — para
+	// o gráfico virar uma linha do tempo contínua (dias vazios = barra zero).
+	byDay := []DayCount{}
+	startDay := time.Date(from.UTC().Year(), from.UTC().Month(), from.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	for d := startDay; d.Before(to); d = d.AddDate(0, 0, 1) {
+		key := d.Format("2006-01-02")
+		counts := dayCat[key]
+		if counts == nil {
+			counts = map[string]int64{}
+		}
 		var c int64
 		for _, n := range counts {
 			c += n
 		}
-		byDay = append(byDay, DayCount{Day: d, Count: c, ByCategory: counts})
+		byDay = append(byDay, DayCount{Day: key, Count: c, ByCategory: counts})
 	}
 	return EventReport{Total: total, ByDay: byDay, ByLabel: byLabel, ByCategory: byCategory}, nil
 }

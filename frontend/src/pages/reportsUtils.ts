@@ -8,6 +8,21 @@ export interface EventReport {
   by_category?: Record<string, number>
 }
 
+// axisTicks escolhe até `maxTicks` rótulos de data distribuídos uniformemente ao longo
+// da lista de dias (sempre incluindo o primeiro e o último), para o eixo X do gráfico.
+// O rótulo é MM-DD (corta o ano de YYYY-MM-DD). Com poucos dias, devolve um por dia.
+export function axisTicks(days: string[], maxTicks = 6): { index: number; label: string }[] {
+  const n = days.length
+  if (n === 0) return []
+  const tick = (i: number) => ({ index: i, label: days[i].slice(5) })
+  if (n <= maxTicks) return days.map((_, i) => tick(i))
+  const idx = new Set<number>()
+  for (let i = 0; i < maxTicks; i++) {
+    idx.add(Math.round((i * (n - 1)) / (maxTicks - 1)))
+  }
+  return [...idx].sort((a, b) => a - b).map(tick)
+}
+
 // categoryBuckets dobra as contagens cruas por label nas categorias do app (mesma regra
 // do eventCategory): label vazio → movimento, pessoa → pessoa, etc. `byCategory` (opcional)
 // traz categorias que não vêm de label — hoje `estados` (de camera_state_history).
