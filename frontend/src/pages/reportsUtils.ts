@@ -3,9 +3,36 @@ import { eventCategory, type EventCategory } from './eventCategory'
 export interface EventReport {
   total: number
   by_day: { day: string; count: number; by_category?: Record<string, number> }[]
+  // preenchido só no modo "dia" (bucket=hour): 24 buckets 0..23
+  by_hour?: { hour: number; count: number; by_category?: Record<string, number> }[]
   by_label: Record<string, number>
   // estados (e futuras categorias não derivadas de label) já vêm bucketizadas do backend
   by_category?: Record<string, number>
+}
+
+export interface CategoryDetail { total: number; labels: { label: string; count: number }[] }
+
+// categoryDetail devolve o total e o detalhamento por label de uma categoria, para o
+// modal: `estados` vem de `byCategory`; as demais somam os labels que caem na categoria
+// (mesma regra do eventCategory), listando-os por contagem desc (o label vazio — base do
+// `movimento` — não vira linha de detalhe).
+export function categoryDetail(
+  cat: EventCategory,
+  byLabel: Record<string, number>,
+  byCategory?: Record<string, number>,
+): CategoryDetail {
+  if (cat === 'estados') {
+    return { total: byCategory?.estados ?? 0, labels: [] }
+  }
+  let total = 0
+  const labels: { label: string; count: number }[] = []
+  for (const [label, count] of Object.entries(byLabel)) {
+    if (eventCategory({ label }) !== cat) continue
+    total += count
+    if (label !== '') labels.push({ label, count })
+  }
+  labels.sort((a, b) => b.count - a.count)
+  return { total, labels }
 }
 
 // axisTicks escolhe até `maxTicks` rótulos de data distribuídos uniformemente ao longo

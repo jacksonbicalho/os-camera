@@ -65,6 +65,55 @@ func TestAggregateMotionEvents(t *testing.T) {
 	}
 }
 
+func TestAggregateMotionEventsHourly(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+	loc := time.FixedZone("BRT", -3*3600) // UTC-3
+
+	mk := func(at time.Time, label string) {
+		if err := db.InsertMotionEvent(database, db.MotionEvent{CameraID: "cam1", OccurredAt: at, Score: 0.5, Label: label}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// dia (em BRT) = 2026-06-21 → [03:00Z, +24h)
+	mk(time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC), "")       // 09:00 BRT → hora 9, movimento
+	mk(time.Date(2026, 6, 21, 12, 30, 0, 0, time.UTC), "pessoa") // 09:30 BRT → hora 9, pessoa
+	c1, err := db.CreateStateClassifier(database, makeClassifier("cam1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	insertTransition(t, database, c1, "aberto", 0.9, "/x/a.jpg", "2026-06-21 15:00:00") // 12:00 BRT → hora 12, estados
+
+	from := time.Date(2026, 6, 21, 3, 0, 0, 0, time.UTC)  // 00:00 BRT
+	to := time.Date(2026, 6, 22, 3, 0, 0, 0, time.UTC)    // 24:00 BRT
+
+	rep, err := db.AggregateMotionEventsHourly(database, from, to, "cam1", loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.ByHour) != 24 {
+		t.Fatalf("esperava 24 buckets de hora, got %d", len(rep.ByHour))
+	}
+	if rep.Total != 3 {
+		t.Fatalf("total = %d, want 3", rep.Total)
+	}
+	if rep.ByHour[9].Hour != 9 || rep.ByHour[9].Count != 2 || rep.ByHour[9].ByCategory["movimento"] != 1 || rep.ByHour[9].ByCategory["pessoa"] != 1 {
+		t.Errorf("hora 9 = %+v", rep.ByHour[9])
+	}
+	if rep.ByHour[12].Count != 1 || rep.ByHour[12].ByCategory["estados"] != 1 {
+		t.Errorf("hora 12 (estado) = %+v", rep.ByHour[12])
+	}
+	if rep.ByHour[0].Count != 0 {
+		t.Errorf("hora 0 deveria ser zero: %+v", rep.ByHour[0])
+	}
+	if rep.ByCategory["estados"] != 1 {
+		t.Errorf("by_category[estados] = %d, want 1", rep.ByCategory["estados"])
+	}
+	if rep.ByLabel[""] != 1 || rep.ByLabel["pessoa"] != 1 {
+		t.Errorf("by_label = %+v", rep.ByLabel)
+	}
+}
+
 func TestAggregateMotionEventsFillsEmptyDays(t *testing.T) {
 	database := openTestDB(t)
 	ensureCamera(t, database, "cam1")
