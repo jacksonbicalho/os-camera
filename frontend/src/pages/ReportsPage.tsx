@@ -1,21 +1,45 @@
 import { useEffect, useState } from 'react'
+import { format } from 'date-fns'
 import AppLayout from '../components/AppLayout'
+import DatePicker from '../components/DatePicker'
 import { authHeaders, onUnauthorized } from '../auth'
-import { categoryBuckets, axisTicks, type EventReport } from './reportsUtils'
+import { categoryBuckets, axisTicks, categoryDetail, type EventReport } from './reportsUtils'
+import type { EventCategory } from './eventCategory'
 
-const RANGES = [7, 30, 90]
+const RANGE_OPTS = [1, 2, 3, 4, 5, 6, 7, 14, 30, 90]
 const CAT_LABEL: Record<string, string> = { movimento: 'Movimento', pessoa: 'Pessoa', ia: 'IA', estados: 'Estados' }
 const CAT_COLOR: Record<string, string> = { movimento: 'bg-amber-400', pessoa: 'bg-red-500', ia: 'bg-violet-500', estados: 'bg-green-500' }
+const CAT_DESC: Record<string, string> = {
+  movimento: 'Movimento detectado por diferença de pixels, sem classificação.',
+  pessoa: 'Detecções classificadas como pessoa.',
+  ia: 'Detecções de modelos de IA (exceto pessoa).',
+  estados: 'Transições de classificadores de estado.',
+}
 // Ordem de empilhamento das barras (de baixo p/ cima).
 const STACK_ORDER = ['movimento', 'pessoa', 'ia', 'estados'] as const
 
 interface CameraOption { id: string; name: string }
+interface Bar { key: string; count: number; bc: Record<string, number> }
 
 export default function ReportsPage() {
   const [report, setReport] = useState<EventReport | null>(null)
   const [days, setDays] = useState(7)
+  const [specificDay, setSpecificDay] = useState<Date | null>(null)
   const [cameras, setCameras] = useState<CameraOption[]>([])
   const [camera, setCamera] = useState('')
+  const [modalCat, setModalCat] = useState<EventCategory | null>(null)
+
+  // Fecha o modal de categoria no Esc.
+  useEffect(() => {
+    if (!modalCat) return
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setModalCat(null) }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [modalCat])
+
+  // modo "dia" (barras por hora) quando há um dia específico escolhido ou o preset "1 dia".
+  const dayMode = specificDay !== null || days === 1
+  const dayDate = specificDay ?? new Date()
 
   // Lista de câmeras do usuário → popula o seletor. Inicia na primeira (o relatório é
   // sempre de uma câmera; não há modo "Todas").
@@ -32,16 +56,28 @@ export default function ReportsPage() {
 
   useEffect(() => {
     if (!camera) return
-    const to = new Date()
-    const from = new Date(to.getTime() - days * 86_400_000)
-    fetch(`/api/reports/events?from=${from.toISOString()}&to=${to.toISOString()}&camera=${encodeURIComponent(camera)}`, { headers: authHeaders() })
+    let url: string
+    if (dayMode) {
+      const from = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), 0, 0, 0, 0)
+      const to = new Date(from.getTime() + 86_400_000)
+      url = `/api/reports/events?from=${from.toISOString()}&to=${to.toISOString()}&camera=${encodeURIComponent(camera)}&bucket=hour`
+    } else {
+      const to = new Date()
+      const from = new Date(to.getTime() - days * 86_400_000)
+      url = `/api/reports/events?from=${from.toISOString()}&to=${to.toISOString()}&camera=${encodeURIComponent(camera)}`
+    }
+    fetch(url, { headers: authHeaders() })
       .then(r => { if (r.status === 401) { onUnauthorized(); return null } return r.json() })
       .then(d => { if (d) setReport(d) })
       .catch(() => {})
-  }, [days, camera])
+    // dayDate é derivado de specificDay; specificDay/days nas deps cobrem.
+  }, [days, camera, specificDay]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const byDay = report?.by_day ?? []
-  const maxDay = Math.max(1, ...byDay.map(d => d.count))
+  const bars: Bar[] = dayMode
+    ? (report?.by_hour ?? []).map(h => ({ key: `${h.hour}`, count: h.count, bc: h.by_category ?? {} }))
+    : (report?.by_day ?? []).map(d => ({ key: d.day, count: d.count, bc: d.by_category ?? {} }))
+  const maxVal = Math.max(1, ...bars.map(b => b.count))
+
   const cats = report ? categoryBuckets(report.by_label, report.by_category) : { movimento: 0, pessoa: 0, ia: 0, estados: 0 }
   const catEntries = Object.entries(cats).filter(([, n]) => n > 0)
   const catTotal = catEntries.reduce((s, [, n]) => s + n, 0) || 1
@@ -57,6 +93,12 @@ export default function ReportsPage() {
     acc += len
     return seg
   })
+
+  const barTitle = (b: Bar) => {
+    const head = dayMode ? `${b.key}h` : b.key
+    const parts = STACK_ORDER.filter(c => (b.bc[c] ?? 0) > 0).map(c => `${CAT_LABEL[c]}: ${b.bc[c]}`)
+    return parts.length > 0 ? `${head} — ${parts.join(', ')}` : `${head}: ${b.count}`
+  }
 
   return (
     <AppLayout>
@@ -77,62 +119,68 @@ export default function ReportsPage() {
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
-          <div className="flex gap-1">
-            {RANGES.map(r => (
-              <button
-                key={r}
-                id={`report-range-${r}`}
-                onClick={() => setDays(r)}
-                className={`px-2.5 py-1 rounded text-xs transition-colors ${r === days ? 'bg-primary text-primary-foreground' : 'bg-surface-2 text-muted hover:text-foreground'}`}
-              >
-                {r}d
-              </button>
+          <DatePicker
+            id="report-day-picker"
+            value={dayDate}
+            onChange={d => setSpecificDay(d)}
+            disableFuture
+            align="right"
+          />
+          <select
+            id="report-range-select"
+            value={specificDay ? '' : String(days)}
+            onChange={e => { setSpecificDay(null); setDays(Number(e.target.value)) }}
+            className="bg-surface-2 text-foreground text-xs rounded px-2 py-1 border border-border"
+          >
+            {specificDay && <option value="" disabled>dia específico</option>}
+            {RANGE_OPTS.map(n => (
+              <option key={n} value={n}>{n === 1 ? '1 dia' : `${n} dias`}</option>
             ))}
-          </div>
+          </select>
         </div>
       </div>
 
-      {/* Barras (div flex) — eventos por dia da câmera selecionada */}
+      {/* Barras empilhadas — por dia (intervalo) ou por hora (modo dia) */}
       <div className="bg-surface border border-border rounded-lg p-4 mb-4">
-        <p className="text-xs font-medium text-faint uppercase tracking-wider mb-3">Eventos por dia</p>
-        {byDay.length === 0 ? (
+        <p className="text-xs font-medium text-faint uppercase tracking-wider mb-3">
+          {dayMode ? `Eventos por hora — ${format(dayDate, 'dd/MM')}` : 'Eventos por dia'}
+        </p>
+        {bars.length === 0 ? (
           <p className="text-sm text-muted">Sem eventos no período.</p>
         ) : (
           <>
             <div id="report-bars" className="flex items-end gap-1 h-40 border-b border-border">
-              {byDay.map(d => {
-                const bc = d.by_category ?? {}
-                const title = `${d.day} — ` + STACK_ORDER
-                  .filter(c => (bc[c] ?? 0) > 0)
-                  .map(c => `${CAT_LABEL[c]}: ${bc[c]}`)
-                  .join(', ')
-                return (
-                  <div key={d.day} className="flex-1 flex flex-col-reverse h-full rounded-t overflow-hidden" title={title || `${d.day}: ${d.count}`}>
-                    {STACK_ORDER.map(c => {
-                      const n = bc[c] ?? 0
-                      if (n === 0) return null
-                      return (
-                        <div
-                          key={c}
-                          className={`w-full ${CAT_COLOR[c]} min-h-[2px]`}
-                          style={{ height: `${(n / maxDay) * 100}%` }}
-                        />
-                      )
-                    })}
-                  </div>
-                )
-              })}
+              {bars.map(b => (
+                <div key={b.key} className="flex-1 flex flex-col-reverse h-full" title={barTitle(b)}>
+                  {STACK_ORDER.map(c => {
+                    const n = b.bc[c] ?? 0
+                    if (n === 0) return null
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setModalCat(c)}
+                        className={`w-full ${CAT_COLOR[c]} min-h-[2px] relative cursor-pointer transition-transform duration-150 origin-center hover:scale-110 hover:brightness-110 hover:z-10`}
+                        style={{ height: `${(n / maxVal) * 100}%` }}
+                        title={`${CAT_LABEL[c]}: ${n}`}
+                      />
+                    )
+                  })}
+                </div>
+              ))}
             </div>
             <div className="relative h-3 mt-1 text-[9px] text-faint tabular-nums">
-              {axisTicks(byDay.map(d => d.day), 6).map(t => (
-                <span
-                  key={t.index}
-                  className="absolute -translate-x-1/2 whitespace-nowrap"
-                  style={{ left: `${((t.index + 0.5) / byDay.length) * 100}%` }}
-                >
-                  {t.label}
-                </span>
-              ))}
+              {dayMode
+                ? Array.from({ length: 24 }, (_, h) => (
+                    <span key={h} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${((h + 0.5) / 24) * 100}%` }}>
+                      {h}
+                    </span>
+                  ))
+                : axisTicks(bars.map(b => b.key), 6).map(t => (
+                    <span key={t.index} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${((t.index + 0.5) / bars.length) * 100}%` }}>
+                      {t.label}
+                    </span>
+                  ))}
             </div>
           </>
         )}
@@ -161,16 +209,60 @@ export default function ReportsPage() {
             </svg>
             <div className="flex-1 min-w-0">
               {Object.entries(cats).map(([cat, n]) => (
-                <div key={cat} className="flex items-center gap-2 text-sm mb-1.5">
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setModalCat(cat as EventCategory)}
+                  className="w-full flex items-center gap-2 text-sm mb-1.5 hover:bg-surface-2 rounded px-1 -mx-1 transition-colors"
+                >
                   <span className={`w-2.5 h-2.5 rounded-full ${CAT_COLOR[cat]}`} />
-                  <span className="text-foreground flex-1">{CAT_LABEL[cat]}</span>
+                  <span className="text-foreground flex-1 text-left">{CAT_LABEL[cat]}</span>
                   <span className="text-muted tabular-nums">{n}</span>
-                </div>
+                </button>
               ))}
             </div>
           </div>
         )}
       </div>
+
+      {/* Modal de detalhe da categoria (clique no segmento ou na legenda) */}
+      {modalCat && (() => {
+        const det = categoryDetail(modalCat, report?.by_label ?? {}, report?.by_category)
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+            onClick={() => setModalCat(null)}
+          >
+            <div
+              id="report-category-modal"
+              className="bg-surface border border-border rounded-lg p-5 w-full max-w-sm"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className={`w-3 h-3 rounded-full shrink-0 ${CAT_COLOR[modalCat]}`} />
+                <h3 className="text-base font-semibold text-foreground flex-1">
+                  {CAT_LABEL[modalCat]} — {det.total} {det.total === 1 ? 'evento' : 'eventos'}
+                </h3>
+                <button onClick={() => setModalCat(null)} className="text-faint hover:text-foreground" aria-label="Fechar">✕</button>
+              </div>
+              <p className="text-sm text-muted mb-3">{CAT_DESC[modalCat]}</p>
+              {det.labels.length > 0 && (
+                <>
+                  <p className="text-xs font-medium text-faint uppercase tracking-wider mb-1">Por label</p>
+                  <ul className="text-sm max-h-60 overflow-y-auto">
+                    {det.labels.map(l => (
+                      <li key={l.label} className="flex justify-between py-0.5">
+                        <span className="text-foreground truncate">{l.label}</span>
+                        <span className="text-muted tabular-nums ml-2 shrink-0">{l.count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          </div>
+        )
+      })()}
     </AppLayout>
   )
 }

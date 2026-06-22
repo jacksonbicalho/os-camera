@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { categoryBuckets, axisTicks } from './reportsUtils'
+import { categoryBuckets, axisTicks, categoryDetail } from './reportsUtils'
 
 describe('categoryBuckets', () => {
   it('dobra labels nas categorias (vazio→movimento, pessoa, outro→ia)', () => {
@@ -14,6 +14,28 @@ describe('categoryBuckets', () => {
     expect(categoryBuckets({ '': 5, pessoa: 3 }, { estados: 7 })).toEqual({
       movimento: 5, pessoa: 3, ia: 0, estados: 7,
     })
+  })
+})
+
+describe('categoryDetail', () => {
+  const byLabel = { '': 5, pessoa: 3, carro: 10, cachorro: 2 }
+  it('ia: total e labels ordenados desc, sem o label vazio', () => {
+    expect(categoryDetail('ia', byLabel)).toEqual({
+      total: 12,
+      labels: [{ label: 'carro', count: 10 }, { label: 'cachorro', count: 2 }],
+    })
+  })
+  it('pessoa: total e label(s) que casam pessoa', () => {
+    expect(categoryDetail('pessoa', byLabel)).toEqual({
+      total: 3,
+      labels: [{ label: 'pessoa', count: 3 }],
+    })
+  })
+  it('movimento: total do label vazio, sem linhas de label', () => {
+    expect(categoryDetail('movimento', byLabel)).toEqual({ total: 5, labels: [] })
+  })
+  it('estados: total vem do byCategory, sem labels', () => {
+    expect(categoryDetail('estados', byLabel, { estados: 7 })).toEqual({ total: 7, labels: [] })
   })
 })
 

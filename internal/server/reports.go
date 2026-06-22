@@ -33,7 +33,17 @@ func (s *Server) handleEventReport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	camera := r.URL.Query().Get("camera")
-	rep, err := db.AggregateMotionEvents(s.db, from, to, camera)
+	var rep db.EventReport
+	var err error
+	if r.URL.Query().Get("bucket") == "hour" {
+		loc, lerr := time.LoadLocation(s.timezone)
+		if lerr != nil {
+			loc = time.UTC
+		}
+		rep, err = db.AggregateMotionEventsHourly(s.db, from, to, camera, loc)
+	} else {
+		rep, err = db.AggregateMotionEvents(s.db, from, to, camera)
+	}
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
