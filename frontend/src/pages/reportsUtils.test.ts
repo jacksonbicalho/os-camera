@@ -10,4 +10,9 @@ describe('categoryBuckets', () => {
   it('soma múltiplos labels da mesma categoria', () => {
     expect(categoryBuckets({ pessoa: 2, 'Pessoa com chapéu': 1 }).pessoa).toBe(3)
   })
+  it('inclui estados vindos do byCategory do backend', () => {
+    expect(categoryBuckets({ '': 5, pessoa: 3 }, { estados: 7 })).toEqual({
+      movimento: 5, pessoa: 3, ia: 0, estados: 7,
+    })
+  })
 })
