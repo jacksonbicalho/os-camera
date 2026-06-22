@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { eventCategory, filterEventsByCategory, eventTitle, recordingCategory } from './eventCategory'
+import { eventCategory, filterEventsByCategory, eventTitle, recordingCategory, eventCardLines } from './eventCategory'
 
 describe('recordingCategory', () => {
   const recAt = (ms: number) => ({ start: new Date(ms).toISOString() })
@@ -17,16 +17,25 @@ describe('recordingCategory', () => {
     const events = [{ time: new Date(400_000).toISOString(), label: 'pessoa' }]
     expect(recordingCategory(recAt(0), events, 300_000)).toBe('continua')
   })
-  it('ignora transições de estado (kind=state) — não coloriem o filmstrip', () => {
+  it('chunk só com transição de estado (kind=state) → estados (verde)', () => {
     const events = [{ time: new Date(60_000).toISOString(), label: 'aberto', kind: 'state' as const }]
-    expect(recordingCategory(recAt(0), events, 300_000)).toBe('continua')
+    expect(recordingCategory(recAt(0), events, 300_000)).toBe('estados')
   })
-  it('estado no chunk não sobrepõe a categoria de um evento real', () => {
+  it('detecção real predomina sobre estado no mesmo chunk', () => {
     const events = [
       { time: new Date(60_000).toISOString(), label: 'aberto', kind: 'state' as const },
       { time: new Date(90_000).toISOString(), label: '' },
     ]
     expect(recordingCategory(recAt(0), events, 300_000)).toBe('movimento')
+  })
+  it('estado tem prioridade sobre continua mas perde para pessoa/ia/movimento', () => {
+    const stateOnly = [{ time: new Date(60_000).toISOString(), label: 'fechado', kind: 'state' as const }]
+    expect(recordingCategory(recAt(0), stateOnly, 300_000)).toBe('estados')
+    const withPerson = [
+      { time: new Date(60_000).toISOString(), label: 'fechado', kind: 'state' as const },
+      { time: new Date(90_000).toISOString(), label: 'pessoa' },
+    ]
+    expect(recordingCategory(recAt(0), withPerson, 300_000)).toBe('pessoa')
   })
 })
 
@@ -57,6 +66,25 @@ describe('eventTitle', () => {
     expect(eventTitle({})).toBe('Movimento detectado')
     expect(eventTitle({ label: 'pessoa' })).toBe('Pessoa detectada')
     expect(eventTitle({ label: 'carro' })).toBe('carro')
+  })
+})
+
+describe('eventCardLines', () => {
+  it('estado: classificador no título, estado no subtítulo (Janela / apagada)', () => {
+    expect(eventCardLines({ kind: 'state', label: 'apagada', classifier_name: 'Janela' }, 'Cam1'))
+      .toEqual({ title: 'Janela', subtitle: 'apagada' })
+  })
+  it('estado sem classifier_name cai pra câmera no título', () => {
+    expect(eventCardLines({ kind: 'state', label: 'apagada' }, 'Cam1'))
+      .toEqual({ title: 'Cam1', subtitle: 'apagada' })
+  })
+  it('movimento: descrição no título, câmera no subtítulo', () => {
+    expect(eventCardLines({ label: '' }, 'Cam1'))
+      .toEqual({ title: 'Movimento detectado', subtitle: 'Cam1' })
+  })
+  it('ia: label no título, câmera no subtítulo', () => {
+    expect(eventCardLines({ label: 'carro' }, 'Cam1'))
+      .toEqual({ title: 'carro', subtitle: 'Cam1' })
   })
 })
 
