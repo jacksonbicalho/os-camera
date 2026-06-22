@@ -32,7 +32,8 @@ func (s *Server) handleEventReport(w http.ResponseWriter, r *http.Request) {
 			to = t
 		}
 	}
-	rep, err := db.AggregateMotionEvents(s.db, from, to)
+	camera := r.URL.Query().Get("camera")
+	rep, err := db.AggregateMotionEvents(s.db, from, to, camera)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
