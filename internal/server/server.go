@@ -1729,6 +1729,28 @@ func (s *Server) handleMotionEvents(w http.ResponseWriter, r *http.Request) {
 				events = append(events, entry)
 			}
 		}
+		// Mescla as transições de estado (todos os classificadores da câmera) no
+		// mesmo feed, marcadas com kind="state". O frame já é um caminho servível
+		// absoluto; o id é negativado para não colidir com motion_events.
+		if transitions, err := db.ListCameraStateTransitions(s.db, id, dayStart, dayEnd); err == nil {
+			for _, tr := range transitions {
+				events = append(events, map[string]any{
+					"kind":            "state",
+					"id":              -tr.ID,
+					"time":            tr.ChangedAt.UTC().Format(time.RFC3339),
+					"score":           tr.Confidence,
+					"frame":           tr.FramePath,
+					"label":           tr.State,
+					"classifier_id":   tr.ClassifierID,
+					"classifier_name": tr.ClassifierName,
+				})
+			}
+		}
+		sort.Slice(events, func(i, j int) bool {
+			ti, _ := events[i]["time"].(string)
+			tj, _ := events[j]["time"].(string)
+			return ti < tj
+		})
 	} else {
 		utcDays := utcDaysInRange(dayStart, dayEnd)
 		for _, utcDay := range utcDays {

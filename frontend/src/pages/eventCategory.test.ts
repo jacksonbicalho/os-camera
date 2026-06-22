@@ -17,6 +17,17 @@ describe('recordingCategory', () => {
     const events = [{ time: new Date(400_000).toISOString(), label: 'pessoa' }]
     expect(recordingCategory(recAt(0), events, 300_000)).toBe('continua')
   })
+  it('ignora transições de estado (kind=state) — não coloriem o filmstrip', () => {
+    const events = [{ time: new Date(60_000).toISOString(), label: 'aberto', kind: 'state' as const }]
+    expect(recordingCategory(recAt(0), events, 300_000)).toBe('continua')
+  })
+  it('estado no chunk não sobrepõe a categoria de um evento real', () => {
+    const events = [
+      { time: new Date(60_000).toISOString(), label: 'aberto', kind: 'state' as const },
+      { time: new Date(90_000).toISOString(), label: '' },
+    ]
+    expect(recordingCategory(recAt(0), events, 300_000)).toBe('movimento')
+  })
 })
 
 describe('eventCategory', () => {
@@ -34,6 +45,11 @@ describe('eventCategory', () => {
     expect(eventCategory({ label: 'carro' })).toBe('ia')
     expect(eventCategory({ label: 'cachorro' })).toBe('ia')
   })
+  it('kind=state → estados (independe do label)', () => {
+    expect(eventCategory({ kind: 'state', label: 'aberto' })).toBe('estados')
+    expect(eventCategory({ kind: 'state', label: 'pessoa' })).toBe('estados')
+    expect(eventCategory({ kind: 'state', label: '' })).toBe('estados')
+  })
 })
 
 describe('eventTitle', () => {
@@ -50,9 +66,10 @@ describe('filterEventsByCategory', () => {
     { id: 2, label: 'pessoa' },
     { id: 3, label: 'carro' },
     { id: 4, label: 'Pessoa detectada' },
+    { id: 5, label: 'aberto', kind: 'state' as const },
   ]
   it('todos devolve tudo', () => {
-    expect(filterEventsByCategory(evs, 'todos')).toHaveLength(4)
+    expect(filterEventsByCategory(evs, 'todos')).toHaveLength(5)
   })
   it('filtra por movimento', () => {
     expect(filterEventsByCategory(evs, 'movimento').map(e => e.id)).toEqual([1])
@@ -63,7 +80,7 @@ describe('filterEventsByCategory', () => {
   it('filtra por ia', () => {
     expect(filterEventsByCategory(evs, 'ia').map(e => e.id)).toEqual([3])
   })
-  it('estados (sem eventos de estado em motion_events) devolve vazio', () => {
-    expect(filterEventsByCategory(evs, 'estados')).toHaveLength(0)
+  it('filtra por estados (transições kind=state)', () => {
+    expect(filterEventsByCategory(evs, 'estados').map(e => e.id)).toEqual([5])
   })
 })

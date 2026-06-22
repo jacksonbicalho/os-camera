@@ -1,13 +1,14 @@
 import type { MotionEvent, Recording } from './cameraUtils'
 
-// Categoria de um evento, derivada do label (redesign do Escopo B — chips do
-// painel de eventos). `estados` (transições de classificador de estado) não vive
-// em motion_events, então nunca é devolvida por eventCategory: o chip Estados
-// filtra vazio até o feed unificar esses eventos (história futura).
+// Categoria de um evento (redesign do Escopo B — chips do painel de eventos).
+// Transições de classificador de estado chegam ao feed com `kind:'state'` (mescladas
+// no backend a partir de camera_state_history) e caem em `estados`, independente do
+// label; os demais derivam do label.
 export type EventCategory = 'movimento' | 'pessoa' | 'ia' | 'estados'
 export type EventFilter = 'todos' | EventCategory
 
-export function eventCategory(ev: Pick<MotionEvent, 'label'>): EventCategory {
+export function eventCategory(ev: Pick<MotionEvent, 'label' | 'kind'>): EventCategory {
+  if (ev.kind === 'state') return 'estados'
   const label = (ev.label ?? '').trim()
   if (!label) return 'movimento'
   if (/pessoa|person/i.test(label)) return 'pessoa'
@@ -25,7 +26,7 @@ const CAT_PRIORITY: EventCategory[] = ['pessoa', 'ia', 'movimento']
 // não houver evento. Usado para colorir o thumbnail no filmstrip (legenda).
 export function recordingCategory(
   rec: Pick<Recording, 'start'>,
-  events: Pick<MotionEvent, 'time' | 'label'>[],
+  events: Pick<MotionEvent, 'time' | 'label' | 'kind'>[],
   chunkMs: number,
 ): RecordingCategory {
   const start = Date.parse(rec.start)
@@ -43,7 +44,7 @@ export function recordingCategory(
 }
 
 // Título legível do evento por categoria, para o card do painel de eventos.
-export function eventTitle(ev: Pick<MotionEvent, 'label'>): string {
+export function eventTitle(ev: Pick<MotionEvent, 'label' | 'kind'>): string {
   switch (eventCategory(ev)) {
     case 'pessoa': return 'Pessoa detectada'
     case 'movimento': return 'Movimento detectado'
@@ -52,7 +53,7 @@ export function eventTitle(ev: Pick<MotionEvent, 'label'>): string {
   }
 }
 
-export function filterEventsByCategory<T extends Pick<MotionEvent, 'label'>>(
+export function filterEventsByCategory<T extends Pick<MotionEvent, 'label' | 'kind'>>(
   events: T[],
   filter: EventFilter,
 ): T[] {

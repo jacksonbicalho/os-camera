@@ -18,6 +18,7 @@ import (
 	"camera/internal/db"
 	"camera/internal/motion"
 	"camera/internal/server"
+	"camera/internal/stateclass"
 	"camera/internal/zones"
 )
 
@@ -997,6 +998,80 @@ func TestMotionEventsReturnsEventsForDate(t *testing.T) {
 	}
 	if resp.Events[0]["color"] != "#ff0000" {
 		t.Errorf("expected color #ff0000, got %v", resp.Events[0]["color"])
+	}
+}
+
+func TestMotionEventsMergesStateTransitions(t *testing.T) {
+	cameraID := "entrada"
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	// um evento de movimento e uma transição de estado no mesmo dia
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID: cameraID, OccurredAt: time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC), Score: 0.12,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cid, err := db.CreateStateClassifier(database, stateclass.Classifier{
+		CameraID: cameraID, Name: "Portão", Model: "custom-cls", Threshold: 0.8,
+		Classes: []string{"aberto", "fechado"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(
+		`INSERT INTO camera_state_history (classifier_id, state, confidence, frame_path, changed_at) VALUES (?, ?, ?, ?, ?)`,
+		cid, "aberto", 0.95, "/recordings/state_history/1/x.jpg", "2026-05-03 11:00:00",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.ServerConfig{}
+	cameras := []config.CameraConfig{{ID: cameraID}}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).WithDB(database)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion?date=2026-05-03", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Events []map[string]any `json:"events"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(resp.Events) != 2 {
+		t.Fatalf("expected 2 events (1 motion + 1 state), got %d: %+v", len(resp.Events), resp.Events)
+	}
+	var state map[string]any
+	for _, ev := range resp.Events {
+		if ev["kind"] == "state" {
+			state = ev
+		}
+	}
+	if state == nil {
+		t.Fatalf("nenhum evento kind=state no feed: %+v", resp.Events)
+	}
+	if state["label"] != "aberto" {
+		t.Errorf("label esperado aberto, got %v", state["label"])
+	}
+	if state["frame"] != "/recordings/state_history/1/x.jpg" {
+		t.Errorf("frame esperado caminho absoluto, got %v", state["frame"])
+	}
+	if state["classifier_name"] != "Portão" {
+		t.Errorf("classifier_name esperado Portão, got %v", state["classifier_name"])
+	}
+	if state["time"] != "2026-05-03T11:00:00Z" {
+		t.Errorf("time esperado RFC3339 UTC, got %v", state["time"])
 	}
 }
 
