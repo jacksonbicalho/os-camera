@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { eventCategory, filterEventsByCategory, eventTitle, recordingCategory, eventCardLines } from './eventCategory'
+import { eventCategory, filterEventsByCategory, eventTitle, recordingCategory, eventCardLines, firstEventInChunk } from './eventCategory'
 
 describe('recordingCategory', () => {
   const recAt = (ms: number) => ({ start: new Date(ms).toISOString() })
@@ -66,6 +66,28 @@ describe('eventTitle', () => {
     expect(eventTitle({})).toBe('Movimento detectado')
     expect(eventTitle({ label: 'pessoa' })).toBe('Pessoa detectada')
     expect(eventTitle({ label: 'carro' })).toBe('carro')
+  })
+})
+
+describe('firstEventInChunk', () => {
+  const recAt = (ms: number) => ({ start: new Date(ms).toISOString() })
+  const ev = (id: number, ms: number, extra: Record<string, unknown> = {}) =>
+    ({ id, time: new Date(ms).toISOString(), ...extra })
+
+  it('devolve o evento mais antigo (por time) dentro de [start, start+chunk)', () => {
+    const events = [ev(2, 120_000), ev(1, 60_000), ev(3, 200_000)]
+    expect(firstEventInChunk(recAt(0), events, 300_000)?.id).toBe(1)
+  })
+  it('ignora eventos fora da janela do chunk', () => {
+    const events = [ev(9, 400_000)]
+    expect(firstEventInChunk(recAt(0), events, 300_000)).toBeNull()
+  })
+  it('inclui transições de estado (kind=state)', () => {
+    const events = [ev(5, 90_000, { kind: 'state', label: 'aberto' })]
+    expect(firstEventInChunk(recAt(0), events, 300_000)?.id).toBe(5)
+  })
+  it('sem eventos → null', () => {
+    expect(firstEventInChunk(recAt(0), [], 300_000)).toBeNull()
   })
 })
 

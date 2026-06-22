@@ -44,6 +44,31 @@ export function recordingCategory(
   return best ?? 'continua'
 }
 
+// firstEventInChunk devolve o evento mais antigo (por `time`) dentro do intervalo do
+// chunk `[start, start+chunk)` — mesma janela do recordingCategory —, ou `null` quando
+// não houver. Opera sobre a lista já unificada, então inclui qualquer `kind`
+// (movimento/pessoa/ia/estado). Usado para selecionar o evento ao clicar no thumb.
+export function firstEventInChunk<T extends Pick<MotionEvent, 'time'>>(
+  rec: Pick<Recording, 'start'>,
+  events: T[],
+  chunkMs: number,
+): T | null {
+  const start = Date.parse(rec.start)
+  if (Number.isNaN(start)) return null
+  const end = start + chunkMs
+  let best: T | null = null
+  let bestT = Infinity
+  for (const ev of events) {
+    const t = Date.parse(ev.time)
+    if (Number.isNaN(t) || t < start || t >= end) continue
+    if (t < bestT) {
+      best = ev
+      bestT = t
+    }
+  }
+  return best
+}
+
 // Título legível do evento por categoria, para o card do painel de eventos.
 export function eventTitle(ev: Pick<MotionEvent, 'label' | 'kind'>): string {
   switch (eventCategory(ev)) {
