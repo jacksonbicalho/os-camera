@@ -1129,6 +1129,78 @@ func TestMotionEventsMergesStateTransitions(t *testing.T) {
 	}
 }
 
+func TestMoments(t *testing.T) {
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	cam, err := db.CreateCamera(database, config.CameraConfig{Name: "Corredor"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// motion event + transição de estado no mesmo dia
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID: cam.ID, OccurredAt: time.Date(2026, 5, 24, 10, 0, 0, 0, time.UTC), Score: 0.4, Label: "pessoa",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cid, err := db.CreateStateClassifier(database, stateclass.Classifier{
+		CameraID: cam.ID, Name: "Portão", Model: "custom-cls", Threshold: 0.8, Classes: []string{"aberto", "fechado"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(
+		`INSERT INTO camera_state_history (classifier_id, state, confidence, frame_path, changed_at) VALUES (?, ?, ?, ?, ?)`,
+		cid, "aberto", 0.95, "/recordings/state_history/1/x.jpg", "2026-05-24 11:00:00",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := server.NewServer(config.ServerConfig{}, "UTC", []config.CameraConfig{{ID: cam.ID}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/moments?date=2026-05-24", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Moments []map[string]any `json:"moments"`
+		Total   int              `json:"total"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Total != 2 || len(resp.Moments) != 2 {
+		t.Fatalf("esperava 2 momentos, got total=%d len=%d: %+v", resp.Total, len(resp.Moments), resp.Moments)
+	}
+	var motion, state map[string]any
+	for _, m := range resp.Moments {
+		switch m["kind"] {
+		case "motion":
+			motion = m
+		case "state":
+			state = m
+		}
+	}
+	if motion == nil || state == nil {
+		t.Fatalf("faltou motion/state: %+v", resp.Moments)
+	}
+	if motion["camera_name"] != "Corredor" || motion["category"] != "pessoa" {
+		t.Errorf("motion inesperado: %+v", motion)
+	}
+	if state["category"] != "estados" || state["frame"] != "/recordings/state_history/1/x.jpg" {
+		t.Errorf("state inesperado: %+v", state)
+	}
+	// ordenado por time desc → estado (11:00) antes do motion (10:00)
+	if resp.Moments[0]["kind"] != "state" {
+		t.Errorf("esperava o mais recente (estado) primeiro: %+v", resp.Moments)
+	}
+}
+
 func TestMotionEventsRequiresAuth(t *testing.T) {
 	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)

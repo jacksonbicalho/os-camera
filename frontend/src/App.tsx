@@ -29,6 +29,7 @@ const AppearanceSettingsPage = lazy(() => import('./pages/settings/AppearanceSet
 const PlaceholderPage = lazy(() => import('./pages/PlaceholderPage'))
 const DevicesPage = lazy(() => import('./pages/DevicesPage'))
 const ReportsPage = lazy(() => import('./pages/ReportsPage'))
+const RecordingsPage = lazy(() => import('./pages/RecordingsPage'))
 
 function UnauthorizedHandler() {
   const navigate = useNavigate()
@@ -70,7 +71,7 @@ export default function App() {
       <Route path="/camera/live/:id" element={<Lazy><CameraPage /></Lazy>} />
       <Route path="/camera/recording/:id/:recording_id" element={<Lazy><CameraPage /></Lazy>} />
       <Route path="/stats" element={<Lazy><StatsPage /></Lazy>} />
-      <Route path="/recordings" element={<Lazy><PlaceholderPage title="Gravações" description="Visão global de gravações em construção." /></Lazy>} />
+      <Route path="/recordings" element={<Lazy><RecordingsPage /></Lazy>} />
       <Route path="/events" element={<Lazy><PlaceholderPage title="Eventos" description="Visão global de eventos em construção." /></Lazy>} />
       <Route path="/devices" element={<Lazy><DevicesPage /></Lazy>} />
       <Route path="/users" element={<Lazy><PlaceholderPage title="Usuários" description="Gestão de usuários em construção." /></Lazy>} />
