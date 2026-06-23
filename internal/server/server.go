@@ -814,7 +814,10 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	dateStr := r.URL.Query().Get("date")
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	limitStr := r.URL.Query().Get("limit")
+	limit, _ := strconv.Atoi(limitStr)
+	// limit=0 explícito → sem cap (todas as gravações do dia); ausente/inválido → default 10.
+	allRecs := limitStr != "" && limit <= 0
 	order := r.URL.Query().Get("order")
 	if order != "asc" {
 		order = "desc"
@@ -822,7 +825,7 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	if page < 1 {
 		page = 1
 	}
-	if limit < 1 {
+	if !allRecs && limit < 1 {
 		limit = 10
 	}
 
@@ -955,6 +958,15 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	})
 
 	empty := map[string]any{"recordings": []any{}, "hasMore": false}
+	if allRecs {
+		w.Header().Set("Content-Type", "application/json")
+		if len(all) == 0 {
+			json.NewEncoder(w).Encode(empty)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"recordings": all, "hasMore": false, "total": len(all)})
+		return
+	}
 	startIdx := (page - 1) * limit
 	if startIdx >= len(all) {
 		w.Header().Set("Content-Type", "application/json")

@@ -510,6 +510,60 @@ func TestRecordingsHasMotionFromDB(t *testing.T) {
 	}
 }
 
+func TestRecordingsLimitZeroReturnsAll(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "05", "24")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// 13 gravações no dia — acima do default de 10, para provar que limit=0 não capa.
+	for i := 0; i < 13; i++ {
+		name := fmt.Sprintf("202605241000%02d.mp4", i)
+		if err := os.WriteFile(filepath.Join(dateDir, name), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "admin", "pw", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "admin", "pw")
+
+	// limit=0 → todas as gravações do dia (sem o cap default de 10).
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-05-24&limit=0", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Recordings []struct {
+			Filename string `json:"filename"`
+		} `json:"recordings"`
+		HasMore bool `json:"hasMore"`
+		Total   int  `json:"total"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if len(resp.Recordings) != 13 {
+		t.Fatalf("limit=0 deveria trazer todas (13), got %d", len(resp.Recordings))
+	}
+	if resp.HasMore {
+		t.Error("hasMore deveria ser false com limit=0")
+	}
+	if resp.Total != 13 {
+		t.Errorf("total = %d, want 13", resp.Total)
+	}
+}
+
 func TestRecordingsIncludesDBID(t *testing.T) {
 	tmpDir := t.TempDir()
 	cameraID := "cam1"
