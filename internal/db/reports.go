@@ -16,9 +16,9 @@ type DayCount struct {
 
 var personRe = regexp.MustCompile(`(?i)pessoa|person`)
 
-// motionCategory deriva a categoria de um motion event pelo label — mesma regra do
+// MotionCategory deriva a categoria de um motion event pelo label — mesma regra do
 // eventCategory no frontend: vazio→movimento, pessoa/person→pessoa, resto→ia.
-func motionCategory(label string) string {
+func MotionCategory(label string) string {
 	if label == "" {
 		return "movimento"
 	}
@@ -81,7 +81,7 @@ func AggregateMotionEvents(db *DB, from, to time.Time, cameraID string) (EventRe
 		}
 		t, _ := time.Parse(time.RFC3339, occurredAt)
 		total++
-		addDay(t.UTC().Format("2006-01-02"), motionCategory(label))
+		addDay(t.UTC().Format("2006-01-02"), MotionCategory(label))
 		byLabel[label]++
 	}
 	if err := rows.Err(); err != nil {
@@ -169,7 +169,7 @@ func AggregateMotionEventsHourly(db *DB, from, to time.Time, cameraID string, lo
 		}
 		t, _ := time.Parse(time.RFC3339, occurredAt)
 		total++
-		addHour(t.In(loc).Hour(), motionCategory(label))
+		addHour(t.In(loc).Hour(), MotionCategory(label))
 		byLabel[label]++
 	}
 	if err := rows.Err(); err != nil {
