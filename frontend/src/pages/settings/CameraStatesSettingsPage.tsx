@@ -7,6 +7,7 @@ import CameraSettingsTabs from '../../components/CameraSettingsTabs'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import BboxCanvas, { type BboxRect } from '../../components/BboxCanvas'
 import { authHeaders, onUnauthorized, getRole, getToken } from '../../auth'
+import { stateTitle, formatHistoryTime } from './statesHistory'
 import { Button } from '@/components/ui/button'
 import { Plus, Pencil, Trash2, Zap, Loader2, Camera as CameraIcon, CalendarDays, Film, X } from '../../components/Icons'
 import {
@@ -420,8 +421,8 @@ function ClassifierHistory({ cameraId, classifier, onBack }: {
             >
               <img src={frameSrc(e.frame)} alt={e.state} className="w-full aspect-video object-cover bg-black" />
               <div className="px-2 py-1.5">
-                <p className="text-xs font-medium text-foreground truncate">{e.state}</p>
-                <p className="text-[10px] text-muted-foreground">{new Date(e.changed_at).toLocaleString()}</p>
+                <p className="text-xs font-medium text-foreground truncate">{stateTitle(classifier.name, e.state)}</p>
+                <p className="text-[10px] text-muted-foreground">{formatHistoryTime(e.changed_at)}</p>
               </div>
             </button>
           ))}
@@ -437,8 +438,8 @@ function ClassifierHistory({ cameraId, classifier, onBack }: {
           <div className="bg-surface rounded-lg overflow-hidden max-w-3xl w-full" onClick={ev => ev.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-border">
               <div>
-                <p className="text-sm font-medium text-foreground">{lightbox.state}</p>
-                <p className="text-[11px] text-muted-foreground">{new Date(lightbox.changed_at).toLocaleString()}</p>
+                <p className="text-sm font-medium text-foreground">{stateTitle(classifier.name, lightbox.state)}</p>
+                <p className="text-[11px] text-muted-foreground">{formatHistoryTime(lightbox.changed_at)}</p>
               </div>
               <button id="state-history-lightbox-close" onClick={() => setLightbox(null)} className="text-muted-foreground hover:text-foreground">
                 <X className="w-5 h-5" />

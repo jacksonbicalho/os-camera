@@ -45,7 +45,9 @@ interface RecordingsResponse {
 }
 
 const PAGE_SIZE = 10
-const ALL_RECORDINGS_LIMIT = 1000
+// 0 = sem cap: carrega TODAS as gravações do dia (necessário p/ seek/timeline/filmstrip
+// verem o dia inteiro — câmeras com chunk curto passam de 1000 arquivos/dia).
+const ALL_RECORDINGS_LIMIT = 0
 
 async function loadRecordingsData(cameraId: string, date: Date, page: number, order: 'asc' | 'desc', limit = PAGE_SIZE): Promise<RecordingsResponse | 401> {
   const dateStr = format(date, 'yyyy-MM-dd')
