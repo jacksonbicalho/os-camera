@@ -148,7 +148,7 @@ func TestCreateCamera_MissingFields(t *testing.T) {
 func TestUpdateCamera_Success(t *testing.T) {
 	srv, adminToken, _, cam1ID, _ := setupCamerasServer(t)
 
-	body := `{"rtsp_url":"rtsp://updated","chunk_duration":"10m"}`
+	body := `{"name":"cam1","rtsp_url":"rtsp://updated","chunk_duration":"10m"}`
 	req := httptest.NewRequest(http.MethodPut, "/api/settings/cameras/"+cam1ID, bytes.NewBufferString(body))
 	req.Header.Set("Authorization", "Bearer "+adminToken)
 	req.Header.Set("Content-Type", "application/json")
@@ -162,6 +162,41 @@ func TestUpdateCamera_Success(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&resp)
 	if resp["rtsp_url"] != "rtsp://updated" {
 		t.Errorf("expected rtsp_url=rtsp://updated, got %v", resp["rtsp_url"])
+	}
+}
+
+func TestUpdateCamera_PersistsName(t *testing.T) {
+	srv, adminToken, _, cam1ID, _ := setupCamerasServer(t)
+
+	body := `{"name":"Corredor de entrada","rtsp_url":"rtsp://x"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/settings/cameras/"+cam1ID, bytes.NewBufferString(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["name"] != "Corredor de entrada" {
+		t.Errorf("expected name=Corredor de entrada, got %v", resp["name"])
+	}
+}
+
+func TestUpdateCamera_RejectsEmptyName(t *testing.T) {
+	srv, adminToken, _, cam1ID, _ := setupCamerasServer(t)
+
+	body := `{"name":"","rtsp_url":"rtsp://x"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/settings/cameras/"+cam1ID, bytes.NewBufferString(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty name, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -180,7 +215,7 @@ func TestUpdateCamera_PreservesRTSPPasswordWhenMasked(t *testing.T) {
 
 	// Submit with masked URL (password replaced by "xxxxx" — Go's url.Redacted() sentinel)
 	maskedURL := "rtsp://admin:xxxxx@192.168.1.10:554/stream"
-	body := fmt.Sprintf(`{"rtsp_url":%q}`, maskedURL)
+	body := fmt.Sprintf(`{"name":"cam1","rtsp_url":%q}`, maskedURL)
 	req := httptest.NewRequest(http.MethodPut, "/api/settings/cameras/"+cam.ID, bytes.NewBufferString(body))
 	req.Header.Set("Authorization", "Bearer "+adminToken)
 	req.Header.Set("Content-Type", "application/json")
@@ -216,7 +251,7 @@ func TestUpdateCamera_PreservesPasswordWhenHostChanges(t *testing.T) {
 
 	// Usuário muda o host (.29 → .16) mas mantém a senha mascarada
 	newHostMasked := "rtsp://admin:xxxxx@192.168.1.16:554/stream"
-	body := fmt.Sprintf(`{"rtsp_url":%q}`, newHostMasked)
+	body := fmt.Sprintf(`{"name":"cam1","rtsp_url":%q}`, newHostMasked)
 	req := httptest.NewRequest(http.MethodPut, "/api/settings/cameras/"+cam.ID, bytes.NewBufferString(body))
 	req.Header.Set("Authorization", "Bearer "+adminToken)
 	req.Header.Set("Content-Type", "application/json")
@@ -389,7 +424,7 @@ func doCreateWithMotion(t *testing.T, srv http.Handler, token, motionJSON string
 
 func doUpdateWithMotion(t *testing.T, srv http.Handler, token, camID, motionJSON string) int {
 	t.Helper()
-	body := `{"rtsp_url":"rtsp://v","motion":` + motionJSON + `}`
+	body := `{"name":"camV","rtsp_url":"rtsp://v","motion":` + motionJSON + `}`
 	req := httptest.NewRequest(http.MethodPut, "/api/settings/cameras/"+camID, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
@@ -475,7 +510,7 @@ func TestUpdateCamera_InvalidMotionThreshold(t *testing.T) {
 
 func TestUpdateCamera_InvalidChunkDuration(t *testing.T) {
 	srv, adminToken, _, cam1ID, _ := setupCamerasServer(t)
-	body := `{"rtsp_url":"rtsp://x","chunk_duration":"abc"}`
+	body := `{"name":"camChunk","rtsp_url":"rtsp://x","chunk_duration":"abc"}`
 	req := httptest.NewRequest(http.MethodPut, "/api/settings/cameras/"+cam1ID, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+adminToken)
 	req.Header.Set("Content-Type", "application/json")
@@ -507,7 +542,7 @@ func TestUpdateCamera_CallsStopThenStart(t *testing.T) {
 	adminToken := loginAndGetToken(t, srv, "admin_user", "adminpw")
 
 	req := httptest.NewRequest(http.MethodPut, "/api/settings/cameras/"+cam.ID,
-		strings.NewReader(`{"rtsp_url":"rtsp://new"}`))
+		strings.NewReader(`{"name":"cam1","rtsp_url":"rtsp://new"}`))
 	req.Header.Set("Authorization", "Bearer "+adminToken)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

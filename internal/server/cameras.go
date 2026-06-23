@@ -267,6 +267,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
+		Name              string           `json:"name"`
 		RTSPURL           string           `json:"rtsp_url"`
 		ChunkDuration     string           `json:"chunk_duration"`
 		ReconnectInterval string           `json:"reconnect_interval"`
@@ -286,8 +287,8 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	if req.RTSPURL == "" {
-		http.Error(w, "rtsp_url is required", http.StatusBadRequest)
+	if req.Name == "" || req.RTSPURL == "" {
+		http.Error(w, "name and rtsp_url are required", http.StatusBadRequest)
 		return
 	}
 	// If the client submitted the masked URL (password == "xxxxx" from Redacted()),
@@ -317,6 +318,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 	}
 	cam := config.CameraConfig{
 		ID:                id,
+		Name:              req.Name,
 		RTSPURL:           req.RTSPURL,
 		VideoCodec:        req.VideoCodec,
 		HasAudio:          req.HasAudio,

@@ -222,12 +222,13 @@ func UpdateCamera(db *DB, cam config.CameraConfig, motion *config.MotionConfig) 
 	defer tx.Rollback() //nolint:errcheck
 
 	_, err = tx.Exec(
-		`UPDATE cameras SET rtsp_url=?, chunk_duration=?, reconnect_interval=?,
+		`UPDATE cameras SET name=?, rtsp_url=?, chunk_duration=?, reconnect_interval=?,
 		                    video_codec=?, has_audio=?, width=?, height=?, display_order=?,
 		                    hls_video_mode=?, record_video_mode=?,
 		                    hls_segment_seconds=?, hls_list_size=?, hls_dvr_seconds=?,
 		                    recording_enabled=?
 		 WHERE id=?`,
+		cam.Name,
 		cam.RTSPURL,
 		durationToStr(cam.ChunkDuration, config.DefaultChunkDuration),
 		durationToStr(cam.ReconnectInterval, config.DefaultReconnectInterval),
