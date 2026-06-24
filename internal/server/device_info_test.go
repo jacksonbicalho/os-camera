@@ -37,33 +37,6 @@ func setupDeviceInfoServer(t *testing.T) (*server.Server, *db.DB, string, string
 	return srv, database, token, cam.ID
 }
 
-func TestGetDevices_AggregatesDeviceInfo(t *testing.T) {
-	srv, database, token, id := setupDeviceInfoServer(t)
-	if err := db.SaveDeviceInfo(database, id, map[string]string{"model": "iM5"}); err != nil {
-		t.Fatalf("save: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/devices", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	w := httptest.NewRecorder()
-	srv.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	var resp []struct {
-		ID     string            `json:"id"`
-		Name   string            `json:"name"`
-		Values map[string]string `json:"values"`
-	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if len(resp) != 1 || resp[0].ID != id || resp[0].Name != "Cam" || resp[0].Values["model"] != "iM5" {
-		t.Errorf("unexpected devices: %+v", resp)
-	}
-}
-
 func TestGetDeviceInfo_NotCaptured(t *testing.T) {
 	srv, _, token, id := setupDeviceInfoServer(t)
 

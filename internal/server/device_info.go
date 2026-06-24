@@ -137,37 +137,6 @@ func (s *Server) handleDeviceInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, deviceInfoResponse{CollectedAt: collectedAt, Values: values})
 }
 
-// deviceSummary is one camera's row in the aggregate /api/devices response.
-type deviceSummary struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	CollectedAt *time.Time        `json:"collected_at"`
-	Values      map[string]string `json:"values"`
-}
-
-// handleDevices aggregates the latest device-info snapshot of every camera.
-func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
-	if !s.requireDB(w) {
-		return
-	}
-	cams, err := db.ListCameras(s.db)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	out := make([]deviceSummary, 0, len(cams))
-	for _, cam := range cams {
-		ds := deviceSummary{ID: cam.ID, Name: cam.Name, Values: map[string]string{}}
-		if values, collectedAt, ok, _ := db.GetDeviceInfo(s.db, cam.ID); ok {
-			ds.Values = values
-			t := collectedAt
-			ds.CollectedAt = &t
-		}
-		out = append(out, ds)
-	}
-	writeJSON(w, out)
-}
-
 // handleRefreshDeviceInfo re-runs capture on demand and returns the fresh data.
 func (s *Server) handleRefreshDeviceInfo(w http.ResponseWriter, r *http.Request) {
 	if !s.requireDB(w) {
