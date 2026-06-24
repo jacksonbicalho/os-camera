@@ -74,6 +74,14 @@ describe('Sidebar — nav rail principal', () => {
     expect(document.getElementById('nav-users')).toBeNull()
   })
 
+  it('Eventos (sino) é o primeiro item do nav, antes de "Ao vivo"', () => {
+    renderSidebar()
+    const events = document.getElementById('sidebar-notifications')!
+    const live = document.getElementById('nav-live')!
+    // live aparece DEPOIS de events no DOM
+    expect(events.compareDocumentPosition(live) & FOLLOWS).toBeTruthy()
+  })
+
   it('mantém Eventos (sino) e Configurações (flyout) com seus rótulos', () => {
     renderSidebar()
     const events = document.getElementById('sidebar-notifications')!
