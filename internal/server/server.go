@@ -377,6 +377,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/stats", s.requireFullAuth(s.handleStats))
 
 	if s.frontend != nil {
+		// Rota exata da SPA que colide com o mount de arquivos /recordings/: sem ela, o
+		// mux do Go redireciona GET /recordings → /recordings/ (file server gated → 401
+		// no refresh/URL direta). O match exato vence o subtree e serve o index.html.
+		s.mux.Handle("GET /recordings", s.spaHandler())
 		s.mux.Handle("/", s.spaHandler())
 	}
 

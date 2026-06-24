@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"camera/internal/config"
@@ -1199,6 +1200,44 @@ func TestMoments(t *testing.T) {
 	// ordenado por time desc → estado (11:00) antes do motion (10:00)
 	if resp.Moments[0]["kind"] != "state" {
 		t.Errorf("esperava o mais recente (estado) primeiro: %+v", resp.Moments)
+	}
+}
+
+// TestSPARecordingsRouteServesIndex cobre a colisão entre a rota de página /recordings
+// (SPA) e o mount de arquivos /recordings/ (file server autenticado): carregar
+// /recordings direto deve servir o index.html, não 301→401.
+func TestSPARecordingsRouteServesIndex(t *testing.T) {
+	frontend := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>spa-root</title>")},
+	}
+	cfg := config.ServerConfig{RecordingsPath: t.TempDir()}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), frontend)
+
+	// /recordings (rota da SPA, sem token) → 200 com o HTML, não 301→401.
+	req := httptest.NewRequest(http.MethodGet, "/recordings", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /recordings: esperava 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "spa-root") {
+		t.Errorf("GET /recordings: esperava o HTML da SPA, got %q", w.Body.String())
+	}
+
+	// /recordings/{path} de arquivo segue gated (sem credencial → 401).
+	req = httptest.NewRequest(http.MethodGet, "/recordings/cam/2026/01/01/x.mp4", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /recordings/<file>: esperava 401 (gated), got %d", w.Code)
+	}
+
+	// outra rota da SPA continua caindo no fallback / → 200.
+	req = httptest.NewRequest(http.MethodGet, "/reports", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /reports: esperava 200, got %d", w.Code)
 	}
 }
 
