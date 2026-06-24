@@ -21,8 +21,11 @@ const STACK_ORDER = ['movimento', 'pessoa', 'ia', 'estados'] as const
 interface CameraOption { id: string; name: string }
 interface Bar { key: string; count: number; bc: Record<string, number> }
 
+const WEEKDAY_LABEL = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
 export default function ReportsPage() {
   const [report, setReport] = useState<EventReport | null>(null)
+  const [heatmap, setHeatmap] = useState<EventReport | null>(null)
   const [days, setDays] = useState(7)
   const [specificDay, setSpecificDay] = useState<Date | null>(null)
   const [cameras, setCameras] = useState<CameraOption[]>([])
@@ -73,6 +76,19 @@ export default function ReportsPage() {
     // dayDate é derivado de specificDay; specificDay/days nas deps cobrem.
   }, [days, camera, specificDay]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Heatmap (dia da semana × hora): inerentemente multi-dia, então segue o range de
+  // `days` (independe do seletor de dia específico) — janela [now - days, now].
+  useEffect(() => {
+    if (!camera) return
+    const to = new Date()
+    const from = new Date(to.getTime() - days * 86_400_000)
+    const url = `/api/reports/events?from=${from.toISOString()}&to=${to.toISOString()}&camera=${encodeURIComponent(camera)}&bucket=heatmap`
+    fetch(url, { headers: authHeaders() })
+      .then(r => { if (r.status === 401) { onUnauthorized(); return null } return r.json() })
+      .then(d => { if (d) setHeatmap(d) })
+      .catch(() => {})
+  }, [days, camera])
+
   const bars: Bar[] = dayMode
     ? (report?.by_hour ?? []).map(h => ({ key: `${h.hour}`, count: h.count, bc: h.by_category ?? {} }))
     : (report?.by_day ?? []).map(d => ({ key: d.day, count: d.count, bc: d.by_category ?? {} }))
@@ -93,6 +109,15 @@ export default function ReportsPage() {
     acc += len
     return seg
   })
+
+  // Heatmap: grade [weekday][hour] de contagens + máximo p/ escalar a intensidade.
+  const heatCells = heatmap?.heatmap ?? []
+  const heatGrid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
+  for (const c of heatCells) {
+    if (c.weekday >= 0 && c.weekday < 7 && c.hour >= 0 && c.hour < 24) heatGrid[c.weekday][c.hour] = c.count
+  }
+  const heatMax = Math.max(1, ...heatCells.map(c => c.count))
+  const heatTotal = heatCells.reduce((s, c) => s + c.count, 0)
 
   const barTitle = (b: Bar) => {
     const head = dayMode ? `${b.key}h` : b.key
@@ -183,6 +208,47 @@ export default function ReportsPage() {
                   ))}
             </div>
           </>
+        )}
+      </div>
+
+      {/* Heatmap temporal — dia da semana × hora */}
+      <div className="bg-surface border border-border rounded-lg p-4 mb-4">
+        <p className="text-xs font-medium text-faint uppercase tracking-wider mb-3">
+          Mapa de atividade — dia × hora
+        </p>
+        {heatTotal === 0 ? (
+          <p className="text-sm text-muted">Sem eventos no período.</p>
+        ) : (
+          <div id="report-heatmap" className="overflow-x-auto">
+            <div className="inline-block min-w-full">
+              {/* Cabeçalho de horas (0,6,12,18) */}
+              <div className="flex pl-8 mb-1">
+                {Array.from({ length: 24 }, (_, h) => (
+                  <div key={h} className="flex-1 text-[9px] text-faint tabular-nums text-center">
+                    {h % 6 === 0 ? h : ''}
+                  </div>
+                ))}
+              </div>
+              {WEEKDAY_LABEL.map((wlabel, wd) => (
+                <div key={wd} className="flex items-center">
+                  <div className="w-8 shrink-0 text-[10px] text-muted pr-1 text-right">{wlabel}</div>
+                  {Array.from({ length: 24 }, (_, h) => {
+                    const n = heatGrid[wd][h]
+                    const intensity = n === 0 ? 0 : 0.18 + 0.82 * (n / heatMax)
+                    return (
+                      <div
+                        key={h}
+                        id={`report-heatmap-cell-${wd}-${h}`}
+                        className={`flex-1 aspect-square m-px rounded-sm ${n === 0 ? 'bg-surface-2' : 'bg-primary'}`}
+                        style={n === 0 ? undefined : { opacity: intensity }}
+                        title={`${wlabel} ${String(h).padStart(2, '0')}h — ${n} ${n === 1 ? 'evento' : 'eventos'}`}
+                      />
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 

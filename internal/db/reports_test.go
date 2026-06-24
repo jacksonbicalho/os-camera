@@ -144,3 +144,65 @@ func TestAggregateMotionEventsFillsEmptyDays(t *testing.T) {
 		t.Errorf("dia 22 deveria ser zero: %+v", rep.ByDay[2])
 	}
 }
+
+func TestAggregateMotionEventsHeatmap(t *testing.T) {
+	database := openTestDB(t)
+	ensureCamera(t, database, "cam1")
+	ensureCamera(t, database, "cam2")
+	loc := time.FixedZone("BRT", -3*3600) // UTC-3
+
+	mk := func(cam string, at time.Time, label string) {
+		if err := db.InsertMotionEvent(database, db.MotionEvent{CameraID: cam, OccurredAt: at, Score: 0.5, Label: label}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 2026-06-21 é domingo (weekday 0); 2026-06-22 é segunda (weekday 1).
+	mk("cam1", time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC), "pessoa") // 09:00 BRT dom → célula (0,9)
+	mk("cam1", time.Date(2026, 6, 21, 12, 30, 0, 0, time.UTC), "")      // 09:30 BRT dom → célula (0,9)
+	mk("cam2", time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC), "carro")  // outra câmera → ignorado
+
+	c1, err := db.CreateStateClassifier(database, makeClassifier("cam1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	insertTransition(t, database, c1, "aberto", 0.9, "/x/a.jpg", "2026-06-22 15:00:00") // 12:00 BRT seg → célula (1,12)
+
+	from := time.Date(2026, 6, 21, 3, 0, 0, 0, time.UTC) // 00:00 BRT domingo
+	to := time.Date(2026, 6, 28, 3, 0, 0, 0, time.UTC)   // +7 dias
+
+	rep, err := db.AggregateMotionEventsHeatmap(database, from, to, "cam1", loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Heatmap) != 168 {
+		t.Fatalf("esperava 168 células (7×24), got %d", len(rep.Heatmap))
+	}
+	if rep.Total != 3 {
+		t.Fatalf("total = %d, want 3", rep.Total)
+	}
+	cell := func(weekday, hour int) db.HeatCell {
+		for _, c := range rep.Heatmap {
+			if c.Weekday == weekday && c.Hour == hour {
+				return c
+			}
+		}
+		t.Fatalf("célula (%d,%d) ausente", weekday, hour)
+		return db.HeatCell{}
+	}
+	if c := cell(0, 9); c.Count != 2 {
+		t.Errorf("célula domingo/9h = %+v, want count 2", c)
+	}
+	if c := cell(1, 12); c.Count != 1 {
+		t.Errorf("célula segunda/12h (estado) = %+v, want count 1", c)
+	}
+	if c := cell(3, 3); c.Count != 0 {
+		t.Errorf("célula sem evento deveria ser zero: %+v", c)
+	}
+	// ordenado por weekday, depois hour → índice = weekday*24 + hour
+	if rep.Heatmap[0].Weekday != 0 || rep.Heatmap[0].Hour != 0 {
+		t.Errorf("primeira célula = %+v, want (0,0)", rep.Heatmap[0])
+	}
+	if rep.Heatmap[9].Weekday != 0 || rep.Heatmap[9].Hour != 9 || rep.Heatmap[9].Count != 2 {
+		t.Errorf("índice 9 = %+v, want dom/9h count 2", rep.Heatmap[9])
+	}
+}
