@@ -8,6 +8,8 @@ export interface EventReport {
   by_label: Record<string, number>
   // estados (e futuras categorias não derivadas de label) já vêm bucketizadas do backend
   by_category?: Record<string, number>
+  // preenchido só no bucket=heatmap: 168 células (7 dias × 24 horas), weekday 0=dom..6=sáb
+  heatmap?: { weekday: number; hour: number; count: number }[]
 }
 
 export interface CategoryDetail { total: number; labels: { label: string; count: number }[] }

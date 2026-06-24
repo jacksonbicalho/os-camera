@@ -35,13 +35,20 @@ func (s *Server) handleEventReport(w http.ResponseWriter, r *http.Request) {
 	camera := r.URL.Query().Get("camera")
 	var rep db.EventReport
 	var err error
-	if r.URL.Query().Get("bucket") == "hour" {
+	switch r.URL.Query().Get("bucket") {
+	case "hour":
 		loc, lerr := time.LoadLocation(s.timezone)
 		if lerr != nil {
 			loc = time.UTC
 		}
 		rep, err = db.AggregateMotionEventsHourly(s.db, from, to, camera, loc)
-	} else {
+	case "heatmap":
+		loc, lerr := time.LoadLocation(s.timezone)
+		if lerr != nil {
+			loc = time.UTC
+		}
+		rep, err = db.AggregateMotionEventsHeatmap(s.db, from, to, camera, loc)
+	default:
 		rep, err = db.AggregateMotionEvents(s.db, from, to, camera)
 	}
 	if err != nil {

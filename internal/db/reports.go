@@ -36,6 +36,15 @@ type HourCount struct {
 	ByCategory map[string]int64 `json:"by_category"`
 }
 
+// HeatCell is the event count for one (weekday, hour-of-day) bucket no fuso pedido —
+// weekday 0=domingo..6=sábado (time.Weekday), hour 0..23. Usado no heatmap temporal
+// (mapa de atividade dia-da-semana × hora) acumulado sobre vários dias.
+type HeatCell struct {
+	Weekday int   `json:"weekday"`
+	Hour    int   `json:"hour"`
+	Count   int64 `json:"count"`
+}
+
 // EventReport aggregates events of a single camera over a period: total, per day
 // (ordered), per raw motion label and per category. As categorias movimento/pessoa/ia
 // são derivadas do label no frontend (mesma regra do eventCategory); `estados` (que não
@@ -47,6 +56,7 @@ type EventReport struct {
 	ByHour     []HourCount      `json:"by_hour,omitempty"`
 	ByLabel    map[string]int64 `json:"by_label"`
 	ByCategory map[string]int64 `json:"by_category"`
+	Heatmap    []HeatCell       `json:"heatmap,omitempty"`
 }
 
 // AggregateMotionEvents conta os eventos de UMA câmera em [from, to): motion_events
@@ -216,4 +226,74 @@ func AggregateMotionEventsHourly(db *DB, from, to time.Time, cameraID string, lo
 		byHour[h] = HourCount{Hour: h, Count: c, ByCategory: counts}
 	}
 	return EventReport{Total: total, ByHour: byHour, ByLabel: byLabel, ByCategory: byCategory}, nil
+}
+
+// AggregateMotionEventsHeatmap conta os eventos de UMA câmera em [from, to) agrupando por
+// (dia-da-semana, hora-do-dia) no fuso `loc` — mesmo conjunto de fontes dos demais
+// agregadores (motion_events + camera_state_history). Devolve as 168 células (7×24)
+// zero-fill, ordenadas por weekday e depois hour. Total = soma das células.
+func AggregateMotionEventsHeatmap(db *DB, from, to time.Time, cameraID string, loc *time.Location) (EventReport, error) {
+	if loc == nil {
+		loc = time.UTC
+	}
+	cell := map[[2]int]int64{}
+	var total int64
+
+	rows, err := db.Query(
+		`SELECT occurred_at FROM motion_events
+		 WHERE camera_id = ? AND occurred_at >= ? AND occurred_at < ?`,
+		cameraID, from.UTC().Format(time.RFC3339), to.UTC().Format(time.RFC3339),
+	)
+	if err != nil {
+		return EventReport{}, fmt.Errorf("aggregate motion events (heatmap): %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var occurredAt string
+		if err := rows.Scan(&occurredAt); err != nil {
+			return EventReport{}, fmt.Errorf("scan event row: %w", err)
+		}
+		t, _ := time.Parse(time.RFC3339, occurredAt)
+		lt := t.In(loc)
+		cell[[2]int{int(lt.Weekday()), lt.Hour()}]++
+		total++
+	}
+	if err := rows.Err(); err != nil {
+		return EventReport{}, err
+	}
+
+	const tsLayout = "2006-01-02 15:04:05"
+	hRows, err := db.Query(
+		`SELECT h.changed_at
+		 FROM camera_state_history h
+		 JOIN camera_state_classifiers c ON c.id = h.classifier_id
+		 WHERE c.camera_id = ?
+		   AND datetime(h.changed_at) >= datetime(?)
+		   AND datetime(h.changed_at) < datetime(?)`,
+		cameraID, from.UTC().Format(tsLayout), to.UTC().Format(tsLayout),
+	)
+	if err != nil {
+		return EventReport{}, fmt.Errorf("aggregate state history (heatmap): %w", err)
+	}
+	defer hRows.Close()
+	for hRows.Next() {
+		var changedAt time.Time
+		if err := hRows.Scan(&changedAt); err != nil {
+			return EventReport{}, fmt.Errorf("scan state row: %w", err)
+		}
+		lt := changedAt.In(loc)
+		cell[[2]int{int(lt.Weekday()), lt.Hour()}]++
+		total++
+	}
+	if err := hRows.Err(); err != nil {
+		return EventReport{}, err
+	}
+
+	heatmap := make([]HeatCell, 0, 168)
+	for wd := 0; wd < 7; wd++ {
+		for h := 0; h < 24; h++ {
+			heatmap = append(heatmap, HeatCell{Weekday: wd, Hour: h, Count: cell[[2]int{wd, h}]})
+		}
+	}
+	return EventReport{Total: total, Heatmap: heatmap}, nil
 }
