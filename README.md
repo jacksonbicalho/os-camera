@@ -46,7 +46,9 @@ curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scr
 sudo bash /tmp/camera-install.sh
 ```
 
-O script detecta a arquitetura (`amd64`, `arm64`, `arm`), baixa o binário da última release, executa o wizard de configuração interativo e registra um serviço systemd.
+O script detecta a arquitetura (`amd64`, `arm64`, `arm`), **instala o ffmpeg se faltar**, baixa o binário da última release, executa o wizard de configuração interativo e registra um serviço systemd.
+
+> **Sem root / sem systemd?** `--user` instala em `~/.local` (sem `sudo`, sem serviço) e `--no-service` pula o serviço (container). `--binary=<arquivo>` instala offline. Detalhes em [docs/installation.md](docs/installation.md).
 
 > **Por que baixar antes de executar?**
 > Com `curl | sudo bash` o `stdin` do bash fica ocupado com o pipe do curl — o wizard não consegue ler o teclado. Salvar o script em um arquivo e executar separadamente mantém o `stdin` conectado ao terminal real.
