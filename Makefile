@@ -3,6 +3,9 @@ COMMIT   := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILT_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS  := -ldflags="-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X 'main.builtAt=$(BUILT_AT)'"
 BUILD   := CGO_ENABLED=0 go build $(LDFLAGS)
+# PIE (ET_DYN) é obrigatório para rodar no Android/Termux. amd64/arm64 buildam PIE com
+# linker interno (sem cgo); arm 32-bit exigiria toolchain C, então segue não-PIE.
+BUILD_PIE := CGO_ENABLED=0 go build -buildmode=pie $(LDFLAGS)
 OUTDIR  := dist
 
 .PHONY: all frontend build \
@@ -16,10 +19,10 @@ all: frontend
 	$(MAKE) linux-amd64 linux-arm64 linux-arm windows-amd64
 
 linux-amd64: | $(OUTDIR)
-	GOOS=linux   GOARCH=amd64        $(BUILD) -o $(OUTDIR)/camera-linux-amd64       ./cmd/camera
+	GOOS=linux   GOARCH=amd64        $(BUILD_PIE) -o $(OUTDIR)/camera-linux-amd64   ./cmd/camera
 
 linux-arm64: | $(OUTDIR)
-	GOOS=linux   GOARCH=arm64        $(BUILD) -o $(OUTDIR)/camera-linux-arm64        ./cmd/camera
+	GOOS=linux   GOARCH=arm64        $(BUILD_PIE) -o $(OUTDIR)/camera-linux-arm64    ./cmd/camera
 
 linux-arm: | $(OUTDIR)
 	GOOS=linux   GOARCH=arm  GOARM=7 $(BUILD) -o $(OUTDIR)/camera-linux-arm          ./cmd/camera

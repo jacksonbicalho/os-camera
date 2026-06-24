@@ -31,8 +31,9 @@ RUN go mod download
 COPY . .
 COPY --from=frontend /app/frontend/dist ./frontend/dist
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
-    sh -c 'if [ "$TARGETVARIANT" = "v7" ]; then export GOARM=7; fi; \
-           go build -ldflags="-s -w -X main.version=${VERSION}" -o camera ./cmd/camera'
+    sh -c 'BUILDMODE="-buildmode=pie"; \
+           if [ "$TARGETARCH" = "arm" ]; then GOARM=7; export GOARM; BUILDMODE=""; fi; \
+           go build $BUILDMODE -ldflags="-s -w -X main.version=${VERSION}" -o camera ./cmd/camera'
 
 # Produção: imagem mínima da arch alvo, só com ffmpeg + o binário.
 FROM alpine:3.20 AS production

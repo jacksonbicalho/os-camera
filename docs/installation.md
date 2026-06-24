@@ -7,7 +7,7 @@ inclui; o `install.sh` instala automaticamente quando possível.
 
 | Ambiente | Método recomendado |
 |---|---|
-| Servidor/desktop Linux, x86 ou Raspberry Pi | **[Docker](#docker-recomendado)** (imagem GHCR) |
+| Servidor/desktop Linux, x86 ou Raspberry Pi | **[Docker](#docker-recomendado)** (imagem Docker Hub) |
 | Linux bare-metal com systemd | **[`install.sh`](#linux--script-de-instalação)** (serviço systemd) |
 | Container/host sem systemd, ou sem root | **`install.sh --user` / `--no-service`**, ou Docker |
 | Termux / Android | **[Termux](#termux-android)** (`install.sh` com autostart via termux-services) |
@@ -19,7 +19,7 @@ A forma mais simples e portável: a **mesma imagem** roda em x86-64, Raspberry P
 (arm64) e ARMv7 (32-bit). Não precisa de `install.sh` nem systemd — o container roda o
 binário direto e o **Docker é o supervisor** (restart, logs).
 
-A imagem é publicada no GHCR: `ghcr.io/jacksonbicalho/os-camera` (tags `:latest` e
+A imagem é publicada no Docker Hub: `jacksonbicalho/os-camera` (tags `:latest` e
 `:vX.Y.Z`).
 
 ```bash
@@ -32,7 +32,7 @@ docker run -d --name camera \
   -v "$PWD/camera.yaml:/app/camera.yaml:ro" \
   -v "$PWD/storage:/data" \
   --restart unless-stopped \
-  ghcr.io/jacksonbicalho/os-camera:latest
+  jacksonbicalho/os-camera:latest
 ```
 
 > **`--network host`** é necessário para a descoberta de câmeras (ONVIF multicast + scan
@@ -43,7 +43,7 @@ docker run -d --name camera \
 ```yaml
 services:
   camera:
-    image: ghcr.io/jacksonbicalho/os-camera:latest
+    image: jacksonbicalho/os-camera:latest
     network_mode: host
     volumes:
       - ./camera.yaml:/app/camera.yaml:ro
@@ -59,10 +59,10 @@ docker compose up -d
 
 ```bash
 docker run --rm -it -v "$PWD:/cfg" \
-  ghcr.io/jacksonbicalho/os-camera:latest ./camera init --output /cfg/camera.yaml
+  jacksonbicalho/os-camera:latest ./camera init --output /cfg/camera.yaml
 ```
 
-> Para **buildar a imagem localmente** em vez de baixar do GHCR:
+> Para **buildar a imagem localmente** em vez de baixar do Docker Hub:
 > `docker compose --profile production up -d --build` (usa o `Dockerfile` do repo).
 
 ---
@@ -142,7 +142,7 @@ sudo bash /tmp/camera-install.sh --binary ./camera-linux-arm64
 camera-uninstall                          # remove binário e serviço (sudo se foi instalação de sistema)
 camera-uninstall --remove-config          # + configuração
 camera-uninstall --remove-data            # + gravações e banco
-camera-uninstall --remove-config --remove-data  # tudo
+camera-uninstall --remove-all             # tudo (config + dados); vale para qualquer modo de instalação
 ```
 
 > O desinstalador respeita o modo da instalação: numa instalação de usuário não pede root
@@ -152,12 +152,14 @@ camera-uninstall --remove-config --remove-data  # tudo
 
 ## Termux (Android)
 
-Roda no celular via [Termux](https://termux.dev) — sem root e sem systemd. O `install.sh`
-detecta o Termux, instala em `$PREFIX/bin` (já no PATH) e configura **autostart** via
-`termux-services` (runit), que sobe a app sempre que você abrir o Termux.
+Roda no celular via [Termux](https://termux.dev) — sem root e sem systemd. Suporta
+**arm64** (a maioria dos aparelhos). O `install.sh` detecta o Termux, instala em
+`$PREFIX/bin` (já no PATH), **ajusta o binário para o Android** (`termux-elf-cleaner`, o
+binário Go precisa disso para rodar no bionic) e configura **autostart** via
+`termux-services` (runit).
 
 ```bash
-# 1) Dependências (o install.sh também instala o ffmpeg se faltar)
+# 1) Dependências (o install.sh também instala ffmpeg e termux-elf-cleaner se faltarem)
 pkg update && pkg install -y curl ffmpeg
 
 # 2) Instalar (detecta Termux automaticamente)
@@ -165,25 +167,20 @@ curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scr
 bash install.sh
 ```
 
-Pós-instalação:
-
-```bash
-sv up camera        # iniciar agora
-sv status camera    # status
-sv down camera      # parar
-```
-
-> **Autostart ao abrir o Termux:** feito pelo `termux-services` (o instalador o instala e
-> habilita com `sv-enable`). Pode ser necessário **fechar e reabrir o Termux** uma vez
-> para o supervisor (`runsvdir`) iniciar. Para pular o serviço: `bash install.sh
-> --no-service`.
+> **Inicie fechando e reabrindo o Termux.** O autostart usa `termux-services` (runit), cujo
+> supervisor (`runsvdir`) só sobe ao (re)abrir o Termux. Por isso o instalador apenas
+> **habilita** o serviço (`sv-enable`) — depois de reabrir, ele inicia sozinho. Gerência:
+> `sv status camera`, `sv down camera`. Para pular o serviço: `bash install.sh --no-service`.
 
 > **Autostart no boot do aparelho:** instale o app **Termux:Boot** (F-Droid) e crie
 > `~/.termux/boot/start-camera` com `#!/data/data/com.termux/files/usr/bin/sh` +
-> `sv up camera` (ou `exec camera --config ~/.config/camera/camera.yaml`). Sem o
-> Termux:Boot, o autostart vale a partir da primeira abertura do Termux.
+> `sv up camera`. Sem o Termux:Boot, o autostart vale a partir da primeira abertura do Termux.
 
-Desinstalar: `camera-uninstall` (remove o serviço runit e o binário).
+> **Android 32-bit (armv7)** não é coberto (o binário 32-bit não é PIE). Use um aparelho
+> arm64 (praticamente todos desde ~2017).
+
+Desinstalar: `camera-uninstall` (binário + serviço); `camera-uninstall --remove-all`
+remove também config e dados.
 
 ---
 
