@@ -9,12 +9,12 @@ export default function SystemSettingsPage() {
 
   return (
     <SettingsLayout>
-      <h3 className="text-h2 font-semibold text-gray-200">Sistema</h3>
-      <p className="text-sm text-gray-500 mt-1 mb-6">Fuso horário e configurações de log.</p>
+      <h3 className="text-h2 font-semibold text-foreground">Sistema</h3>
+      <p className="text-sm text-muted-foreground mt-1 mb-6">Fuso horário e configurações de log.</p>
       {!isAdmin ? (
-        <p className="text-gray-500 text-sm">Acesso restrito.</p>
+        <p className="text-muted-foreground text-sm">Acesso restrito.</p>
       ) : !settings ? (
-        <p className="text-gray-500 text-sm">Carregando...</p>
+        <p className="text-muted-foreground text-sm">Carregando...</p>
       ) : (
         <div className="flex flex-col gap-4">
           <SettingsSection

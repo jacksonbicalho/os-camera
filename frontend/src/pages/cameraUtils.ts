@@ -34,6 +34,9 @@ export interface MotionEvent {
   bbox?: MotionBBox
   label?: string
   color?: string
+  kind?: 'motion' | 'state'
+  classifier_id?: number
+  classifier_name?: string
 }
 
 export function mergeRecordings(
@@ -139,6 +142,62 @@ export interface SteppableVideo {
 export function applySameChunkStep(v: SteppableVideo, time: number): void {
   v.currentTime = time
   v.pause()
+}
+
+// Novo tempo ao pular um frame (←/→) dentro da gravação atual. `dir` é +1
+// (avança) ou -1 (retrocede). Clampa em [0, duration] — frame step não cruza
+// chunk; nas bordas, satura.
+export function frameStepTime(
+  currentTime: number,
+  duration: number,
+  frameDuration: number,
+  dir: 1 | -1,
+): number {
+  const next = currentTime + dir * frameDuration
+  if (next < 0) return 0
+  if (duration > 0 && next > duration) return duration
+  return next
+}
+
+// Vídeo mínimo para o passo frame a frame com serialização de seeks.
+export interface FrameSteppable {
+  currentTime: number
+  duration: number
+  seeking: boolean
+  pause(): void
+}
+
+// Resultado de um passo de frame:
+// - `busy`: havia um seek em andamento → ignorado (serialização).
+// - `applied`: pulou um frame dentro do chunk atual.
+// - `cross-forward` / `cross-back`: chegou ao fim/início do chunk → o chamador
+//   deve carregar o chunk seguinte/anterior. `overflow` é o quanto passou da
+//   borda (em segundos), pra posicionar no vizinho.
+export type FrameStepResult =
+  | { kind: 'busy' }
+  | { kind: 'applied' }
+  | { kind: 'cross-forward'; overflow: number }
+  | { kind: 'cross-back'; overflow: number }
+
+// Aplica um passo de frame (←/→) serializando os seeks: se um seek ainda está em
+// andamento (`seeking`), ignora o passo — evita a fila de seeks que, ao segurar a
+// tecla, faz o vídeo travar e dar um salto ao soltar. Dentro do chunk, pausa e
+// avança/retrocede um frame. Nas bordas, sinaliza `cross-*` para o chamador trocar
+// de gravação em vez de saturar.
+export function applyFrameStep(
+  v: FrameSteppable,
+  recDuration: number,
+  frameDuration: number,
+  dir: 1 | -1,
+): FrameStepResult {
+  if (v.seeking) return { kind: 'busy' }
+  const dur = v.duration || recDuration
+  const next = v.currentTime + dir * frameDuration
+  if (next < 0) return { kind: 'cross-back', overflow: -next }
+  if (dur > 0 && next > dur) return { kind: 'cross-forward', overflow: next - dur }
+  v.pause()
+  v.currentTime = next
+  return { kind: 'applied' }
 }
 
 // Calcula a posição de seek e se deve reproduzir ao carregar a metadata de uma

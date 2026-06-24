@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applySameChunkStep, loadedMetadataSeek, mergeRecordings, parseDurationToMs, secondStepTarget } from './cameraUtils'
+import { applyFrameStep, applySameChunkStep, frameStepTime, loadedMetadataSeek, mergeRecordings, parseDurationToMs, secondStepTarget } from './cameraUtils'
 import type { Recording } from './cameraUtils'
 
 function rec(filename: string): Recording {
@@ -179,5 +179,70 @@ describe('loadedMetadataSeek', () => {
 
   it('fromEnd nunca fica negativo', () => {
     expect(loadedMetadataSeek(3, 10, null, false)).toEqual({ seekTo: 0, shouldPlay: true })
+  })
+})
+
+// ─── frameStepTime (←/→ frame a frame) ──────────────────────────────────────
+
+describe('applyFrameStep (serializa seeks + cruza chunk nas bordas)', () => {
+  const fd = 1 / 30
+  function fakeVideo(seeking: boolean, currentTime = 5, duration = 300) {
+    return { currentTime, duration, seeking, paused: 0, pause() { this.paused++ } }
+  }
+
+  it('busy: ignora o passo enquanto está seeking (não mexe em currentTime nem pausa)', () => {
+    const v = fakeVideo(true)
+    expect(applyFrameStep(v, 300, fd, 1)).toEqual({ kind: 'busy' })
+    expect(v.currentTime).toBe(5)
+    expect(v.paused).toBe(0)
+  })
+
+  it('applied: avança um frame e pausa dentro do chunk', () => {
+    const v = fakeVideo(false)
+    expect(applyFrameStep(v, 300, fd, 1)).toEqual({ kind: 'applied' })
+    expect(v.currentTime).toBeCloseTo(5 + fd, 5)
+    expect(v.paused).toBe(1)
+  })
+
+  it('applied: retrocede um frame dentro do chunk', () => {
+    const v = fakeVideo(false)
+    applyFrameStep(v, 300, fd, -1)
+    expect(v.currentTime).toBeCloseTo(5 - fd, 5)
+  })
+
+  it('cross-forward: ao chegar no fim do chunk sinaliza troca pro próximo', () => {
+    const v = fakeVideo(false, 300, 300)
+    const r = applyFrameStep(v, 300, fd, 1)
+    expect(r.kind).toBe('cross-forward')
+    expect((r as { overflow: number }).overflow).toBeCloseTo(fd, 5)
+    expect(v.currentTime).toBe(300) // não mexe; quem troca é o chamador
+  })
+
+  it('cross-back: ao chegar no início do chunk sinaliza troca pro anterior', () => {
+    const v = fakeVideo(false, 0, 300)
+    const r = applyFrameStep(v, 300, fd, -1)
+    expect(r.kind).toBe('cross-back')
+    expect((r as { overflow: number }).overflow).toBeCloseTo(fd, 5)
+    expect(v.currentTime).toBe(0)
+  })
+})
+
+describe('frameStepTime', () => {
+  const fd = 1 / 30
+
+  it('avança um frame', () => {
+    expect(frameStepTime(5, 300, fd, 1)).toBeCloseTo(5 + fd, 5)
+  })
+
+  it('retrocede um frame', () => {
+    expect(frameStepTime(5, 300, fd, -1)).toBeCloseTo(5 - fd, 5)
+  })
+
+  it('satura no fim (não passa da duração)', () => {
+    expect(frameStepTime(300, 300, fd, 1)).toBe(300)
+  })
+
+  it('satura no início (não fica negativo)', () => {
+    expect(frameStepTime(0, 300, fd, -1)).toBe(0)
   })
 })

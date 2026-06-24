@@ -120,4 +120,34 @@ describe('ThemeModeNav', () => {
     fireEvent.mouseLeave(document.getElementById('theme-mode-nav')!)
     expect(document.getElementById('theme-mode-light')).toBeNull()
   })
+
+  it('selecionar fecha e NÃO reabre enquanto o cursor continua sobre o menu', () => {
+    render(<ThemeModeNav />)
+    const nav = document.getElementById('theme-mode-nav')!
+    fireEvent.mouseEnter(nav)
+    expect(document.getElementById('theme-mode-light')).toBeTruthy()
+    fireEvent.click(document.getElementById('theme-mode-light')!)
+    expect(document.getElementById('theme-mode-light')).toBeNull()
+    // cursor ainda sobre o menu — não deve reabrir por hover
+    fireEvent.mouseEnter(nav)
+    expect(document.getElementById('theme-mode-light')).toBeNull()
+  })
+
+  it('após sair e voltar, o hover volta a abrir', () => {
+    render(<ThemeModeNav />)
+    const nav = document.getElementById('theme-mode-nav')!
+    fireEvent.mouseEnter(nav)
+    fireEvent.click(document.getElementById('theme-mode-light')!)
+    fireEvent.mouseLeave(nav)
+    fireEvent.mouseEnter(nav)
+    expect(document.getElementById('theme-mode-light')).toBeTruthy()
+  })
+
+  it('selecionar dispara onSelect (fecha o menu de configurações pai)', () => {
+    const onSelect = vi.fn()
+    render(<ThemeModeNav onSelect={onSelect} />)
+    fireEvent.mouseEnter(document.getElementById('theme-mode-nav')!)
+    fireEvent.click(document.getElementById('theme-mode-light')!)
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
 })

@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { VolumeX, Volume2, Gauge, Repeat, Film, Zap, CalendarDays, Code2, Settings, Maximize, Play, Pause, X, Trash2, CameraCapture, ZoomOut } from '../components/Icons'
-import { DayPicker } from 'react-day-picker'
+import { VolumeX, Volume2, Gauge, Repeat, Zap, Code2, Maximize, Play, Pause, X, CameraCapture, ZoomOut, ChevronLeft } from '../components/Icons'
 import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
-import 'react-day-picker/style.css'
+import Calendar from '../components/Calendar'
 import { authHeaders, onUnauthorized, getToken, getRole } from '../auth'
 import AppLayout from '../components/AppLayout'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -18,12 +16,21 @@ import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { useDebugTools } from '../hooks/useDebugTools'
-import { applySameChunkStep, loadedMetadataSeek, mergeRecordings, secondStepTarget } from './cameraUtils'
+import { applyFrameStep, applySameChunkStep, loadedMetadataSeek, mergeRecordings, secondStepTarget } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
-import VerticalTimeline from '../components/VerticalTimeline'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
+import CameraConfigMenu from '../components/CameraConfigMenu'
+import PlayerTitle from '../components/PlayerTitle'
+import CameraSwitcher from '../components/CameraSwitcher'
+import EventFilterChips from '../components/EventFilterChips'
+import EventDetailCard from '../components/EventDetailCard'
+import { filterEventsByCategory, eventCategory, eventCardLines, firstEventInChunk, type EventFilter } from './eventCategory'
+import { activeEventForPlayhead } from './activeEvent'
+import HorizontalTimeline from '../components/HorizontalTimeline'
+import Filmstrip from '../components/Filmstrip'
+import { timelineWindow, type TimelineRange } from '../components/timelineScale'
 import { zoneThresholdLabel } from './settings/zoneThreshold'
-import { filterRecordings, recordingsCount } from './recordingsFilter'
+import { adjacentRecording, filterRecordings, nextRecording } from './recordingsFilter'
 import { videoDownloadName } from './videoDownload'
 import { recordingsForEventWindow } from './eventRecordings'
 import { useMarkActiveEventRead } from '../hooks/useMarkActiveEventRead'
@@ -38,7 +45,9 @@ interface RecordingsResponse {
 }
 
 const PAGE_SIZE = 10
-const ALL_RECORDINGS_LIMIT = 1000
+// 0 = sem cap: carrega TODAS as gravações do dia (necessário p/ seek/timeline/filmstrip
+// verem o dia inteiro — câmeras com chunk curto passam de 1000 arquivos/dia).
+const ALL_RECORDINGS_LIMIT = 0
 
 async function loadRecordingsData(cameraId: string, date: Date, page: number, order: 'asc' | 'desc', limit = PAGE_SIZE): Promise<RecordingsResponse | 401> {
   const dateStr = format(date, 'yyyy-MM-dd')
@@ -67,6 +76,8 @@ async function loadMotionEvents(cameraId: string, date: Date): Promise<MotionEve
 }
 
 function snapshotURL(cameraId: string, eventTime: string, frame: string): string {
+  // Transições de estado já trazem o caminho servível absoluto (/recordings/...).
+  if (frame.startsWith('/')) return `${frame}?token=${getToken()}`
   const d = new Date(eventTime)
   const dateDir = `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`
   return `/recordings/${cameraId}/${dateDir}/${frame}?token=${getToken()}`
@@ -115,23 +126,23 @@ export default function CameraPage() {
   })
   const [viewerCam, setViewerCam] = useState<CameraSettings | undefined>(undefined)
   const [recordings, setRecordings] = useState<Recording[]>([])
-  const [recordingsTotal, setRecordingsTotal] = useState(0)
+  const [, setRecordingsTotal] = useState(0)
   const [activeRecording, setActiveRecording] = useState<Recording | null>(null)
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [sortOrder] = useState<'asc' | 'desc'>('desc')
   const [motionEvents, setMotionEvents] = useState<MotionEvent[]>([])
-  const [activePanel, setActivePanel] = useState<null | 'recordings' | 'events' | 'calendar'>(() => {
-    if (recordingId) return 'recordings'
-    if (isLiveRoute) return null
-    const state = location.state as { eventTime?: string } | null
-    return state?.eventTime ? 'events' : null
-  })
+  // Painel de eventos fechado por padrão (ao vivo). Abre ao clicar (aba de
+  // reabrir / botão Eventos / clique num evento) ou quando a reprodução cruza um
+  // evento (efeito de seleção-segue-playback).
+  const [activePanel, setActivePanel] = useState<null | 'events' | 'timeline'>(null)
   const [eventsPage, setEventsPage] = useState(1)
+  const [eventFilter, setEventFilter] = useState<EventFilter>('todos')
+  const [timelineRange, setTimelineRange] = useState<TimelineRange>('24h')
   const [eventsSortOrder, setEventsSortOrder] = useState<'asc' | 'desc'>('desc')
   const [activeEventTime, setActiveEventTime] = useState<string | null>(null)
   const [activeEventId, setActiveEventId] = useState<number | null>(null)
   const [scrollNonce, setScrollNonce] = useState(0)
   const [recordingsDisplayPage, setRecordingsDisplayPage] = useState(1)
-  const [onlyMotion, setOnlyMotion] = useState(false)
+  const [onlyMotion] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [continuousPlay, setContinuousPlay] = useState(false)
   const [browserMaxRate, setBrowserMaxRate] = useState<number | null>(null)
@@ -181,6 +192,9 @@ export default function CameraPage() {
   // fronteira do chunk: o vídeo deve carregar parado, sem autoplay.
   const stepPauseRef = useRef(false)
   const videoRef = useRef<HTMLVideoElement>(null)
+  // Duração de 1 frame da gravação ativa, estimada via requestVideoFrameCallback
+  // (fallback ~1/30s). Usada pelo passo frame a frame (←/→).
+  const frameDurationRef = useRef(1 / 30)
   const recPlayerRef = useRef<HTMLDivElement>(null)
   const recHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hlsPlayerRef = useRef<HLSPlayerHandle>(null)
@@ -196,6 +210,7 @@ export default function CameraPage() {
   const selectedDateRef = useRef(selectedDate)
   const visibleEventsRef = useRef<typeof visibleEvents>([])
   const continuousPlayRef = useRef(continuousPlay)
+  const onlyMotionRef = useRef(onlyMotion)
   const recordingsDisplayPageRef = useRef(recordingsDisplayPage)
   const eventsPageRef = useRef(eventsPage)
   const sortedEventsRef = useRef<MotionEvent[]>([])
@@ -452,12 +467,48 @@ export default function CameraPage() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Ctrl+←/→: passo frame a frame na gravação ativa.
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey &&
+          (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        const t = e.target as HTMLElement | null
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+        const v = videoRef.current
+        if (!v || !activeRecording) return
+        e.preventDefault()
+        const dir: 1 | -1 = e.key === 'ArrowRight' ? 1 : -1
+        const res = applyFrameStep(v, recDuration, frameDurationRef.current, dir)
+        if (res.kind === 'applied' || res.kind === 'busy') return
+        // chegou na borda do chunk → carrega o vizinho (próximo/anterior visível)
+        const sorted = [...filterRecordings(recordingsRef.current, onlyMotionRef.current)]
+          .sort((a, b) => a.filename.localeCompare(b.filename))
+        const curIdx = sorted.findIndex(r => r.filename === activeRecording.filename)
+        if (curIdx === -1) return
+        let target: Recording | null = null
+        if (res.kind === 'cross-forward') {
+          for (let i = curIdx + 1; i < sorted.length; i++) if (!sorted[i].is_recording) { target = sorted[i]; break }
+          if (!target) return
+          pendingSeekRef.current = res.overflow
+        } else {
+          for (let i = curIdx - 1; i >= 0; i--) if (!sorted[i].is_recording) { target = sorted[i]; break }
+          if (!target) return
+          pendingSeekFromEndRef.current = res.overflow
+        }
+        setActiveEventTime(null)
+        setActiveEventId(null)
+        stepPauseRef.current = true
+        openRecording(target)
+        setScrollNonce(n => n + 1)
+        return
+      }
       if (!e.ctrlKey) return
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
       e.preventDefault()
       const recs = recordingsRef.current
       if (recs.length === 0) return
-      const sorted = [...recs].sort((a, b) => a.filename.localeCompare(b.filename))
+      const onlyMotion = onlyMotionRef.current
+      // Navegação (Ctrl+seta e Ctrl+Shift+seta) percorre apenas a lista visível:
+      // com o filtro ligado, só gravações com movimento.
+      const sorted = [...filterRecordings(recs, onlyMotion)].sort((a, b) => a.filename.localeCompare(b.filename))
 
       // Ctrl+Shift+seta: navega segundo a segundo (↑ avança, ↓ retrocede).
       if (e.shiftKey) {
@@ -477,21 +528,38 @@ export default function CameraPage() {
         return
       }
 
-      const idx = activeRecording ? sorted.findIndex(r => r.filename === activeRecording.filename) : -1
-      // `sorted` is ascending (oldest→newest); the timeline/list is shown in `sortOrder`.
-      // Match the visual direction: ArrowDown moves to the item below in the list.
-      const step = sortOrder === 'asc' ? 1 : -1
-      const nextIdx = e.key === 'ArrowDown' ? idx + step : idx - step
-      if (nextIdx < 0 || nextIdx >= sorted.length) return
-      const labeledEv = firstLabeledEventForRecording(sorted[nextIdx], recordingsRef.current, sortedEventsRef.current)
+      if (!activeRecording) return
+      const next = adjacentRecording(recs, activeRecording.filename, e.key, sortOrder, onlyMotion)
+      if (!next) return
+      const labeledEv = firstLabeledEventForRecording(next, recordingsRef.current, sortedEventsRef.current)
       setActiveEventTime(labeledEv?.time ?? null)
       setActiveEventId(labeledEv?.id ?? null)
-      openRecording(sorted[nextIdx])
+      openRecording(next)
       setScrollNonce(n => n + 1)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [activeRecording, sortOrder, recDuration, openRecording])
+
+  // Estima a duração de 1 frame da gravação ativa via requestVideoFrameCallback
+  // (delta de mediaTime entre frames apresentados durante a reprodução). Cacheia
+  // em frameDurationRef para o passo frame a frame; fallback mantém 1/30s.
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || typeof v.requestVideoFrameCallback !== 'function') return
+    let last = -1
+    let handle = 0
+    const cb: VideoFrameRequestCallback = (_now, meta) => {
+      if (last >= 0) {
+        const d = meta.mediaTime - last
+        if (d > 0.001 && d < 1) frameDurationRef.current = d
+      }
+      last = meta.mediaTime
+      handle = v.requestVideoFrameCallback(cb)
+    }
+    handle = v.requestVideoFrameCallback(cb)
+    return () => { v.cancelVideoFrameCallback?.(handle) }
+  }, [activeRecording])
 
   function handleRateChange(requested: number) {
     const options = [1, 2, 4, 8, 16, 32]
@@ -548,13 +616,15 @@ export default function CameraPage() {
   // Handles same-route navigation (component doesn't remount when already on this camera)
   useEffect(() => {
     if (isLiveRoute) return
-    const state = location.state as { eventTime?: string } | null
+    const state = location.state as { eventTime?: string; showRecordings?: boolean } | null
     if (!state?.eventTime) return
     if (handledEventRef.current === state.eventTime) return // already handled by lazy init
     handledEventRef.current = state.eventTime
     pendingEventRef.current = state.eventTime
     const t = new Date(state.eventTime)
     setSelectedDate(new Date(t.getFullYear(), t.getMonth(), t.getDate()))
+    // Aba Gravações foi removida; histórico de estado e eventos de movimento
+    // abrem o painel de eventos.
     setActivePanel('events')
   }, [location.state, isLiveRoute])
 
@@ -645,6 +715,9 @@ export default function CameraPage() {
         pendingEventRef.current = null
         const ev = events.find(e => e.time === pendingTime)
         if (ev) playEventAt(ev, result.recordings)
+        // Histórico de estado: não há MotionEvent nesse instante — busca a gravação
+        // que cobre o timestamp e dá seek direto (senão ficaria no ao vivo).
+        else seekToRecordingTime(pendingTime, result.recordings)
       }
     }
 
@@ -682,6 +755,19 @@ export default function CameraPage() {
   const calendarOnCurrentMonth =
     calendarMonth.getFullYear() === today.getFullYear() &&
     calendarMonth.getMonth() === today.getMonth()
+  // Fim da janela da timeline horizontal: agora (se hoje) ou fim do dia selecionado.
+  const timelineEndOfDayMs = (() => {
+    const d = new Date(selectedDate)
+    d.setHours(23, 59, 59, 999)
+    return d.getTime()
+  })()
+  // Início da gravação mais recente do dia carregado — fallback do ponteiro da
+  // timeline quando não há reprodução ativa (ponteiro sempre visível e pronto).
+  const latestRecordingMs = recordings.reduce<number | undefined>((max, r) => {
+    const ms = Date.parse(r.start)
+    if (Number.isNaN(ms)) return max
+    return max === undefined || ms > max ? ms : max
+  }, undefined)
 
   const handleLiveMotion = useCallback(() => {
     loadMotionEvents(id!, selectedDateRef.current).then(setMotionEvents)
@@ -711,10 +797,18 @@ export default function CameraPage() {
 
   function handleTimelineSeek(recording: Recording, offsetSeconds: number) {
     setNoRecordingAt(null)
+    // Chunk com evento → seleciona e dá seek direto no primeiro evento (aparece
+    // destacado na lista do painel direito, com scroll). Chunk sem evento
+    // (azul/continua) → seek pro início do chunk e fecha o painel.
+    const ev = firstEventInChunk(recording, sortedEventsRef.current, 5 * 60_000)
+    if (ev) {
+      playEventAt(ev)
+      return
+    }
     setActiveEventTime(null)
     setActiveEventId(null)
-    setActivePanel('recordings')
     setScrollNonce(n => n + 1)
+    setActivePanel(null)
 
     if (activeRecording?.filename === recording.filename) {
       if (videoRef.current) {
@@ -791,8 +885,12 @@ export default function CameraPage() {
     return null
   }
 
-  function playEventAt(ev: MotionEvent, recs: Recording[] = recordings, skipScroll = false) {
-    const evTime = new Date(ev.time).getTime()
+  // seekToRecordingTime resolve a gravação que cobre `timeISO` e dá seek nela (com
+  // lead de playbackLeadSeconds). Núcleo compartilhado por playEventAt (evento de
+  // movimento) e pelo deep-link de histórico de estado (que não tem MotionEvent
+  // correspondente). Retorna true quando achou gravação cobrindo o instante.
+  function seekToRecordingTime(timeISO: string, recs: Recording[]): boolean {
+    const evTime = new Date(timeISO).getTime()
     const asc = [...recs].sort((a, b) => a.filename.localeCompare(b.filename))
     for (let i = 0; i < asc.length; i++) {
       const recStart = new Date(asc[i].start).getTime()
@@ -801,8 +899,6 @@ export default function CameraPage() {
         : recStart + 5 * 60 * 1000
       if (evTime >= recStart && evTime < nextStart) {
         if (asc[i].is_recording) {
-          setActiveEventTime(ev.time)
-          setActiveEventId(ev.id ?? null)
           setActiveRecording(null)
           const leadTime = new Date(evTime - playbackLeadSeconds * 1000).toISOString()
           if (hlsPlayerRef.current) {
@@ -810,13 +906,9 @@ export default function CameraPage() {
           } else {
             pendingLiveSeekRef.current = leadTime
           }
-          if (!skipScroll) setScrollNonce(n => n + 1)
-          return
+          return true
         }
         const seekTime = Math.max(0, (evTime - recStart) / 1000 - playbackLeadSeconds)
-        setActiveEventTime(ev.time)
-        setActiveEventId(ev.id ?? null)
-        if (!skipScroll) setScrollNonce(n => n + 1)
         if (activeRecording?.filename === asc[i].filename) {
           if (videoRef.current) {
             videoRef.current.currentTime = seekTime
@@ -826,13 +918,18 @@ export default function CameraPage() {
           pendingSeekRef.current = seekTime
           openRecording(asc[i])
         }
-        return
+        return true
       }
     }
-    // Nenhuma gravação corresponde: seleciona o evento na lista sem acionar playback
+    return false
+  }
+
+  function playEventAt(ev: MotionEvent, recs: Recording[] = recordings, skipScroll = false) {
     setActiveEventTime(ev.time)
     setActiveEventId(ev.id ?? null)
+    setActivePanel(p => p ?? 'events') // abre o painel se estiver fechado
     if (!skipScroll) setScrollNonce(n => n + 1)
+    seekToRecordingTime(ev.time, recs)
   }
 
   function handleGoToEvent(eventTime: string) {
@@ -871,6 +968,28 @@ export default function CameraPage() {
   )
   const cam = settings?.cameras.find(c => c.id === id) ?? viewerCam
   const effectiveThreshold = cam?.motion?.threshold ?? 0
+
+  // Durante a reprodução, a seleção do evento segue o playhead: o evento mais
+  // próximo (dentro da janela do clipe) vira o ativo — card de detalhe + destaque
+  // na lista da aba "Linha do tempo" + scroll até ele. Sem evento próximo, limpa.
+  useEffect(() => {
+    if (!activeRecording) return
+    const playheadMs = Date.parse(activeRecording.start) + recCurrentTime * 1000
+    const lead = cam?.motion?.playback_lead_seconds ?? 0
+    const trail = cam?.motion?.playback_trail_seconds ?? 0
+    const tol = Math.max(3000, (lead + trail) * 1000)
+    const ev = activeEventForPlayhead(sortedEventsRef.current, playheadMs, tol)
+    const nextId = ev?.id ?? null
+    if (nextId !== activeEventIdRef.current) {
+      setActiveEventId(nextId)
+      setActiveEventTime(ev?.time ?? null)
+      if (nextId !== null) {
+        setScrollNonce(n => n + 1)
+        // Ao cruzar um evento com o painel fechado, abre-o com o evento selecionado.
+        setActivePanel(p => p ?? 'events')
+      }
+    }
+  }, [recCurrentTime, activeRecording, cam?.motion?.playback_lead_seconds, cam?.motion?.playback_trail_seconds])
 
   // Score contextual para o painel de debug: evento ativo > pico da gravação > pico diário
   const debugMotionValue = (() => {
@@ -1026,23 +1145,27 @@ function toggleFullscreen() {
       const diff = new Date(a.time).getTime() - new Date(b.time).getTime()
       return eventsSortOrder === 'asc' ? diff : -diff
     })
-  const visibleEvents = sortedEvents.slice(0, eventsPage * PAGE_SIZE)
-  const hasMoreEvents = sortedEvents.length > eventsPage * PAGE_SIZE
+  const filteredEvents = filterEventsByCategory(sortedEvents, eventFilter)
+  const visibleEvents = filteredEvents.slice(0, eventsPage * PAGE_SIZE)
+  const hasMoreEvents = filteredEvents.length > eventsPage * PAGE_SIZE
+  const eventCounts: Partial<Record<EventFilter, number>> = { todos: sortedEvents.length }
+  for (const ev of sortedEvents) {
+    const cat = eventCategory(ev)
+    eventCounts[cat] = (eventCounts[cat] ?? 0) + 1
+  }
   const activeEventIdx = activeEventId !== null
     ? visibleEvents.findIndex(e => e.id === activeEventId)
     : activeEventTime !== null
       ? visibleEvents.findIndex(e => e.time === activeEventTime)
       : -1
 
-  const filteredRecordings = filterRecordings(recordings, onlyMotion)
-  const displayedRecordings = filteredRecordings.slice(0, recordingsDisplayPage * PAGE_SIZE)
-  const hasMoreDisplayedRecordings = displayedRecordings.length < filteredRecordings.length
 
   // Keep refs in sync for use inside onEnded (avoids stale closure)
   activeEventTimeRef.current = activeEventTime
   visibleEventsRef.current = visibleEvents
   sortedEventsRef.current = sortedEvents
   continuousPlayRef.current = continuousPlay
+  onlyMotionRef.current = onlyMotion
   recordingsDisplayPageRef.current = recordingsDisplayPage
   eventsPageRef.current = eventsPage
 
@@ -1050,30 +1173,29 @@ function toggleFullscreen() {
     <AppLayout fill mainClassName="w-full p-3">
         <div className="flex h-full gap-0">
           {/* Coluna do player */}
-          <div className={`relative flex flex-col min-w-0 h-full ${activePanel ? 'flex-1' : 'w-full'}`}>
+          <div className={`relative flex flex-col min-w-0 h-full gap-2 ${activePanel ? 'flex-1' : 'w-full'}`}>
             <div
               ref={playerRef}
-              className={`flex flex-col h-full bg-background border rounded-lg overflow-hidden transition-all duration-300 ${
-                !isLive ? 'border-blue-600 ring-1 ring-blue-600' : 'border-border'
+              className={`flex flex-col flex-1 min-h-0 bg-background border rounded-lg overflow-hidden transition-all duration-300 ${
+                !isLive ? 'border-primary ring-1 ring-primary' : 'border-border'
               }`}
             >
               <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-border min-w-0">
-                <span className={`inline-flex items-center justify-center rounded px-2 py-1 text-[10px] font-bold leading-none shrink-0 ${isLive ? 'bg-red-600 text-white' : 'bg-surface text-muted'}`}>
-                  {isLive ? 'AO VIVO' : 'Reprodução'}
-                </span>
-                {!isLive && activeRecording && (() => {
-                  const ev = activeEventIdx >= 0 ? visibleEvents[activeEventIdx] : null
-                  return (
-                    <span className="text-sm text-foreground min-w-0 truncate">
-                      {cam?.name ?? id}
-                      {' · '}
-                      <span className="tabular-nums">{formatRecordingDateTime(activeRecording.start, timezone)}</span>
-                      {recDuration > 0 && ` · ${formatRecTime(recDuration)}`}
-                      {ev?.label && <span className="font-medium" style={{ color: ev.color ?? '#f97316' }}> · {ev.label}</span>}
-                    </span>
-                  )
-                })()}
-                {isLive && <span className="font-medium text-sm text-foreground truncate">{cam?.name ?? id}</span>}
+                <CameraSwitcher />
+                <PlayerTitle
+                  isLive={isLive}
+                  name={cam?.name ?? id ?? ''}
+                  subtitle={!isLive && activeRecording ? (() => {
+                    const ev = activeEventIdx >= 0 ? visibleEvents[activeEventIdx] : null
+                    return (
+                      <>
+                        <span className="tabular-nums">{formatRecordingDateTime(activeRecording.start, timezone)}</span>
+                        {recDuration > 0 && ` · ${formatRecTime(recDuration)}`}
+                        {ev?.label && <span className="font-medium" style={{ color: ev.color ?? '#f97316' }}> · {ev.label}</span>}
+                      </>
+                    )
+                  })() : undefined}
+                />
                 <div className="ml-auto shrink-0 flex items-center gap-1">
                   {/* Voltar ao vivo — visível só durante reprodução */}
                   {!isLive && (
@@ -1088,9 +1210,10 @@ function toggleFullscreen() {
                   {!isLive && <div className="w-px h-4 bg-surface-2 mx-0.5" />}
                   {/* Mute */}
                   <button
+                    id="player-mute"
                     onClick={() => setVideoMuted(m => { const next = !m; if (videoRef.current) videoRef.current.muted = next; return next })}
                     title={videoMuted ? 'Ativar áudio' : 'Silenciar'}
-                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${!videoMuted ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
+                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${!videoMuted ? 'text-primary' : 'text-muted hover:text-foreground'}`}
                   >
                     {playerBtn(
                       videoMuted ? <VolumeX className="w-[18px] h-[18px]" /> : <Volume2 className="w-[18px] h-[18px]" />,
@@ -1103,7 +1226,7 @@ function toggleFullscreen() {
                       <button
                         onClick={() => setSpeedMenuOpen(o => !o)}
                         title={`Velocidade ${playbackRate}×`}
-                        className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${playbackRate > 1 ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
+                        className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${playbackRate > 1 ? 'text-primary' : 'text-muted hover:text-foreground'}`}
                       >
                         {playerBtn(
                           <>
@@ -1125,7 +1248,7 @@ function toggleFullscreen() {
                               <button
                                 key={v}
                                 onClick={() => { handleRateChange(v); setSpeedMenuOpen(false) }}
-                                className={`w-full text-left px-3 py-1 text-xs ${v === playbackRate ? 'text-blue-400 font-semibold' : 'text-foreground hover:text-foreground hover:bg-surface-2'}`}
+                                className={`w-full text-left px-3 py-1 text-xs ${v === playbackRate ? 'text-primary font-semibold' : 'text-foreground hover:text-foreground hover:bg-surface-2'}`}
                               >
                                 {v}×
                               </button>
@@ -1139,46 +1262,12 @@ function toggleFullscreen() {
                     <button
                       onClick={() => setContinuousPlay(v => !v)}
                       title={continuousPlay ? 'Desativar reprodução contínua' : 'Ativar reprodução contínua'}
-                      className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${continuousPlay ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
+                      className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${continuousPlay ? 'text-primary' : 'text-muted hover:text-foreground'}`}
                     >
                       {playerBtn(<Repeat className="w-4 h-4" />, 'Contínua')}
                     </button>
                   )}
                   <div className="w-px h-4 bg-surface-2 mx-0.5" />
-                  {/* Recordings */}
-                  {(cam?.recording_enabled !== false) && (recordingsTotal > 0 || recordings.length > 0) && (
-                    <button
-                      onClick={() => {
-                        const opening = activePanel !== 'recordings'
-                        setActivePanel(p => p === 'recordings' ? null : 'recordings')
-                        if (opening && recordings.length > 0) {
-                          const labeledEv = firstLabeledEventForRecording(recordings[0], recordings, sortedEventsRef.current)
-                          setActiveEventTime(labeledEv?.time ?? null)
-                          setActiveEventId(labeledEv?.id ?? null)
-                          openRecording(recordings[0])
-                        }
-                      }}
-                      title="Gravações"
-                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'recordings' ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
-                    >
-                      {playerShowIcon && <Film className="w-4 h-4" />}
-                      {!playerShowLabel && (recordingsTotal || recordings.length) > 0 && (
-                        <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center text-[9px] font-bold bg-surface-2 text-foreground rounded-full px-0.5">
-                          {recordingsTotal || recordings.length}
-                        </span>
-                      )}
-                      {playerShowLabel && (
-                        <>
-                          <span className="text-[11px] leading-none">Gravações</span>
-                          {(recordingsTotal || recordings.length) > 0 && (
-                            <span className="inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] text-[9px] font-bold bg-surface-2 text-foreground rounded-full px-0.5">
-                              {recordingsTotal || recordings.length}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </button>
-                  )}
                   {/* Events */}
                   {sortedEvents.length > 0 && (
                     <button
@@ -1191,7 +1280,7 @@ function toggleFullscreen() {
                         }
                       }}
                       title="Eventos de movimento"
-                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'events' ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
+                      className={`relative flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'events' ? 'text-primary' : 'text-muted hover:text-foreground'}`}
                     >
                       {playerShowIcon && <Zap className="w-4 h-4" />}
                       {!playerShowLabel && (
@@ -1209,35 +1298,22 @@ function toggleFullscreen() {
                       )}
                     </button>
                   )}
-                  {/* Calendar */}
-                  <button
-                    onClick={() => setActivePanel(p => p === 'calendar' ? null : 'calendar')}
-                    title={isToday ? 'Calendário' : `Calendário · ${format(selectedDate, "d MMM", { locale: ptBR })}`}
-                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${activePanel === 'calendar' ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
-                  >
-                    {playerBtn(<CalendarDays className="w-4 h-4" />, 'Calendário')}
-                  </button>
                   <div className="w-px h-4 bg-surface-2 mx-0.5" />
                   {/* Debug */}
                   <button
                     onClick={() => showDebug ? closeDebug() : setShowDebug(true)}
                     title="Debug"
-                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${showDebug ? 'text-blue-400' : 'text-muted hover:text-foreground'}`}
+                    className={`flex items-center gap-1 px-1 py-1 transition-colors cursor-pointer ${showDebug ? 'text-primary' : 'text-muted hover:text-foreground'}`}
                   >
                     {playerBtn(<Code2 className="w-4 h-4" />, 'Debug')}
                   </button>
-                  {/* Settings */}
+                  {/* Settings — dropdown com as seções de config da câmera */}
                   {isAdmin && (
-                    <button
-                      onClick={() => navigate(`/settings/cameras/${id}`, { state: { from: `/cameras/${id}`, editing: true } })}
-                      title="Configurar câmera"
-                      className="flex items-center gap-1 px-1 py-1 text-muted hover:text-foreground transition-colors cursor-pointer"
-                    >
-                      {playerBtn(<Settings className="w-4 h-4" />, 'Câmera')}
-                    </button>
+                    <CameraConfigMenu cameraId={id!} showIcon={playerShowIcon} showLabel={playerShowLabel} />
                   )}
                   {/* Fullscreen */}
                   <button
+                    id="player-fullscreen"
                     onClick={toggleFullscreen}
                     title="Tela inteira"
                     className="flex items-center gap-1 px-1 py-1 text-muted hover:text-foreground transition-colors cursor-pointer"
@@ -1245,6 +1321,7 @@ function toggleFullscreen() {
                     {playerBtn(<Maximize className="w-4 h-4" />, 'Expandir')}
                   </button>
                   <button
+                    id="player-snapshot"
                     onClick={takeSnapshot}
                     title="Tirar snapshot"
                     className="flex items-center gap-1 px-1 py-1 text-muted hover:text-foreground transition-colors cursor-pointer"
@@ -1372,12 +1449,13 @@ function toggleFullscreen() {
                         return
                       }
                       if (!activeRecording) return
-                      const asc = [...recordingsRef.current].sort((a, b) => a.filename.localeCompare(b.filename))
-                      const idx = asc.findIndex(r => r.filename === activeRecording.filename)
-                      const next = asc[idx + 1]
-                      if (next && !next.is_recording) {
+                      const onlyMotion = onlyMotionRef.current
+                      const next = nextRecording(recordingsRef.current, activeRecording.filename, onlyMotion)
+                      if (next) {
+                        const pool = filterRecordings(recordingsRef.current, onlyMotion)
+                          .sort((a, b) => a.filename.localeCompare(b.filename))
                         const displayedCount = recordingsDisplayPageRef.current * PAGE_SIZE
-                        const isVisible = recordingsRef.current.slice(0, displayedCount).some(r => r.filename === next.filename)
+                        const isVisible = pool.slice(0, displayedCount).some(r => r.filename === next.filename)
                         if (!isVisible) setRecordingsDisplayPage(p => p + 1)
                         openRecording(next)
                       }
@@ -1456,7 +1534,7 @@ function toggleFullscreen() {
                   }}
                 >
                   <div
-                    className="absolute inset-y-0 left-0 rounded-full bg-blue-500 pointer-events-none group-hover:bg-blue-400 transition-colors"
+                    className="absolute inset-y-0 left-0 rounded-full bg-primary pointer-events-none group-hover:bg-primary transition-colors"
                     style={{ width: `${(recCurrentTime / recDuration) * 100}%` }}
                   />
                 </div>
@@ -1593,32 +1671,57 @@ function toggleFullscreen() {
               </div>
             )}
 
+            <HorizontalTimeline
+              recordings={recordings}
+              events={sortedEvents}
+              range={timelineRange}
+              onRangeChange={setTimelineRange}
+              endMs={isToday ? Date.now() : timelineEndOfDayMs}
+              selectedDate={selectedDate}
+              onSelectDate={(d) => { setSelectedDate(d); setCalendarMonth(d) }}
+              formatTick={(ms) => format(new Date(ms), 'HH:mm')}
+              playheadMs={activeRecording ? Date.parse(activeRecording.start) + recCurrentTime * 1000 : isToday ? Date.now() : latestRecordingMs}
+              onSeek={handleTimelineSeek}
+              onScrub={handleTimelineScrub}
+              onGap={handleTimelineGap}
+            />
+
+            <Filmstrip
+              recordings={recordings}
+              events={sortedEvents}
+              win={timelineWindow(isToday ? Date.now() : timelineEndOfDayMs, timelineRange)}
+              thumbSrc={(ms) => `/api/cameras/${id}/event-frame?time=${encodeURIComponent(new Date(ms).toISOString())}&token=${getToken()}`}
+              formatTime={(ms) => format(new Date(ms), 'HH:mm:ss')}
+              onSeek={handleTimelineSeek}
+              activeRecordingId={activeRecording?.id}
+              playing={recPlaying}
+            />
           </div>
+
+          {/* Reabrir o painel quando fechado */}
+          {!activePanel && (
+            <button
+              id="open-events-panel"
+              onClick={() => setActivePanel('events')}
+              title="Abrir eventos"
+              className="shrink-0 self-stretch w-6 flex items-center justify-center border-l border-border text-muted hover:text-foreground hover:bg-surface transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          )}
 
           {/* Painel lateral condicional */}
           {activePanel && (
             <div className="w-72 shrink-0 border-l border-border bg-background flex flex-col h-full">
-              {(activePanel === 'recordings' || activePanel === 'events' || activePanel === 'calendar') && (
+              {(activePanel === 'events' || activePanel === 'timeline') && (
                 <>
                   <div className="flex items-center border-b border-border shrink-0">
-                    <button
-                      id="tab-recordings"
-                      onClick={() => setActivePanel('recordings')}
-                      className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
-                        activePanel === 'recordings'
-                          ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
-                          : 'text-faint hover:text-foreground'
-                      }`}
-                    >
-                      <span>Gravações</span>
-                      <span className="tabular-nums">{recordingsCount(recordings, recordingsTotal, onlyMotion)}</span>
-                    </button>
                     <button
                       id="tab-events"
                       onClick={() => setActivePanel('events')}
                       className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
                         activePanel === 'events'
-                          ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
+                          ? 'text-primary border-b-2 border-primary -mb-px'
                           : 'text-faint hover:text-foreground'
                       }`}
                     >
@@ -1626,16 +1729,16 @@ function toggleFullscreen() {
                       <span className="tabular-nums">{sortedEvents.length}</span>
                     </button>
                     <button
-                      id="tab-calendar"
-                      onClick={() => setActivePanel('calendar')}
+                      id="tab-timeline"
+                      onClick={() => setActivePanel('timeline')}
                       className={`flex-1 flex flex-col items-center px-2 py-1.5 text-xs font-medium transition-colors ${
-                        activePanel === 'calendar'
-                          ? 'text-blue-400 border-b-2 border-blue-500 -mb-px'
+                        activePanel === 'timeline'
+                          ? 'text-primary border-b-2 border-primary -mb-px'
                           : 'text-faint hover:text-foreground'
                       }`}
                     >
-                      <span>{format(selectedDate, "MMM", { locale: ptBR })}</span>
-                      <span className="tabular-nums">{format(selectedDate, "d")}</span>
+                      <span>Linha do tempo</span>
+                      <span className="tabular-nums">{sortedEvents.length}</span>
                     </button>
                     <button
                       onClick={() => setActivePanel(null)}
@@ -1645,83 +1748,30 @@ function toggleFullscreen() {
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  {activePanel === 'recordings' ? (
-                    <>
-                    <label className="flex items-center gap-2 px-3 py-2 text-xs text-muted hover:text-foreground border-b border-border cursor-pointer transition-colors shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={onlyMotion}
-                        onChange={e => { setOnlyMotion(e.target.checked); setRecordingsDisplayPage(1) }}
-                        className="accent-blue-500 w-3 h-3"
+                  {(
+                    <div className="flex flex-col flex-1 min-h-0">
+                    {activePanel === 'timeline' ? (
+                      (() => {
+                        const activeEv = activeEventIdx >= 0 ? visibleEvents[activeEventIdx] : null
+                        return (
+                          <EventDetailCard
+                            event={activeEv}
+                            cameraName={cam?.name ?? id ?? ''}
+                            durationSeconds={(cam?.motion?.playback_lead_seconds ?? 0) + (cam?.motion?.playback_trail_seconds ?? 0)}
+                            thumbSrc={activeEv?.frame ? snapshotURL(id!, activeEv.time, activeEv.frame) : null}
+                            onPlay={() => { if (activeEv) { playEventAt(activeEv); setScrollNonce(n => n + 1) } }}
+                            onDownload={() => { if (activeEv) downloadEventVideos(activeEv) }}
+                            onMark={() => { if (activeEv) openSnapshotModal(activeEv) }}
+                          />
+                        )
+                      })()
+                    ) : (
+                      <EventFilterChips
+                        value={eventFilter}
+                        onChange={(f) => { setEventFilter(f); setEventsPage(1) }}
+                        counts={eventCounts}
                       />
-                      Apenas com movimento
-                    </label>
-                    <ListPanel
-                      key="recordings"
-                      sortOrder={sortOrder}
-                      onSortOrderChange={() => { setSortOrder(o => o === 'desc' ? 'asc' : 'desc'); setRecordingsDisplayPage(1) }}
-                      hasMore={hasMoreDisplayedRecordings}
-                      onLoadMore={() => setRecordingsDisplayPage(p => p + 1)}
-                      empty={filteredRecordings.length === 0}
-                      emptyMessage={cam?.recording_enabled === false ? "Gravação desabilitada. Câmera disponível apenas ao vivo." : onlyMotion && recordings.length > 0 ? "Nenhuma gravação com movimento nesta data." : "Sem gravações nesta data."}
-                    >
-                      {(() => {
-                        return displayedRecordings.map(rec => {
-                          const isActive = activeRecording?.filename === rec.filename
-                          const hasMotion = rec.has_motion
-                          return (
-                            <div
-                              key={rec.filename}
-                              ref={isActive ? el => { if (el) activeRecordingItemRef.current = el } : null}
-                              className={`group flex items-center justify-between px-3 py-2 transition-colors ${
-                                rec.is_recording
-                                  ? 'opacity-50'
-                                  : isActive
-                                    ? 'bg-blue-900/40 border-l-2 border-blue-500'
-                                    : 'hover:bg-surface'
-                              }`}
-                            >
-                              <button
-                                disabled={rec.is_recording}
-                                onClick={() => {
-                                  if (!rec.is_recording) {
-                                    const labeledEv = firstLabeledEventForRecording(rec, recordings, sortedEventsRef.current)
-                                    setActiveEventTime(labeledEv?.time ?? null)
-                                    setActiveEventId(labeledEv?.id ?? null)
-                                    openRecording(rec)
-                                  }
-                                }}
-                                className="flex-1 flex items-center justify-between text-left disabled:cursor-not-allowed"
-                              >
-                                <span className={`text-sm ${isActive && !rec.is_recording ? 'text-blue-300' : 'text-foreground'}`}>
-                                  {formatRecordingTime(rec.start, timezone)}
-                                </span>
-                                <div className="flex items-center gap-2 shrink-0 ml-2">
-                                  {hasMotion && (
-                                    <span className="w-2 h-2 rounded-full bg-orange-400" title="Movimento detectado" />
-                                  )}
-                                  {rec.is_recording
-                                    ? <span className="text-xs text-red-400 font-medium">● REC</span>
-                                    : <span className="text-xs text-faint">▶ MP4</span>
-                                  }
-                                </div>
-                              </button>
-                              {isAdmin && !rec.is_recording && (
-                                <button
-                                  onClick={() => setDeleteTarget({ rec, hasMotion })}
-                                  title="Excluir gravação"
-                                  className="ml-2 text-faint hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          )
-                        })
-                      })()}
-                    </ListPanel>
-                    </>
-                  ) : activePanel === 'events' ? (
+                    )}
                     <ListPanel
                       key="events"
                       sortOrder={eventsSortOrder}
@@ -1744,11 +1794,11 @@ function toggleFullscreen() {
                             ref={isActive ? (el) => { if (el) activeEventItemRef.current = el } : null}
                             onClick={() => { playEventAt(ev); setScrollNonce(n => n + 1) }}
                             className={`group w-full flex flex-col px-3 py-2 transition-colors text-left ${
-                              isActive ? 'bg-blue-900/40 border-l-2 border-blue-500' : 'hover:bg-surface'
+                              isActive ? 'bg-primary/10 border-l-2 border-primary' : 'hover:bg-surface'
                             }`}
                           >
                             <div className="flex items-center justify-between w-full gap-2">
-                              <span className={`text-sm tabular-nums ${isActive ? 'text-blue-300' : 'text-foreground'}`}>
+                              <span className={`text-sm tabular-nums ${isActive ? 'text-primary' : 'text-foreground'}`}>
                                 {formatRecordingTime(ev.time, timezone)}
                               </span>
                               <div className="flex items-center gap-1.5 min-w-0">
@@ -1773,7 +1823,7 @@ function toggleFullscreen() {
                                   </>
                                 )}
                                 {ev.label && !ev.color && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 border border-blue-700/50 truncate">
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/40 truncate">
                                     {ev.label}
                                   </span>
                                 )}
@@ -1781,19 +1831,33 @@ function toggleFullscreen() {
                               </div>
                             </div>
                             <div className="flex items-center justify-between gap-2 mt-1">
-                              <span className="text-xs text-muted truncate">
-                                {ev.color ? ev.label : 'Movimento'}
+                              <div className="flex items-center gap-2 min-w-0">
+                                {thumbURL && (
+                                  <img
+                                    key={`thumb-${ev.id}-${thumbOverride ?? bust ?? 0}`}
+                                    src={thumbURL}
+                                    alt="snapshot"
+                                    className="w-16 h-10 object-cover rounded cursor-zoom-in border border-border shrink-0"
+                                    style={thumbFlash.has(ev.id) ? { animation: 'thumb-flash 0.9s ease-out' } : undefined}
+                                    onClick={e => { e.stopPropagation(); openSnapshotModal(ev) }}
+                                  />
+                                )}
+                                {(() => {
+                                  const lines = eventCardLines(ev, cam?.name ?? id ?? '')
+                                  return (
+                                    <div className="flex flex-col min-w-0">
+                                      <span className="text-xs font-medium text-foreground truncate">{lines.title}</span>
+                                      <span className="text-[11px] text-muted truncate">{lines.subtitle}</span>
+                                    </div>
+                                  )
+                                })()}
+                              </div>
+                              <span
+                                aria-hidden="true"
+                                className="shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-primary/15 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
+                              >
+                                <Play className="w-3.5 h-3.5 fill-current" />
                               </span>
-                              {thumbURL && (
-                                <img
-                                  key={`thumb-${ev.id}-${thumbOverride ?? bust ?? 0}`}
-                                  src={thumbURL}
-                                  alt="snapshot"
-                                  className="w-16 h-10 object-cover rounded cursor-zoom-in border border-border shrink-0"
-                                  style={thumbFlash.has(ev.id) ? { animation: 'thumb-flash 0.9s ease-out' } : undefined}
-                                  onClick={e => { e.stopPropagation(); openSnapshotModal(ev) }}
-                                />
-                              )}
                             </div>
                             {recDets && recDets.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-1" onClick={e => { e.stopPropagation(); setDetectionModal(recDets) }}>
@@ -1808,41 +1872,26 @@ function toggleFullscreen() {
                         )
                       })}
                     </ListPanel>
-                  ) : (
-                    <div className="flex flex-col overflow-y-auto">
+                    {activePanel === 'events' && (
+                    <div className="shrink-0 border-t border-border max-h-80 overflow-y-auto">
                       <div className="p-3">
-                        <DayPicker
+                        <Calendar
                           mode="single"
                           selected={selectedDate}
                           month={calendarMonth}
                           onMonthChange={setCalendarMonth}
                           onSelect={d => { if (d) { setSelectedDate(d); setCalendarMonth(d) } }}
-                          locale={ptBR}
-                          style={{ '--rdp-nav_button-width': '1.5rem', '--rdp-nav_button-height': '1.5rem', '--rdp-accent-color': '#94a3b8' } as React.CSSProperties}
-                          components={{ Chevron: ({ orientation, disabled }) => {
-                            const d = `M${orientation === 'left' ? '10 6 4 12 10 18' : orientation === 'right' ? '6 6 12 12 6 18' : orientation === 'up' ? '6 14 12 8 18 14' : '6 10 12 16 18 10'}`
-                            return <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity={disabled ? 0.5 : 1}><path d={d} /></svg>
-                          }}}
                           footer={(!isToday || !calendarOnCurrentMonth) && (
                             <div className="flex justify-center pt-1">
-                              <button onClick={() => { setSelectedDate(new Date()); setCalendarMonth(new Date()) }} className="text-xs font-medium text-blue-400 hover:text-blue-300 transition-colors">
+                              <button onClick={() => { setSelectedDate(new Date()); setCalendarMonth(new Date()) }} className="text-xs font-medium text-primary hover:text-primary transition-colors">
                                 Hoje
                               </button>
                             </div>
                           )}
-                          classNames={{
-                            root: 'text-foreground text-sm',
-                            month_caption: 'text-base text-foreground font-medium',
-                            month_grid: 'mt-2',
-                            day: 'text-foreground hover:bg-surface-2 rounded',
-                            day_button: 'w-8 h-8 flex items-center justify-center rounded',
-                            selected: 'bg-blue-600 text-white rounded',
-                            today: 'text-blue-400 font-semibold',
-                            outside: 'text-faint',
-                            disabled: 'text-faint',
-                          }}
                         />
                       </div>
+                    </div>
+                    )}
                     </div>
                   )}
                 </>
@@ -1850,22 +1899,6 @@ function toggleFullscreen() {
             </div>
           )}
 
-          <VerticalTimeline
-            recordings={recordings}
-            motionEvents={motionEvents}
-            activeRecording={activeRecording}
-            activeTime={
-              activeRecording && !isLive
-                ? new Date(new Date(activeRecording.start).getTime() + recCurrentTime * 1000).toISOString()
-                : activeEventTime ?? null
-            }
-            timezone={timezone}
-            sortOrder={activePanel === 'events' ? eventsSortOrder : sortOrder}
-            onSeek={handleTimelineSeek}
-            onScrub={handleTimelineScrub}
-            onGap={handleTimelineGap}
-            onEventClick={activePanel === 'events' ? ev => { playEventAt(ev); setScrollNonce(n => n + 1) } : undefined}
-          />
         </div>
 
       {detectionModal && (

@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { getUsername, changePassword, login, clearToken, getRole, authHeaders, mustChangePassword } from '../auth'
 import AppLayout from '../components/AppLayout'
+import { Button } from '@/components/ui/button'
+import { postChangeRedirect } from './changePasswordRedirect'
 
 export default function ChangePasswordPage() {
   const [password, setPassword] = useState('')
@@ -9,6 +11,11 @@ export default function ChangePasswordPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const location = useLocation()
+  const from = (location.state as { from?: string } | null)?.from ?? null
+  // Captura no mount: após o re-login com a nova senha o token perde o claim, então
+  // mustChangePassword() já não distingue o fluxo forçado do manual.
+  const [forced] = useState(() => mustChangePassword())
   const username = getUsername() ?? ''
 
   async function handleSubmit(e: FormEvent) {
@@ -27,15 +34,15 @@ export default function ChangePasswordPage() {
       await changePassword(password)
       clearToken()
       await login(username, password)
-      try {
-        const res = await fetch('/api/cameras', { headers: authHeaders() })
-        const data = res.ok ? await res.json() : []
-        if (Array.isArray(data) && data.length === 0 && getRole() === 'admin') {
-          navigate('/settings/cameras/new', { replace: true })
-          return
-        }
-      } catch { /* ignore, segue para o dashboard */ }
-      navigate('/', { replace: true })
+      let adminWithNoCameras = false
+      if (forced) {
+        try {
+          const res = await fetch('/api/cameras', { headers: authHeaders() })
+          const data = res.ok ? await res.json() : []
+          adminWithNoCameras = Array.isArray(data) && data.length === 0 && getRole() === 'admin'
+        } catch { /* ignore, segue para o fallback */ }
+      }
+      navigate(postChangeRedirect({ forced, from, adminWithNoCameras }), { replace: true })
     } catch {
       setError('Falha ao alterar senha. Tente novamente.')
     } finally {
@@ -61,6 +68,7 @@ export default function ChangePasswordPage() {
             required
             autoFocus
             minLength={8}
+            autoComplete="new-password"
             className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
           />
         </div>
@@ -71,17 +79,14 @@ export default function ChangePasswordPage() {
             value={confirm}
             onChange={e => setConfirm(e.target.value)}
             required
+            autoComplete="new-password"
             className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
           />
         </div>
         {error && <p className="text-red-400 text-sm">{error}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded px-4 py-2 text-sm font-medium transition-colors"
-        >
+        <Button id="change-password-submit" type="submit" disabled={loading}>
           {loading ? 'Salvando...' : 'Definir nova senha'}
-        </button>
+        </Button>
       </form>
     </div>
   )

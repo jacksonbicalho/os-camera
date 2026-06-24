@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { Button } from '@/components/ui/button'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -35,20 +36,17 @@ export default function ConfirmDialog({
         <p className="text-xs text-gray-400">{message}</p>
         {children}
         <div className="flex justify-end gap-3">
-          <button
-            onClick={onCancel}
-            className="px-4 py-1.5 text-xs text-gray-300 hover:text-white border border-gray-600 rounded transition-colors"
-          >
+          <Button id="confirm-dialog-cancel" size="sm" variant="outline" onClick={onCancel}>
             {cancelLabel}
-          </button>
-          <button
+          </Button>
+          <Button
+            id="confirm-dialog-confirm"
+            size="sm"
+            variant={danger ? 'destructive' : 'default'}
             onClick={onConfirm}
-            className={`px-4 py-1.5 text-xs text-white rounded transition-colors ${
-              danger ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'
-            }`}
           >
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

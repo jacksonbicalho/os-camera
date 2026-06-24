@@ -1,86 +1,49 @@
 # Instalação
 
-## Linux (script automático)
+Dependência comum a **todos** os métodos: **ffmpeg** (+ ffprobe). A imagem Docker já o
+inclui; o `install.sh` instala automaticamente quando possível.
 
-O jeito mais rápido. O script detecta a arquitetura (`amd64`, `arm64`, `arm`), baixa o binário da última release, executa o wizard de configuração e registra um serviço systemd.
+## Qual método usar?
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh -o /tmp/camera-install.sh
-sudo bash /tmp/camera-install.sh
-```
+| Ambiente | Método recomendado |
+|---|---|
+| Servidor/desktop Linux, x86 ou Raspberry Pi | **[Docker](#docker-recomendado)** (imagem GHCR) |
+| Linux bare-metal com systemd | **[`install.sh`](#linux--script-de-instalação)** (serviço systemd) |
+| Container/host sem systemd, ou sem root | **`install.sh --user` / `--no-service`**, ou Docker |
+| Termux / Android | **[Termux](#termux-android)** (`install.sh` com autostart via termux-services) |
+| Offline / airgapped | **`install.sh --binary=<arquivo>`** |
 
-> **Por que salvar antes de executar?**
-> Com `curl | sudo bash` o stdin do bash fica ocupado com o pipe — o wizard não consegue ler o teclado. Salvando em arquivo o stdin continua conectado ao terminal.
+## Docker (recomendado)
 
-### Caminhos personalizados
+A forma mais simples e portável: a **mesma imagem** roda em x86-64, Raspberry Pi
+(arm64) e ARMv7 (32-bit). Não precisa de `install.sh` nem systemd — o container roda o
+binário direto e o **Docker é o supervisor** (restart, logs).
 
-```bash
-sudo bash /tmp/camera-install.sh \
-  --install-dir /usr/local/bin \
-  --config-dir  /etc/camera \
-  --data-dir    /data/recordings \
-  --service-name camera
-```
-
-### Comandos pós-instalação
+A imagem é publicada no GHCR: `ghcr.io/jacksonbicalho/os-camera` (tags `:latest` e
+`:vX.Y.Z`).
 
 ```bash
-camera --version
-sudo systemctl status camera
-sudo systemctl restart camera
-sudo journalctl -u camera -f
+# 1) Gerar a configuração (a partir do exemplo, ou com o wizard — ver abaixo)
+cp camera.yaml.example camera.yaml   # e edite
+
+# 2) Subir
+docker run -d --name camera \
+  --network host \
+  -v "$PWD/camera.yaml:/app/camera.yaml:ro" \
+  -v "$PWD/storage:/data" \
+  --restart unless-stopped \
+  ghcr.io/jacksonbicalho/os-camera:latest
 ```
 
-### Desinstalar
+> **`--network host`** é necessário para a descoberta de câmeras (ONVIF multicast + scan
+> de porta) funcionar na LAN real.
 
-```bash
-sudo camera-uninstall                          # remove binário e serviço
-sudo camera-uninstall --remove-config          # + configuração
-sudo camera-uninstall --remove-data            # + gravações e banco
-sudo camera-uninstall --remove-config --remove-data  # tudo
-```
-
----
-
-## Raspberry Pi
-
-O binário para Raspberry Pi 3, 4 e 5 (64-bit) é o `linux-arm64`. Para Raspberry Pi 2 e 3 em modo 32-bit use `linux-arm`.
-
-```bash
-# Raspberry Pi 3/4/5 (64-bit OS)
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh \
-  -o /tmp/camera-install.sh
-sudo bash /tmp/camera-install.sh
-```
-
-**Requisito:** ffmpeg instalado no sistema.
-
-```bash
-sudo apt update && sudo apt install -y ffmpeg
-```
-
-**Dica de desempenho:** ative o hardware decoding para aliviar a CPU. Edite `camera.yaml` e configure as câmeras com `hls_video_mode: copy` quando o stream já for H.264, evitando retranscodificação.
-
----
-
-## Docker
-
-```bash
-# Copiar e editar configuração
-cp camera.yaml.example camera.yaml
-nano camera.yaml
-
-# Subir
-docker compose --profile production up -d
-```
-
-O `docker-compose.yml` usa `network_mode: host` para que a descoberta de câmeras (ONVIF multicast + scan de porta) funcione na LAN real.
+### docker compose
 
 ```yaml
-# docker-compose.yml (produção)
 services:
   camera:
-    profiles: [production]
+    image: ghcr.io/jacksonbicalho/os-camera:latest
     network_mode: host
     volumes:
       - ./camera.yaml:/app/camera.yaml:ro
@@ -88,11 +51,164 @@ services:
     restart: unless-stopped
 ```
 
+```bash
+docker compose up -d
+```
+
+### Gerar o `camera.yaml` com o wizard (opcional)
+
+```bash
+docker run --rm -it -v "$PWD:/cfg" \
+  ghcr.io/jacksonbicalho/os-camera:latest ./camera init --output /cfg/camera.yaml
+```
+
+> Para **buildar a imagem localmente** em vez de baixar do GHCR:
+> `docker compose --profile production up -d --build` (usa o `Dockerfile` do repo).
+
 ---
 
-## Download manual
+## Linux — script de instalação
 
-Baixe o binário em [github.com/jacksonbicalho/os-camera/releases](https://github.com/jacksonbicalho/os-camera/releases):
+O `install.sh` detecta a arquitetura (`amd64`/`arm64`/`arm`), baixa o binário da última
+release, instala o **ffmpeg** se faltar (quando há permissão), roda o wizard de
+configuração e — em host com systemd e root — registra um **serviço systemd**. Sem root
+ou sem systemd ele se adapta (modo usuário / sem serviço).
+
+### Sistema (root + systemd) — padrão
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh -o /tmp/camera-install.sh
+sudo bash /tmp/camera-install.sh
+```
+
+> **Por que salvar antes de executar?** Com `curl | sudo bash` o stdin fica ocupado pelo
+> pipe — o wizard não lê o teclado. Salvar em arquivo mantém o stdin no terminal.
+
+Instala em `/usr/local/bin`, config em `/etc/camera`, dados em `/var/camera`. Pós:
+
+```bash
+camera --version
+sudo systemctl status camera
+sudo systemctl restart camera      # após editar a config
+sudo journalctl -u camera -f
+```
+
+### Sem root (modo usuário)
+
+Sem `sudo` (ou com `--user`): instala em `~/.local/bin`, config em `~/.config/camera`,
+estado/dados em `~/.local/share/camera`, **sem serviço**. Você roda o binário direto.
+
+```bash
+bash /tmp/camera-install.sh --user
+# rodar:
+~/.local/bin/camera --config ~/.config/camera/camera.yaml
+```
+
+### Sem systemd (container/host enxuto)
+
+`--no-service` não cria serviço mesmo com systemd (útil em container, onde o supervisor
+é o Docker). Instala binário + config e mostra como rodar.
+
+```bash
+sudo bash /tmp/camera-install.sh --no-service
+```
+
+### Offline / airgapped
+
+`--binary=ARQUIVO` instala a partir de um binário já baixado (não acessa a internet):
+
+```bash
+sudo bash /tmp/camera-install.sh --binary ./camera-linux-arm64
+```
+
+### Opções
+
+| Flag | Efeito |
+|---|---|
+| `--user` | Instala no diretório do usuário (`~/.local`), sem root, sem serviço |
+| `--no-service` | Não cria serviço (mesmo com systemd) — você roda o binário |
+| `--skip-deps` | Não tenta instalar o ffmpeg |
+| `--binary=ARQUIVO` | Usa um binário local (sem download / offline) |
+| `--install-dir` `--config-dir` `--data-dir` `--segments-dir` `--state-dir` | Caminhos |
+| `--service-name=NOME` | Nome do serviço systemd |
+
+> **ffmpeg:** o script instala via `apt`/`dnf`/`pacman`/`zypper`/`apk` (root) ou `pkg`
+> (Termux). Sem permissão, ele imprime o comando exato da sua distro e aborta. Use
+> `--skip-deps` para pular.
+
+### Desinstalar
+
+```bash
+camera-uninstall                          # remove binário e serviço (sudo se foi instalação de sistema)
+camera-uninstall --remove-config          # + configuração
+camera-uninstall --remove-data            # + gravações e banco
+camera-uninstall --remove-config --remove-data  # tudo
+```
+
+> O desinstalador respeita o modo da instalação: numa instalação de usuário não pede root
+> nem mexe em systemd.
+
+---
+
+## Termux (Android)
+
+Roda no celular via [Termux](https://termux.dev) — sem root e sem systemd. O `install.sh`
+detecta o Termux, instala em `$PREFIX/bin` (já no PATH) e configura **autostart** via
+`termux-services` (runit), que sobe a app sempre que você abrir o Termux.
+
+```bash
+# 1) Dependências (o install.sh também instala o ffmpeg se faltar)
+pkg update && pkg install -y curl ffmpeg
+
+# 2) Instalar (detecta Termux automaticamente)
+curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh -o install.sh
+bash install.sh
+```
+
+Pós-instalação:
+
+```bash
+sv up camera        # iniciar agora
+sv status camera    # status
+sv down camera      # parar
+```
+
+> **Autostart ao abrir o Termux:** feito pelo `termux-services` (o instalador o instala e
+> habilita com `sv-enable`). Pode ser necessário **fechar e reabrir o Termux** uma vez
+> para o supervisor (`runsvdir`) iniciar. Para pular o serviço: `bash install.sh
+> --no-service`.
+
+> **Autostart no boot do aparelho:** instale o app **Termux:Boot** (F-Droid) e crie
+> `~/.termux/boot/start-camera` com `#!/data/data/com.termux/files/usr/bin/sh` +
+> `sv up camera` (ou `exec camera --config ~/.config/camera/camera.yaml`). Sem o
+> Termux:Boot, o autostart vale a partir da primeira abertura do Termux.
+
+Desinstalar: `camera-uninstall` (remove o serviço runit e o binário).
+
+---
+
+## Raspberry Pi
+
+A imagem **Docker** (recomendado) cobre os dois casos — RPi 3/4/5 (64-bit) usa `arm64` e
+RPi 2/3 em 32-bit usa `arm/v7`, ambos na mesma tag `:latest`. Como alternativa
+bare-metal, o `install.sh` baixa o binário certo (`linux-arm64` ou `linux-arm`).
+
+**Requisito (instalação bare-metal):** ffmpeg no sistema.
+
+```bash
+sudo apt update && sudo apt install -y ffmpeg
+```
+
+**Dica de desempenho:** ative o hardware decoding para aliviar a CPU. Edite `camera.yaml`
+e configure as câmeras com `hls_video_mode: copy` quando o stream já for H.264, evitando
+retranscodificação.
+
+---
+
+## Download manual (binário)
+
+Sem Docker e sem systemd (ex.: Termux/Android, ambientes restritos): baixe o binário em
+[github.com/jacksonbicalho/os-camera/releases](https://github.com/jacksonbicalho/os-camera/releases).
 
 | Plataforma | Arquivo |
 |---|---|
@@ -106,6 +222,9 @@ chmod +x camera-linux-amd64
 ./camera-linux-amd64 init           # wizard de configuração
 ./camera-linux-amd64 --config camera.yaml
 ```
+
+O binário é estático (não depende de libc), mas o **ffmpeg precisa estar instalado** no
+sistema (ex.: `apt install ffmpeg`, ou `pkg install ffmpeg` no Termux).
 
 O wizard pergunta o destino dos logs (`stdout` ou `file`). Ao escolher `file`, ele
 também pergunta o diretório e os parâmetros de **rotação**: tamanho de rotação

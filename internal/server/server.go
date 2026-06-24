@@ -112,6 +112,7 @@ type Server struct {
 	dailyPeakRaw       map[string]float64
 	dailyPeakDate      map[string]string
 	snapFn             func(ctx context.Context, rtspURL string) ([]byte, error)
+	frameFn            func(ctx context.Context, path string, offsetSeconds float64) ([]byte, error)
 	probedStreams      map[string]ffprobe.StreamInfo
 	db                 *db.DB
 	prober             *ffprobe.Prober
@@ -119,6 +120,7 @@ type Server struct {
 	onCameraStop       func(string)
 	monitors           map[string]*motion.Monitor
 	cpu                cpuTracker
+	net                netTracker
 	cleaner            interface{ ForceClean() }
 	deviceCollectors   []deviceinfo.Collector
 }
@@ -208,9 +210,13 @@ func (s *Server) WithMotionFeed(cameraID string, events <-chan motion.Event) *Se
 	return s
 }
 
-
 func (s *Server) WithSnapshotter(fn func(ctx context.Context, rtspURL string) ([]byte, error)) *Server {
 	s.snapFn = fn
+	return s
+}
+
+func (s *Server) WithFrameExtractor(fn func(ctx context.Context, path string, offsetSeconds float64) ([]byte, error)) *Server {
+	s.frameFn = fn
 	return s
 }
 
@@ -274,7 +280,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/config", s.handleClientConfig)
 	s.mux.HandleFunc("GET /api/settings", s.requireAdmin(s.handleSettings))
 	s.mux.HandleFunc("GET /api/about", s.requireFullAuth(s.handleAbout))
-s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
+	s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 
 	s.mux.HandleFunc("GET /api/discover", s.requireAdmin(s.handleDiscover))
 	s.mux.HandleFunc("POST /api/discover/streams", s.requireAdmin(s.handleDiscoverStreams))
@@ -292,6 +298,7 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("DELETE /api/notifications", s.requireFullAuth(s.handleDeleteAllNotifications))
 
 	// Per-user preferences (theme), scoped to the authenticated user.
+	s.mux.HandleFunc("GET /api/me/footer-states", s.requireFullAuth(s.handleFooterStates))
 	s.mux.HandleFunc("GET /api/me/preferences", s.requireFullAuth(s.handleGetPreferences))
 	s.mux.HandleFunc("PUT /api/me/preferences", s.requireFullAuth(s.handleUpdatePreferences))
 
@@ -319,7 +326,7 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("GET /api/settings/cameras/{id}/analysis", s.requireAdmin(s.handleGetCameraAnalysisConfig))
 	s.mux.HandleFunc("PUT /api/settings/cameras/{id}/analysis", s.requireAdmin(s.handleUpdateCameraAnalysisConfig))
 
-	streamHandler := http.StripPrefix("/stream/", http.FileServer(http.Dir(s.cfg.SegmentsPath)))
+	streamHandler := http.StripPrefix("/stream/", noCachePlaylist(http.FileServer(http.Dir(s.cfg.SegmentsPath))))
 	s.mux.Handle("/stream/", s.requireStreamAccess(streamHandler))
 
 	recHandler := http.StripPrefix("/recordings/", http.FileServer(http.Dir(s.cfg.RecordingsPath)))
@@ -328,6 +335,9 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("GET /api/cameras/{id}/recordings", s.requireCameraAccess(s.handleRecordings))
 	s.mux.HandleFunc("GET /api/cameras/{id}/recordings/by-id/{recording_id}", s.requireCameraAccess(s.handleRecordingByID))
 	s.mux.HandleFunc("DELETE /api/cameras/{id}/recordings/{filename}", s.requireAdmin(s.handleDeleteRecording))
+	s.mux.HandleFunc("GET /api/reports/events", s.requireFullAuth(s.handleEventReport))
+	s.mux.HandleFunc("GET /api/moments", s.requireFullAuth(s.handleMoments))
+	s.mux.HandleFunc("GET /api/recordings", s.requireFullAuth(s.handleGlobalRecordings))
 	s.mux.HandleFunc("GET /api/cameras/{id}/device-info", s.requireCameraAccess(s.handleDeviceInfo))
 	s.mux.HandleFunc("POST /api/cameras/{id}/device-info/refresh", s.requireAdmin(s.handleRefreshDeviceInfo))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion", s.requireCameraAccess(s.handleMotionEvents))
@@ -338,6 +348,16 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/daily-peak", s.requireCameraAccess(s.handleMotionDailyPeak))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/zones", s.requireCameraAccess(s.handleMotionZonesGet))
 	s.mux.HandleFunc("PUT /api/cameras/{id}/motion/zones", s.requireCameraAccess(s.handleMotionZonesPut))
+	// State classification: config (admin) + leitura do estado corrente (cameraAccess).
+	s.mux.HandleFunc("GET /api/settings/cameras/{id}/classifiers", s.requireAdmin(s.handleStateClassifiersGet))
+	s.mux.HandleFunc("POST /api/settings/cameras/{id}/classifiers", s.requireAdmin(s.handleStateClassifierCreate))
+	s.mux.HandleFunc("PUT /api/settings/cameras/{id}/classifiers/{cid}", s.requireAdmin(s.handleStateClassifierUpdate))
+	s.mux.HandleFunc("DELETE /api/settings/cameras/{id}/classifiers/{cid}", s.requireAdmin(s.handleStateClassifierDelete))
+	s.mux.HandleFunc("POST /api/settings/cameras/{id}/classifiers/{cid}/train", s.requireAdmin(s.handleStateClassifierTrain))
+	s.mux.HandleFunc("GET /api/settings/cameras/{id}/classifiers/{cid}/samples", s.requireAdmin(s.handleStateClassifierSamplesGet))
+	s.mux.HandleFunc("POST /api/settings/cameras/{id}/classifiers/{cid}/samples", s.requireAdmin(s.handleStateClassifierSamplesSave))
+	s.mux.HandleFunc("GET /api/cameras/{id}/classifiers/{cid}/state", s.requireCameraAccess(s.handleStateClassifierState))
+	s.mux.HandleFunc("GET /api/cameras/{id}/classifiers/{cid}/history", s.requireCameraAccess(s.handleStateClassifierHistory))
 	s.mux.HandleFunc("POST /api/events/{id}/annotations", s.requireFullAuth(s.handleCreateAnnotation))
 	s.mux.HandleFunc("GET /api/events/{id}/annotations", s.requireFullAuth(s.handleListAnnotations))
 	s.mux.HandleFunc("DELETE /api/events/{id}/annotations", s.requireFullAuth(s.handleDeleteAnnotationsByEvent))
@@ -352,12 +372,18 @@ s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 	s.mux.HandleFunc("GET /api/settings/analysis/annotation-count", s.requireAdmin(s.handleAnnotationCount))
 
 	s.mux.HandleFunc("GET /api/cameras/{id}/snapshot", s.requireCameraAccess(s.handleSnapshot))
+	s.mux.HandleFunc("GET /api/cameras/{id}/event-frame", s.requireCameraAccess(s.handleEventFrame))
 	s.mux.HandleFunc("GET /api/cameras/{id}/stats", s.requireCameraAccess(s.handleCameraStats))
 	s.mux.HandleFunc("GET /api/stats", s.requireFullAuth(s.handleStats))
 
 	if s.frontend != nil {
+		// Rota exata da SPA que colide com o mount de arquivos /recordings/: sem ela, o
+		// mux do Go redireciona GET /recordings → /recordings/ (file server gated → 401
+		// no refresh/URL direta). O match exato vence o subtree e serve o index.html.
+		s.mux.Handle("GET /recordings", s.spaHandler())
 		s.mux.Handle("/", s.spaHandler())
 	}
+
 }
 
 func (s *Server) spaHandler() http.Handler {
@@ -434,6 +460,22 @@ func (s *Server) requireCameraAccess(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		next(w, r)
+	})
+}
+
+// noCachePlaylist prevents browsers from caching the HLS playlist. The
+// playlist is served by a plain file server (only Last-Modified), which makes
+// it heuristically cacheable — after a long stall the browser would keep
+// replaying a frozen playlist from disk cache instead of revalidating. Segments
+// (.ts) have unique, immutable names and stay cacheable.
+func noCachePlaylist(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".m3u8") {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
@@ -548,14 +590,14 @@ func maskRTSP(raw string) string {
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	type motionDTO struct {
-		Enabled             bool    `json:"enabled"`
-		Threshold           float64 `json:"threshold"`
-		FPS                 int     `json:"fps"`
-		CooldownSeconds     int     `json:"cooldown_seconds"`
-		CaptureWidth         int `json:"capture_width,omitempty"`
-		CaptureHeight        int `json:"capture_height,omitempty"`
-		PlaybackLeadSeconds  int `json:"playback_lead_seconds"`
-		PlaybackTrailSeconds int `json:"playback_trail_seconds"`
+		Enabled              bool    `json:"enabled"`
+		Threshold            float64 `json:"threshold"`
+		FPS                  int     `json:"fps"`
+		CooldownSeconds      int     `json:"cooldown_seconds"`
+		CaptureWidth         int     `json:"capture_width,omitempty"`
+		CaptureHeight        int     `json:"capture_height,omitempty"`
+		PlaybackLeadSeconds  int     `json:"playback_lead_seconds"`
+		PlaybackTrailSeconds int     `json:"playback_trail_seconds"`
 	}
 	type cameraDTO struct {
 		ID                string     `json:"id"`
@@ -777,7 +819,10 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	dateStr := r.URL.Query().Get("date")
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	limitStr := r.URL.Query().Get("limit")
+	limit, _ := strconv.Atoi(limitStr)
+	// limit=0 explícito → sem cap (todas as gravações do dia); ausente/inválido → default 10.
+	allRecs := limitStr != "" && limit <= 0
 	order := r.URL.Query().Get("order")
 	if order != "asc" {
 		order = "desc"
@@ -785,7 +830,7 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	if page < 1 {
 		page = 1
 	}
-	if limit < 1 {
+	if !allRecs && limit < 1 {
 		limit = 10
 	}
 
@@ -918,6 +963,15 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	})
 
 	empty := map[string]any{"recordings": []any{}, "hasMore": false}
+	if allRecs {
+		w.Header().Set("Content-Type", "application/json")
+		if len(all) == 0 {
+			json.NewEncoder(w).Encode(empty)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"recordings": all, "hasMore": false, "total": len(all)})
+		return
+	}
 	startIdx := (page - 1) * limit
 	if startIdx >= len(all) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1145,10 +1199,10 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	for i, cam := range allCameras {
 		mn, mx := motionScoreRange(s.db, s.cfg.RecordingsPath, cam.ID, todayStart, todayEnd)
 		cs := cameraStats{
-			ID:            cam.ID,
+			ID:             cam.ID,
 			TopMotionScore: mx,
 			MinMotionScore: mn,
-			MotionEnabled: cam.EffectiveMotionConfig().Enabled,
+			MotionEnabled:  cam.EffectiveMotionConfig().Enabled,
 		}
 		if t, ok := lastRec[cam.ID]; ok {
 			ts := t
@@ -1160,6 +1214,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 
 	sysMemTotal, sysMemFree := systemMemInfo()
 	cpuPct := s.cpu.percent()
+	netMbps := s.net.mbps()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
@@ -1177,6 +1232,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		"os":                          osName(),
 		"pid":                         os.Getpid(),
 		"cpu_percent":                 cpuPct,
+		"net_mbps":                    netMbps,
 		"mem_rss_bytes":               processMemRSS(),
 		"sys_mem_total_bytes":         sysMemTotal,
 		"sys_mem_free_bytes":          sysMemFree,
@@ -1690,6 +1746,28 @@ func (s *Server) handleMotionEvents(w http.ResponseWriter, r *http.Request) {
 				events = append(events, entry)
 			}
 		}
+		// Mescla as transições de estado (todos os classificadores da câmera) no
+		// mesmo feed, marcadas com kind="state". O frame já é um caminho servível
+		// absoluto; o id é negativado para não colidir com motion_events.
+		if transitions, err := db.ListCameraStateTransitions(s.db, id, dayStart, dayEnd); err == nil {
+			for _, tr := range transitions {
+				events = append(events, map[string]any{
+					"kind":            "state",
+					"id":              -tr.ID,
+					"time":            tr.ChangedAt.UTC().Format(time.RFC3339),
+					"score":           tr.Confidence,
+					"frame":           tr.FramePath,
+					"label":           tr.State,
+					"classifier_id":   tr.ClassifierID,
+					"classifier_name": tr.ClassifierName,
+				})
+			}
+		}
+		sort.Slice(events, func(i, j int) bool {
+			ti, _ := events[i]["time"].(string)
+			tj, _ := events[j]["time"].(string)
+			return ti < tj
+		})
 	} else {
 		utcDays := utcDaysInRange(dayStart, dayEnd)
 		for _, utcDay := range utcDays {

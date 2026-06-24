@@ -15,6 +15,7 @@ const CamerasSettingsPage = lazy(() => import('./pages/settings/CamerasSettingsP
 const CameraDetailSettingsPage = lazy(() => import('./pages/settings/CameraDetailSettingsPage'))
 const CameraMotionSettingsPage = lazy(() => import('./pages/settings/CameraMotionSettingsPage'))
 const CameraZonesSettingsPage = lazy(() => import('./pages/settings/CameraZonesSettingsPage'))
+const CameraStatesSettingsPage = lazy(() => import('./pages/settings/CameraStatesSettingsPage'))
 const ServerSettingsPage = lazy(() => import('./pages/settings/ServerSettingsPage'))
 const StorageSettingsPage = lazy(() => import('./pages/settings/StorageSettingsPage'))
 const SystemSettingsPage = lazy(() => import('./pages/settings/SystemSettingsPage'))
@@ -25,6 +26,9 @@ const DiscoverPage = lazy(() => import('./pages/settings/DiscoverPage'))
 const AnalysisSettingsPage = lazy(() => import('./pages/settings/AnalysisSettingsPage'))
 const CameraAnalysisSettingsPage = lazy(() => import('./pages/settings/CameraAnalysisSettingsPage'))
 const AppearanceSettingsPage = lazy(() => import('./pages/settings/AppearanceSettingsPage'))
+const PlaceholderPage = lazy(() => import('./pages/PlaceholderPage'))
+const ReportsPage = lazy(() => import('./pages/ReportsPage'))
+const RecordingsPage = lazy(() => import('./pages/RecordingsPage'))
 
 function UnauthorizedHandler() {
   const navigate = useNavigate()
@@ -66,13 +70,20 @@ export default function App() {
       <Route path="/camera/live/:id" element={<Lazy><CameraPage /></Lazy>} />
       <Route path="/camera/recording/:id/:recording_id" element={<Lazy><CameraPage /></Lazy>} />
       <Route path="/stats" element={<Lazy><StatsPage /></Lazy>} />
+      <Route path="/recordings" element={<Lazy><RecordingsPage /></Lazy>} />
+      <Route path="/events" element={<Lazy><PlaceholderPage title="Eventos" description="Visão global de eventos em construção." /></Lazy>} />
+      <Route path="/users" element={<Lazy><PlaceholderPage title="Usuários" description="Gestão de usuários em construção." /></Lazy>} />
+      <Route path="/reports" element={<Lazy><ReportsPage /></Lazy>} />
       <Route path="/notifications" element={<Lazy><NotificationsPage /></Lazy>} />
       <Route path="/settings/cameras" element={<Lazy><CamerasSettingsPage /></Lazy>} />
       <Route path="/settings/cameras/new" element={<Lazy><CamerasSettingsPage /></Lazy>} />
+      <Route path="/settings/cameras/edit/:id" element={<Lazy><CameraDetailSettingsPage /></Lazy>} />
+      <Route path="/settings/cameras/motion/:id" element={<Lazy><CameraMotionSettingsPage /></Lazy>} />
+      <Route path="/settings/cameras/zones/:id" element={<Lazy><CameraZonesSettingsPage /></Lazy>} />
+      <Route path="/settings/cameras/analysis/:id" element={<Lazy><CameraAnalysisSettingsPage /></Lazy>} />
+      <Route path="/settings/cameras/states/:id" element={<Lazy><CameraStatesSettingsPage /></Lazy>} />
+      <Route path="/settings/cameras/:id/states/edit/:cid" element={<Lazy><CameraStatesSettingsPage /></Lazy>} />
       <Route path="/settings/cameras/:id" element={<Lazy><CameraDetailSettingsPage /></Lazy>} />
-      <Route path="/settings/cameras/:id/motion" element={<Lazy><CameraMotionSettingsPage /></Lazy>} />
-      <Route path="/settings/cameras/:id/motion/zones" element={<Lazy><CameraZonesSettingsPage /></Lazy>} />
-      <Route path="/settings/cameras/:id/analysis" element={<Lazy><CameraAnalysisSettingsPage /></Lazy>} />
       <Route path="/settings/server" element={<Lazy><ServerSettingsPage /></Lazy>} />
       <Route path="/settings/storage" element={<Lazy><StorageSettingsPage /></Lazy>} />
       <Route path="/settings/system" element={<Lazy><SystemSettingsPage /></Lazy>} />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useLocation } from 'react-router-dom'
+import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import CameraForm from '../../components/CameraForm'
@@ -8,6 +8,7 @@ import DeviceInfoPanel from '../../components/DeviceInfoPanel'
 import { type CameraFormData, type Camera, formToPayload } from '../../components/cameraFormUtils'
 import { useSettings, type CameraSettings } from '../../hooks/useSettings'
 import { authHeaders, getRole } from '../../auth'
+import { Button } from '@/components/ui/button'
 
 function fmtHasAudio(v: boolean | null): string {
   if (v === null) return 'auto'
@@ -45,11 +46,16 @@ export default function CameraDetailSettingsPage() {
   const { id } = useParams<{ id: string }>()
   const isAdmin = getRole() === 'admin'
   const location = useLocation()
-  const startEditing = (location.state as { editing?: boolean } | null)?.editing ?? false
+  const navigate = useNavigate()
+  // Edição tem URL própria (/settings/cameras/edit/:id). `editing` é DERIVADO da
+  // rota — navegar p/ a URL de edição não remonta o componente, então não pode
+  // depender de useState inicial; deriva direto da location.
+  const editing = isAdmin && location.pathname.startsWith('/settings/cameras/edit/')
   const { settings, reload } = useSettings()
   const cam = settings?.cameras.find(c => c.id === id) as Camera | undefined
   const [stats, setStats] = useState<CameraStatsData | null>(null)
-  const [editing, setEditing] = useState(startEditing && isAdmin)
+
+  const stopEditing = () => { setError(null); navigate(`/settings/cameras/${id}`) }
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -83,8 +89,8 @@ export default function CameraDetailSettingsPage() {
         body: JSON.stringify(formToPayload(data)),
       })
       if (!res.ok) { setError((await res.text()).trim() || 'Erro ao atualizar câmera'); return }
-      setEditing(false)
       reload()
+      stopEditing()
     } finally { setSaving(false) }
   }
 
@@ -93,9 +99,9 @@ export default function CameraDetailSettingsPage() {
       <SettingsLayout>
         <CameraSettingsTabs id={id!} active="detail" camName={viewerCam?.name} />
         {viewerLoading ? (
-          <p className="text-gray-500 text-sm">Carregando...</p>
+          <p className="text-muted-foreground text-sm">Carregando...</p>
         ) : !viewerCam ? (
-          <p className="text-gray-500 text-sm">Câmera não encontrada.</p>
+          <p className="text-muted-foreground text-sm">Câmera não encontrada.</p>
         ) : (
           <div className="flex flex-col gap-4">
             <SettingsSection
@@ -150,25 +156,27 @@ export default function CameraDetailSettingsPage() {
       )}
 
       {!settings ? (
-        <p className="text-gray-500 text-sm">Carregando...</p>
+        <p className="text-muted-foreground text-sm">Carregando...</p>
       ) : !cam ? (
-        <p className="text-gray-500 text-sm">Câmera não encontrada.</p>
+        <p className="text-muted-foreground text-sm">Câmera não encontrada.</p>
       ) : editing ? (
         <CameraForm
           initial={cam}
           onSave={handleUpdate}
-          onCancel={() => { setEditing(false); setError(null) }}
+          onCancel={stopEditing}
           saving={saving}
         />
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex justify-end">
-            <button
-              onClick={() => { setEditing(true); setError(null) }}
-              className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded transition-colors"
+            <Button
+              id="camera-edit"
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/settings/cameras/edit/${id}`)}
             >
               Editar
-            </button>
+            </Button>
           </div>
           <SettingsSection
             title="Identificação"

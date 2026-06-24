@@ -1,0 +1,35 @@
+/* ============================================================================
+   BASE — estrutural agnóstico de tema/modo: keyframes, reset do body e cursor.
+   ============================================================================ */
+
+@keyframes thumb-flash {
+  0%, 100% { box-shadow: 0 0 0 0px rgba(66, 165, 245, 0); }
+  20%, 60% { box-shadow: 0 0 0 2px rgba(66, 165, 245, 0.9); }
+  40%, 80% { box-shadow: 0 0 0 0px rgba(66, 165, 245, 0); }
+}
+
+@keyframes footer-state-flash {
+  0% { background-color: rgba(66, 165, 245, 0.6); }
+  100% { background-color: transparent; }
+}
+
+/* Pisca a borda do thumbnail da gravação tocando. A cor vem do token
+   --filmstrip-blink (branco no dark, escuro no light — ver themes/default.css). */
+@keyframes filmstrip-blink {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 3px var(--filmstrip-blink); }
+}
+
+body {
+  margin: 0;
+  background-color: #121212;
+  color: rgba(255, 255, 255, 0.87);
+  font-family: system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button:not(:disabled),
+a,
+[role="button"] {
+  cursor: pointer;
+}

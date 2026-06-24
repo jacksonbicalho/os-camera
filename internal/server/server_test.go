@@ -8,16 +8,19 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"camera/internal/config"
 	"camera/internal/db"
 	"camera/internal/motion"
 	"camera/internal/server"
+	"camera/internal/stateclass"
 	"camera/internal/zones"
 )
 
@@ -506,6 +509,60 @@ func TestRecordingsHasMotionFromDB(t *testing.T) {
 	}
 	if resp.Recordings[1].HasMotion {
 		t.Error("20260524150000.mp4: expected has_motion=false")
+	}
+}
+
+func TestRecordingsLimitZeroReturnsAll(t *testing.T) {
+	tmpDir := t.TempDir()
+	cameraID := "cam1"
+	dateDir := filepath.Join(tmpDir, cameraID, "2026", "05", "24")
+	if err := os.MkdirAll(dateDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// 13 gravações no dia — acima do default de 10, para provar que limit=0 não capa.
+	for i := 0; i < 13; i++ {
+		name := fmt.Sprintf("202605241000%02d.mp4", i)
+		if err := os.WriteFile(filepath.Join(dateDir, name), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "admin", "pw", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.ServerConfig{RecordingsPath: tmpDir}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{{ID: cameraID}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "admin", "pw")
+
+	// limit=0 → todas as gravações do dia (sem o cap default de 10).
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/recordings?date=2026-05-24&limit=0", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Recordings []struct {
+			Filename string `json:"filename"`
+		} `json:"recordings"`
+		HasMore bool `json:"hasMore"`
+		Total   int  `json:"total"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if len(resp.Recordings) != 13 {
+		t.Fatalf("limit=0 deveria trazer todas (13), got %d", len(resp.Recordings))
+	}
+	if resp.HasMore {
+		t.Error("hasMore deveria ser false com limit=0")
+	}
+	if resp.Total != 13 {
+		t.Errorf("total = %d, want 13", resp.Total)
 	}
 }
 
@@ -1000,6 +1057,346 @@ func TestMotionEventsReturnsEventsForDate(t *testing.T) {
 	}
 }
 
+func TestMotionEventsMergesStateTransitions(t *testing.T) {
+	cameraID := "entrada"
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateCamera(database, config.CameraConfig{ID: cameraID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	// um evento de movimento e uma transição de estado no mesmo dia
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID: cameraID, OccurredAt: time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC), Score: 0.12,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cid, err := db.CreateStateClassifier(database, stateclass.Classifier{
+		CameraID: cameraID, Name: "Portão", Model: "custom-cls", Threshold: 0.8,
+		Classes: []string{"aberto", "fechado"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(
+		`INSERT INTO camera_state_history (classifier_id, state, confidence, frame_path, changed_at) VALUES (?, ?, ?, ?, ?)`,
+		cid, "aberto", 0.95, "/recordings/state_history/1/x.jpg", "2026-05-03 11:00:00",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.ServerConfig{}
+	cameras := []config.CameraConfig{{ID: cameraID}}
+	srv := server.NewServer(cfg, "UTC", cameras, discardLogger(), nil).WithDB(database)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/cameras/"+cameraID+"/motion?date=2026-05-03", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Events []map[string]any `json:"events"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(resp.Events) != 2 {
+		t.Fatalf("expected 2 events (1 motion + 1 state), got %d: %+v", len(resp.Events), resp.Events)
+	}
+	var state map[string]any
+	for _, ev := range resp.Events {
+		if ev["kind"] == "state" {
+			state = ev
+		}
+	}
+	if state == nil {
+		t.Fatalf("nenhum evento kind=state no feed: %+v", resp.Events)
+	}
+	if state["label"] != "aberto" {
+		t.Errorf("label esperado aberto, got %v", state["label"])
+	}
+	if state["frame"] != "/recordings/state_history/1/x.jpg" {
+		t.Errorf("frame esperado caminho absoluto, got %v", state["frame"])
+	}
+	if state["classifier_name"] != "Portão" {
+		t.Errorf("classifier_name esperado Portão, got %v", state["classifier_name"])
+	}
+	if state["time"] != "2026-05-03T11:00:00Z" {
+		t.Errorf("time esperado RFC3339 UTC, got %v", state["time"])
+	}
+}
+
+func TestMoments(t *testing.T) {
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	cam, err := db.CreateCamera(database, config.CameraConfig{Name: "Corredor"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// motion event + transição de estado no mesmo dia
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID: cam.ID, OccurredAt: time.Date(2026, 5, 24, 10, 0, 0, 0, time.UTC), Score: 0.4, Label: "pessoa",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cid, err := db.CreateStateClassifier(database, stateclass.Classifier{
+		CameraID: cam.ID, Name: "Portão", Model: "custom-cls", Threshold: 0.8, Classes: []string{"aberto", "fechado"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(
+		`INSERT INTO camera_state_history (classifier_id, state, confidence, frame_path, changed_at) VALUES (?, ?, ?, ?, ?)`,
+		cid, "aberto", 0.95, "/recordings/state_history/1/x.jpg", "2026-05-24 11:00:00",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := server.NewServer(config.ServerConfig{}, "UTC", []config.CameraConfig{{ID: cam.ID}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/moments?date=2026-05-24", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Moments []map[string]any `json:"moments"`
+		Total   int              `json:"total"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Total != 2 || len(resp.Moments) != 2 {
+		t.Fatalf("esperava 2 momentos, got total=%d len=%d: %+v", resp.Total, len(resp.Moments), resp.Moments)
+	}
+	var motion, state map[string]any
+	for _, m := range resp.Moments {
+		switch m["kind"] {
+		case "motion":
+			motion = m
+		case "state":
+			state = m
+		}
+	}
+	if motion == nil || state == nil {
+		t.Fatalf("faltou motion/state: %+v", resp.Moments)
+	}
+	if motion["camera_name"] != "Corredor" || motion["category"] != "pessoa" {
+		t.Errorf("motion inesperado: %+v", motion)
+	}
+	if state["category"] != "estados" || state["frame"] != "/recordings/state_history/1/x.jpg" {
+		t.Errorf("state inesperado: %+v", state)
+	}
+	// ordenado por time desc → estado (11:00) antes do motion (10:00)
+	if resp.Moments[0]["kind"] != "state" {
+		t.Errorf("esperava o mais recente (estado) primeiro: %+v", resp.Moments)
+	}
+}
+
+// TestSPARecordingsRouteServesIndex cobre a colisão entre a rota de página /recordings
+// (SPA) e o mount de arquivos /recordings/ (file server autenticado): carregar
+// /recordings direto deve servir o index.html, não 301→401.
+func TestSPARecordingsRouteServesIndex(t *testing.T) {
+	frontend := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>spa-root</title>")},
+	}
+	cfg := config.ServerConfig{RecordingsPath: t.TempDir()}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), frontend)
+
+	// /recordings (rota da SPA, sem token) → 200 com o HTML, não 301→401.
+	req := httptest.NewRequest(http.MethodGet, "/recordings", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /recordings: esperava 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "spa-root") {
+		t.Errorf("GET /recordings: esperava o HTML da SPA, got %q", w.Body.String())
+	}
+
+	// /recordings/{path} de arquivo segue gated (sem credencial → 401).
+	req = httptest.NewRequest(http.MethodGet, "/recordings/cam/2026/01/01/x.mp4", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /recordings/<file>: esperava 401 (gated), got %d", w.Code)
+	}
+
+	// outra rota da SPA continua caindo no fallback / → 200.
+	req = httptest.NewRequest(http.MethodGet, "/reports", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /reports: esperava 200, got %d", w.Code)
+	}
+}
+
+func TestGlobalRecordings(t *testing.T) {
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	cam, err := db.CreateCamera(database, config.CameraConfig{Name: "Corredor"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recPath := "/data/recordings"
+	mk := func(at time.Time, file string, motion bool) {
+		p := recPath + "/" + cam.ID + "/2026/06/23/" + file
+		if err := db.InsertRecording(database, db.Recording{CameraID: cam.ID, StartedAt: at, Path: p, HasMotion: motion}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk(time.Date(2026, 6, 23, 10, 0, 0, 0, time.UTC), "a.mp4", false)
+	mk(time.Date(2026, 6, 23, 10, 5, 0, 0, time.UTC), "b.mp4", true)
+	mk(time.Date(2026, 6, 23, 23, 50, 0, 0, time.UTC), "c.mp4", false)
+
+	srv := server.NewServer(config.ServerConfig{RecordingsPath: recPath}, "UTC", []config.CameraConfig{{ID: cam.ID}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "master", "secret")
+
+	get := func(qs string) struct {
+		Recordings []map[string]any `json:"recordings"`
+		Total      int              `json:"total"`
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/api/recordings?"+qs, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: esperava 200, got %d: %s", qs, w.Code, w.Body.String())
+		}
+		var resp struct {
+			Recordings []map[string]any `json:"recordings"`
+			Total      int              `json:"total"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("%s: decode: %v", qs, err)
+		}
+		return resp
+	}
+
+	// dia inteiro (default window=24) → 3, desc por start, com url/has_motion/camera_name
+	r := get("date=2026-06-23")
+	if r.Total != 3 || len(r.Recordings) != 3 {
+		t.Fatalf("dia inteiro esperava 3, got %d: %+v", r.Total, r.Recordings)
+	}
+	first := r.Recordings[0]
+	if first["camera_name"] != "Corredor" {
+		t.Errorf("camera_name ausente/errado: %+v", first)
+	}
+	if first["url"] != "/recordings/"+cam.ID+"/2026/06/23/c.mp4" {
+		t.Errorf("url inesperada: %v", first["url"])
+	}
+	if r.Recordings[2]["url"] != "/recordings/"+cam.ID+"/2026/06/23/a.mp4" {
+		t.Errorf("ordem desc incorreta: %+v", r.Recordings)
+	}
+
+	// window=1 (dia passado → âncora = fim do dia) → só a de 23:50
+	if w := get("date=2026-06-23&window=1"); w.Total != 1 || w.Recordings[0]["url"] != "/recordings/"+cam.ID+"/2026/06/23/c.mp4" {
+		t.Errorf("window=1 esperava só c.mp4, got %d: %+v", w.Total, w.Recordings)
+	}
+
+	// motion_only → só b.mp4
+	if m := get("date=2026-06-23&motion_only=true"); m.Total != 1 || m.Recordings[0]["url"] != "/recordings/"+cam.ID+"/2026/06/23/b.mp4" {
+		t.Errorf("motion_only esperava só b.mp4, got %d: %+v", m.Total, m.Recordings)
+	}
+}
+
+func TestMomentsSearchQuery(t *testing.T) {
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	cam, err := db.CreateCamera(database, config.CameraConfig{Name: "Corredor"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// dois eventos de movimento com labels distintas + uma transição de estado
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID: cam.ID, OccurredAt: time.Date(2026, 5, 24, 10, 0, 0, 0, time.UTC), Score: 0.4, Label: "jardim",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID: cam.ID, OccurredAt: time.Date(2026, 5, 24, 10, 5, 0, 0, time.UTC), Score: 0.4, Label: "pessoa na garagem",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cid, err := db.CreateStateClassifier(database, stateclass.Classifier{
+		CameraID: cam.ID, Name: "Portão", Model: "custom-cls", Threshold: 0.8, Classes: []string{"aberto", "fechado"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(
+		`INSERT INTO camera_state_history (classifier_id, state, confidence, frame_path, changed_at) VALUES (?, ?, ?, ?, ?)`,
+		cid, "aberto", 0.95, "/recordings/state_history/1/x.jpg", "2026-05-24 11:00:00",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := server.NewServer(config.ServerConfig{}, "UTC", []config.CameraConfig{{ID: cam.ID}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "master", "secret")
+
+	query := func(q string) struct {
+		Moments []map[string]any `json:"moments"`
+		Total   int              `json:"total"`
+		HasMore bool             `json:"hasMore"`
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/api/moments?date=2026-05-24&q="+url.QueryEscape(q), nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("q=%q: expected 200, got %d: %s", q, w.Code, w.Body.String())
+		}
+		var resp struct {
+			Moments []map[string]any `json:"moments"`
+			Total   int              `json:"total"`
+			HasMore bool             `json:"hasMore"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("q=%q: decode: %v", q, err)
+		}
+		return resp
+	}
+
+	// casa pela label (case-insensitive, substring)
+	if r := query("JARDIM"); r.Total != 1 || len(r.Moments) != 1 || r.Moments[0]["label"] != "jardim" {
+		t.Errorf("q=JARDIM esperava 1 momento jardim, got total=%d: %+v", r.Total, r.Moments)
+	}
+	// casa pelo nome da categoria → "pessoa na garagem" tem category=pessoa
+	if r := query("pessoa"); r.Total != 1 || r.Moments[0]["category"] != "pessoa" {
+		t.Errorf("q=pessoa esperava 1 momento pessoa, got total=%d: %+v", r.Total, r.Moments)
+	}
+	// casa o estado pelo label
+	if r := query("aberto"); r.Total != 1 || r.Moments[0]["kind"] != "state" {
+		t.Errorf("q=aberto esperava 1 estado, got total=%d: %+v", r.Total, r.Moments)
+	}
+	// casa pelo nome da categoria "estados"
+	if r := query("estados"); r.Total != 1 || r.Moments[0]["category"] != "estados" {
+		t.Errorf("q=estados esperava 1 momento de estado, got total=%d: %+v", r.Total, r.Moments)
+	}
+	// sem casamento → vazio
+	if r := query("inexistente"); r.Total != 0 || len(r.Moments) != 0 {
+		t.Errorf("q=inexistente esperava 0, got total=%d: %+v", r.Total, r.Moments)
+	}
+	// q vazio → todos (sem regressão)
+	if r := query(""); r.Total != 3 {
+		t.Errorf("q vazio esperava 3 momentos, got total=%d", r.Total)
+	}
+}
+
 func TestMotionEventsRequiresAuth(t *testing.T) {
 	cfg := config.ServerConfig{}
 	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
@@ -1390,8 +1787,8 @@ func TestGetSettingsReturnsFullConfig(t *testing.T) {
 	if resp.Defaults.ChunkDuration != "5m" {
 		t.Errorf("expected chunk_duration 5m, got %q", resp.Defaults.ChunkDuration)
 	}
-	if resp.Defaults.ReconnectInterval != "10s" {
-		t.Errorf("expected reconnect_interval 10s, got %q", resp.Defaults.ReconnectInterval)
+	if resp.Defaults.ReconnectInterval != "2s" {
+		t.Errorf("expected reconnect_interval 2s, got %q", resp.Defaults.ReconnectInterval)
 	}
 	if len(resp.Cameras) != 2 {
 		t.Fatalf("expected 2 cameras, got %d", len(resp.Cameras))
@@ -2270,6 +2667,33 @@ func TestGetStatsIncludesSysInfo(t *testing.T) {
 	}
 	if resp.Goroutines <= 0 {
 		t.Errorf("expected goroutines > 0, got %d", resp.Goroutines)
+	}
+}
+
+func TestGetStatsIncludesNetMbps(t *testing.T) {
+	cfg := config.ServerConfig{}
+	srv := server.NewServer(cfg, "UTC", []config.CameraConfig{}, discardLogger(), nil)
+	srv = withTestUsers(t, srv)
+
+	token := loginAndGetToken(t, srv, "master", "secret")
+	req := httptest.NewRequest(http.MethodGet, "/api/stats", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	v, ok := payload["net_mbps"]
+	if !ok {
+		t.Fatal("expected stats payload to include net_mbps")
+	}
+	if _, isNum := v.(float64); !isNum {
+		t.Errorf("expected net_mbps to be a number, got %T", v)
 	}
 }
 

@@ -4,16 +4,20 @@ set -e
 REPO="jacksonbicalho/os-camera"
 BINARY_NAME="camera"
 
-# Defaults — sobrescritos por flags ou por install.conf (na desinstalação)
-INSTALL_DIR="/usr/local/bin"
-CONFIG_DIR="/etc/camera"
-DATA_DIR="/var/camera/data/recordings"
-SEGMENTS_DIR="/var/camera/data/hls"
+# Caminhos: vazio = resolvido por modo (sistema vs usuário) após o parse das flags.
+INSTALL_DIR=""
+CONFIG_DIR=""
+DATA_DIR=""
+SEGMENTS_DIR=""
+STATE_DIR=""
 SERVICE_NAME="camera"
 
-# Caminhos derivados (recalculados após parse de flags)
-STATE_DIR="/var/camera"
-STATE_FILE="${STATE_DIR}/install.conf"
+# Modos (flags)
+USER_MODE=0       # --user (ou auto quando não-root e sem paths de sistema explícitos)
+NO_SERVICE=0      # --no-service (não cria serviço)
+SKIP_DEPS=0       # --skip-deps (não instala ffmpeg)
+LOCAL_BINARY=""   # --binary=PATH (instala de arquivo local, sem download)
+SERVICE_MODE=""   # resolvido: "systemd" | "none"
 
 # --- helpers ---
 
@@ -22,10 +26,12 @@ ok()    { printf '\033[1;32m ok \033[0m%s\n' "$*"; }
 err()   { printf '\033[1;31mERR \033[0m%s\n' "$*" >&2; exit 1; }
 warn()  { printf '\033[1;33mWRN \033[0m%s\n' "$*" >&2; }
 
-require_root() {
-    if [ "$(id -u)" -ne 0 ]; then
-        err "Este script precisa ser executado como root. Use: sudo $0 $*"
-    fi
+is_root()      { [ "$(id -u)" -eq 0 ]; }
+have_systemd() { command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; }
+is_termux() {
+    [ -n "${TERMUX_VERSION:-}" ] && return 0
+    case "${PREFIX:-}" in *com.termux*) return 0 ;; esac
+    return 1
 }
 
 require_cmd() {
@@ -49,44 +55,215 @@ latest_version() {
         | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
 }
 
+# Primeiro gerenciador de pacotes encontrado (vazio se nenhum).
+detect_pm() {
+    for pm in apt-get dnf yum pacman zypper apk pkg; do
+        if command -v "$pm" >/dev/null 2>&1; then echo "$pm"; return; fi
+    done
+}
+
+# Comando (texto) para instalar ffmpeg num PM — usado nas instruções quando não podemos
+# instalar sozinhos. `pkg` (Termux) não usa sudo; os demais sim.
+ffmpeg_hint() {
+    case "$1" in
+        apt-get) echo "sudo apt install ffmpeg" ;;
+        dnf)     echo "sudo dnf install ffmpeg" ;;
+        yum)     echo "sudo yum install ffmpeg" ;;
+        pacman)  echo "sudo pacman -S ffmpeg" ;;
+        zypper)  echo "sudo zypper install ffmpeg" ;;
+        apk)     echo "sudo apk add ffmpeg" ;;
+        pkg)     echo "pkg install ffmpeg" ;;
+        *)       echo "instale o pacote 'ffmpeg' pelo gerenciador do seu sistema" ;;
+    esac
+}
+
+install_ffmpeg() {
+    case "$1" in
+        apt-get) apt-get update && apt-get install -y ffmpeg ;;
+        dnf)     dnf install -y ffmpeg ;;
+        yum)     yum install -y ffmpeg ;;
+        pacman)  pacman -Sy --noconfirm ffmpeg ;;
+        zypper)  zypper install -y ffmpeg ;;
+        apk)     apk add --no-cache ffmpeg ;;
+        pkg)     pkg install -y ffmpeg ;;
+        *)       return 1 ;;
+    esac
+}
+
+# Garante ffmpeg/ffprobe: instala quando possível, senão instrui e aborta.
+ensure_ffmpeg() {
+    if command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1; then
+        return
+    fi
+    if [ "$SKIP_DEPS" = "1" ]; then
+        warn "ffmpeg/ffprobe ausentes — --skip-deps: pulando instalação (a app não roda sem ffmpeg)."
+        return
+    fi
+    pm="$(detect_pm)"
+    # Pode instalar: Termux (pkg, sem root) ou PM de sistema sendo root.
+    if [ "$pm" = "pkg" ] || { [ -n "$pm" ] && is_root; }; then
+        info "ffmpeg ausente — instalando via ${pm} ..."
+        install_ffmpeg "$pm" || err "Falha ao instalar ffmpeg via ${pm}. Instale manualmente: $(ffmpeg_hint "$pm")"
+        command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1 \
+            || err "ffmpeg instalado mas ffprobe não foi encontrado. Verifique o pacote."
+        ok "ffmpeg instalado"
+        return
+    fi
+    if [ -n "$pm" ]; then
+        err "ffmpeg/ffprobe ausentes. Instale e rode de novo: $(ffmpeg_hint "$pm")"
+    fi
+    err "ffmpeg/ffprobe ausentes e nenhum gerenciador de pacotes detectado. Instale 'ffmpeg' manualmente."
+}
+
+# Garante o termux-services (para autostart via runit). Best-effort: retorna não-zero se
+# não conseguir, e o chamador segue criando o serviço para uso posterior.
+ensure_termux_services() {
+    command -v sv-enable >/dev/null 2>&1 && return 0
+    if [ "$SKIP_DEPS" = "1" ]; then
+        warn "termux-services ausente — --skip-deps: pulando (autostart fica pendente)."
+        return 1
+    fi
+    info "Instalando termux-services (autostart) via pkg ..."
+    pkg install -y termux-services >/dev/null 2>&1 || {
+        warn "Falha ao instalar termux-services. Rode: pkg install termux-services"
+        return 1
+    }
+    command -v sv-enable >/dev/null 2>&1 || {
+        warn "termux-services instalado — reinicie o Termux e rode: sv-enable ${SERVICE_NAME}"
+        return 1
+    }
+    return 0
+}
+
+# Resolve os caminhos conforme o modo (sistema vs usuário). Flags explícitas têm
+# precedência; o resto recebe o default do modo.
+resolve_mode() {
+    if [ "$USER_MODE" = "0" ] && ! is_root; then
+        # Sem root e sem nenhum path de sistema explícito → modo usuário automático.
+        if [ -z "$INSTALL_DIR" ] && [ -z "$CONFIG_DIR" ] && [ -z "$DATA_DIR" ] \
+            && [ -z "$SEGMENTS_DIR" ] && [ -z "$STATE_DIR" ]; then
+            USER_MODE=1
+            info "Sem root detectado → instalando em modo usuário (~/.local)."
+        fi
+    fi
+
+    if [ "$USER_MODE" = "1" ]; then
+        # No Termux, $PREFIX/bin já está no PATH (e não precisa de root); fora dele, ~/.local/bin.
+        if is_termux; then
+            : "${INSTALL_DIR:=$PREFIX/bin}"
+        else
+            : "${INSTALL_DIR:=$HOME/.local/bin}"
+        fi
+        : "${CONFIG_DIR:=$HOME/.config/camera}"
+        : "${STATE_DIR:=$HOME/.local/share/camera}"
+        : "${DATA_DIR:=$STATE_DIR/data/recordings}"
+        : "${SEGMENTS_DIR:=$STATE_DIR/data/hls}"
+    else
+        : "${INSTALL_DIR:=/usr/local/bin}"
+        : "${CONFIG_DIR:=/etc/camera}"
+        : "${STATE_DIR:=/var/camera}"
+        : "${DATA_DIR:=/var/camera/data/recordings}"
+        : "${SEGMENTS_DIR:=/var/camera/data/hls}"
+    fi
+}
+
+resolve_service() {
+    if [ "$NO_SERVICE" = "1" ]; then
+        SERVICE_MODE="none"
+    elif is_termux; then
+        SERVICE_MODE="runit"   # autostart via termux-services (sem systemd)
+    elif [ "$USER_MODE" = "1" ] || ! have_systemd; then
+        SERVICE_MODE="none"
+    else
+        SERVICE_MODE="systemd"
+    fi
+}
+
+# Sem root: exige escrita nos diretórios-alvo e proíbe serviço systemd.
+ensure_perms() {
+    if is_root; then return; fi
+    for d in "$INSTALL_DIR" "$CONFIG_DIR" "$STATE_DIR"; do
+        parent="$d"
+        while [ ! -d "$parent" ]; do parent="$(dirname "$parent")"; done
+        [ -w "$parent" ] || err "Sem permissão de escrita em ${d}. Rode com sudo, ou use --user."
+    done
+    if [ "$SERVICE_MODE" = "systemd" ]; then
+        err "Serviço systemd exige root. Rode com sudo, ou use --no-service / --user."
+    fi
+}
+
 derived_paths() {
     SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
     CONFIG_FILE="${CONFIG_DIR}/${BINARY_NAME}.yaml"
     SHARE_DIR="${INSTALL_DIR%/bin}/share/${BINARY_NAME}"
     UNINSTALL_BIN="${INSTALL_DIR}/${BINARY_NAME}-uninstall"
     DB_PATH="${STATE_DIR}/data/camera.db"
+    STATE_FILE="${STATE_DIR}/install.conf"
+    RUNIT_DIR="${PREFIX:-}/var/service/${SERVICE_NAME}"
+}
+
+# Autostart no Termux via termux-services (runit). Cria o serviço e habilita; tolera o
+# runsvdir ainda não estar ativo (inicia no próximo login do Termux).
+setup_runit_service() {
+    info "Configurando autostart (termux-services) em ${RUNIT_DIR} ..."
+    ensure_termux_services || warn "Autostart pendente — instale termux-services e rode 'sv-enable ${SERVICE_NAME}'."
+    mkdir -p "$RUNIT_DIR"
+    cat > "${RUNIT_DIR}/run" <<RUN
+#!${PREFIX}/bin/sh
+exec ${INSTALL_DIR}/${BINARY_NAME} --config ${CONFIG_FILE} 2>&1
+RUN
+    chmod +x "${RUNIT_DIR}/run"
+    if command -v sv-enable >/dev/null 2>&1; then
+        sv-enable "$SERVICE_NAME" 2>/dev/null || true
+        if [ "$config_ready" = "1" ] && command -v sv >/dev/null 2>&1; then
+            sv up "$SERVICE_NAME" 2>/dev/null || warn "Serviço habilitado — inicia no próximo Termux (runsvdir)."
+        fi
+        ok "Autostart habilitado (termux-services)"
+    fi
+}
+
+# Coloca o binário a instalar em $TMP_BIN (download da release ou cópia local).
+acquire_binary() {
+    if [ -n "$LOCAL_BINARY" ]; then
+        [ -f "$LOCAL_BINARY" ] || err "Binário local não encontrado: ${LOCAL_BINARY}"
+        info "Usando binário local ${LOCAL_BINARY} ..."
+        TMP_BIN="$(mktemp)"
+        cp "$LOCAL_BINARY" "$TMP_BIN"
+    else
+        require_cmd curl
+        os="$(uname -s)"
+        [ "$os" = "Linux" ] || err "Sistema operacional não suportado: $os (somente Linux)"
+        target="$(detect_arch)"
+        ok "Alvo: $target"
+        info "Obtendo versão mais recente..."
+        version="$(latest_version)"
+        [ -n "$version" ] || err "Não foi possível obter a versão mais recente do GitHub."
+        ok "Versão: $version"
+        download_url="https://github.com/${REPO}/releases/download/${version}/${BINARY_NAME}-${target}"
+        info "Baixando $download_url ..."
+        TMP_BIN="$(mktemp)"
+        curl -fsSL --progress-bar "$download_url" -o "$TMP_BIN"
+    fi
+    chmod +x "$TMP_BIN"
 }
 
 # --- install ---
 
 do_install() {
-    require_cmd curl
-    require_cmd systemctl
-    require_cmd ffmpeg
-    require_cmd ffprobe
+    resolve_mode
+    resolve_service
+    ensure_perms
+    [ "$SERVICE_MODE" = "systemd" ] && require_cmd systemctl
+    ensure_ffmpeg
 
     derived_paths
 
     info "Detectando sistema..."
-    os="$(uname -s)"
-    [ "$os" = "Linux" ] || err "Sistema operacional não suportado: $os (somente Linux)"
-    target="$(detect_arch)"
-    ok "Alvo: $target"
-
-    info "Obtendo versão mais recente..."
-    version="$(latest_version)"
-    [ -n "$version" ] || err "Não foi possível obter a versão mais recente do GitHub."
-    ok "Versão: $version"
-
-    download_url="https://github.com/${REPO}/releases/download/${version}/${BINARY_NAME}-${target}"
-    info "Baixando $download_url ..."
-    tmp="$(mktemp)"
-    curl -fsSL --progress-bar "$download_url" -o "$tmp"
-    chmod +x "$tmp"
+    acquire_binary
 
     info "Instalando em ${INSTALL_DIR}/${BINARY_NAME} ..."
     mkdir -p "$INSTALL_DIR"
-    mv "$tmp" "${INSTALL_DIR}/${BINARY_NAME}"
+    mv "$TMP_BIN" "${INSTALL_DIR}/${BINARY_NAME}"
     ok "Binário instalado"
 
     info "Criando diretório de configuração ${CONFIG_DIR} ..."
@@ -99,7 +276,6 @@ do_install() {
     else
         info "Iniciando assistente de configuração..."
         printf '\n'
-        # Tenta rodar o wizard interativamente.
         # curl | bash não tem stdin TTY, mas /dev/tty permite leitura do terminal mesmo assim.
         if [ -t 0 ]; then
             "${INSTALL_DIR}/${BINARY_NAME}" init --output "${CONFIG_FILE}" && config_ready=1 || true
@@ -110,7 +286,6 @@ do_install() {
     fi
 
     if [ "$config_ready" = "0" ]; then
-        # Fallback: gerar placeholder com esquema atual
         cat > "$CONFIG_FILE" <<YAML
 # Configuração gerada pelo instalador. Edite conforme necessário.
 # Execute: camera init --output <este arquivo>
@@ -119,7 +294,7 @@ do_install() {
 debug: false
 timezone: UTC   # ex: America/Sao_Paulo
 
-db_path: ${STATE_DIR}/data/camera.db  # banco SQLite (criado automaticamente)
+db_path: ${DB_PATH}  # banco SQLite (criado automaticamente)
 
 log:
   output: stdout   # stdout | file
@@ -147,8 +322,9 @@ YAML
         ok "Config mínimo criado em ${CONFIG_FILE}"
     fi
 
-    info "Criando serviço systemd ${SERVICE_FILE} ..."
-    cat > "$SERVICE_FILE" <<UNIT
+    if [ "$SERVICE_MODE" = "systemd" ]; then
+        info "Criando serviço systemd ${SERVICE_FILE} ..."
+        cat > "$SERVICE_FILE" <<UNIT
 [Unit]
 Description=Camera monitoring service
 After=network.target
@@ -165,15 +341,18 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 UNIT
-
-    systemctl daemon-reload
-    systemctl enable "$SERVICE_NAME"
-
-    if [ "$config_ready" = "1" ]; then
-        systemctl start "$SERVICE_NAME"
-        ok "Serviço iniciado"
+        systemctl daemon-reload
+        systemctl enable "$SERVICE_NAME"
+        if [ "$config_ready" = "1" ]; then
+            systemctl start "$SERVICE_NAME"
+            ok "Serviço iniciado"
+        else
+            warn "Serviço habilitado mas NÃO iniciado — configure ${CONFIG_FILE} e execute: systemctl start ${SERVICE_NAME}"
+        fi
+    elif [ "$SERVICE_MODE" = "runit" ]; then
+        setup_runit_service
     else
-        warn "Serviço habilitado mas NÃO iniciado — configure ${CONFIG_FILE} e execute: systemctl start ${SERVICE_NAME}"
+        info "Sem serviço (modo --no-service/usuário ou sem systemd) — você roda o binário direto."
     fi
 
     # --- salvar estado e instalar desinstalador ---
@@ -188,6 +367,9 @@ SEGMENTS_DIR=${SEGMENTS_DIR}
 DB_PATH=${DB_PATH}
 SERVICE_NAME=${SERVICE_NAME}
 SERVICE_FILE=${SERVICE_FILE}
+SERVICE_MODE=${SERVICE_MODE}
+RUNIT_DIR=${RUNIT_DIR}
+USER_MODE=${USER_MODE}
 CONFIG_FILE=${CONFIG_FILE}
 SHARE_DIR=${SHARE_DIR}
 UNINSTALL_BIN=${UNINSTALL_BIN}
@@ -196,13 +378,12 @@ CONF
 
     info "Instalando desinstalador em ${SHARE_DIR} ..."
     mkdir -p "$SHARE_DIR"
-
-    # Se o script foi executado via "curl | bash", $0 é /dev/stdin — baixar uma cópia
     if [ -f "$0" ] && [ "$0" != "/dev/stdin" ]; then
         cp "$0" "${SHARE_DIR}/install.sh"
     else
         script_url="https://raw.githubusercontent.com/${REPO}/master/scripts/install.sh"
         info "Baixando cópia do instalador de ${script_url} ..."
+        require_cmd curl
         curl -fsSL "$script_url" -o "${SHARE_DIR}/install.sh"
     fi
     chmod +x "${SHARE_DIR}/install.sh"
@@ -212,23 +393,34 @@ CONF
 exec "${SHARE_DIR}/install.sh" --uninstall "\$@"
 WRAPPER
     chmod +x "$UNINSTALL_BIN"
-    ok "Desinstalador disponível: ${BINARY_NAME}-uninstall"
+    ok "Desinstalador disponível: ${UNINSTALL_BIN}"
 
     printf '\n'
     info "Instalação concluída!"
-    if [ "$config_ready" = "0" ]; then
-        printf '  Configurar:     %s init --output %s\n' "$BINARY_NAME" "$CONFIG_FILE"
-        printf '  Iniciar:        systemctl start %s\n'    "$SERVICE_NAME"
+    printf '  Editar config:  %s\n' "$CONFIG_FILE"
+    if [ "$SERVICE_MODE" = "systemd" ]; then
+        [ "$config_ready" = "0" ] && printf '  Configurar:     %s init --output %s\n' "$BINARY_NAME" "$CONFIG_FILE"
+        printf '  Iniciar:        systemctl start %s\n'   "$SERVICE_NAME"
+        printf '  Reiniciar:      systemctl restart %s\n' "$SERVICE_NAME"
+        printf '  Ver logs:       journalctl -u %s -f\n'  "$SERVICE_NAME"
+        printf '  Status:         systemctl status %s\n'  "$SERVICE_NAME"
+    elif [ "$SERVICE_MODE" = "runit" ]; then
+        [ "$config_ready" = "0" ] && printf '  Configurar:     %s init --output %s\n' "${INSTALL_DIR}/${BINARY_NAME}" "$CONFIG_FILE"
+        printf '  Iniciar agora:  sv up %s\n'   "$SERVICE_NAME"
+        printf '  Parar:          sv down %s\n' "$SERVICE_NAME"
+        printf '  Status:         sv status %s\n' "$SERVICE_NAME"
+        printf '  (Autostart ao abrir o Termux via termux-services; boot do aparelho = app Termux:Boot.)\n'
+    else
+        [ "$config_ready" = "0" ] && printf '  Configurar:     %s init --output %s\n' "${INSTALL_DIR}/${BINARY_NAME}" "$CONFIG_FILE"
+        printf '  Rodar:          %s --config %s\n' "${INSTALL_DIR}/${BINARY_NAME}" "$CONFIG_FILE"
+        printf '  (Dica: rode em background com nohup/tmux.)\n'
+        case ":$PATH:" in
+            *":${INSTALL_DIR}:"*) ;;
+            *) printf '  Atenção: %s não está no PATH — adicione ao seu shell rc.\n' "$INSTALL_DIR" ;;
+        esac
     fi
-    printf '  Editar config:  %s\n'                    "$CONFIG_FILE"
-    printf '  Reiniciar:      systemctl restart %s\n'  "$SERVICE_NAME"
-    printf '  Ver logs:       journalctl -u %s -f\n'   "$SERVICE_NAME"
-    printf '  Status:         systemctl status %s\n'   "$SERVICE_NAME"
-    printf '  Desinstalar:    %s-uninstall\n'          "$BINARY_NAME"
+    printf '  Desinstalar:    %s-uninstall\n' "$BINARY_NAME"
     printf '\n'
-    if [ "$config_ready" = "0" ]; then
-        warn "Execute '${BINARY_NAME} init --output ${CONFIG_FILE}' para configurar suas câmeras antes de iniciar o serviço."
-    fi
 }
 
 # --- uninstall ---
@@ -236,34 +428,42 @@ WRAPPER
 do_uninstall() {
     remove_config=0
     remove_data=0
-
     for arg in "$@"; do
         case "$arg" in
             --remove-config) remove_config=1 ;;
             --remove-data)   remove_data=1   ;;
-            --uninstall)     ;;  # ignorado aqui, já processado no entrypoint
+            --uninstall)     ;;
         esac
     done
 
-    derived_paths
+    [ -z "$SERVICE_MODE" ] && SERVICE_MODE="none"
 
-    require_cmd systemctl
-
-    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
-        info "Parando serviço ${SERVICE_NAME} ..."
-        systemctl stop "$SERVICE_NAME"
-    fi
-
-    if systemctl is-enabled --quiet "$SERVICE_NAME" 2>/dev/null; then
-        info "Desabilitando serviço ${SERVICE_NAME} ..."
-        systemctl disable "$SERVICE_NAME"
-    fi
-
-    if [ -f "$SERVICE_FILE" ]; then
-        info "Removendo ${SERVICE_FILE} ..."
-        rm -f "$SERVICE_FILE"
-        systemctl daemon-reload
-        ok "Serviço removido"
+    if [ "$SERVICE_MODE" = "systemd" ]; then
+        require_cmd systemctl
+        if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+            info "Parando serviço ${SERVICE_NAME} ..."
+            systemctl stop "$SERVICE_NAME"
+        fi
+        if systemctl is-enabled --quiet "$SERVICE_NAME" 2>/dev/null; then
+            info "Desabilitando serviço ${SERVICE_NAME} ..."
+            systemctl disable "$SERVICE_NAME"
+        fi
+        if [ -f "$SERVICE_FILE" ]; then
+            info "Removendo ${SERVICE_FILE} ..."
+            rm -f "$SERVICE_FILE"
+            systemctl daemon-reload
+            ok "Serviço removido"
+        fi
+    elif [ "$SERVICE_MODE" = "runit" ]; then
+        if command -v sv-disable >/dev/null 2>&1; then
+            sv down "$SERVICE_NAME" 2>/dev/null || true
+            sv-disable "$SERVICE_NAME" 2>/dev/null || true
+        fi
+        if [ -n "${RUNIT_DIR:-}" ] && [ -d "$RUNIT_DIR" ]; then
+            info "Removendo serviço termux-services ${RUNIT_DIR} ..."
+            rm -rf "$RUNIT_DIR"
+            ok "Serviço removido"
+        fi
     fi
 
     if [ -f "${INSTALL_DIR}/${BINARY_NAME}" ]; then
@@ -272,10 +472,7 @@ do_uninstall() {
         ok "Binário removido"
     fi
 
-    if [ -f "$UNINSTALL_BIN" ]; then
-        info "Removendo ${UNINSTALL_BIN} ..."
-        rm -f "$UNINSTALL_BIN"
-    fi
+    [ -f "$UNINSTALL_BIN" ] && { info "Removendo ${UNINSTALL_BIN} ..."; rm -f "$UNINSTALL_BIN"; }
 
     if [ -d "$SHARE_DIR" ]; then
         info "Removendo ${SHARE_DIR} ..."
@@ -296,21 +493,9 @@ do_uninstall() {
     fi
 
     if [ "$remove_data" = "1" ]; then
-        if [ -d "$DATA_DIR" ]; then
-            info "Removendo gravações ${DATA_DIR} ..."
-            rm -rf "$DATA_DIR"
-            ok "Gravações removidas"
-        fi
-        if [ -d "$SEGMENTS_DIR" ]; then
-            info "Removendo segmentos HLS ${SEGMENTS_DIR} ..."
-            rm -rf "$SEGMENTS_DIR"
-            ok "Segmentos HLS removidos"
-        fi
-        if [ -f "$DB_PATH" ]; then
-            info "Removendo banco de dados ${DB_PATH} ..."
-            rm -f "$DB_PATH"
-            ok "Banco de dados removido"
-        fi
+        [ -d "$DATA_DIR" ]     && { info "Removendo gravações ${DATA_DIR} ...";    rm -rf "$DATA_DIR";     ok "Gravações removidas"; }
+        [ -d "$SEGMENTS_DIR" ] && { info "Removendo segmentos HLS ${SEGMENTS_DIR} ..."; rm -rf "$SEGMENTS_DIR"; ok "Segmentos HLS removidos"; }
+        [ -f "$DB_PATH" ]      && { info "Removendo banco ${DB_PATH} ...";          rm -f "$DB_PATH";       ok "Banco de dados removido"; }
     fi
 
     printf '\n'
@@ -321,9 +506,9 @@ do_uninstall() {
     fi
     if [ "$remove_data" = "0" ]; then
         data_kept=0
-        [ -d "$DATA_DIR" ]    && data_kept=1
+        [ -d "$DATA_DIR" ]     && data_kept=1
         [ -d "$SEGMENTS_DIR" ] && data_kept=1
-        [ -f "$DB_PATH" ]     && data_kept=1
+        [ -f "$DB_PATH" ]      && data_kept=1
         if [ "$data_kept" = "1" ]; then
             printf '  Dados mantidos:  gravações, segmentos HLS e banco de dados\n'
             printf '  Para remover:    %s-uninstall --remove-data\n' "$BINARY_NAME"
@@ -334,41 +519,67 @@ do_uninstall() {
 # --- entrypoint ---
 
 UNINSTALL=0
-
-# Parse flags — aceita qualquer ordem
 REST=""
 for arg in "$@"; do
     case "$arg" in
-        --uninstall)     UNINSTALL=1 ;;
-        --remove-config) ;;  # repassado para do_uninstall via $@
-        --remove-data)   ;;  # idem
+        --uninstall)       UNINSTALL=1 ;;
+        --remove-config)   ;;
+        --remove-data)     ;;
+        --user)            USER_MODE=1 ;;
+        --no-service)      NO_SERVICE=1 ;;
+        --skip-deps)       SKIP_DEPS=1 ;;
+        --binary=*)        LOCAL_BINARY="${arg#--binary=}" ;;
         --install-dir=*)   INSTALL_DIR="${arg#--install-dir=}"   ;;
         --config-dir=*)    CONFIG_DIR="${arg#--config-dir=}"     ;;
         --data-dir=*)      DATA_DIR="${arg#--data-dir=}"         ;;
         --segments-dir=*)  SEGMENTS_DIR="${arg#--segments-dir=}" ;;
+        --state-dir=*)     STATE_DIR="${arg#--state-dir=}"       ;;
         --service-name=*)  SERVICE_NAME="${arg#--service-name=}" ;;
-        --install-dir)     REST="install-dir"   ;;
-        --config-dir)      REST="config-dir"    ;;
-        --data-dir)        REST="data-dir"      ;;
-        --segments-dir)    REST="segments-dir"  ;;
-        --service-name)    REST="service-name"  ;;
+        --binary)          REST="binary"       ;;
+        --install-dir)     REST="install-dir"  ;;
+        --config-dir)      REST="config-dir"   ;;
+        --data-dir)        REST="data-dir"     ;;
+        --segments-dir)    REST="segments-dir" ;;
+        --state-dir)       REST="state-dir"    ;;
+        --service-name)    REST="service-name" ;;
         --help|-h)
-            printf 'Uso:\n'
-            printf '  instalar:   curl -fsSL <url>/install.sh -o /tmp/install.sh && sudo bash /tmp/install.sh\n'
-            printf '  alternativa: git clone --depth 1 <repo> /tmp/cam && sudo bash /tmp/cam/scripts/install.sh\n'
-            printf '  opções:     --install-dir=DIR  --config-dir=DIR  --data-dir=DIR  --segments-dir=DIR  --service-name=NAME\n'
-            printf '  desinstalar (local, sem internet):\n'
-            printf '              camera-uninstall [--remove-config] [--remove-data]\n'
+            cat <<USAGE
+Uso: install.sh [opções]
+
+Instala em modo SISTEMA (root, serviço systemd) por padrão. Sem root, cai em modo
+USUÁRIO automaticamente (~/.local, sem serviço).
+
+Opções:
+  --user                Instala no diretório do usuário (~/.local/bin, ~/.config/camera),
+                        sem root e sem serviço.
+  --no-service          Não cria serviço (mesmo com systemd) — você roda o binário.
+  --skip-deps           Não tenta instalar o ffmpeg.
+  --binary=ARQUIVO      Instala a partir de um binário local (sem download / offline).
+  --install-dir=DIR     Diretório do binário.
+  --config-dir=DIR      Diretório da configuração.
+  --data-dir=DIR        Diretório das gravações.
+  --segments-dir=DIR    Diretório dos segmentos HLS.
+  --state-dir=DIR       Diretório de estado/banco.
+  --service-name=NOME   Nome do serviço systemd.
+
+No Termux (Android): instala em \$PREFIX/bin e configura autostart via termux-services
+(autostart ao abrir o Termux). Use --no-service para pular.
+
+Desinstalar (local, sem internet):
+  camera-uninstall [--remove-config] [--remove-data]
+USAGE
             exit 0
             ;;
         *)
             if [ -n "$REST" ]; then
                 case "$REST" in
-                    install-dir)   INSTALL_DIR="$arg"   ;;
-                    config-dir)    CONFIG_DIR="$arg"    ;;
-                    data-dir)      DATA_DIR="$arg"      ;;
-                    segments-dir)  SEGMENTS_DIR="$arg"  ;;
-                    service-name)  SERVICE_NAME="$arg"  ;;
+                    binary)        LOCAL_BINARY="$arg" ;;
+                    install-dir)   INSTALL_DIR="$arg"  ;;
+                    config-dir)    CONFIG_DIR="$arg"   ;;
+                    data-dir)      DATA_DIR="$arg"     ;;
+                    segments-dir)  SEGMENTS_DIR="$arg" ;;
+                    state-dir)     STATE_DIR="$arg"    ;;
+                    service-name)  SERVICE_NAME="$arg" ;;
                 esac
                 REST=""
             else
@@ -379,16 +590,20 @@ for arg in "$@"; do
 done
 
 if [ "$UNINSTALL" = "1" ]; then
-    require_root "$@"
-    # Carregar estado salvo para que os caminhos corretos sejam usados
+    # Carrega o estado salvo (paths + SERVICE_MODE) antes de decidir permissões.
+    resolve_mode
+    derived_paths
     if [ -f "$STATE_FILE" ]; then
         # shellcheck disable=SC1090
         . "$STATE_FILE"
     else
         warn "Arquivo de estado não encontrado (${STATE_FILE}). Usando caminhos padrão."
     fi
+    # Sem root só é permitido para uma instalação de usuário.
+    if ! is_root && [ "${USER_MODE:-0}" != "1" ]; then
+        err "Desinstalação de uma instalação de sistema exige root. Use sudo."
+    fi
     do_uninstall "$@"
 else
-    require_root "$@"
     do_install
 fi

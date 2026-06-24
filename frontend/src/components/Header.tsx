@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { clearToken } from "../auth";
 import { useNotifications } from "../contexts/NotificationContext";
 import { formatDistanceToNow } from "date-fns";
@@ -7,6 +7,8 @@ import { ptBR } from "date-fns/locale";
 import type { Notification } from "../contexts/NotificationContext";
 import ConfirmDialog from "./ConfirmDialog";
 import { Bell, X, Check, Eye, MoreVertical, Trash2, ChevronDown } from "./Icons";
+import { Button } from "./ui/button";
+import { cn } from "@/lib/utils";
 
 interface HeaderProps {
   username?: string;
@@ -54,7 +56,7 @@ function NotificationItem({
 
   return (
     <div
-      className={`flex items-start gap-2 px-3 py-2 hover:bg-gray-750 transition-colors ${
+      className={`flex items-start gap-2 px-3 py-2 hover:bg-accent transition-colors ${
         !n.read ? "border-l-2 border-blue-500" : "border-l-2 border-transparent"
       }`}
     >
@@ -66,7 +68,7 @@ function NotificationItem({
         className="mt-0.5 w-3 h-3 flex-shrink-0 accent-blue-500 cursor-pointer"
       />
       <div className="flex-1 min-w-0 cursor-pointer" onClick={onClick}>
-        <div className="text-xs text-gray-300 font-medium truncate">
+        <div className="text-xs text-foreground font-medium truncate">
           {n.cameraName || n.cameraId}
         </div>
         <div className="text-xs text-gray-400">
@@ -74,16 +76,18 @@ function NotificationItem({
           {(n.score * 100).toFixed(1)}% · {relTime}
         </div>
       </div>
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={(e) => {
           e.stopPropagation();
           onRemove();
         }}
-        className="text-gray-500 hover:text-gray-300 flex-shrink-0 mt-0.5"
+        className="h-6 w-6 shrink-0 mt-0.5 text-muted-foreground [&_svg]:size-3.5"
         title="Excluir"
       >
-        <X className="w-3.5 h-3.5" />
-      </button>
+        <X />
+      </Button>
     </div>
   );
 }
@@ -104,6 +108,7 @@ export default function Header({ username = "usuário" }: HeaderProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (!bellOpen) setKebabOpen(false);
@@ -160,10 +165,10 @@ export default function Header({ username = "usuário" }: HeaderProps) {
   }
 
   return (
-    <header className="flex items-center justify-between px-6 py-3 bg-gray-900 border-b border-gray-800">
+    <header className="flex items-center justify-between px-6 py-3 bg-surface border-b border-border">
       <Link
         to="/"
-        className="text-white font-semibold tracking-wide hover:text-gray-200 transition-colors"
+        className="text-white font-semibold tracking-wide hover:text-foreground transition-colors"
       >
         📷 Camera
       </Link>
@@ -171,28 +176,30 @@ export default function Header({ username = "usuário" }: HeaderProps) {
       <div className="flex items-center gap-4">
         {/* Sino de notificações */}
         <div className="relative" ref={bellRef}>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setBellOpen((v) => !v)}
-            className={`relative transition-colors ${unreadCount > 0 ? "text-white animate-pulse" : "text-gray-400 hover:text-white"}`}
+            className={cn("relative [&_svg]:size-5", unreadCount > 0 && "text-primary animate-pulse")}
             title="Notificações"
           >
-            <Bell className="w-5 h-5" />
+            <Bell />
             {unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-red-600 text-white rounded-full">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
-          </button>
+          </Button>
 
           {bellOpen && (
-            <div className="absolute right-0 mt-2 w-72 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 flex flex-col max-h-96">
+            <div className="absolute right-0 mt-2 w-72 bg-surface border border-border rounded shadow-lg z-50 flex flex-col max-h-96">
               {/* Linha 1: título */}
               <div className="px-3 pt-2.5 pb-0">
-                <span className="text-xs font-semibold text-gray-300">Notificações</span>
+                <span className="text-xs font-semibold text-foreground">Notificações</span>
               </div>
 
               {/* Linha 2: checkbox selecionar todos + kebab menu */}
-              <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-700">
+              <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
                 <label className="flex items-center gap-1.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -208,17 +215,19 @@ export default function Header({ username = "usuário" }: HeaderProps) {
 
                 {/* Kebab (···) */}
                 <div className="relative" ref={kebabRef}>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => setKebabOpen((v) => !v)}
                     disabled={!someSelected}
-                    className="flex items-center gap-0.5 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    className="h-6 w-6 text-muted-foreground [&_svg]:size-4"
                     title="Ações"
                   >
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
+                    <MoreVertical />
+                  </Button>
 
                   {kebabOpen && (
-                    <div className="absolute right-0 top-full mt-1 bg-gray-900 border border-gray-700 rounded shadow-lg z-20 whitespace-nowrap min-w-[180px]">
+                    <div className="absolute right-0 top-full mt-1 bg-surface border border-border rounded shadow-lg z-20 whitespace-nowrap min-w-[180px]">
                       {canMarkRead && (
                         <button
                           onClick={() =>
@@ -229,7 +238,7 @@ export default function Header({ username = "usuário" }: HeaderProps) {
                               action: () => { markSelectedRead(targetIds()); setSelectedIds(new Set()) },
                             })
                           }
-                          className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700"
+                          className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-foreground hover:bg-accent"
                         >
                           <Check className="w-3.5 h-3.5 text-blue-400" />
                           Marcar como lidas
@@ -246,14 +255,14 @@ export default function Header({ username = "usuário" }: HeaderProps) {
                               action: () => { markAllUnread(targetIds()); setSelectedIds(new Set()) },
                             })
                           }
-                          className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700"
+                          className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-foreground hover:bg-accent"
                         >
                           <Eye className="w-3.5 h-3.5 text-gray-400" />
                           Marcar como não lidas
                         </button>
                       )}
 
-                      {(canMarkRead || canMarkUnread) && <div className="border-t border-gray-700 my-1" />}
+                      {(canMarkRead || canMarkUnread) && <div className="border-t border-border my-1" />}
 
                       <button
                         onClick={() =>
@@ -272,7 +281,7 @@ export default function Header({ username = "usuário" }: HeaderProps) {
                             },
                           })
                         }
-                        className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-gray-700"
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-accent"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         Excluir
@@ -325,7 +334,7 @@ export default function Header({ username = "usuário" }: HeaderProps) {
 
               {/* Rodapé: toggle de notificações do browser */}
               {browserSupported && (
-                <div className="border-t border-gray-700 px-3 py-2 flex items-center justify-between">
+                <div className="border-t border-border px-3 py-2 flex items-center justify-between">
                   <span className="text-xs text-gray-400">Alertas do sistema</span>
                   {browserPermission === 'denied' ? (
                     <button
@@ -345,7 +354,7 @@ export default function Header({ username = "usuário" }: HeaderProps) {
                   ) : (
                     <button
                       onClick={enableBrowserNotifications}
-                      className="text-xs text-gray-400 hover:text-white transition-colors"
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
                       Ativar
                     </button>
@@ -358,34 +367,37 @@ export default function Header({ username = "usuário" }: HeaderProps) {
 
         {/* Dropdown de usuário */}
         <div className="relative" ref={userRef}>
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setUserOpen((v) => !v)}
-            className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-colors"
+            className="[&_svg]:size-4"
           >
             {username}
-            <ChevronDown className={`w-4 h-4 transition-transform ${userOpen ? "rotate-180" : ""}`} />
-          </button>
+            <ChevronDown className={`transition-transform ${userOpen ? "rotate-180" : ""}`} />
+          </Button>
           {userOpen && (
-            <div className="absolute right-0 mt-2 w-44 bg-gray-800 border border-gray-700 rounded shadow-lg z-10">
+            <div className="absolute right-0 mt-2 w-44 bg-surface border border-border rounded shadow-lg z-10">
               <Link
                 to="/settings/stats"
                 onClick={() => setUserOpen(false)}
-                className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                className="block w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
               >
                 Configurações
               </Link>
-              <div className="border-t border-gray-700" />
+              <div className="border-t border-border" />
               <Link
                 to="/change-password"
+                state={{ from: location.pathname }}
                 onClick={() => setUserOpen(false)}
-                className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                className="block w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
               >
                 Alterar senha
               </Link>
-              <div className="border-t border-gray-700" />
+              <div className="border-t border-border" />
               <button
                 onClick={logout}
-                className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                className="block w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
               >
                 Sair
               </button>

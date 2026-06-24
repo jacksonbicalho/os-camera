@@ -74,4 +74,7 @@ git fetch origin master --quiet
 git merge origin/master --no-edit --quiet
 git push origin develop --quiet
 
-echo -e "${GREEN}RELEASED ${VERSION} | assets: ${ASSETS} | develop sincronizado (describe: $(git describe --tags))${RESET}"
+# ── rotaciona o release file: carimba o _next publicado e abre o próximo ─────
+./scripts/rotate-release-next.sh "$VERSION" >/dev/null 2>&1 || true
+
+echo -e "${GREEN}RELEASED ${VERSION} | assets: ${ASSETS} | develop sincronizado (describe: $(git describe --tags)) | release file rotacionado${RESET}"

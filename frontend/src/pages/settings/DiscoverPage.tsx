@@ -1,8 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import { authHeaders } from '../../auth'
 import { Loader2, Search } from '../../components/Icons'
+import { Button } from '@/components/ui/button'
+import { findRegisteredCameraName } from './discoverDedupe'
+
+interface RegisteredCamera { id: string; name?: string; rtsp_url?: string }
 
 interface DiscoveryResult {
   ip: string
@@ -36,17 +40,17 @@ function injectCredentials(url: string, user: string, pass: string): string {
 }
 
 export default function DiscoverPage() {
-  const [status, setStatus] = useState<Status>('idle')
+  // Status inicial 'scanning': a tela já rastreia ao abrir (ver effect abaixo).
+  const [status, setStatus] = useState<Status>('scanning')
   const [results, setResults] = useState<DiscoveryResult[]>([])
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState<AddState | null>(null)
+  const [registered, setRegistered] = useState<RegisteredCamera[]>([])
   const navigate = useNavigate()
 
-  async function handleScan() {
-    setStatus('scanning')
-    setError(null)
-    setResults([])
-    setAdding(null)
+  // runScan só toca estado DEPOIS do await (assíncrono) — assim pode ser chamada do
+  // effect de montagem sem disparar setState síncrono dentro do effect.
+  const runScan = useCallback(async () => {
     try {
       const res = await fetch('/api/discover', { headers: authHeaders() })
       if (!res.ok) { setError(await res.text()); setStatus('error'); return }
@@ -56,7 +60,34 @@ export default function DiscoverPage() {
       setError(String(e))
       setStatus('error')
     }
+  }, [])
+
+  // Botão "Rastrear": reset síncrono (permitido em handler) + dispara o scan.
+  function handleScan() {
+    setStatus('scanning')
+    setError(null)
+    setResults([])
+    setAdding(null)
+    runScan()
   }
+
+  // Ao abrir a tela: carrega as câmeras já cadastradas (para dedupe) e já inicia o
+  // rastreamento automaticamente (status já começa 'scanning'). O scan é inlinado
+  // aqui (setState só em callbacks .then/.catch) em vez de chamar runScan, para não
+  // disparar setState síncrono dentro do effect.
+  useEffect(() => {
+    fetch('/api/settings/cameras', { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then((cams: RegisteredCamera[]) => setRegistered(cams))
+      .catch(() => {})
+    fetch('/api/discover', { headers: authHeaders() })
+      .then(async res => {
+        if (!res.ok) { setError(await res.text()); setStatus('error'); return }
+        setResults(await res.json())
+        setStatus('done')
+      })
+      .catch(e => { setError(String(e)); setStatus('error') })
+  }, [])
 
   function startAdding(idx: number) {
     setAdding({ idx, user: '', pass: '', step: 'creds', streams: [] })
@@ -97,7 +128,7 @@ export default function DiscoverPage() {
     navigateWithURL(r, adding.user, adding.pass, url)
   }
 
-  const inputClass = "bg-gray-950 border border-gray-700 rounded px-2.5 py-1 text-xs text-gray-200 focus:outline-none focus:border-blue-500 w-36"
+  const inputClass = "bg-background border border-border rounded px-2.5 py-1 text-xs text-foreground focus:outline-none focus:border-ring w-36"
 
   return (
     <SettingsLayout>
@@ -105,15 +136,11 @@ export default function DiscoverPage() {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-base font-semibold text-white">Rastrear câmeras na rede</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               ONVIF WS-Discovery (multicast UDP) + varredura de porta 554 na subnet local
             </p>
           </div>
-          <button
-            onClick={handleScan}
-            disabled={status === 'scanning'}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-          >
+          <Button id="discover-scan" onClick={handleScan} disabled={status === 'scanning'}>
             {status === 'scanning' ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -125,11 +152,11 @@ export default function DiscoverPage() {
                 Rastrear
               </>
             )}
-          </button>
+          </Button>
         </div>
 
         {status === 'scanning' && (
-          <p className="text-xs text-gray-400 animate-pulse">
+          <p className="text-xs text-muted-foreground animate-pulse">
             Aguardando respostas ONVIF (3 s) e varrendo porta 554 na subnet…
           </p>
         )}
@@ -139,14 +166,14 @@ export default function DiscoverPage() {
         )}
 
         {status === 'done' && results.length === 0 && (
-          <p className="text-sm text-gray-500">Nenhuma câmera encontrada na rede.</p>
+          <p className="text-sm text-muted-foreground">Nenhuma câmera encontrada na rede.</p>
         )}
 
         {results.length > 0 && (
-          <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+          <div className="bg-surface border border-border rounded-lg overflow-hidden">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-gray-800 text-gray-500 uppercase tracking-wider">
+                <tr className="border-b border-border text-muted-foreground uppercase tracking-wider">
                   <th className="text-left px-4 py-2.5">IP</th>
                   <th className="text-left px-4 py-2.5">Porta</th>
                   <th className="text-left px-4 py-2.5">Método</th>
@@ -159,39 +186,43 @@ export default function DiscoverPage() {
                   <>
                     <tr
                       key={i}
-                      className={`border-b border-gray-800 ${adding?.idx === i ? '' : 'last:border-0'} hover:bg-gray-800/40 transition-colors`}
+                      className={`border-b border-border ${adding?.idx === i ? '' : 'last:border-0'} hover:bg-accent/40 transition-colors`}
                     >
-                      <td className="px-4 py-2.5 font-mono text-gray-200">{r.ip}</td>
-                      <td className="px-4 py-2.5 text-gray-400">{r.port}</td>
+                      <td className="px-4 py-2.5 font-mono text-foreground">{r.ip}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{r.port}</td>
                       <td className="px-4 py-2.5">
                         {r.onvif ? (
                           <span className="px-1.5 py-0.5 rounded bg-blue-900/50 text-blue-300 text-[10px] font-medium">ONVIF</span>
                         ) : (
-                          <span className="px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 text-[10px] font-medium">Scan</span>
+                          <span className="px-1.5 py-0.5 rounded bg-surface-2 text-muted-foreground text-[10px] font-medium">Scan</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-gray-300">{r.name || <span className="text-gray-600">—</span>}</td>
+                      <td className="px-4 py-2.5 text-foreground">{r.name || <span className="text-muted-foreground">—</span>}</td>
                       <td className="px-4 py-2.5 text-right">
-                        {adding?.idx === i ? (
-                          <button
-                            onClick={() => setAdding(null)}
-                            className="px-3 py-1 text-gray-400 hover:text-white border border-gray-700 rounded text-[11px] font-medium transition-colors"
-                          >
-                            Cancelar
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => startAdding(i)}
-                            className="px-3 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded text-[11px] font-medium transition-colors"
-                          >
-                            Adicionar
-                          </button>
-                        )}
+                        {(() => {
+                          const regName = findRegisteredCameraName(r.ip, registered)
+                          if (regName) {
+                            return (
+                              <span className="text-[11px] text-muted-foreground italic">
+                                Já cadastrada como “{regName}”
+                              </span>
+                            )
+                          }
+                          return adding?.idx === i ? (
+                            <Button variant="outline" size="sm" onClick={() => setAdding(null)}>
+                              Cancelar
+                            </Button>
+                          ) : (
+                            <Button size="sm" onClick={() => startAdding(i)}>
+                              Adicionar
+                            </Button>
+                          )
+                        })()}
                       </td>
                     </tr>
 
                     {adding?.idx === i && adding.step === 'creds' && (
-                      <tr key={`${i}-creds`} className="border-b border-gray-800 last:border-0 bg-gray-800/50">
+                      <tr key={`${i}-creds`} className="border-b border-border last:border-0 bg-surface-2/50">
                         <td colSpan={5} className="px-4 py-3">
                           <div className="flex items-center gap-3 flex-wrap">
                             <input
@@ -209,39 +240,38 @@ export default function DiscoverPage() {
                               onKeyDown={e => e.key === 'Enter' && confirmCreds(r)}
                               className={inputClass}
                             />
-                            <button
-                              onClick={() => confirmCreds(r)}
-                              className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-medium transition-colors"
-                            >
+                            <Button size="sm" onClick={() => confirmCreds(r)}>
                               Confirmar
-                            </button>
+                            </Button>
                           </div>
                         </td>
                       </tr>
                     )}
 
                     {adding?.idx === i && adding.step === 'loading' && (
-                      <tr key={`${i}-loading`} className="border-b border-gray-800 last:border-0 bg-gray-800/50">
+                      <tr key={`${i}-loading`} className="border-b border-border last:border-0 bg-surface-2/50">
                         <td colSpan={5} className="px-4 py-3">
-                          <p className="text-xs text-gray-400 animate-pulse">Buscando streams disponíveis…</p>
+                          <p className="text-xs text-muted-foreground animate-pulse">Buscando streams disponíveis…</p>
                         </td>
                       </tr>
                     )}
 
                     {adding?.idx === i && adding.step === 'streams' && (
-                      <tr key={`${i}-streams`} className="border-b border-gray-800 last:border-0 bg-gray-800/50">
+                      <tr key={`${i}-streams`} className="border-b border-border last:border-0 bg-surface-2/50">
                         <td colSpan={5} className="px-4 py-3">
-                          <p className="text-xs text-gray-500 mb-2">Escolha o stream:</p>
+                          <p className="text-xs text-muted-foreground mb-2">Escolha o stream:</p>
                           <div className="flex flex-wrap gap-2">
                             {adding.streams.map(s => (
-                              <button
+                              <Button
                                 key={s.url}
+                                variant="outline"
+                                size="sm"
+                                className="h-auto py-1.5"
                                 onClick={() => selectStream(r, s.url)}
-                                className="px-3 py-1.5 bg-gray-900 hover:bg-blue-700 border border-gray-700 hover:border-blue-500 text-gray-200 rounded text-[11px] transition-colors"
                               >
                                 <span className="font-medium">{s.name}</span>
-                                <span className="text-gray-500 ml-1.5 font-mono">{s.url.replace(/^rtsp:\/\/[^@]+@/, 'rtsp://…@')}</span>
-                              </button>
+                                <span className="text-muted-foreground ml-1.5 font-mono">{s.url.replace(/^rtsp:\/\/[^@]+@/, 'rtsp://…@')}</span>
+                              </Button>
                             ))}
                           </div>
                         </td>

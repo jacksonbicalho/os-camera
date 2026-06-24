@@ -4,6 +4,7 @@ import ConfirmDialog from '../../components/ConfirmDialog'
 import { useSettings } from '../../hooks/useSettings'
 import { authHeaders, getRole } from '../../auth'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
+import { Button } from '@/components/ui/button'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -35,12 +36,12 @@ function DurationInput({ value, unit, onValueChange, onUnitChange }: DurationInp
       <input
         type="number"
         min={0}
-        className="w-16 bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500"
+        className="w-16 bg-surface-2 text-foreground text-sm rounded px-2 py-1 border border-border focus:outline-none focus:border-ring"
         value={value}
         onChange={e => onValueChange(Number(e.target.value))}
       />
       <select
-        className="bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600"
+        className="bg-surface-2 text-foreground text-sm rounded px-2 py-1 border border-border"
         value={unit}
         onChange={e => onUnitChange(e.target.value as 'min' | 'h' | 'd')}
       >
@@ -201,47 +202,47 @@ export default function StorageSettingsPage() {
   if (!isAdmin) {
     return (
       <SettingsLayout>
-        <h3 className="text-h2 font-semibold text-gray-200">Armazenamento</h3>
-        <p className="text-sm text-gray-500 mt-1 mb-6">Retenção, limpeza automática e espaço em disco.</p>
-        <p className="text-gray-500 text-sm">Acesso restrito.</p>
+        <h3 className="text-h2 font-semibold text-foreground">Armazenamento</h3>
+        <p className="text-sm text-muted-foreground mt-1 mb-6">Retenção, limpeza automática e espaço em disco.</p>
+        <p className="text-muted-foreground text-sm">Acesso restrito.</p>
       </SettingsLayout>
     )
   }
 
   return (
     <SettingsLayout>
-      <h3 className="text-h2 font-semibold text-gray-200">Armazenamento</h3>
-      <p className="text-sm text-gray-500 mt-1 mb-6">Retenção, limpeza automática e espaço em disco.</p>
+      <h3 className="text-h2 font-semibold text-foreground">Armazenamento</h3>
+      <p className="text-sm text-muted-foreground mt-1 mb-6">Retenção, limpeza automática e espaço em disco.</p>
 
       {form ? (
         <div className="space-y-2 mb-4">
           {/* Diretório + Máximo + Alerta + Intervalo */}
-          <div className="bg-gray-800 rounded-lg px-4 py-3 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-x-8 gap-y-3 items-start">
+          <div className="bg-surface-2 rounded-lg px-4 py-3 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-x-8 gap-y-3 items-start">
             <div>
-              <span className="block text-xs text-gray-500 mb-1">Diretório</span>
-              <span className="text-sm text-gray-300 break-all">{s?.path || '—'}</span>
+              <span className="block text-xs text-muted-foreground mb-1">Diretório</span>
+              <span className="text-sm text-foreground break-all">{s?.path || '—'}</span>
             </div>
             <div>
-              <span className="block text-xs text-gray-500 mb-1">Máximo (GB)</span>
+              <span className="block text-xs text-muted-foreground mb-1">Máximo (GB)</span>
               <div className="flex items-center gap-2">
                 <input type="number" min={0} step={0.1}
-                  className="w-20 bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500"
+                  className="w-20 bg-surface-2 text-foreground text-sm rounded px-2 py-1 border border-border focus:outline-none focus:border-ring"
                   value={form.maxSizeGB}
                   onChange={e => set({ maxSizeGB: Number(e.target.value) })}
                 />
-                <span className="text-xs text-gray-500 whitespace-nowrap">0 = off</span>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">0 = off</span>
               </div>
             </div>
             <div>
-              <span className="block text-xs text-gray-500 mb-1">Alerta (%)</span>
+              <span className="block text-xs text-muted-foreground mb-1">Alerta (%)</span>
               <input type="number" min={0} max={100}
-                className="w-20 bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500"
+                className="w-20 bg-surface-2 text-foreground text-sm rounded px-2 py-1 border border-border focus:outline-none focus:border-ring"
                 value={form.warnPercent}
                 onChange={e => set({ warnPercent: Number(e.target.value) })}
               />
             </div>
             <div>
-              <span className="block text-xs text-gray-500 mb-1">Intervalo de verificação</span>
+              <span className="block text-xs text-muted-foreground mb-1">Intervalo de verificação</span>
               <DurationInput
                 value={form.intervalValue} unit={form.intervalUnit}
                 onValueChange={v => set({ intervalValue: v })}
@@ -257,9 +258,9 @@ export default function StorageSettingsPage() {
           ] as const).map(({ label, vk, uk, cat }) => {
             const rc = retentionFor(cat)
             return (
-              <div key={cat} className="bg-gray-800 rounded-lg px-4 py-3 grid grid-cols-1 sm:grid-cols-[auto_auto_auto] gap-x-6 gap-y-3 items-start">
+              <div key={cat} className="bg-surface-2 rounded-lg px-4 py-3 grid grid-cols-1 sm:grid-cols-[auto_auto_auto] gap-x-6 gap-y-3 items-start">
                 <div>
-                  <span className="block text-xs text-gray-500 mb-1">{label}</span>
+                  <span className="block text-xs text-muted-foreground mb-1">{label}</span>
                   <DurationInput
                     value={form[vk]}
                     unit={form[uk]}
@@ -268,12 +269,12 @@ export default function StorageSettingsPage() {
                   />
                 </div>
                 <div>
-                  <span className="block text-xs text-gray-500 mb-1">Ao expirar</span>
+                  <span className="block text-xs text-muted-foreground mb-1">Ao expirar</span>
                   {/* Destino unificado: "Apagar" + cada drive cadastrado numa única lista.
                       Drives recém-criados aparecem aqui na hora (mapeiam o estado `drives`,
                       recarregado após salvar um drive). */}
                   <select
-                    className="bg-gray-700 text-gray-200 text-sm rounded px-2 py-1 border border-gray-600"
+                    className="bg-surface-2 text-foreground text-sm rounded px-2 py-1 border border-border"
                     value={rc.action === 'send_to_drive' && rc.drive_id ? `drive:${rc.drive_id}` : 'delete'}
                     onChange={e => {
                       const v = e.target.value
@@ -291,14 +292,13 @@ export default function StorageSettingsPage() {
 
           <div className="flex justify-end items-center gap-3 pt-1">
             {storageSaved && <span className="text-xs text-green-400">Salvo</span>}
-            <button onClick={handleStorageSave} disabled={storageSaving}
-              className="text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded">
+            <Button id="storage-save" onClick={handleStorageSave} disabled={storageSaving}>
               {storageSaving ? 'Salvando...' : 'Salvar'}
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
-        <p className="text-gray-500 text-sm mb-4">Carregando...</p>
+        <p className="text-muted-foreground text-sm mb-4">Carregando...</p>
       )}
 
       {drives.length === 0 && retention.some(r => r.action === 'send_to_drive') && (
@@ -308,29 +308,28 @@ export default function StorageSettingsPage() {
       {/* Drives section */}
       <div className="mt-6">
         <div className="flex items-center justify-between mb-3">
-          <h4 className="text-sm font-semibold text-gray-300">Drives</h4>
-          <button onClick={openCreateDrive}
-            className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded">
+          <h4 className="text-sm font-semibold text-foreground">Drives</h4>
+          <Button id="drive-add" onClick={openCreateDrive} size="sm">
             + Adicionar drive
-          </button>
+          </Button>
         </div>
 
         {drives.length === 0 ? (
-          <p className="text-sm text-gray-500">Nenhum drive configurado.</p>
+          <p className="text-sm text-muted-foreground">Nenhum drive configurado.</p>
         ) : (
           <div className="space-y-2">
             {drives.map(dr => (
-              <div key={dr.id} className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-3">
+              <div key={dr.id} className="flex items-center justify-between bg-surface-2 rounded-lg px-4 py-3">
                 <div>
-                  <span className="text-sm font-medium text-gray-200">{dr.name}</span>
-                  <span className="ml-2 text-xs text-gray-500 uppercase">{dr.type}</span>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <span className="text-sm font-medium text-foreground">{dr.name}</span>
+                  <span className="ml-2 text-xs text-muted-foreground uppercase">{dr.type}</span>
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     {dr.bucket}{dr.endpoint ? ` · ${dr.endpoint}` : ''}{dr.prefix ? ` · /${dr.prefix}` : ''}
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => openEditDrive(dr)} className="text-xs text-gray-400 hover:text-gray-200 px-2 py-1">Editar</button>
-                  <button onClick={() => setConfirmDelete(dr)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Excluir</button>
+                  <Button variant="ghost" size="sm" onClick={() => openEditDrive(dr)}>Editar</Button>
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(dr)} className="text-destructive hover:text-destructive">Excluir</Button>
                 </div>
               </div>
             ))}
@@ -341,8 +340,8 @@ export default function StorageSettingsPage() {
       {/* Drive form modal */}
       {showDriveForm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-700 shadow-xl">
-            <h3 className="text-base font-semibold text-gray-200 mb-4">{editDrive ? 'Editar drive' : 'Novo drive S3'}</h3>
+          <div className="bg-surface rounded-xl p-6 w-full max-w-md border border-border shadow-xl">
+            <h3 className="text-base font-semibold text-foreground mb-4">{editDrive ? 'Editar drive' : 'Novo drive S3'}</h3>
             <div className="space-y-3">
               {([
                 { label: 'Nome', field: 'name', required: true },
@@ -354,13 +353,13 @@ export default function StorageSettingsPage() {
                 { label: 'Prefixo (opcional)', field: 'prefix' },
               ] as Array<{ label: string; field: keyof typeof driveForm; required?: boolean; placeholder?: string; password?: boolean }>).map(({ label, field, required, placeholder, password }) => (
                 <div key={field}>
-                  <label className="block text-xs text-gray-400 mb-1">
+                  <label className="block text-xs text-muted-foreground mb-1">
                     {label}{required && <span className="text-red-400 ml-0.5">*</span>}
                   </label>
                   <input
                     type={password ? 'password' : 'text'}
                     autoComplete={password ? 'new-password' : 'off'}
-                    className="w-full bg-gray-800 text-gray-200 text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-surface-2 text-foreground text-sm rounded px-3 py-1.5 border border-border focus:outline-none focus:border-ring"
                     value={driveForm[field]}
                     placeholder={placeholder}
                     onChange={e => setDriveForm(f => ({ ...f, [field]: e.target.value }))}
@@ -369,13 +368,14 @@ export default function StorageSettingsPage() {
               ))}
             </div>
             <div className="flex justify-end gap-2 mt-5">
-              <button onClick={() => setShowDriveForm(false)} className="text-sm text-gray-400 hover:text-gray-200 px-4 py-2">Cancelar</button>
-              <button
+              <Button id="drive-cancel" variant="ghost" onClick={() => setShowDriveForm(false)}>Cancelar</Button>
+              <Button
+                id="drive-save"
                 onClick={handleDriveSave}
                 disabled={driveSaving || !driveForm.name || !driveForm.bucket || (!editDrive && (!driveForm.access_key || !driveForm.secret_key))}
-                className="text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded">
+              >
                 {driveSaving ? 'Salvando...' : 'Salvar'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

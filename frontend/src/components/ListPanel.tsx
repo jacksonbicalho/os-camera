@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Button } from '@/components/ui/button'
 
 interface ListPanelProps {
   sortOrder: 'asc' | 'desc'
@@ -26,12 +27,9 @@ export default function ListPanel({
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="px-3 py-1.5 border-b border-gray-800 flex justify-end shrink-0">
-        <button
-          onClick={onSortOrderChange}
-          className="text-xs text-blue-400 hover:text-blue-300"
-        >
+        <Button variant="link" size="sm" onClick={onSortOrderChange} className="h-auto p-0 text-xs">
           {sortOrder === 'desc' ? '↓ Recente' : '↑ Antigo'}
-        </button>
+        </Button>
       </div>
       <div className={`divide-y divide-gray-700 ${scroll ? 'flex-1 min-h-0 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-700 [&::-webkit-scrollbar-thumb]:rounded-full' : ''}`}>
         {empty
@@ -40,13 +38,9 @@ export default function ListPanel({
         }
         {hasMore && (
           <div className="px-3 py-2">
-            <button
-              onClick={onLoadMore}
-              disabled={loadingMore}
-              className="text-sm text-blue-400 hover:text-blue-300 disabled:opacity-50"
-            >
+            <Button variant="link" size="sm" onClick={onLoadMore} disabled={loadingMore} className="h-auto p-0 text-sm">
               {loadingMore ? 'Carregando...' : 'Carregar mais'}
-            </button>
+            </Button>
           </div>
         )}
       </div>

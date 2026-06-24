@@ -3,7 +3,10 @@ import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import SettingsSection from '../../components/SettingsSection'
 import UserForm, { type UserFormData } from '../../components/UserForm'
+import RoleBadge from '../../components/RoleBadge'
+import { Plus } from '../../components/Icons'
 import { authHeaders, onUnauthorized } from '../../auth'
+import { Button } from '@/components/ui/button'
 
 interface Camera {
   id: string
@@ -69,18 +72,17 @@ export default function UserDetailSettingsPage() {
   return (
     <SettingsLayout>
       <div className="mb-6">
-        <nav className="flex items-center gap-1.5 text-xs text-gray-500 mb-4">
-          <Link to="/settings/users" className="hover:text-gray-300 transition-colors">Usuários</Link>
+        <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-4">
+          <Link to="/settings/users" className="hover:text-foreground transition-colors">Usuários</Link>
           <span>/</span>
-          <span className="text-gray-300">{user?.username ?? '...'}</span>
+          <span className="text-foreground">{user?.username ?? '...'}</span>
         </nav>
-        <div className="flex items-center justify-end border-b border-gray-800 pb-2">
-          <Link
-            to="/settings/users/new"
-            className="mb-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-          >
-            + novo usuário
-          </Link>
+        <div className="flex items-center justify-end border-b border-border pb-2">
+          <Button asChild size="sm" className="mb-1">
+            <Link to="/settings/users/new">
+              <Plus className="w-3.5 h-3.5" /> Novo usuário
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -91,7 +93,7 @@ export default function UserDetailSettingsPage() {
       )}
 
       {loading ? (
-        <p className="text-gray-500 text-sm">Carregando...</p>
+        <p className="text-muted-foreground text-sm">Carregando...</p>
       ) : !user ? null : editing ? (
         <UserForm
           cameras={cameras}
@@ -99,22 +101,25 @@ export default function UserDetailSettingsPage() {
           onSave={handleUpdate}
           onCancel={() => { setEditing(false); setError(null) }}
           saving={saving}
+          onChangePassword={() => navigate('/change-password', { state: { from: location.pathname } })}
         />
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex justify-end">
-            <button
+            <Button
+              id="user-edit"
+              variant="outline"
+              size="sm"
               onClick={() => { setEditing(true); setError(null) }}
-              className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded transition-colors"
             >
               Editar
-            </button>
+            </Button>
           </div>
           <SettingsSection
             title="Conta"
             fields={[
               { label: 'Username', value: user.username },
-              { label: 'Role', value: user.role },
+              { label: 'Role', value: <RoleBadge role={user.role} /> },
               {
                 label: 'Câmeras',
                 value: user.role === 'admin'

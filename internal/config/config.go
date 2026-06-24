@@ -20,7 +20,7 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 }
 
 const DefaultChunkDuration = 5 * time.Minute
-const DefaultReconnectInterval = 10 * time.Second
+const DefaultReconnectInterval = 2 * time.Second
 
 // Config holds the minimal bootstrap configuration read from the YAML file.
 // All camera settings, motion config and user data live in the SQLite database.

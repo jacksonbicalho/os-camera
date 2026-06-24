@@ -4,6 +4,7 @@ import SettingsLayout from '../../components/SettingsLayout'
 import CameraSettingsTabs from '../../components/CameraSettingsTabs'
 import { useSettings, type CameraSettings } from '../../hooks/useSettings'
 import { authHeaders } from '../../auth'
+import { Button } from '@/components/ui/button'
 
 export default function CameraAnalysisSettingsPage() {
   const { id } = useParams<{ id: string }>()
@@ -54,7 +55,7 @@ export default function CameraAnalysisSettingsPage() {
       <CameraSettingsTabs id={id!} active="analysis" camName={cam?.name} />
 
       <div className="space-y-6">
-        <div className="bg-gray-800 rounded-lg border border-gray-700 divide-y divide-gray-700">
+        <div className="bg-surface-2 rounded-lg border border-border divide-y divide-border">
           {!globalEnabled && (
             <div className="px-4 py-3 bg-yellow-900/20 border-b border-yellow-700/30 flex items-start gap-2">
               <span className="text-yellow-400 text-xs mt-0.5">⚠</span>
@@ -67,8 +68,8 @@ export default function CameraAnalysisSettingsPage() {
           )}
           <div className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-200">Análise de objetos</p>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-sm font-medium text-foreground">Análise de objetos</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
                 Ativar detecção YOLO nas gravações desta câmera.
               </p>
             </div>
@@ -76,7 +77,7 @@ export default function CameraAnalysisSettingsPage() {
               type="button"
               onClick={() => { if (globalEnabled) setEnabled(v => !v) }}
               disabled={!globalEnabled}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${enabled && globalEnabled ? 'bg-blue-600' : 'bg-gray-600'} ${!globalEnabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${enabled && globalEnabled ? 'bg-blue-600' : 'bg-surface-2'} ${!globalEnabled ? 'opacity-40 cursor-not-allowed' : ''}`}
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${enabled ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
@@ -86,13 +87,9 @@ export default function CameraAnalysisSettingsPage() {
             {error && <p className="text-sm text-red-400">{error}</p>}
             {saved && <p className="text-sm text-green-400">Salvo</p>}
             {!error && !saved && <span />}
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
+            <Button id="camera-analysis-save" onClick={handleSave} disabled={saving}>
               {saving ? 'Salvando...' : 'Salvar'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

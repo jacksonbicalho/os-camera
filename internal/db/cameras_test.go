@@ -99,6 +99,7 @@ func TestUpdateCamera(t *testing.T) {
 	}
 
 	updated := cam
+	updated.Name = "Corredor de entrada"
 	updated.RTSPURL = "rtsp://novo/cam"
 	updated.DisplayOrder = 5
 
@@ -107,6 +108,9 @@ func TestUpdateCamera(t *testing.T) {
 	}
 
 	got, _ := db.GetCamera(database, cam.ID)
+	if got.Name != "Corredor de entrada" {
+		t.Errorf("name: got %q, want %q", got.Name, "Corredor de entrada")
+	}
 	if got.RTSPURL != "rtsp://novo/cam" {
 		t.Errorf("rtsp_url: got %q, want %q", got.RTSPURL, "rtsp://novo/cam")
 	}

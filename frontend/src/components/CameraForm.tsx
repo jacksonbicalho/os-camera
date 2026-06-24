@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { type Camera, type CameraFormData, RESOLUTIONS, emptyForm } from './cameraFormUtils'
+import { Button } from '@/components/ui/button'
 
 interface CameraFormProps {
   initial?: Camera
@@ -191,20 +192,12 @@ export default function CameraForm({ initial, prefillRtsp, prefillName, onSave, 
       </div>
 
       <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={saving}
-          className="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors"
-        >
+        <Button id="camera-form-save" type="submit" size="sm" disabled={saving}>
           {saving ? 'Salvando...' : 'Salvar'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-4 py-1.5 text-xs text-gray-300 hover:text-white border border-gray-600 rounded transition-colors"
-        >
+        </Button>
+        <Button id="camera-form-cancel" type="button" size="sm" variant="outline" onClick={onCancel}>
           Cancelar
-        </button>
+        </Button>
       </div>
     </form>
   )

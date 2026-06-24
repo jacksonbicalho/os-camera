@@ -72,4 +72,11 @@ describe('EventsPanelHeader', () => {
     expect(document.getElementById('events-action-mark-read')).not.toBeNull()
     expect(document.getElementById('events-action-delete')).not.toBeNull()
   })
+
+  it('as ações usam o Button padronizado (buttonVariants)', () => {
+    setup({ someSelected: true, canMarkRead: true })
+    // buttonVariants injeta a base "inline-flex … rounded-md" — ausente nos <button> crus
+    expect(document.getElementById('events-action-mark-read')!.className).toContain('rounded-md')
+    expect(document.getElementById('events-action-delete')!.className).toContain('rounded-md')
+  })
 })

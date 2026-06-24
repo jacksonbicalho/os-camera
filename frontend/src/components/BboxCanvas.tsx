@@ -32,7 +32,7 @@ const CORNER_CURSORS = ['nw-resize', 'ne-resize', 'se-resize', 'sw-resize']
 const HANDLE_R = 6
 const ROT_R = 8
 const ROT_OFFSET = 26
-const DEL_R = 9
+const DEL_R = 13
 const DEL_OFFSET = DEL_R + 2
 
 function cornerWorld(b: BboxRect, c: number, cw: number, ch: number): [number, number] {
@@ -79,14 +79,14 @@ function drawDeleteButton(ctx: CanvasRenderingContext2D, bx: number, by: number,
   ctx.fillStyle = 'rgba(30,30,30,0.85)'
   ctx.fill()
   ctx.strokeStyle = strokeColor
-  ctx.lineWidth = 1.2
+  ctx.lineWidth = 1.5
   ctx.stroke()
-  const d = 3.5
+  const d = 5
   ctx.beginPath()
   ctx.moveTo(bx - d, by - d); ctx.lineTo(bx + d, by + d)
   ctx.moveTo(bx + d, by - d); ctx.lineTo(bx - d, by + d)
   ctx.strokeStyle = strokeColor
-  ctx.lineWidth = 1.8
+  ctx.lineWidth = 2.4
   ctx.stroke()
 }
 
@@ -159,6 +159,8 @@ function paintCanvas(
   ia: Interaction,
   r: number, g: number, bl: number,
   readonly: boolean,
+  rotatable: boolean,
+  deletable: boolean,
 ) {
   ctx.clearRect(0, 0, cw, ch)
 
@@ -202,21 +204,25 @@ function paintCanvas(
     ctx.fillRect(wx - 5, wy - 5, 10, 10)
   }
 
-  const [hx, hy] = rotHandleVisible(display, cw, ch)
-  const [tx, ty] = toWorld(cx, cy, 0, -hh, a)
-  ctx.beginPath()
-  ctx.moveTo(tx, ty)
-  ctx.lineTo(hx, hy)
-  ctx.strokeStyle = handle
-  ctx.lineWidth = 1.2
-  ctx.stroke()
-  ctx.beginPath()
-  ctx.arc(hx, hy, ROT_R, 0, Math.PI * 2)
-  ctx.fillStyle = handle
-  ctx.fill()
+  if (rotatable) {
+    const [hx, hy] = rotHandleVisible(display, cw, ch)
+    const [tx, ty] = toWorld(cx, cy, 0, -hh, a)
+    ctx.beginPath()
+    ctx.moveTo(tx, ty)
+    ctx.lineTo(hx, hy)
+    ctx.strokeStyle = handle
+    ctx.lineWidth = 1.2
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(hx, hy, ROT_R, 0, Math.PI * 2)
+    ctx.fillStyle = handle
+    ctx.fill()
+  }
 
-  const [dbx, dby] = delBtnWorld(display, cw, ch)
-  drawDeleteButton(ctx, dbx, dby, stroke)
+  if (deletable) {
+    const [dbx, dby] = delBtnWorld(display, cw, ch)
+    drawDeleteButton(ctx, dbx, dby, stroke)
+  }
 }
 
 // ── component ─────────────────────────────────────────────────────────────────
@@ -229,6 +235,15 @@ interface BboxCanvasProps {
   width?: number
   height?: number
   readonly?: boolean
+  // Permite girar o retângulo (handle de rotação). Desligue quando o consumidor
+  // não persiste rotação (ex.: recorte axis-aligned do classificador de estado).
+  rotatable?: boolean
+  // Permite excluir o retângulo (botão ×). Desligue quando o recorte é obrigatório
+  // e o usuário só deve redimensionar/posicionar (ex.: classificador de estado).
+  deletable?: boolean
+  // Permite desenhar um novo retângulo (arrastar em área vazia). Desligue quando o
+  // recorte é único e obrigatório: só mover/redimensionar o existente, nunca redesenhar.
+  drawable?: boolean
 }
 
 function relPos(e: React.MouseEvent<HTMLCanvasElement>): [number, number] {
@@ -248,10 +263,15 @@ export default function BboxCanvas({
   width = 1280,
   height = 720,
   readonly = false,
+  rotatable = true,
+  deletable = true,
+  drawable = true,
 }: BboxCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [interaction, setInteraction] = useState<Interaction>(null)
-  const [cursor, setCursor] = useState(readonly ? 'default' : 'crosshair')
+  // Cursor "ocioso" (fora do box): crosshair convida a desenhar; sem desenho, default.
+  const idleCursor = drawable ? 'crosshair' : 'default'
+  const [cursor, setCursor] = useState(readonly ? 'default' : idleCursor)
   const boxRef = useRef(box)
   const interactionRef = useRef(interaction)
   const [r, g, bl] = color
@@ -267,13 +287,13 @@ export default function BboxCanvas({
       const canvas = canvasRef.current
       const ctx = canvas?.getContext('2d')
       if (canvas && ctx) {
-        paintCanvas(ctx, boxRef.current, canvas.width, canvas.height, interactionRef.current, r, g, bl, readonly)
+        paintCanvas(ctx, boxRef.current, canvas.width, canvas.height, interactionRef.current, r, g, bl, readonly, rotatable, deletable)
       }
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
-  }, [r, g, bl, readonly])
+  }, [r, g, bl, readonly, rotatable, deletable])
 
   function updateCursor(px: number, py: number) {
     if (readonly) return
@@ -281,13 +301,13 @@ export default function BboxCanvas({
     if (!canvas) return
     const cw = canvas.width, ch = canvas.height
     const bx = boxRef.current
-    if (!bx) { setCursor('crosshair'); return }
-    if (hitDelBtn(bx, px, py, cw, ch)) { setCursor('pointer'); return }
-    if (hitRotHandle(bx, px, py, cw, ch)) { setCursor('alias'); return }
+    if (!bx) { setCursor(idleCursor); return }
+    if (deletable && hitDelBtn(bx, px, py, cw, ch)) { setCursor('pointer'); return }
+    if (rotatable && hitRotHandle(bx, px, py, cw, ch)) { setCursor('alias'); return }
     const c = hitCorner(bx, px, py, cw, ch)
     if (c >= 0) { setCursor(CORNER_CURSORS[c]); return }
     if (hitBox(bx, px, py, cw, ch)) { setCursor('grab'); return }
-    setCursor('crosshair')
+    setCursor(idleCursor)
   }
 
   const commitInteraction = useCallback(() => {
@@ -328,13 +348,13 @@ export default function BboxCanvas({
     const bx = boxRef.current
 
     if (bx) {
-      if (hitDelBtn(bx, x, y, cw, ch)) {
+      if (deletable && hitDelBtn(bx, x, y, cw, ch)) {
         onChange(null)
         setCursor('crosshair')
         return
       }
-      if (nearDelBtn(bx, x, y, cw, ch)) return
-      if (hitRotHandle(bx, x, y, cw, ch)) {
+      if (deletable && nearDelBtn(bx, x, y, cw, ch)) return
+      if (rotatable && hitRotHandle(bx, x, y, cw, ch)) {
         setInteraction({ mode: 'rotating', x1: x, y1: y })
         setCursor('alias')
         return
@@ -352,7 +372,8 @@ export default function BboxCanvas({
       }
     }
 
-    setInteraction({ mode: 'drawing', x0: x, y0: y, x1: x, y1: y })
+    // Sem desenho: clicar em área vazia não inicia um novo retângulo.
+    if (drawable) setInteraction({ mode: 'drawing', x0: x, y0: y, x1: x, y1: y })
   }
 
   function handleMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
@@ -381,7 +402,7 @@ export default function BboxCanvas({
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onMouseLeave={() => !readonly && setCursor('crosshair')}
+      onMouseLeave={() => !readonly && setCursor(idleCursor)}
     />
   )
 }

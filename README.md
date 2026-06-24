@@ -36,14 +36,19 @@ Sistema de monitoramento residencial via RTSP. Um único binário estático grav
 
 ---
 
-## Instalação rápida (Linux)
+## Instalação rápida (Linux bare-metal — systemd)
+
+> Para **container** ou **Termux** use o [Docker (recomendado)](#docker-recomendado) ou o
+> [download manual](#download-manual) — não há systemd nesses ambientes.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh -o /tmp/camera-install.sh
 sudo bash /tmp/camera-install.sh
 ```
 
-O script detecta a arquitetura (`amd64`, `arm64`, `arm`), baixa o binário da última release, executa o wizard de configuração interativo e registra um serviço systemd.
+O script detecta a arquitetura (`amd64`, `arm64`, `arm`), **instala o ffmpeg se faltar**, baixa o binário da última release, executa o wizard de configuração interativo e registra um serviço systemd.
+
+> **Sem root / sem systemd?** `--user` instala em `~/.local` (sem `sudo`, sem serviço) e `--no-service` pula o serviço (container). `--binary=<arquivo>` instala offline. No **Termux** (Android) o script detecta o ambiente, instala em `$PREFIX/bin` e configura autostart via `termux-services`. Detalhes em [docs/installation.md](docs/installation.md).
 
 > **Por que baixar antes de executar?**
 > Com `curl | sudo bash` o `stdin` do bash fica ocupado com o pipe do curl — o wizard não consegue ler o teclado. Salvar o script em um arquivo e executar separadamente mantém o `stdin` conectado ao terminal real.
@@ -94,27 +99,37 @@ sudo camera-uninstall --remove-config --remove-data
 
 ---
 
-## Docker
+## Docker (recomendado)
+
+A **mesma imagem** roda em x86-64, Raspberry Pi (arm64) e ARMv7 — publicada no GHCR em
+`ghcr.io/jacksonbicalho/os-camera` (`:latest` / `:vX.Y.Z`). Sem `install.sh`/systemd: o
+container roda o binário direto e o Docker é o supervisor.
 
 ```bash
-# Copiar e editar a configuração
-cp camera.yaml.example camera.yaml
-nano camera.yaml
+cp camera.yaml.example camera.yaml   # e edite
 
-# Subir em produção
-docker compose --profile production up -d
+docker run -d --name camera \
+  --network host \
+  -v "$PWD/camera.yaml:/app/camera.yaml:ro" \
+  -v "$PWD/storage:/data" \
+  --restart unless-stopped \
+  ghcr.io/jacksonbicalho/os-camera:latest
 ```
 
 ```yaml
-# docker-compose.yml (trecho relevante)
+# docker compose
 services:
   camera:
-    profiles: [production]
+    image: ghcr.io/jacksonbicalho/os-camera:latest
+    network_mode: host
     volumes:
       - ./camera.yaml:/app/camera.yaml:ro
-      - ./storage:/data/recordings
+      - ./storage:/data
     restart: unless-stopped
 ```
+
+> `--network host` é necessário para a descoberta de câmeras na LAN. Para buildar a
+> imagem localmente: `docker compose --profile production up -d --build`.
 
 ---
 

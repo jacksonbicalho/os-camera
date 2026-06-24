@@ -61,3 +61,41 @@ jobs:
 
       - name: Build
         run: cd frontend && yarn build
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Guard: builda a imagem de produção (amd64, sem push) para pegar quebra do
+      # Dockerfile / go:embed do frontend nos PRs. O multi-arch completo + push roda
+      # só no release (release.yml).
+      - name: Build production image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: production
+          push: false
+
+  yolo:
+    name: YOLO service
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Os testes stubam torch/ultralytics/cv2 via sys.modules, então só precisam
+      # de fastapi/pydantic/pyyaml/httpx/pytest — sem torch/GPU.
+      - name: Install test deps
+        run: pip install fastapi pydantic pyyaml httpx pytest
+
+      - name: Test
+        run: cd services/yolo && python -m pytest -q

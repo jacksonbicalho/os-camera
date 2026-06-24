@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 
 interface Camera {
   id: string
@@ -25,9 +26,11 @@ interface UserFormProps {
   onSave: (data: UserFormData) => Promise<void>
   onCancel: () => void
   saving: boolean
+  // Na edição, a senha não é um campo do form — é um fluxo dedicado (ChangePasswordPage).
+  onChangePassword?: () => void
 }
 
-export default function UserForm({ cameras, initial, onSave, onCancel, saving }: UserFormProps) {
+export default function UserForm({ cameras, initial, onSave, onCancel, saving, onChangePassword }: UserFormProps) {
   const [username, setUsername] = useState(initial?.username ?? '')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<'admin' | 'viewer'>(initial?.role ?? 'viewer')
@@ -56,18 +59,18 @@ export default function UserForm({ cameras, initial, onSave, onCancel, saving }:
             className="w-full bg-gray-950 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
           />
         </div>
-        <div>
-          <label className="block text-xs text-gray-400 mb-1">
-            {initial ? 'Nova senha (deixe em branco para não alterar)' : 'Senha'}
-          </label>
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required={!initial}
-            className="w-full bg-gray-950 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
-          />
-        </div>
+        {!initial && (
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Senha</label>
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              className="w-full bg-gray-950 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+        )}
         <div>
           <label className="block text-xs text-gray-400 mb-1">Role</label>
           <select
@@ -104,20 +107,17 @@ export default function UserForm({ cameras, initial, onSave, onCancel, saving }:
       )}
 
       <div className="flex gap-2 pt-1">
-        <button
-          type="submit"
-          disabled={saving}
-          className="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors"
-        >
+        <Button id="user-form-save" type="submit" size="sm" disabled={saving}>
           {saving ? 'Salvando...' : 'Salvar'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-4 py-1.5 text-xs text-gray-300 hover:text-white border border-gray-600 rounded transition-colors"
-        >
+        </Button>
+        <Button id="user-form-cancel" type="button" size="sm" variant="outline" onClick={onCancel}>
           Cancelar
-        </button>
+        </Button>
+        {initial && onChangePassword && (
+          <Button id="user-form-change-password" type="button" size="sm" variant="outline" className="ml-auto" onClick={onChangePassword}>
+            Alterar senha
+          </Button>
+        )}
       </div>
     </form>
   )

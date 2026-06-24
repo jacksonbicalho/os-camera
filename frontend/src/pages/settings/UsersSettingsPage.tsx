@@ -3,7 +3,9 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import UserForm, { type UserFormData } from '../../components/UserForm'
+import RoleBadge from '../../components/RoleBadge'
 import { authHeaders, onUnauthorized } from '../../auth'
+import { Button } from '@/components/ui/button'
 
 interface Camera {
   id: string
@@ -16,18 +18,6 @@ interface User {
   role: 'admin' | 'viewer'
   cameras: string[]
   created_at: string
-}
-
-function RoleBadge({ role }: { role: string }) {
-  return (
-    <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
-      role === 'admin'
-        ? 'bg-blue-900/50 text-blue-300 border border-blue-700/50'
-        : 'bg-gray-800 text-gray-400 border border-gray-700'
-    }`}>
-      {role}
-    </span>
-  )
 }
 
 export default function UsersSettingsPage() {
@@ -96,16 +86,18 @@ export default function UsersSettingsPage() {
     <SettingsLayout>
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h3 className="text-h2 font-semibold text-gray-200">Usuários</h3>
-          <p className="text-sm text-gray-500 mt-1">Gerencie usuários e permissões de acesso.</p>
+          <h3 className="text-h2 font-semibold text-foreground">Usuários</h3>
+          <p className="text-sm text-muted-foreground mt-1">Gerencie usuários e permissões de acesso.</p>
         </div>
         {!creating && (
-          <button
+          <Button
+            id="user-create"
+            size="sm"
+            className="shrink-0"
             onClick={() => { setCreating(true); setError(null) }}
-            className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors shrink-0"
           >
             + Novo usuário
-          </button>
+          </Button>
         )}
       </div>
 
@@ -116,8 +108,8 @@ export default function UsersSettingsPage() {
       )}
 
       {creating && (
-        <div className="mb-4 bg-gray-900 border border-gray-700 rounded-lg p-4">
-          <p className="text-xs font-medium text-gray-400 mb-3">Novo usuário</p>
+        <div className="mb-4 bg-surface border border-border rounded-lg p-4">
+          <p className="text-xs font-medium text-muted-foreground mb-3">Novo usuário</p>
           <UserForm
             cameras={cameras}
             onSave={handleCreate}
@@ -131,40 +123,40 @@ export default function UsersSettingsPage() {
       )}
 
       {loading ? (
-        <p className="text-gray-500 text-sm">Carregando...</p>
+        <p className="text-muted-foreground text-sm">Carregando...</p>
       ) : users.length === 0 ? (
-        <p className="text-gray-500 text-sm">Nenhum usuário.</p>
+        <p className="text-muted-foreground text-sm">Nenhum usuário.</p>
       ) : (
         <div className="flex flex-col gap-2">
           {users.map(user => (
-            <div key={user.id} className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
+            <div key={user.id} className="bg-surface border border-border rounded-lg px-4 py-3">
               <div className="flex items-center gap-3 min-w-0">
                 <Link
                   to={`/settings/users/${user.id}`}
-                  className="text-sm font-mono text-gray-200 hover:text-blue-400 transition-colors truncate min-w-0"
+                  className="text-sm font-mono text-foreground hover:text-blue-400 transition-colors truncate min-w-0"
                 >
                   {user.username}
                 </Link>
                 <RoleBadge role={user.role} />
                 {user.role === 'viewer' && (
-                  <span className="text-xs text-gray-500 truncate">
+                  <span className="text-xs text-muted-foreground truncate">
                     {user.cameras.length === 0 ? 'sem câmeras' : user.cameras.join(', ')}
                   </span>
                 )}
                 <div className="ml-auto flex items-center gap-1 pl-3 shrink-0">
-                  <Link
-                    to={`/settings/users/${user.id}`}
-                    state={{ editing: true }}
-                    className="px-3 py-1 text-xs text-gray-400 hover:text-white border border-gray-700 rounded transition-colors"
-                  >
-                    Editar
-                  </Link>
-                  <button
+                  <Button asChild variant="outline" size="sm">
+                    <Link to={`/settings/users/${user.id}`} state={{ editing: true }}>
+                      Editar
+                    </Link>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
                     onClick={() => setDeleteId(user.id)}
-                    className="px-3 py-1 text-xs text-red-500 hover:text-red-400 border border-gray-700 rounded transition-colors"
                   >
                     Remover
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
