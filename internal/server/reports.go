@@ -47,7 +47,7 @@ func (s *Server) handleEventReport(w http.ResponseWriter, r *http.Request) {
 		if lerr != nil {
 			loc = time.UTC
 		}
-		rep, err = db.AggregateMotionEventsHeatmap(s.db, from, to, camera, loc)
+		rep, err = db.AggregateMotionEventsDayHour(s.db, from, to, camera, loc)
 	default:
 		rep, err = db.AggregateMotionEvents(s.db, from, to, camera)
 	}

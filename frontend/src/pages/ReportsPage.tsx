@@ -27,7 +27,7 @@ export default function ReportsPage() {
   const [report, setReport] = useState<EventReport | null>(null)
   const [heatmap, setHeatmap] = useState<EventReport | null>(null)
   const [days, setDays] = useState(7)
-  const [specificDay, setSpecificDay] = useState<Date | null>(null)
+  const [date, setDate] = useState<Date>(new Date())
   const [cameras, setCameras] = useState<CameraOption[]>([])
   const [camera, setCamera] = useState('')
   const [modalCat, setModalCat] = useState<EventCategory | null>(null)
@@ -40,9 +40,16 @@ export default function ReportsPage() {
     return () => window.removeEventListener('keydown', h)
   }, [modalCat])
 
-  // modo "dia" (barras por hora) quando há um dia específico escolhido ou o preset "1 dia".
-  const dayMode = specificDay !== null || days === 1
-  const dayDate = specificDay ?? new Date()
+  // A data = FIM do período; `days` = tamanho da janela. "1 dia" = barras por hora do
+  // dia; >1 dia = N dias terminando na data.
+  const dayMode = days === 1
+  const periodEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1, 0, 0, 0, 0)
+  const periodStart = dayMode
+    ? new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0)
+    : new Date(periodEnd.getTime() - days * 86_400_000)
+  const periodLabel = dayMode
+    ? `${WEEKDAY_LABEL[date.getDay()]} ${format(date, 'dd/MM')}`
+    : `${format(periodStart, 'dd/MM')} – ${format(date, 'dd/MM')}`
 
   // Lista de câmeras do usuário → popula o seletor. Inicia na primeira (o relatório é
   // sempre de uma câmera; não há modo "Todas").
@@ -59,35 +66,26 @@ export default function ReportsPage() {
 
   useEffect(() => {
     if (!camera) return
-    let url: string
-    if (dayMode) {
-      const from = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), 0, 0, 0, 0)
-      const to = new Date(from.getTime() + 86_400_000)
-      url = `/api/reports/events?from=${from.toISOString()}&to=${to.toISOString()}&camera=${encodeURIComponent(camera)}&bucket=hour`
-    } else {
-      const to = new Date()
-      const from = new Date(to.getTime() - days * 86_400_000)
-      url = `/api/reports/events?from=${from.toISOString()}&to=${to.toISOString()}&camera=${encodeURIComponent(camera)}`
-    }
+    const bucket = dayMode ? '&bucket=hour' : ''
+    const url = `/api/reports/events?from=${periodStart.toISOString()}&to=${periodEnd.toISOString()}&camera=${encodeURIComponent(camera)}${bucket}`
     fetch(url, { headers: authHeaders() })
       .then(r => { if (r.status === 401) { onUnauthorized(); return null } return r.json() })
       .then(d => { if (d) setReport(d) })
       .catch(() => {})
-    // dayDate é derivado de specificDay; specificDay/days nas deps cobrem.
-  }, [days, camera, specificDay]) // eslint-disable-line react-hooks/exhaustive-deps
+    // periodStart/periodEnd derivam de date+days; date/days nas deps cobrem.
+  }, [days, camera, date]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Heatmap (dia da semana × hora): inerentemente multi-dia, então segue o range de
-  // `days` (independe do seletor de dia específico) — janela [now - days, now].
+  // Heatmap (dia da semana × hora): só faz sentido multi-dia, então usa a MESMA janela
+  // do período (N dias terminando na data) e não roda no modo "1 dia".
   useEffect(() => {
-    if (!camera) return
-    const to = new Date()
-    const from = new Date(to.getTime() - days * 86_400_000)
-    const url = `/api/reports/events?from=${from.toISOString()}&to=${to.toISOString()}&camera=${encodeURIComponent(camera)}&bucket=heatmap`
+    if (!camera || dayMode) return
+    const url = `/api/reports/events?from=${periodStart.toISOString()}&to=${periodEnd.toISOString()}&camera=${encodeURIComponent(camera)}&bucket=heatmap`
     fetch(url, { headers: authHeaders() })
       .then(r => { if (r.status === 401) { onUnauthorized(); return null } return r.json() })
       .then(d => { if (d) setHeatmap(d) })
       .catch(() => {})
-  }, [days, camera])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [days, camera, date])
 
   const bars: Bar[] = dayMode
     ? (report?.by_hour ?? []).map(h => ({ key: `${h.hour}`, count: h.count, bc: h.by_category ?? {} }))
@@ -110,14 +108,28 @@ export default function ReportsPage() {
     return seg
   })
 
-  // Heatmap: grade [weekday][hour] de contagens + máximo p/ escalar a intensidade.
+  // Heatmap: uma linha por dia (cronológico). Agrupa as células por data preservando a
+  // ordem (o backend já devolve por data asc) e monta a contagem por hora de cada dia.
   const heatCells = heatmap?.heatmap ?? []
-  const heatGrid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
+  const heatRows: { date: string; hours: number[] }[] = []
+  const heatRowIdx = new Map<string, number>()
   for (const c of heatCells) {
-    if (c.weekday >= 0 && c.weekday < 7 && c.hour >= 0 && c.hour < 24) heatGrid[c.weekday][c.hour] = c.count
+    let i = heatRowIdx.get(c.date)
+    if (i === undefined) {
+      i = heatRows.length
+      heatRowIdx.set(c.date, i)
+      heatRows.push({ date: c.date, hours: Array(24).fill(0) })
+    }
+    if (c.hour >= 0 && c.hour < 24) heatRows[i].hours[c.hour] = c.count
   }
   const heatMax = Math.max(1, ...heatCells.map(c => c.count))
   const heatTotal = heatCells.reduce((s, c) => s + c.count, 0)
+  // "21 Dom" — dia do mês + dia da semana (data local, sem deslocamento de fuso).
+  const heatRowLabel = (date: string) => {
+    const [y, m, d] = date.split('-').map(Number)
+    const dt = new Date(y, m - 1, d)
+    return `${d} ${WEEKDAY_LABEL[dt.getDay()]}`
+  }
 
   const barTitle = (b: Bar) => {
     const head = dayMode ? `${b.key}h` : b.key
@@ -146,18 +158,17 @@ export default function ReportsPage() {
           </select>
           <DatePicker
             id="report-day-picker"
-            value={dayDate}
-            onChange={d => setSpecificDay(d)}
+            value={date}
+            onChange={d => setDate(d)}
             disableFuture
             align="right"
           />
           <select
             id="report-range-select"
-            value={specificDay ? '' : String(days)}
-            onChange={e => { setSpecificDay(null); setDays(Number(e.target.value)) }}
+            value={String(days)}
+            onChange={e => setDays(Number(e.target.value))}
             className="bg-surface-2 text-foreground text-xs rounded px-2 py-1 border border-border"
           >
-            {specificDay && <option value="" disabled>dia específico</option>}
             {RANGE_OPTS.map(n => (
               <option key={n} value={n}>{n === 1 ? '1 dia' : `${n} dias`}</option>
             ))}
@@ -168,7 +179,7 @@ export default function ReportsPage() {
       {/* Barras empilhadas — por dia (intervalo) ou por hora (modo dia) */}
       <div className="bg-surface border border-border rounded-lg p-4 mb-4">
         <p className="text-xs font-medium text-faint uppercase tracking-wider mb-3">
-          {dayMode ? `Eventos por hora — ${format(dayDate, 'dd/MM')}` : 'Eventos por dia'}
+          {dayMode ? `Eventos por hora — ${periodLabel}` : `Eventos por dia — ${periodLabel}`}
         </p>
         {bars.length === 0 ? (
           <p className="text-sm text-muted">Sem eventos no período.</p>
@@ -211,46 +222,52 @@ export default function ReportsPage() {
         )}
       </div>
 
-      {/* Heatmap temporal — dia da semana × hora */}
+      {/* Mapa de atividade — uma linha por dia × hora (só no modo intervalo) */}
+      {!dayMode && (
       <div className="bg-surface border border-border rounded-lg p-4 mb-4">
         <p className="text-xs font-medium text-faint uppercase tracking-wider mb-3">
-          Mapa de atividade — dia × hora
+          Mapa de atividade — dia × hora — {periodLabel}
         </p>
         {heatTotal === 0 ? (
           <p className="text-sm text-muted">Sem eventos no período.</p>
         ) : (
           <div id="report-heatmap" className="overflow-x-auto">
             <div className="inline-block min-w-full">
-              {/* Cabeçalho de horas (0,6,12,18) */}
-              <div className="flex pl-8 mb-1">
+              {/* Cabeçalho de horas (0–23) */}
+              <div className="flex pl-16 mb-1">
                 {Array.from({ length: 24 }, (_, h) => (
                   <div key={h} className="flex-1 text-[9px] text-faint tabular-nums text-center">
-                    {h % 6 === 0 ? h : ''}
+                    {h}
                   </div>
                 ))}
               </div>
-              {WEEKDAY_LABEL.map((wlabel, wd) => (
-                <div key={wd} className="flex items-center">
-                  <div className="w-8 shrink-0 text-[10px] text-muted pr-1 text-right">{wlabel}</div>
-                  {Array.from({ length: 24 }, (_, h) => {
-                    const n = heatGrid[wd][h]
-                    const intensity = n === 0 ? 0 : 0.18 + 0.82 * (n / heatMax)
-                    return (
-                      <div
-                        key={h}
-                        id={`report-heatmap-cell-${wd}-${h}`}
-                        className={`flex-1 aspect-square m-px rounded-sm ${n === 0 ? 'bg-surface-2' : 'bg-primary'}`}
-                        style={n === 0 ? undefined : { opacity: intensity }}
-                        title={`${wlabel} ${String(h).padStart(2, '0')}h — ${n} ${n === 1 ? 'evento' : 'eventos'}`}
-                      />
-                    )
-                  })}
-                </div>
-              ))}
+              <div className="max-h-[420px] overflow-y-auto">
+                {heatRows.map(row => {
+                  const label = heatRowLabel(row.date)
+                  return (
+                    <div key={row.date} id={`report-heatmap-row-${row.date}`} className="flex items-center">
+                      <div className="w-16 shrink-0 text-[10px] text-muted pr-1 text-right tabular-nums">{label}</div>
+                      {row.hours.map((n, h) => {
+                        const intensity = n === 0 ? 0 : 0.18 + 0.82 * (n / heatMax)
+                        return (
+                          <div
+                            key={h}
+                            id={`report-heatmap-cell-${row.date}-${h}`}
+                            className={`flex-1 h-6 m-px rounded-sm ${n === 0 ? 'bg-surface-2' : 'bg-primary'}`}
+                            style={n === 0 ? undefined : { opacity: intensity }}
+                            title={`${label} ${String(h).padStart(2, '0')}h — ${n} ${n === 1 ? 'evento' : 'eventos'}`}
+                          />
+                        )
+                      })}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
         )}
       </div>
+      )}
 
       {/* Donut por categoria */}
       <div className="bg-surface border border-border rounded-lg p-4 max-w-md">
