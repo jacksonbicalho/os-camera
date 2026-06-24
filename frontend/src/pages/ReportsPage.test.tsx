@@ -55,9 +55,12 @@ describe('ReportsPage heatmap', () => {
     expect(rows.length).toBe(HEAT_DATES.length)
     expect(document.querySelectorAll('[id^="report-heatmap-cell-2026-06-22-"]').length).toBe(24)
 
-    // rótulo "22 Seg" (2026-06-22 é segunda-feira); número do dia primeiro
+    // ordem mais recente no topo: a 1ª linha é o último dia (2026-06-24)
+    expect(rows[0].id).toBe('report-heatmap-row-2026-06-24')
+
+    // rótulo "22/06/2026 Seg" (2026-06-22 é segunda-feira); data dd/mm/yyyy + dia da semana
     const row22 = document.getElementById('report-heatmap-row-2026-06-22')
-    expect(row22?.textContent).toContain('22 Seg')
+    expect(row22?.textContent).toContain('22/06/2026 Seg')
 
     // célula com mais eventos (22/9h) tem o título com a contagem
     expect(document.getElementById('report-heatmap-cell-2026-06-22-9')?.getAttribute('title')).toContain('4')
