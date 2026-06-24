@@ -36,13 +36,13 @@ type HourCount struct {
 	ByCategory map[string]int64 `json:"by_category"`
 }
 
-// HeatCell is the event count for one (weekday, hour-of-day) bucket no fuso pedido —
-// weekday 0=domingo..6=sábado (time.Weekday), hour 0..23. Usado no heatmap temporal
-// (mapa de atividade dia-da-semana × hora) acumulado sobre vários dias.
-type HeatCell struct {
-	Weekday int   `json:"weekday"`
-	Hour    int   `json:"hour"`
-	Count   int64 `json:"count"`
+// DayHourCell is the event count for one (calendar-day, hour-of-day) bucket no fuso
+// pedido — Date no formato YYYY-MM-DD (local), hour 0..23. Usado no mapa de atividade
+// (dia × hora): uma linha por dia do período, 24 colunas de hora.
+type DayHourCell struct {
+	Date  string `json:"date"`
+	Hour  int    `json:"hour"`
+	Count int64  `json:"count"`
 }
 
 // EventReport aggregates events of a single camera over a period: total, per day
@@ -56,7 +56,7 @@ type EventReport struct {
 	ByHour     []HourCount      `json:"by_hour,omitempty"`
 	ByLabel    map[string]int64 `json:"by_label"`
 	ByCategory map[string]int64 `json:"by_category"`
-	Heatmap    []HeatCell       `json:"heatmap,omitempty"`
+	Heatmap    []DayHourCell    `json:"heatmap,omitempty"`
 }
 
 // AggregateMotionEvents conta os eventos de UMA câmera em [from, to): motion_events
@@ -228,15 +228,20 @@ func AggregateMotionEventsHourly(db *DB, from, to time.Time, cameraID string, lo
 	return EventReport{Total: total, ByHour: byHour, ByLabel: byLabel, ByCategory: byCategory}, nil
 }
 
-// AggregateMotionEventsHeatmap conta os eventos de UMA câmera em [from, to) agrupando por
-// (dia-da-semana, hora-do-dia) no fuso `loc` — mesmo conjunto de fontes dos demais
-// agregadores (motion_events + camera_state_history). Devolve as 168 células (7×24)
-// zero-fill, ordenadas por weekday e depois hour. Total = soma das células.
-func AggregateMotionEventsHeatmap(db *DB, from, to time.Time, cameraID string, loc *time.Location) (EventReport, error) {
+// AggregateMotionEventsDayHour conta os eventos de UMA câmera em [from, to) agrupando por
+// (data-local, hora-do-dia) no fuso `loc` — mesmo conjunto de fontes dos demais
+// agregadores (motion_events + camera_state_history). Devolve uma célula por (dia, hora)
+// para CADA dia do período (zero-fill ×24), ordenadas por data e depois hora. O nº de
+// dias acompanha a janela. Total = soma das células.
+func AggregateMotionEventsDayHour(db *DB, from, to time.Time, cameraID string, loc *time.Location) (EventReport, error) {
 	if loc == nil {
 		loc = time.UTC
 	}
-	cell := map[[2]int]int64{}
+	type key struct {
+		date string
+		hour int
+	}
+	cell := map[key]int64{}
 	var total int64
 
 	rows, err := db.Query(
@@ -245,7 +250,7 @@ func AggregateMotionEventsHeatmap(db *DB, from, to time.Time, cameraID string, l
 		cameraID, from.UTC().Format(time.RFC3339), to.UTC().Format(time.RFC3339),
 	)
 	if err != nil {
-		return EventReport{}, fmt.Errorf("aggregate motion events (heatmap): %w", err)
+		return EventReport{}, fmt.Errorf("aggregate motion events (day-hour): %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -255,7 +260,7 @@ func AggregateMotionEventsHeatmap(db *DB, from, to time.Time, cameraID string, l
 		}
 		t, _ := time.Parse(time.RFC3339, occurredAt)
 		lt := t.In(loc)
-		cell[[2]int{int(lt.Weekday()), lt.Hour()}]++
+		cell[key{lt.Format("2006-01-02"), lt.Hour()}]++
 		total++
 	}
 	if err := rows.Err(); err != nil {
@@ -273,7 +278,7 @@ func AggregateMotionEventsHeatmap(db *DB, from, to time.Time, cameraID string, l
 		cameraID, from.UTC().Format(tsLayout), to.UTC().Format(tsLayout),
 	)
 	if err != nil {
-		return EventReport{}, fmt.Errorf("aggregate state history (heatmap): %w", err)
+		return EventReport{}, fmt.Errorf("aggregate state history (day-hour): %w", err)
 	}
 	defer hRows.Close()
 	for hRows.Next() {
@@ -282,18 +287,23 @@ func AggregateMotionEventsHeatmap(db *DB, from, to time.Time, cameraID string, l
 			return EventReport{}, fmt.Errorf("scan state row: %w", err)
 		}
 		lt := changedAt.In(loc)
-		cell[[2]int{int(lt.Weekday()), lt.Hour()}]++
+		cell[key{lt.Format("2006-01-02"), lt.Hour()}]++
 		total++
 	}
 	if err := hRows.Err(); err != nil {
 		return EventReport{}, err
 	}
 
-	heatmap := make([]HeatCell, 0, 168)
-	for wd := 0; wd < 7; wd++ {
+	// Zero-fill: um bloco de 24 horas para cada dia local do período [from, to).
+	startLocal := from.In(loc)
+	day := time.Date(startLocal.Year(), startLocal.Month(), startLocal.Day(), 0, 0, 0, 0, loc)
+	heatmap := []DayHourCell{}
+	for day.Before(to) {
+		ds := day.Format("2006-01-02")
 		for h := 0; h < 24; h++ {
-			heatmap = append(heatmap, HeatCell{Weekday: wd, Hour: h, Count: cell[[2]int{wd, h}]})
+			heatmap = append(heatmap, DayHourCell{Date: ds, Hour: h, Count: cell[key{ds, h}]})
 		}
+		day = day.AddDate(0, 0, 1)
 	}
 	return EventReport{Total: total, Heatmap: heatmap}, nil
 }
