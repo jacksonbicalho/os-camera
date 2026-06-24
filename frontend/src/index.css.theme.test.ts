@@ -2,10 +2,13 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-// Teste-guarda: a camada de cor do index.css deve usar a paleta Material/MUI padrão.
-// Ancora os valores-chave; a validação visual completa (dark/light em todas as páginas)
-// é do navigator. Os componentes não mudam — só os valores de cor (tokens + rampas cruas).
-const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
+// Teste-guarda: a camada de cor deve usar a paleta Material/MUI padrão. Ancora os
+// valores-chave; a validação visual completa (dark/light em todas as páginas) é do
+// navigator. Os tokens vivem em styles/ (primitives + tema default) — concatena os
+// arquivos para validar independente de em qual partial cada token mora.
+const css = ['src/styles/primitives.css', 'src/styles/themes/default.css', 'src/styles/base.css']
+  .map(f => readFileSync(resolve(process.cwd(), f), 'utf8'))
+  .join('\n')
 
 const has = (re: RegExp) => expect(css).toMatch(re)
 
