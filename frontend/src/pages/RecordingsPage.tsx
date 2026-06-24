@@ -39,6 +39,8 @@ export default function RecordingsPage() {
   const [cameras, setCameras] = useState<CameraOption[]>([])
   const [selectedCams, setSelectedCams] = useState<Set<string>>(new Set())
   const [category, setCategory] = useState<string>('todos')
+  const [search, setSearch] = useState('')
+  const [query, setQuery] = useState('')
   const [date, setDate] = useState<Date>(new Date())
   const [moments, setMoments] = useState<Moment[]>([])
   const [hasMore, setHasMore] = useState(false)
@@ -52,11 +54,18 @@ export default function RecordingsPage() {
       .catch(() => {})
   }, [])
 
+  // debounce do termo de busca: só vira `query` (que dispara o fetch) após 300 ms parado
+  useEffect(() => {
+    const t = setTimeout(() => { setQuery(search.trim()); setPage(1) }, 300)
+    return () => clearTimeout(t)
+  }, [search])
+
   useEffect(() => {
     let cancelled = false
     const params = new URLSearchParams({ date: format(date, 'yyyy-MM-dd'), page: String(page), limit: '120' })
     if (category !== 'todos') params.set('category', category)
     if (selectedCams.size > 0) params.set('cameras', [...selectedCams].join(','))
+    if (query) params.set('q', query)
     fetch(`/api/moments?${params}`, { headers: authHeaders() })
       .then(r => { if (r.status === 401) { onUnauthorized(); return null } return r.json() })
       .then(d => {
@@ -67,7 +76,7 @@ export default function RecordingsPage() {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [date, category, page, selectedCams])
+  }, [date, category, page, selectedCams, query])
 
   const toggleCam = (id: string) => {
     setSelectedCams(prev => {
@@ -86,7 +95,18 @@ export default function RecordingsPage() {
           <h2 className="text-2xl font-bold text-foreground">Gravações</h2>
           <p className="text-sm text-muted mt-1">Momentos das câmeras — clique para abrir na gravação.</p>
         </div>
-        <DatePicker id="recordings-day-picker" value={date} onChange={d => { setDate(d); setPage(1) }} disableFuture align="right" />
+        <div className="flex items-center gap-2">
+          <input
+            id="recordings-search"
+            type="search"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por conteúdo…"
+            aria-label="Buscar momentos por conteúdo"
+            className="w-48 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-foreground placeholder:text-faint focus:outline-none focus:border-primary/50"
+          />
+          <DatePicker id="recordings-day-picker" value={date} onChange={d => { setDate(d); setPage(1) }} disableFuture align="right" />
+        </div>
       </div>
 
       {/* Filtro de categoria */}
@@ -125,7 +145,9 @@ export default function RecordingsPage() {
       )}
 
       {moments.length === 0 && loaded ? (
-        <p className="text-sm text-muted">Nenhum momento nesta data.</p>
+        <p className="text-sm text-muted">
+          {query ? `Nenhum momento para «${query}» nesta data.` : 'Nenhum momento nesta data.'}
+        </p>
       ) : (
         <div id="recordings-grid" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {moments.map((m, i) => {

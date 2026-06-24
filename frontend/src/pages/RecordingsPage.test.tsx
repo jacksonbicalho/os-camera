@@ -55,4 +55,29 @@ describe('RecordingsPage', () => {
     expect(loc.textContent).toContain('/cameras/cam1')
     expect(loc.textContent).toContain('2026-06-23T08:08:05Z')
   })
+
+  it('digitar na busca dispara fetch de momentos com q (debounced) e reseta a página', async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>
+    render(
+      <MemoryRouter initialEntries={['/recordings']}>
+        <Routes>
+          <Route path="/recordings" element={<RecordingsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    const input = await waitFor(() => {
+      const el = document.getElementById('recordings-search') as HTMLInputElement | null
+      if (!el) throw new Error('campo de busca não renderizou')
+      return el
+    })
+
+    fireEvent.change(input, { target: { value: 'portao' } })
+
+    await waitFor(() => {
+      const called = fetchMock.mock.calls.some(([u]: [string]) =>
+        u.startsWith('/api/moments') && u.includes('q=portao') && u.includes('page=1'),
+      )
+      if (!called) throw new Error('fetch com q=portao não disparou')
+    }, { timeout: 1500 })
+  })
 })
