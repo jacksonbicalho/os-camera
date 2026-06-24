@@ -34,12 +34,10 @@ interface ConfirmState {
 // Itens de rota da nav rail principal (mockup do redesign). Os destinos
 // Mapas/Dispositivos/Usuários/Relatórios são páginas placeholder por enquanto
 // — preenchidas nas histórias seguintes do roadmap.
+// O sino "Eventos" é renderizado antes destes (1º item do nav); ver o JSX.
 const NAV_LINKS: Array<{ id: string; to: string; label: string; icon: React.ReactNode }> = [
   { id: "nav-live", to: "/", label: "Ao vivo", icon: <Cctv /> },
   { id: "nav-recordings", to: "/recordings", label: "Gravações", icon: <Film /> },
-]
-
-const NAV_LINKS_AFTER_EVENTS: Array<{ id: string; to: string; label: string; icon: React.ReactNode }> = [
   { id: "nav-reports", to: "/reports", label: "Relatórios", icon: <BarChart2 /> },
 ]
 
@@ -362,9 +360,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
 
       {/* Nav rail principal */}
       <nav id="sidebar-nav" className={`flex flex-col ${itemsAlign} gap-1 py-2`}>
-        {NAV_LINKS.map(renderNavLink)}
-
-        {/* Eventos — sino com painel de notificações ao vivo */}
+        {/* Eventos — sino com painel de notificações ao vivo (1º item do nav) */}
         <div ref={bellRef} className={showLabel ? 'w-full' : undefined}>
           <Button
             id="sidebar-notifications"
@@ -465,7 +461,7 @@ export default function Sidebar({ username = "usuário" }: SidebarProps) {
           , document.body)}
         </div>
 
-        {NAV_LINKS_AFTER_EVENTS.map(renderNavLink)}
+        {NAV_LINKS.map(renderNavLink)}
 
         {/* Configurações — flyout com as seções de config */}
         <div ref={settingsRef} className={showLabel ? 'w-full' : undefined}>
