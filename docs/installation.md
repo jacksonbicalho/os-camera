@@ -10,7 +10,7 @@ inclui; o `install.sh` instala automaticamente quando possível.
 | Servidor/desktop Linux, x86 ou Raspberry Pi | **[Docker](#docker-recomendado)** (imagem GHCR) |
 | Linux bare-metal com systemd | **[`install.sh`](#linux--script-de-instalação)** (serviço systemd) |
 | Container/host sem systemd, ou sem root | **`install.sh --user` / `--no-service`**, ou Docker |
-| Termux / Android | **[Download manual](#download-manual-binário)** ou `install.sh --user --no-service` |
+| Termux / Android | **[Termux](#termux-android)** (`install.sh` com autostart via termux-services) |
 | Offline / airgapped | **`install.sh --binary=<arquivo>`** |
 
 ## Docker (recomendado)
@@ -147,6 +147,43 @@ camera-uninstall --remove-config --remove-data  # tudo
 
 > O desinstalador respeita o modo da instalação: numa instalação de usuário não pede root
 > nem mexe em systemd.
+
+---
+
+## Termux (Android)
+
+Roda no celular via [Termux](https://termux.dev) — sem root e sem systemd. O `install.sh`
+detecta o Termux, instala em `$PREFIX/bin` (já no PATH) e configura **autostart** via
+`termux-services` (runit), que sobe a app sempre que você abrir o Termux.
+
+```bash
+# 1) Dependências (o install.sh também instala o ffmpeg se faltar)
+pkg update && pkg install -y curl ffmpeg
+
+# 2) Instalar (detecta Termux automaticamente)
+curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh -o install.sh
+bash install.sh
+```
+
+Pós-instalação:
+
+```bash
+sv up camera        # iniciar agora
+sv status camera    # status
+sv down camera      # parar
+```
+
+> **Autostart ao abrir o Termux:** feito pelo `termux-services` (o instalador o instala e
+> habilita com `sv-enable`). Pode ser necessário **fechar e reabrir o Termux** uma vez
+> para o supervisor (`runsvdir`) iniciar. Para pular o serviço: `bash install.sh
+> --no-service`.
+
+> **Autostart no boot do aparelho:** instale o app **Termux:Boot** (F-Droid) e crie
+> `~/.termux/boot/start-camera` com `#!/data/data/com.termux/files/usr/bin/sh` +
+> `sv up camera` (ou `exec camera --config ~/.config/camera/camera.yaml`). Sem o
+> Termux:Boot, o autostart vale a partir da primeira abertura do Termux.
+
+Desinstalar: `camera-uninstall` (remove o serviço runit e o binário).
 
 ---
 
