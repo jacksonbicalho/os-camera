@@ -115,24 +115,6 @@ ensure_ffmpeg() {
     err "ffmpeg/ffprobe ausentes e nenhum gerenciador de pacotes detectado. Instale 'ffmpeg' manualmente."
 }
 
-# No Termux, ajusta o binário (PIE glibc) para o linker do Android via termux-elf-cleaner.
-# Sem isso o binário não roda no Android. Best-effort (avisa se não der).
-termux_clean_binary() {
-    if ! command -v termux-elf-cleaner >/dev/null 2>&1; then
-        if [ "$SKIP_DEPS" = "1" ]; then
-            warn "termux-elf-cleaner ausente (--skip-deps) — o binário pode não rodar no Android."
-            return 0
-        fi
-        info "Instalando termux-elf-cleaner (compatibilidade Android) ..."
-        pkg install -y termux-elf-cleaner >/dev/null 2>&1 || {
-            warn "Falha ao instalar termux-elf-cleaner. Rode: pkg install termux-elf-cleaner"
-            return 0
-        }
-    fi
-    info "Ajustando o binário para o Android (termux-elf-cleaner) ..."
-    termux-elf-cleaner "$1" >/dev/null 2>&1 || warn "termux-elf-cleaner retornou erro — o binário pode não rodar."
-}
-
 # Garante o termux-services (para autostart via runit). Best-effort: retorna não-zero se
 # não conseguir, e o chamador segue criando o serviço para uso posterior.
 ensure_termux_services() {
@@ -186,11 +168,8 @@ resolve_mode() {
 }
 
 resolve_service() {
-    if [ "$NO_SERVICE" = "1" ]; then
-        SERVICE_MODE="none"
-    elif is_termux; then
-        SERVICE_MODE="runit"   # autostart via termux-services (sem systemd)
-    elif [ "$USER_MODE" = "1" ] || ! have_systemd; then
+    # Termux é tratado à parte (do_install_termux_proot). Aqui: systemd só com root+systemd.
+    if [ "$NO_SERVICE" = "1" ] || [ "$USER_MODE" = "1" ] || ! have_systemd; then
         SERVICE_MODE="none"
     else
         SERVICE_MODE="systemd"
@@ -220,23 +199,94 @@ derived_paths() {
     RUNIT_DIR="${PREFIX:-}/var/service/${SERVICE_NAME}"
 }
 
-# Autostart no Termux via termux-services (runit). Cria o serviço e habilita; tolera o
-# runsvdir ainda não estar ativo (inicia no próximo login do Termux).
-setup_runit_service() {
-    info "Configurando autostart (termux-services) em ${RUNIT_DIR} ..."
-    ensure_termux_services || warn "Autostart pendente — instale termux-services e rode 'sv-enable ${SERVICE_NAME}'."
-    mkdir -p "$RUNIT_DIR"
-    cat > "${RUNIT_DIR}/run" <<RUN
-#!${PREFIX}/bin/sh
-exec ${INSTALL_DIR}/${BINARY_NAME} --config ${CONFIG_FILE} 2>&1
-RUN
-    chmod +x "${RUNIT_DIR}/run"
-    if command -v sv-enable >/dev/null 2>&1; then
-        # Não tentar `sv up` agora: o runsvdir só sobe ao (re)abrir o Termux, e o `sv`
-        # imprime "fail: ... service directory" nesta 1ª vez. Apenas habilita.
-        sv-enable "$SERVICE_NAME" >/dev/null 2>&1 || true
-        ok "Autostart habilitado — feche e reabra o Termux para iniciar."
+# Instalação no Termux via proot-distro (Debian glibc). O binário Go é PIE com
+# interpretador glibc, ausente no bionic do Android — então rodamos dentro de um rootfs
+# Debian, onde o loader existe. O install roda DENTRO do Debian (Linux normal) e o
+# autostart (lado Termux, runit) entra no proot.
+TERMUX_DISTRO="debian"
+
+do_install_termux_proot() {
+    info "Termux detectado — instalação via proot-distro (${TERMUX_DISTRO})."
+
+    if ! command -v proot-distro >/dev/null 2>&1; then
+        [ "$SKIP_DEPS" = "1" ] && err "proot-distro ausente (--skip-deps). Rode: pkg install proot-distro"
+        info "Instalando proot-distro ..."
+        pkg install -y proot-distro || err "Falha ao instalar proot-distro."
     fi
+
+    if proot-distro list 2>/dev/null | grep -qiE "^[[:space:]]*${TERMUX_DISTRO}\b.*installed"; then
+        info "${TERMUX_DISTRO} já instalado."
+    else
+        warn "Baixando o rootfs do ${TERMUX_DISTRO} (centenas de MB) — pode demorar."
+        proot-distro install "$TERMUX_DISTRO" || err "Falha ao instalar ${TERMUX_DISTRO}."
+    fi
+
+    # Instala a app DENTRO do Debian. `env -u` evita o install interno se autodetectar
+    # como Termux (recursão); lá ele roda o fluxo Linux normal (sem cleaner).
+    info "Instalando a aplicação dentro do ${TERMUX_DISTRO} ..."
+    script_url="https://raw.githubusercontent.com/${REPO}/master/scripts/install.sh"
+    proot-distro login "$TERMUX_DISTRO" -- env -u TERMUX_VERSION -u PREFIX sh -c '
+        set -e
+        command -v curl >/dev/null 2>&1 || { apt-get update && apt-get install -y curl; }
+        curl -fsSL "'"$script_url"'" -o /tmp/camera-install.sh
+        sh /tmp/camera-install.sh --no-service
+    ' || err "Falha na instalação dentro do ${TERMUX_DISTRO}."
+
+    # Estado + desinstalador no LADO Termux (para remover o serviço de autostart depois).
+    resolve_mode
+    derived_paths
+    SERVICE_MODE="none"
+    [ "$NO_SERVICE" != "1" ] && SERVICE_MODE="runit"
+    mkdir -p "$STATE_DIR"
+    cat > "$STATE_FILE" <<CONF
+INSTALL_DIR=${INSTALL_DIR}
+SERVICE_NAME=${SERVICE_NAME}
+SERVICE_MODE=${SERVICE_MODE}
+RUNIT_DIR=${RUNIT_DIR}
+USER_MODE=1
+TERMUX_PROOT=${TERMUX_DISTRO}
+SHARE_DIR=${SHARE_DIR}
+UNINSTALL_BIN=${UNINSTALL_BIN}
+CONFIG_DIR=${CONFIG_DIR}
+DATA_DIR=${DATA_DIR}
+SEGMENTS_DIR=${SEGMENTS_DIR}
+DB_PATH=${DB_PATH}
+CONF
+    mkdir -p "$SHARE_DIR"
+    if [ -f "$0" ] && [ "$0" != "/dev/stdin" ]; then
+        cp "$0" "${SHARE_DIR}/install.sh"
+    else
+        require_cmd curl
+        curl -fsSL "$script_url" -o "${SHARE_DIR}/install.sh"
+    fi
+    chmod +x "${SHARE_DIR}/install.sh"
+    cat > "$UNINSTALL_BIN" <<WRAPPER
+#!/bin/sh
+exec "${SHARE_DIR}/install.sh" --uninstall "\$@"
+WRAPPER
+    chmod +x "$UNINSTALL_BIN"
+
+    # Autostart (lado Termux): serviço runit que ENTRA no proot e roda o camera.
+    if [ "$SERVICE_MODE" = "runit" ]; then
+        info "Configurando autostart (termux-services) em ${RUNIT_DIR} ..."
+        ensure_termux_services || warn "Autostart pendente — instale termux-services e rode 'sv-enable ${SERVICE_NAME}'."
+        mkdir -p "$RUNIT_DIR"
+        cat > "${RUNIT_DIR}/run" <<RUN
+#!${PREFIX}/bin/sh
+exec proot-distro login ${TERMUX_DISTRO} -- camera --config /etc/camera/camera.yaml 2>&1
+RUN
+        chmod +x "${RUNIT_DIR}/run"
+        command -v sv-enable >/dev/null 2>&1 && { sv-enable "$SERVICE_NAME" >/dev/null 2>&1 || true; ok "Autostart habilitado — feche e reabra o Termux para iniciar."; }
+    fi
+
+    printf '\n'
+    info "Instalação Termux (proot ${TERMUX_DISTRO}) concluída!"
+    printf '  Rodar agora:    proot-distro login %s -- camera --config /etc/camera/camera.yaml\n' "$TERMUX_DISTRO"
+    printf '  Acesso:         http://localhost:<porta do wizard> (login admin)\n'
+    printf '  Editar config:  proot-distro login %s -- nano /etc/camera/camera.yaml\n' "$TERMUX_DISTRO"
+    printf '  Autostart:      feche e reabra o Termux (termux-services)\n'
+    printf '  Desinstalar:    %s-uninstall  (e opcional: proot-distro remove %s)\n' "$BINARY_NAME" "$TERMUX_DISTRO"
+    printf '\n'
 }
 
 # Coloca o binário a instalar em $TMP_BIN (download da release ou cópia local).
@@ -277,7 +327,6 @@ do_install() {
 
     info "Detectando sistema..."
     acquire_binary
-    is_termux && termux_clean_binary "$TMP_BIN"
 
     info "Instalando em ${INSTALL_DIR}/${BINARY_NAME} ..."
     mkdir -p "$INSTALL_DIR"
@@ -367,8 +416,6 @@ UNIT
         else
             warn "Serviço habilitado mas NÃO iniciado — configure ${CONFIG_FILE} e execute: systemctl start ${SERVICE_NAME}"
         fi
-    elif [ "$SERVICE_MODE" = "runit" ]; then
-        setup_runit_service
     else
         info "Sem serviço (modo --no-service/usuário ou sem systemd) — você roda o binário direto."
     fi
@@ -485,6 +532,12 @@ do_uninstall() {
         fi
     fi
 
+    # Instalação Termux fica DENTRO do proot (Debian) — o serviço foi removido acima;
+    # a app e seus dados saem com a remoção do distro.
+    if [ -n "${TERMUX_PROOT:-}" ]; then
+        printf '  App instalada no proot — para remover tudo: proot-distro remove %s\n' "$TERMUX_PROOT"
+    fi
+
     if [ -f "${INSTALL_DIR}/${BINARY_NAME}" ]; then
         info "Removendo ${INSTALL_DIR}/${BINARY_NAME} ..."
         rm -f "${INSTALL_DIR}/${BINARY_NAME}"
@@ -585,8 +638,9 @@ Opções:
   --state-dir=DIR       Diretório de estado/banco.
   --service-name=NOME   Nome do serviço systemd.
 
-No Termux (Android): instala em \$PREFIX/bin e configura autostart via termux-services
-(autostart ao abrir o Termux). Use --no-service para pular.
+No Termux (Android): instala automaticamente via proot-distro (Debian) — o binário Go
+(glibc) não roda no bionic do Android direto. Baixa um rootfs Debian, instala a app lá
+dentro e configura autostart via termux-services. Use --no-service para pular o autostart.
 
 Desinstalar (local, sem internet):
   camera-uninstall [--remove-config] [--remove-data]
@@ -628,6 +682,8 @@ if [ "$UNINSTALL" = "1" ]; then
         err "Desinstalação de uma instalação de sistema exige root. Use sudo."
     fi
     do_uninstall "$@"
+elif is_termux; then
+    do_install_termux_proot
 else
     do_install
 fi
