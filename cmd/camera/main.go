@@ -12,6 +12,7 @@ import (
 	osexec "os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -43,9 +44,21 @@ func main() {
 		case "init":
 			runInit(os.Args[2:])
 			return
-		case "version", "--version", "-v":
-			fmt.Printf("camera %s (commit %s, built %s)\n", version, commit, builtAt)
+		case "config":
+			runConfig(os.Args[2:])
 			return
+		case "version", "--version", "-v":
+			printVersion()
+			return
+		case "help", "--help", "-h":
+			runHelp(os.Args[2:])
+			return
+		default:
+			// Flags do modo servidor (ex.: --config) caem no flag.Parse abaixo;
+			// qualquer outra coisa que não seja flag é comando desconhecido.
+			if !strings.HasPrefix(os.Args[1], "-") {
+				unknownCommand(os.Args[1])
+			}
 		}
 	}
 
