@@ -1,8 +1,67 @@
 # Instalação
 
-## Linux (script automático)
+## Docker (recomendado)
 
-O jeito mais rápido. O script detecta a arquitetura (`amd64`, `arm64`, `arm`), baixa o binário da última release, executa o wizard de configuração e registra um serviço systemd.
+A forma mais simples e portável: a **mesma imagem** roda em x86-64, Raspberry Pi
+(arm64) e ARMv7 (32-bit). Não precisa de `install.sh` nem systemd — o container roda o
+binário direto e o **Docker é o supervisor** (restart, logs).
+
+A imagem é publicada no GHCR: `ghcr.io/jacksonbicalho/os-camera` (tags `:latest` e
+`:vX.Y.Z`).
+
+```bash
+# 1) Gerar a configuração (a partir do exemplo, ou com o wizard — ver abaixo)
+cp camera.yaml.example camera.yaml   # e edite
+
+# 2) Subir
+docker run -d --name camera \
+  --network host \
+  -v "$PWD/camera.yaml:/app/camera.yaml:ro" \
+  -v "$PWD/storage:/data" \
+  --restart unless-stopped \
+  ghcr.io/jacksonbicalho/os-camera:latest
+```
+
+> **`--network host`** é necessário para a descoberta de câmeras (ONVIF multicast + scan
+> de porta) funcionar na LAN real.
+
+### docker compose
+
+```yaml
+services:
+  camera:
+    image: ghcr.io/jacksonbicalho/os-camera:latest
+    network_mode: host
+    volumes:
+      - ./camera.yaml:/app/camera.yaml:ro
+      - ./storage:/data
+    restart: unless-stopped
+```
+
+```bash
+docker compose up -d
+```
+
+### Gerar o `camera.yaml` com o wizard (opcional)
+
+```bash
+docker run --rm -it -v "$PWD:/cfg" \
+  ghcr.io/jacksonbicalho/os-camera:latest ./camera init --output /cfg/camera.yaml
+```
+
+> Para **buildar a imagem localmente** em vez de baixar do GHCR:
+> `docker compose --profile production up -d --build` (usa o `Dockerfile` do repo).
+
+---
+
+## Linux (script automático — systemd)
+
+Para um host Linux "bare-metal" (com systemd). O script detecta a arquitetura (`amd64`,
+`arm64`, `arm`), baixa o binário da última release, executa o wizard de configuração e
+registra um serviço systemd.
+
+> Em **container** ou **Termux** não use este caminho — não há systemd. Use a imagem
+> Docker (acima) ou o download manual (abaixo).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh -o /tmp/camera-install.sh
@@ -44,55 +103,26 @@ sudo camera-uninstall --remove-config --remove-data  # tudo
 
 ## Raspberry Pi
 
-O binário para Raspberry Pi 3, 4 e 5 (64-bit) é o `linux-arm64`. Para Raspberry Pi 2 e 3 em modo 32-bit use `linux-arm`.
+A imagem **Docker** (recomendado) cobre os dois casos — RPi 3/4/5 (64-bit) usa `arm64` e
+RPi 2/3 em 32-bit usa `arm/v7`, ambos na mesma tag `:latest`. Como alternativa
+bare-metal, o `install.sh` baixa o binário certo (`linux-arm64` ou `linux-arm`).
 
-```bash
-# Raspberry Pi 3/4/5 (64-bit OS)
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh \
-  -o /tmp/camera-install.sh
-sudo bash /tmp/camera-install.sh
-```
-
-**Requisito:** ffmpeg instalado no sistema.
+**Requisito (instalação bare-metal):** ffmpeg no sistema.
 
 ```bash
 sudo apt update && sudo apt install -y ffmpeg
 ```
 
-**Dica de desempenho:** ative o hardware decoding para aliviar a CPU. Edite `camera.yaml` e configure as câmeras com `hls_video_mode: copy` quando o stream já for H.264, evitando retranscodificação.
+**Dica de desempenho:** ative o hardware decoding para aliviar a CPU. Edite `camera.yaml`
+e configure as câmeras com `hls_video_mode: copy` quando o stream já for H.264, evitando
+retranscodificação.
 
 ---
 
-## Docker
+## Download manual (binário)
 
-```bash
-# Copiar e editar configuração
-cp camera.yaml.example camera.yaml
-nano camera.yaml
-
-# Subir
-docker compose --profile production up -d
-```
-
-O `docker-compose.yml` usa `network_mode: host` para que a descoberta de câmeras (ONVIF multicast + scan de porta) funcione na LAN real.
-
-```yaml
-# docker-compose.yml (produção)
-services:
-  camera:
-    profiles: [production]
-    network_mode: host
-    volumes:
-      - ./camera.yaml:/app/camera.yaml:ro
-      - ./storage:/data
-    restart: unless-stopped
-```
-
----
-
-## Download manual
-
-Baixe o binário em [github.com/jacksonbicalho/os-camera/releases](https://github.com/jacksonbicalho/os-camera/releases):
+Sem Docker e sem systemd (ex.: Termux/Android, ambientes restritos): baixe o binário em
+[github.com/jacksonbicalho/os-camera/releases](https://github.com/jacksonbicalho/os-camera/releases).
 
 | Plataforma | Arquivo |
 |---|---|
@@ -106,6 +136,9 @@ chmod +x camera-linux-amd64
 ./camera-linux-amd64 init           # wizard de configuração
 ./camera-linux-amd64 --config camera.yaml
 ```
+
+O binário é estático (não depende de libc), mas o **ffmpeg precisa estar instalado** no
+sistema (ex.: `apt install ffmpeg`, ou `pkg install ffmpeg` no Termux).
 
 O wizard pergunta o destino dos logs (`stdout` ou `file`). Ao escolher `file`, ele
 também pergunta o diretório e os parâmetros de **rotação**: tamanho de rotação
