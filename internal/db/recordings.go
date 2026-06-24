@@ -120,6 +120,49 @@ func GetRecordingByID(database *DB, id int64) (*Recording, error) {
 	return &r, nil
 }
 
+// ListRecordingsInRange lista as gravações das câmeras dadas cujo started_at está em
+// [start, end), ordenadas por started_at desc. Quando motionOnly, filtra has_motion=1.
+// Lista de câmeras vazia → resultado vazio (sem query).
+func ListRecordingsInRange(database *DB, cameraIDs []string, start, end time.Time, motionOnly bool) ([]Recording, error) {
+	if len(cameraIDs) == 0 {
+		return []Recording{}, nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(cameraIDs)), ",")
+	args := make([]any, 0, len(cameraIDs)+2)
+	for _, id := range cameraIDs {
+		args = append(args, id)
+	}
+	args = append(args, start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339))
+	q := `SELECT id, camera_id, started_at, COALESCE(ended_at,''), path, size_bytes, has_motion
+	      FROM recordings
+	      WHERE camera_id IN (` + placeholders + `)
+	        AND started_at >= ? AND started_at < ?`
+	if motionOnly {
+		q += ` AND has_motion = 1`
+	}
+	q += ` ORDER BY started_at DESC`
+
+	rows, err := database.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Recording{}
+	for rows.Next() {
+		var r Recording
+		var startedAt, endedAt string
+		if err := rows.Scan(&r.ID, &r.CameraID, &startedAt, &endedAt, &r.Path, &r.SizeBytes, &r.HasMotion); err != nil {
+			return nil, err
+		}
+		r.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
+		if endedAt != "" {
+			r.EndedAt, _ = time.Parse(time.RFC3339, endedAt)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // HasMotionByPaths returns a map of path → has_motion for the given file paths.
 // Paths not found in the DB are absent from the map (caller may treat as false).
 func HasMotionByPaths(db *DB, paths []string) (map[string]bool, error) {
