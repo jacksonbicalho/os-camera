@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1198,6 +1199,91 @@ func TestMoments(t *testing.T) {
 	// ordenado por time desc → estado (11:00) antes do motion (10:00)
 	if resp.Moments[0]["kind"] != "state" {
 		t.Errorf("esperava o mais recente (estado) primeiro: %+v", resp.Moments)
+	}
+}
+
+func TestMomentsSearchQuery(t *testing.T) {
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	cam, err := db.CreateCamera(database, config.CameraConfig{Name: "Corredor"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// dois eventos de movimento com labels distintas + uma transição de estado
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID: cam.ID, OccurredAt: time.Date(2026, 5, 24, 10, 0, 0, 0, time.UTC), Score: 0.4, Label: "jardim",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.InsertMotionEvent(database, db.MotionEvent{
+		CameraID: cam.ID, OccurredAt: time.Date(2026, 5, 24, 10, 5, 0, 0, time.UTC), Score: 0.4, Label: "pessoa na garagem",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cid, err := db.CreateStateClassifier(database, stateclass.Classifier{
+		CameraID: cam.ID, Name: "Portão", Model: "custom-cls", Threshold: 0.8, Classes: []string{"aberto", "fechado"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(
+		`INSERT INTO camera_state_history (classifier_id, state, confidence, frame_path, changed_at) VALUES (?, ?, ?, ?, ?)`,
+		cid, "aberto", 0.95, "/recordings/state_history/1/x.jpg", "2026-05-24 11:00:00",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := server.NewServer(config.ServerConfig{}, "UTC", []config.CameraConfig{{ID: cam.ID}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "master", "secret")
+
+	query := func(q string) struct {
+		Moments []map[string]any `json:"moments"`
+		Total   int              `json:"total"`
+		HasMore bool             `json:"hasMore"`
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/api/moments?date=2026-05-24&q="+url.QueryEscape(q), nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("q=%q: expected 200, got %d: %s", q, w.Code, w.Body.String())
+		}
+		var resp struct {
+			Moments []map[string]any `json:"moments"`
+			Total   int              `json:"total"`
+			HasMore bool             `json:"hasMore"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("q=%q: decode: %v", q, err)
+		}
+		return resp
+	}
+
+	// casa pela label (case-insensitive, substring)
+	if r := query("JARDIM"); r.Total != 1 || len(r.Moments) != 1 || r.Moments[0]["label"] != "jardim" {
+		t.Errorf("q=JARDIM esperava 1 momento jardim, got total=%d: %+v", r.Total, r.Moments)
+	}
+	// casa pelo nome da categoria → "pessoa na garagem" tem category=pessoa
+	if r := query("pessoa"); r.Total != 1 || r.Moments[0]["category"] != "pessoa" {
+		t.Errorf("q=pessoa esperava 1 momento pessoa, got total=%d: %+v", r.Total, r.Moments)
+	}
+	// casa o estado pelo label
+	if r := query("aberto"); r.Total != 1 || r.Moments[0]["kind"] != "state" {
+		t.Errorf("q=aberto esperava 1 estado, got total=%d: %+v", r.Total, r.Moments)
+	}
+	// casa pelo nome da categoria "estados"
+	if r := query("estados"); r.Total != 1 || r.Moments[0]["category"] != "estados" {
+		t.Errorf("q=estados esperava 1 momento de estado, got total=%d: %+v", r.Total, r.Moments)
+	}
+	// sem casamento → vazio
+	if r := query("inexistente"); r.Total != 0 || len(r.Moments) != 0 {
+		t.Errorf("q=inexistente esperava 0, got total=%d: %+v", r.Total, r.Moments)
+	}
+	// q vazio → todos (sem regressão)
+	if r := query(""); r.Total != 3 {
+		t.Errorf("q vazio esperava 3 momentos, got total=%d", r.Total)
 	}
 }
 

@@ -53,6 +53,7 @@ func (s *Server) handleMoments(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	catFilter := r.URL.Query().Get("category")
+	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 
 	type moment struct {
 		CameraID   string  `json:"camera_id"`
@@ -64,6 +65,16 @@ func (s *Server) handleMoments(w http.ResponseWriter, r *http.Request) {
 		Frame      string  `json:"frame,omitempty"`
 		Score      float64 `json:"score"`
 	}
+	// matchesQuery casa o termo de busca (já normalizado) por substring contra a label
+	// ou o nome da categoria do momento. query vazia casa tudo.
+	matchesQuery := func(label, category string) bool {
+		if query == "" {
+			return true
+		}
+		return strings.Contains(strings.ToLower(label), query) ||
+			strings.Contains(strings.ToLower(category), query)
+	}
+
 	moments := []moment{}
 	for _, c := range cams {
 		if ac.Role != "admin" {
@@ -83,6 +94,9 @@ func (s *Server) handleMoments(w http.ResponseWriter, r *http.Request) {
 					if catFilter != "" && cat != catFilter {
 						continue
 					}
+					if !matchesQuery(e.Label, cat) {
+						continue
+					}
 					moments = append(moments, moment{
 						CameraID: c.ID, CameraName: c.Name, Time: e.OccurredAt.UTC().Format(time.RFC3339),
 						Kind: "motion", Label: e.Label, Category: cat, Frame: e.FramePath, Score: e.Score,
@@ -93,6 +107,9 @@ func (s *Server) handleMoments(w http.ResponseWriter, r *http.Request) {
 		if catFilter == "" || catFilter == "estados" {
 			if trs, err := db.ListCameraStateTransitions(s.db, c.ID, dayStart, dayEnd); err == nil {
 				for _, t := range trs {
+					if !matchesQuery(t.State, "estados") {
+						continue
+					}
 					moments = append(moments, moment{
 						CameraID: c.ID, CameraName: c.Name, Time: t.ChangedAt.UTC().Format(time.RFC3339),
 						Kind: "state", Label: t.State, Category: "estados", Frame: t.FramePath, Score: t.Confidence,
