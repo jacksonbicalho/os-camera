@@ -28,6 +28,11 @@ warn()  { printf '\033[1;33mWRN \033[0m%s\n' "$*" >&2; }
 
 is_root()      { [ "$(id -u)" -eq 0 ]; }
 have_systemd() { command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; }
+is_termux() {
+    [ -n "${TERMUX_VERSION:-}" ] && return 0
+    case "${PREFIX:-}" in *com.termux*) return 0 ;; esac
+    return 1
+}
 
 require_cmd() {
     command -v "$1" >/dev/null 2>&1 || err "Comando não encontrado: $1. Instale-o e tente novamente."
@@ -110,6 +115,26 @@ ensure_ffmpeg() {
     err "ffmpeg/ffprobe ausentes e nenhum gerenciador de pacotes detectado. Instale 'ffmpeg' manualmente."
 }
 
+# Garante o termux-services (para autostart via runit). Best-effort: retorna não-zero se
+# não conseguir, e o chamador segue criando o serviço para uso posterior.
+ensure_termux_services() {
+    command -v sv-enable >/dev/null 2>&1 && return 0
+    if [ "$SKIP_DEPS" = "1" ]; then
+        warn "termux-services ausente — --skip-deps: pulando (autostart fica pendente)."
+        return 1
+    fi
+    info "Instalando termux-services (autostart) via pkg ..."
+    pkg install -y termux-services >/dev/null 2>&1 || {
+        warn "Falha ao instalar termux-services. Rode: pkg install termux-services"
+        return 1
+    }
+    command -v sv-enable >/dev/null 2>&1 || {
+        warn "termux-services instalado — reinicie o Termux e rode: sv-enable ${SERVICE_NAME}"
+        return 1
+    }
+    return 0
+}
+
 # Resolve os caminhos conforme o modo (sistema vs usuário). Flags explícitas têm
 # precedência; o resto recebe o default do modo.
 resolve_mode() {
@@ -123,7 +148,12 @@ resolve_mode() {
     fi
 
     if [ "$USER_MODE" = "1" ]; then
-        : "${INSTALL_DIR:=$HOME/.local/bin}"
+        # No Termux, $PREFIX/bin já está no PATH (e não precisa de root); fora dele, ~/.local/bin.
+        if is_termux; then
+            : "${INSTALL_DIR:=$PREFIX/bin}"
+        else
+            : "${INSTALL_DIR:=$HOME/.local/bin}"
+        fi
         : "${CONFIG_DIR:=$HOME/.config/camera}"
         : "${STATE_DIR:=$HOME/.local/share/camera}"
         : "${DATA_DIR:=$STATE_DIR/data/recordings}"
@@ -138,7 +168,11 @@ resolve_mode() {
 }
 
 resolve_service() {
-    if [ "$NO_SERVICE" = "1" ] || [ "$USER_MODE" = "1" ] || ! have_systemd; then
+    if [ "$NO_SERVICE" = "1" ]; then
+        SERVICE_MODE="none"
+    elif is_termux; then
+        SERVICE_MODE="runit"   # autostart via termux-services (sem systemd)
+    elif [ "$USER_MODE" = "1" ] || ! have_systemd; then
         SERVICE_MODE="none"
     else
         SERVICE_MODE="systemd"
@@ -165,6 +199,27 @@ derived_paths() {
     UNINSTALL_BIN="${INSTALL_DIR}/${BINARY_NAME}-uninstall"
     DB_PATH="${STATE_DIR}/data/camera.db"
     STATE_FILE="${STATE_DIR}/install.conf"
+    RUNIT_DIR="${PREFIX:-}/var/service/${SERVICE_NAME}"
+}
+
+# Autostart no Termux via termux-services (runit). Cria o serviço e habilita; tolera o
+# runsvdir ainda não estar ativo (inicia no próximo login do Termux).
+setup_runit_service() {
+    info "Configurando autostart (termux-services) em ${RUNIT_DIR} ..."
+    ensure_termux_services || warn "Autostart pendente — instale termux-services e rode 'sv-enable ${SERVICE_NAME}'."
+    mkdir -p "$RUNIT_DIR"
+    cat > "${RUNIT_DIR}/run" <<RUN
+#!${PREFIX}/bin/sh
+exec ${INSTALL_DIR}/${BINARY_NAME} --config ${CONFIG_FILE} 2>&1
+RUN
+    chmod +x "${RUNIT_DIR}/run"
+    if command -v sv-enable >/dev/null 2>&1; then
+        sv-enable "$SERVICE_NAME" 2>/dev/null || true
+        if [ "$config_ready" = "1" ] && command -v sv >/dev/null 2>&1; then
+            sv up "$SERVICE_NAME" 2>/dev/null || warn "Serviço habilitado — inicia no próximo Termux (runsvdir)."
+        fi
+        ok "Autostart habilitado (termux-services)"
+    fi
 }
 
 # Coloca o binário a instalar em $TMP_BIN (download da release ou cópia local).
@@ -294,6 +349,8 @@ UNIT
         else
             warn "Serviço habilitado mas NÃO iniciado — configure ${CONFIG_FILE} e execute: systemctl start ${SERVICE_NAME}"
         fi
+    elif [ "$SERVICE_MODE" = "runit" ]; then
+        setup_runit_service
     else
         info "Sem serviço (modo --no-service/usuário ou sem systemd) — você roda o binário direto."
     fi
@@ -311,6 +368,7 @@ DB_PATH=${DB_PATH}
 SERVICE_NAME=${SERVICE_NAME}
 SERVICE_FILE=${SERVICE_FILE}
 SERVICE_MODE=${SERVICE_MODE}
+RUNIT_DIR=${RUNIT_DIR}
 USER_MODE=${USER_MODE}
 CONFIG_FILE=${CONFIG_FILE}
 SHARE_DIR=${SHARE_DIR}
@@ -346,10 +404,16 @@ WRAPPER
         printf '  Reiniciar:      systemctl restart %s\n' "$SERVICE_NAME"
         printf '  Ver logs:       journalctl -u %s -f\n'  "$SERVICE_NAME"
         printf '  Status:         systemctl status %s\n'  "$SERVICE_NAME"
+    elif [ "$SERVICE_MODE" = "runit" ]; then
+        [ "$config_ready" = "0" ] && printf '  Configurar:     %s init --output %s\n' "${INSTALL_DIR}/${BINARY_NAME}" "$CONFIG_FILE"
+        printf '  Iniciar agora:  sv up %s\n'   "$SERVICE_NAME"
+        printf '  Parar:          sv down %s\n' "$SERVICE_NAME"
+        printf '  Status:         sv status %s\n' "$SERVICE_NAME"
+        printf '  (Autostart ao abrir o Termux via termux-services; boot do aparelho = app Termux:Boot.)\n'
     else
         [ "$config_ready" = "0" ] && printf '  Configurar:     %s init --output %s\n' "${INSTALL_DIR}/${BINARY_NAME}" "$CONFIG_FILE"
         printf '  Rodar:          %s --config %s\n' "${INSTALL_DIR}/${BINARY_NAME}" "$CONFIG_FILE"
-        printf '  (Dica: rode em background com nohup/tmux; autostart no Termux é tratado à parte.)\n'
+        printf '  (Dica: rode em background com nohup/tmux.)\n'
         case ":$PATH:" in
             *":${INSTALL_DIR}:"*) ;;
             *) printf '  Atenção: %s não está no PATH — adicione ao seu shell rc.\n' "$INSTALL_DIR" ;;
@@ -388,6 +452,16 @@ do_uninstall() {
             info "Removendo ${SERVICE_FILE} ..."
             rm -f "$SERVICE_FILE"
             systemctl daemon-reload
+            ok "Serviço removido"
+        fi
+    elif [ "$SERVICE_MODE" = "runit" ]; then
+        if command -v sv-disable >/dev/null 2>&1; then
+            sv down "$SERVICE_NAME" 2>/dev/null || true
+            sv-disable "$SERVICE_NAME" 2>/dev/null || true
+        fi
+        if [ -n "${RUNIT_DIR:-}" ] && [ -d "$RUNIT_DIR" ]; then
+            info "Removendo serviço termux-services ${RUNIT_DIR} ..."
+            rm -rf "$RUNIT_DIR"
             ok "Serviço removido"
         fi
     fi
@@ -487,6 +561,9 @@ Opções:
   --segments-dir=DIR    Diretório dos segmentos HLS.
   --state-dir=DIR       Diretório de estado/banco.
   --service-name=NOME   Nome do serviço systemd.
+
+No Termux (Android): instala em \$PREFIX/bin e configura autostart via termux-services
+(autostart ao abrir o Termux). Use --no-service para pular.
 
 Desinstalar (local, sem internet):
   camera-uninstall [--remove-config] [--remove-data]
