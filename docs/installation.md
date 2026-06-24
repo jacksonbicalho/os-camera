@@ -1,5 +1,18 @@
 # Instalação
 
+Dependência comum a **todos** os métodos: **ffmpeg** (+ ffprobe). A imagem Docker já o
+inclui; o `install.sh` instala automaticamente quando possível.
+
+## Qual método usar?
+
+| Ambiente | Método recomendado |
+|---|---|
+| Servidor/desktop Linux, x86 ou Raspberry Pi | **[Docker](#docker-recomendado)** (imagem GHCR) |
+| Linux bare-metal com systemd | **[`install.sh`](#linux--script-de-instalação)** (serviço systemd) |
+| Container/host sem systemd, ou sem root | **`install.sh --user` / `--no-service`**, ou Docker |
+| Termux / Android | **[Download manual](#download-manual-binário)** ou `install.sh --user --no-service` |
+| Offline / airgapped | **`install.sh --binary=<arquivo>`** |
+
 ## Docker (recomendado)
 
 A forma mais simples e portável: a **mesma imagem** roda em x86-64, Raspberry Pi
@@ -54,50 +67,86 @@ docker run --rm -it -v "$PWD:/cfg" \
 
 ---
 
-## Linux (script automático — systemd)
+## Linux — script de instalação
 
-Para um host Linux "bare-metal" (com systemd). O script detecta a arquitetura (`amd64`,
-`arm64`, `arm`), baixa o binário da última release, executa o wizard de configuração e
-registra um serviço systemd.
+O `install.sh` detecta a arquitetura (`amd64`/`arm64`/`arm`), baixa o binário da última
+release, instala o **ffmpeg** se faltar (quando há permissão), roda o wizard de
+configuração e — em host com systemd e root — registra um **serviço systemd**. Sem root
+ou sem systemd ele se adapta (modo usuário / sem serviço).
 
-> Em **container** ou **Termux** não use este caminho — não há systemd. Use a imagem
-> Docker (acima) ou o download manual (abaixo).
+### Sistema (root + systemd) — padrão
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh -o /tmp/camera-install.sh
 sudo bash /tmp/camera-install.sh
 ```
 
-> **Por que salvar antes de executar?**
-> Com `curl | sudo bash` o stdin do bash fica ocupado com o pipe — o wizard não consegue ler o teclado. Salvando em arquivo o stdin continua conectado ao terminal.
+> **Por que salvar antes de executar?** Com `curl | sudo bash` o stdin fica ocupado pelo
+> pipe — o wizard não lê o teclado. Salvar em arquivo mantém o stdin no terminal.
 
-### Caminhos personalizados
-
-```bash
-sudo bash /tmp/camera-install.sh \
-  --install-dir /usr/local/bin \
-  --config-dir  /etc/camera \
-  --data-dir    /data/recordings \
-  --service-name camera
-```
-
-### Comandos pós-instalação
+Instala em `/usr/local/bin`, config em `/etc/camera`, dados em `/var/camera`. Pós:
 
 ```bash
 camera --version
 sudo systemctl status camera
-sudo systemctl restart camera
+sudo systemctl restart camera      # após editar a config
 sudo journalctl -u camera -f
 ```
+
+### Sem root (modo usuário)
+
+Sem `sudo` (ou com `--user`): instala em `~/.local/bin`, config em `~/.config/camera`,
+estado/dados em `~/.local/share/camera`, **sem serviço**. Você roda o binário direto.
+
+```bash
+bash /tmp/camera-install.sh --user
+# rodar:
+~/.local/bin/camera --config ~/.config/camera/camera.yaml
+```
+
+### Sem systemd (container/host enxuto)
+
+`--no-service` não cria serviço mesmo com systemd (útil em container, onde o supervisor
+é o Docker). Instala binário + config e mostra como rodar.
+
+```bash
+sudo bash /tmp/camera-install.sh --no-service
+```
+
+### Offline / airgapped
+
+`--binary=ARQUIVO` instala a partir de um binário já baixado (não acessa a internet):
+
+```bash
+sudo bash /tmp/camera-install.sh --binary ./camera-linux-arm64
+```
+
+### Opções
+
+| Flag | Efeito |
+|---|---|
+| `--user` | Instala no diretório do usuário (`~/.local`), sem root, sem serviço |
+| `--no-service` | Não cria serviço (mesmo com systemd) — você roda o binário |
+| `--skip-deps` | Não tenta instalar o ffmpeg |
+| `--binary=ARQUIVO` | Usa um binário local (sem download / offline) |
+| `--install-dir` `--config-dir` `--data-dir` `--segments-dir` `--state-dir` | Caminhos |
+| `--service-name=NOME` | Nome do serviço systemd |
+
+> **ffmpeg:** o script instala via `apt`/`dnf`/`pacman`/`zypper`/`apk` (root) ou `pkg`
+> (Termux). Sem permissão, ele imprime o comando exato da sua distro e aborta. Use
+> `--skip-deps` para pular.
 
 ### Desinstalar
 
 ```bash
-sudo camera-uninstall                          # remove binário e serviço
-sudo camera-uninstall --remove-config          # + configuração
-sudo camera-uninstall --remove-data            # + gravações e banco
-sudo camera-uninstall --remove-config --remove-data  # tudo
+camera-uninstall                          # remove binário e serviço (sudo se foi instalação de sistema)
+camera-uninstall --remove-config          # + configuração
+camera-uninstall --remove-data            # + gravações e banco
+camera-uninstall --remove-config --remove-data  # tudo
 ```
+
+> O desinstalador respeita o modo da instalação: numa instalação de usuário não pede root
+> nem mexe em systemd.
 
 ---
 
