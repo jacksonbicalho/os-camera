@@ -1,0 +1,13 @@
+.git
+.github
+frontend/node_modules
+frontend/dist
+node_modules
+dist
+storage
+stories
+releases
+amostras
+.cache
+**/*.test.ts
+**/*.test.tsx
