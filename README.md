@@ -93,8 +93,8 @@ sudo camera-uninstall --remove-config
 # Remove também gravações, banco de dados e segmentos HLS
 sudo camera-uninstall --remove-data
 
-# Remove tudo
-sudo camera-uninstall --remove-config --remove-data
+# Remove tudo (config + dados) — vale para qualquer modo de instalação
+sudo camera-uninstall --remove-all
 ```
 
 ---

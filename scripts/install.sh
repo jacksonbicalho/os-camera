@@ -115,6 +115,24 @@ ensure_ffmpeg() {
     err "ffmpeg/ffprobe ausentes e nenhum gerenciador de pacotes detectado. Instale 'ffmpeg' manualmente."
 }
 
+# No Termux, ajusta o binário (PIE glibc) para o linker do Android via termux-elf-cleaner.
+# Sem isso o binário não roda no Android. Best-effort (avisa se não der).
+termux_clean_binary() {
+    if ! command -v termux-elf-cleaner >/dev/null 2>&1; then
+        if [ "$SKIP_DEPS" = "1" ]; then
+            warn "termux-elf-cleaner ausente (--skip-deps) — o binário pode não rodar no Android."
+            return 0
+        fi
+        info "Instalando termux-elf-cleaner (compatibilidade Android) ..."
+        pkg install -y termux-elf-cleaner >/dev/null 2>&1 || {
+            warn "Falha ao instalar termux-elf-cleaner. Rode: pkg install termux-elf-cleaner"
+            return 0
+        }
+    fi
+    info "Ajustando o binário para o Android (termux-elf-cleaner) ..."
+    termux-elf-cleaner "$1" >/dev/null 2>&1 || warn "termux-elf-cleaner retornou erro — o binário pode não rodar."
+}
+
 # Garante o termux-services (para autostart via runit). Best-effort: retorna não-zero se
 # não conseguir, e o chamador segue criando o serviço para uso posterior.
 ensure_termux_services() {
@@ -214,11 +232,10 @@ exec ${INSTALL_DIR}/${BINARY_NAME} --config ${CONFIG_FILE} 2>&1
 RUN
     chmod +x "${RUNIT_DIR}/run"
     if command -v sv-enable >/dev/null 2>&1; then
-        sv-enable "$SERVICE_NAME" 2>/dev/null || true
-        if [ "$config_ready" = "1" ] && command -v sv >/dev/null 2>&1; then
-            sv up "$SERVICE_NAME" 2>/dev/null || warn "Serviço habilitado — inicia no próximo Termux (runsvdir)."
-        fi
-        ok "Autostart habilitado (termux-services)"
+        # Não tentar `sv up` agora: o runsvdir só sobe ao (re)abrir o Termux, e o `sv`
+        # imprime "fail: ... service directory" nesta 1ª vez. Apenas habilita.
+        sv-enable "$SERVICE_NAME" >/dev/null 2>&1 || true
+        ok "Autostart habilitado — feche e reabra o Termux para iniciar."
     fi
 }
 
@@ -260,6 +277,7 @@ do_install() {
 
     info "Detectando sistema..."
     acquire_binary
+    is_termux && termux_clean_binary "$TMP_BIN"
 
     info "Instalando em ${INSTALL_DIR}/${BINARY_NAME} ..."
     mkdir -p "$INSTALL_DIR"
@@ -406,10 +424,10 @@ WRAPPER
         printf '  Status:         systemctl status %s\n'  "$SERVICE_NAME"
     elif [ "$SERVICE_MODE" = "runit" ]; then
         [ "$config_ready" = "0" ] && printf '  Configurar:     %s init --output %s\n' "${INSTALL_DIR}/${BINARY_NAME}" "$CONFIG_FILE"
-        printf '  Iniciar agora:  sv up %s\n'   "$SERVICE_NAME"
-        printf '  Parar:          sv down %s\n' "$SERVICE_NAME"
+        printf '  >> Feche e reabra o Termux para iniciar (autostart via termux-services).\n'
         printf '  Status:         sv status %s\n' "$SERVICE_NAME"
-        printf '  (Autostart ao abrir o Termux via termux-services; boot do aparelho = app Termux:Boot.)\n'
+        printf '  Parar:          sv down %s\n'   "$SERVICE_NAME"
+        printf '  (Boot do aparelho = app Termux:Boot.)\n'
     else
         [ "$config_ready" = "0" ] && printf '  Configurar:     %s init --output %s\n' "${INSTALL_DIR}/${BINARY_NAME}" "$CONFIG_FILE"
         printf '  Rodar:          %s --config %s\n' "${INSTALL_DIR}/${BINARY_NAME}" "$CONFIG_FILE"
@@ -432,6 +450,7 @@ do_uninstall() {
         case "$arg" in
             --remove-config) remove_config=1 ;;
             --remove-data)   remove_data=1   ;;
+            --remove-all)    remove_config=1; remove_data=1 ;;
             --uninstall)     ;;
         esac
     done
@@ -496,6 +515,9 @@ do_uninstall() {
         [ -d "$DATA_DIR" ]     && { info "Removendo gravações ${DATA_DIR} ...";    rm -rf "$DATA_DIR";     ok "Gravações removidas"; }
         [ -d "$SEGMENTS_DIR" ] && { info "Removendo segmentos HLS ${SEGMENTS_DIR} ..."; rm -rf "$SEGMENTS_DIR"; ok "Segmentos HLS removidos"; }
         [ -f "$DB_PATH" ]      && { info "Removendo banco ${DB_PATH} ...";          rm -f "$DB_PATH";       ok "Banco de dados removido"; }
+        # Remove o diretório de estado por inteiro (data/, db, dir) — paths custom acima
+        # já foram tratados; o que sobra do STATE_DIR (ex.: data/ vazio) sai aqui.
+        [ -n "$STATE_DIR" ] && [ -d "$STATE_DIR" ] && rm -rf "$STATE_DIR"
     fi
 
     printf '\n'
@@ -525,6 +547,7 @@ for arg in "$@"; do
         --uninstall)       UNINSTALL=1 ;;
         --remove-config)   ;;
         --remove-data)     ;;
+        --remove-all)      ;;
         --user)            USER_MODE=1 ;;
         --no-service)      NO_SERVICE=1 ;;
         --skip-deps)       SKIP_DEPS=1 ;;
@@ -567,6 +590,7 @@ No Termux (Android): instala em \$PREFIX/bin e configura autostart via termux-se
 
 Desinstalar (local, sem internet):
   camera-uninstall [--remove-config] [--remove-data]
+  camera-uninstall --remove-all     # remove binário, serviço, config E dados (tudo)
 USAGE
             exit 0
             ;;
