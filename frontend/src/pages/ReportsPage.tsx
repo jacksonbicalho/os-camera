@@ -122,13 +122,16 @@ export default function ReportsPage() {
     }
     if (c.hour >= 0 && c.hour < 24) heatRows[i].hours[c.hour] = c.count
   }
+  // Exibe do mais recente (topo) ao mais antigo: quando o range excede os dados, os dias
+  // com atividade ficam no topo (visíveis) e os dias vazios mais antigos escorrem p/ baixo.
+  const heatRowsDesc = [...heatRows].reverse()
   const heatMax = Math.max(1, ...heatCells.map(c => c.count))
   const heatTotal = heatCells.reduce((s, c) => s + c.count, 0)
-  // "21 Dom" — dia do mês + dia da semana (data local, sem deslocamento de fuso).
+  // "27/03/2026 Sex" — data dd/mm/yyyy + dia da semana (data local, sem deslocamento de fuso).
   const heatRowLabel = (date: string) => {
     const [y, m, d] = date.split('-').map(Number)
     const dt = new Date(y, m - 1, d)
-    return `${d} ${WEEKDAY_LABEL[dt.getDay()]}`
+    return `${format(dt, 'dd/MM/yyyy')} ${WEEKDAY_LABEL[dt.getDay()]}`
   }
 
   const barTitle = (b: Bar) => {
@@ -234,7 +237,7 @@ export default function ReportsPage() {
           <div id="report-heatmap" className="overflow-x-auto">
             <div className="inline-block min-w-full">
               {/* Cabeçalho de horas (0–23) */}
-              <div className="flex pl-16 mb-1">
+              <div className="flex pl-28 mb-1">
                 {Array.from({ length: 24 }, (_, h) => (
                   <div key={h} className="flex-1 text-[9px] text-faint tabular-nums text-center">
                     {h}
@@ -242,11 +245,11 @@ export default function ReportsPage() {
                 ))}
               </div>
               <div className="max-h-[420px] overflow-y-auto">
-                {heatRows.map(row => {
+                {heatRowsDesc.map(row => {
                   const label = heatRowLabel(row.date)
                   return (
                     <div key={row.date} id={`report-heatmap-row-${row.date}`} className="flex items-center">
-                      <div className="w-16 shrink-0 text-[10px] text-muted pr-1 text-right tabular-nums">{label}</div>
+                      <div className="w-28 shrink-0 text-[10px] text-muted pr-1 text-right tabular-nums">{label}</div>
                       {row.hours.map((n, h) => {
                         const intensity = n === 0 ? 0 : 0.18 + 0.82 * (n / heatMax)
                         return (
