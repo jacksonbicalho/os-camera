@@ -1241,6 +1241,77 @@ func TestSPARecordingsRouteServesIndex(t *testing.T) {
 	}
 }
 
+func TestGlobalRecordings(t *testing.T) {
+	database := openServerTestDB(t)
+	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	cam, err := db.CreateCamera(database, config.CameraConfig{Name: "Corredor"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recPath := "/data/recordings"
+	mk := func(at time.Time, file string, motion bool) {
+		p := recPath + "/" + cam.ID + "/2026/06/23/" + file
+		if err := db.InsertRecording(database, db.Recording{CameraID: cam.ID, StartedAt: at, Path: p, HasMotion: motion}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk(time.Date(2026, 6, 23, 10, 0, 0, 0, time.UTC), "a.mp4", false)
+	mk(time.Date(2026, 6, 23, 10, 5, 0, 0, time.UTC), "b.mp4", true)
+	mk(time.Date(2026, 6, 23, 23, 50, 0, 0, time.UTC), "c.mp4", false)
+
+	srv := server.NewServer(config.ServerConfig{RecordingsPath: recPath}, "UTC", []config.CameraConfig{{ID: cam.ID}}, discardLogger(), nil).WithDB(database)
+	token := loginAndGetToken(t, srv, "master", "secret")
+
+	get := func(qs string) struct {
+		Recordings []map[string]any `json:"recordings"`
+		Total      int              `json:"total"`
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/api/recordings?"+qs, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: esperava 200, got %d: %s", qs, w.Code, w.Body.String())
+		}
+		var resp struct {
+			Recordings []map[string]any `json:"recordings"`
+			Total      int              `json:"total"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("%s: decode: %v", qs, err)
+		}
+		return resp
+	}
+
+	// dia inteiro (default window=24) → 3, desc por start, com url/has_motion/camera_name
+	r := get("date=2026-06-23")
+	if r.Total != 3 || len(r.Recordings) != 3 {
+		t.Fatalf("dia inteiro esperava 3, got %d: %+v", r.Total, r.Recordings)
+	}
+	first := r.Recordings[0]
+	if first["camera_name"] != "Corredor" {
+		t.Errorf("camera_name ausente/errado: %+v", first)
+	}
+	if first["url"] != "/recordings/"+cam.ID+"/2026/06/23/c.mp4" {
+		t.Errorf("url inesperada: %v", first["url"])
+	}
+	if r.Recordings[2]["url"] != "/recordings/"+cam.ID+"/2026/06/23/a.mp4" {
+		t.Errorf("ordem desc incorreta: %+v", r.Recordings)
+	}
+
+	// window=1 (dia passado → âncora = fim do dia) → só a de 23:50
+	if w := get("date=2026-06-23&window=1"); w.Total != 1 || w.Recordings[0]["url"] != "/recordings/"+cam.ID+"/2026/06/23/c.mp4" {
+		t.Errorf("window=1 esperava só c.mp4, got %d: %+v", w.Total, w.Recordings)
+	}
+
+	// motion_only → só b.mp4
+	if m := get("date=2026-06-23&motion_only=true"); m.Total != 1 || m.Recordings[0]["url"] != "/recordings/"+cam.ID+"/2026/06/23/b.mp4" {
+		t.Errorf("motion_only esperava só b.mp4, got %d: %+v", m.Total, m.Recordings)
+	}
+}
+
 func TestMomentsSearchQuery(t *testing.T) {
 	database := openServerTestDB(t)
 	if _, err := db.CreateUser(database, "master", "secret", "admin", false); err != nil {
