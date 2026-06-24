@@ -14,7 +14,7 @@ import EventsPanelHeader from "./EventsPanelHeader"
 import ThemeModeNav from "./ThemeModeNav"
 import {
   Bell, X, Check, Settings, CircleUser, CameraLogo, Cctv,
-  Film, HardDrive, BarChart2, ChevronLeft,
+  Film, BarChart2, ChevronLeft,
 } from "./Icons"
 import { Button, buttonVariants } from "./ui/button"
 import { cn } from "@/lib/utils"
@@ -40,7 +40,6 @@ const NAV_LINKS: Array<{ id: string; to: string; label: string; icon: React.Reac
 ]
 
 const NAV_LINKS_AFTER_EVENTS: Array<{ id: string; to: string; label: string; icon: React.ReactNode }> = [
-  { id: "nav-devices", to: "/devices", label: "Dispositivos", icon: <HardDrive /> },
   { id: "nav-reports", to: "/reports", label: "Relatórios", icon: <BarChart2 /> },
 ]
 

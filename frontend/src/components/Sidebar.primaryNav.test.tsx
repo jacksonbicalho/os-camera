@@ -53,7 +53,6 @@ function renderSidebar(initialPath = '/') {
 const LINK_ITEMS: Array<[string, string, string]> = [
   ['nav-live', '/', 'Ao vivo'],
   ['nav-recordings', '/recordings', 'Gravações'],
-  ['nav-devices', '/devices', 'Dispositivos'],
   ['nav-reports', '/reports', 'Relatórios'],
 ]
 
