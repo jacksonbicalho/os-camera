@@ -38,6 +38,10 @@
   --color-success: #2e7d32;
   --color-warning: #ed6c02;
 
+  /* glow de "tocando" do filmstrip (keyframe filmstrip-blink) — DARK = branco;
+     o light sobrescreve para um tom escuro (senão some no fundo branco). */
+  --filmstrip-blink: rgba(255, 255, 255, 0.9);
+
   /* — shadcn/ui: papéis mapeados para a MESMA paleta Material acima (sem duplicar
        sistema de cor). `background`/`foreground`/`primary`/`border` já existem. — */
   --color-primary-foreground: #ffffff;
@@ -94,6 +98,9 @@
   --color-muted: rgba(0, 0, 0, 0.60);
   --color-faint: rgba(0, 0, 0, 0.38);
   --color-border: rgba(0, 0, 0, 0.12);
+
+  /* glow do filmstrip: tom escuro p/ ficar visível sobre o fundo claro */
+  --filmstrip-blink: rgba(0, 0, 0, 0.6);
 
   /* shadcn/ui no claro (primary/ring/destructive seguem vívidos = iguais ao dark) */
   --color-muted-foreground: rgba(0, 0, 0, 0.60);
@@ -175,8 +182,8 @@
 /* Pisca a borda do thumbnail da gravação tocando (halo branco, não conflita com
    as cores da legenda). */
 @keyframes filmstrip-blink {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
-  50% { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9); }
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 3px var(--filmstrip-blink); }
 }
 
 body {
