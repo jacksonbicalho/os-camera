@@ -7,7 +7,7 @@ inclui; o `install.sh` instala automaticamente quando possível.
 
 | Ambiente | Método recomendado |
 |---|---|
-| Servidor/desktop Linux, x86 ou Raspberry Pi | **[Docker](#docker-recomendado)** (imagem GHCR) |
+| Servidor/desktop Linux, x86 ou Raspberry Pi | **[Docker](#docker-recomendado)** (imagem Docker Hub) |
 | Linux bare-metal com systemd | **[`install.sh`](#linux--script-de-instalação)** (serviço systemd) |
 | Container/host sem systemd, ou sem root | **`install.sh --user` / `--no-service`**, ou Docker |
 | Termux / Android | **[Termux](#termux-android)** (`install.sh` com autostart via termux-services) |
@@ -19,7 +19,7 @@ A forma mais simples e portável: a **mesma imagem** roda em x86-64, Raspberry P
 (arm64) e ARMv7 (32-bit). Não precisa de `install.sh` nem systemd — o container roda o
 binário direto e o **Docker é o supervisor** (restart, logs).
 
-A imagem é publicada no GHCR: `ghcr.io/jacksonbicalho/os-camera` (tags `:latest` e
+A imagem é publicada no Docker Hub: `jacksonbicalho/os-camera` (tags `:latest` e
 `:vX.Y.Z`).
 
 ```bash
@@ -32,7 +32,7 @@ docker run -d --name camera \
   -v "$PWD/camera.yaml:/app/camera.yaml:ro" \
   -v "$PWD/storage:/data" \
   --restart unless-stopped \
-  ghcr.io/jacksonbicalho/os-camera:latest
+  jacksonbicalho/os-camera:latest
 ```
 
 > **`--network host`** é necessário para a descoberta de câmeras (ONVIF multicast + scan
@@ -43,7 +43,7 @@ docker run -d --name camera \
 ```yaml
 services:
   camera:
-    image: ghcr.io/jacksonbicalho/os-camera:latest
+    image: jacksonbicalho/os-camera:latest
     network_mode: host
     volumes:
       - ./camera.yaml:/app/camera.yaml:ro
@@ -59,10 +59,10 @@ docker compose up -d
 
 ```bash
 docker run --rm -it -v "$PWD:/cfg" \
-  ghcr.io/jacksonbicalho/os-camera:latest ./camera init --output /cfg/camera.yaml
+  jacksonbicalho/os-camera:latest ./camera init --output /cfg/camera.yaml
 ```
 
-> Para **buildar a imagem localmente** em vez de baixar do GHCR:
+> Para **buildar a imagem localmente** em vez de baixar do Docker Hub:
 > `docker compose --profile production up -d --build` (usa o `Dockerfile` do repo).
 
 ---

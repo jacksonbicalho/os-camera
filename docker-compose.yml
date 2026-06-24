@@ -1,7 +1,7 @@
 services:
   camera:
     profiles: [production]
-    image: ghcr.io/jacksonbicalho/os-camera:latest
+    image: jacksonbicalho/os-camera:latest
     build:
       context: .
       target: production

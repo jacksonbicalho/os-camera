@@ -26,7 +26,7 @@ Sistema de monitoramento residencial via RTSP. Um único binário estático grav
 
 | | |
 |---|---|
-| [Instalação](docs/installation.md) | Script automático, Docker, Raspberry Pi, download manual |
+| [Instalação](docs/installation.md) | Docker, script (systemd/usuário/offline), Termux, Raspberry Pi, download manual |
 | [Configuração](docs/configuration.md) | Referência completa do `camera.yaml` |
 | [Câmeras](docs/cameras.md) | Adicionar, descobrir e configurar câmeras |
 | [Detecção de movimento](docs/motion.md) | Threshold, zonas, buffer pré/pós-evento |
@@ -36,118 +36,25 @@ Sistema de monitoramento residencial via RTSP. Um único binário estático grav
 
 ---
 
-## Instalação rápida (Linux bare-metal — systemd)
+## Instalação
 
-> Para **container** ou **Termux** use o [Docker (recomendado)](#docker-recomendado) ou o
-> [download manual](#download-manual) — não há systemd nesses ambientes.
+**Docker (recomendado)** — imagem multi-arch pública no Docker Hub (`jacksonbicalho/os-camera`), a mesma em x86/RPi/ARM:
+
+```bash
+cp camera.yaml.example camera.yaml   # e edite
+docker run -d --name camera --network host \
+  -v "$PWD/camera.yaml:/app/camera.yaml:ro" -v "$PWD/storage:/data" \
+  --restart unless-stopped jacksonbicalho/os-camera:latest
+```
+
+**Linux (script, com systemd):**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh -o /tmp/camera-install.sh
 sudo bash /tmp/camera-install.sh
 ```
 
-O script detecta a arquitetura (`amd64`, `arm64`, `arm`), **instala o ffmpeg se faltar**, baixa o binário da última release, executa o wizard de configuração interativo e registra um serviço systemd.
-
-> **Sem root / sem systemd?** `--user` instala em `~/.local` (sem `sudo`, sem serviço) e `--no-service` pula o serviço (container). `--binary=<arquivo>` instala offline. No **Termux** (Android) o script detecta o ambiente, instala em `$PREFIX/bin` e configura autostart via `termux-services`. Detalhes em [docs/installation.md](docs/installation.md).
-
-> **Por que baixar antes de executar?**
-> Com `curl | sudo bash` o `stdin` do bash fica ocupado com o pipe do curl — o wizard não consegue ler o teclado. Salvar o script em um arquivo e executar separadamente mantém o `stdin` conectado ao terminal real.
-
-**Alternativa via git clone:**
-
-```bash
-git clone --depth 1 https://github.com/jacksonbicalho/os-camera.git /tmp/camera-install
-sudo bash /tmp/camera-install/scripts/install.sh
-rm -rf /tmp/camera-install
-```
-
-**Caminhos customizáveis:**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh -o /tmp/camera-install.sh
-sudo bash /tmp/camera-install.sh \
-      --install-dir /usr/local/bin \
-      --config-dir  /etc/camera \
-      --data-dir    /data/recordings \
-      --service-name camera
-```
-
-**Outros comandos úteis:**
-
-```bash
-camera --version                   # versão instalada
-sudo systemctl restart camera      # reiniciar após editar config
-sudo journalctl -u camera -f       # acompanhar logs
-sudo systemctl status camera       # status do serviço
-```
-
-### Desinstalar
-
-```bash
-# Remove binário e serviço (mantém config e dados)
-sudo camera-uninstall
-
-# Remove também a configuração (/etc/camera/)
-sudo camera-uninstall --remove-config
-
-# Remove também gravações, banco de dados e segmentos HLS
-sudo camera-uninstall --remove-data
-
-# Remove tudo (config + dados) — vale para qualquer modo de instalação
-sudo camera-uninstall --remove-all
-```
-
----
-
-## Docker (recomendado)
-
-A **mesma imagem** roda em x86-64, Raspberry Pi (arm64) e ARMv7 — publicada no GHCR em
-`ghcr.io/jacksonbicalho/os-camera` (`:latest` / `:vX.Y.Z`). Sem `install.sh`/systemd: o
-container roda o binário direto e o Docker é o supervisor.
-
-```bash
-cp camera.yaml.example camera.yaml   # e edite
-
-docker run -d --name camera \
-  --network host \
-  -v "$PWD/camera.yaml:/app/camera.yaml:ro" \
-  -v "$PWD/storage:/data" \
-  --restart unless-stopped \
-  ghcr.io/jacksonbicalho/os-camera:latest
-```
-
-```yaml
-# docker compose
-services:
-  camera:
-    image: ghcr.io/jacksonbicalho/os-camera:latest
-    network_mode: host
-    volumes:
-      - ./camera.yaml:/app/camera.yaml:ro
-      - ./storage:/data
-    restart: unless-stopped
-```
-
-> `--network host` é necessário para a descoberta de câmeras na LAN. Para buildar a
-> imagem localmente: `docker compose --profile production up -d --build`.
-
----
-
-## Download manual
-
-Baixe o binário da [última release](https://github.com/jacksonbicalho/os-camera/releases/latest) para sua plataforma:
-
-| Plataforma | Arquivo |
-|---|---|
-| Linux x86-64 | `camera-linux-amd64` |
-| Linux ARM64 (Raspberry Pi 3/4/5 64-bit) | `camera-linux-arm64` |
-| Linux ARMv7 (Raspberry Pi 2/3 32-bit) | `camera-linux-arm` |
-| Windows x86-64 | `camera-windows-amd64.exe` |
-
-```bash
-chmod +x camera-linux-amd64
-./camera-linux-amd64 --config camera.yaml
-```
+→ **Guia completo de instalação** — sem root, **Termux/Android**, offline, Raspberry Pi, download manual e desinstalação: **[docs/installation.md](docs/installation.md)**.
 
 ---
 
