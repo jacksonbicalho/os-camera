@@ -104,6 +104,14 @@ func (c *Checker) Run(ctx context.Context, interval time.Duration) {
 	}
 }
 
+// Manifest devolve o manifesto cacheado e se há um válido (ok=false antes de um
+// check bem-sucedido).
+func (c *Checker) Manifest() (Manifest, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.last, c.last.Latest != ""
+}
+
 // Status devolve um snapshot do cache.
 func (c *Checker) Status() Status {
 	c.mu.RLock()

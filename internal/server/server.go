@@ -126,12 +126,20 @@ type Server struct {
 	deviceCollectors   []deviceinfo.Collector
 	updateChecker      updateStatuser
 	applyMode          string
+	applier            applyRunner
 }
 
-// updateStatuser fornece o snapshot da checagem de versão (consumido por
-// handleUpdates). Definido aqui no consumidor para manter o acoplamento mínimo.
+// updateStatuser fornece o snapshot da checagem de versão e o manifesto cacheado
+// (consumidos por handleUpdates/handleApplyUpdate). Definido aqui no consumidor
+// para manter o acoplamento mínimo.
 type updateStatuser interface {
 	Status() release.Status
+	Manifest() (release.Manifest, bool)
+}
+
+// applyRunner aplica uma atualização a partir de um manifesto.
+type applyRunner interface {
+	Apply(ctx context.Context, m release.Manifest) error
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
@@ -208,6 +216,11 @@ func (s *Server) WithUpdateChecker(c updateStatuser) *Server {
 
 func (s *Server) WithApplyMode(mode string) *Server {
 	s.applyMode = mode
+	return s
+}
+
+func (s *Server) WithApplier(a applyRunner) *Server {
+	s.applier = a
 	return s
 }
 
@@ -300,6 +313,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/settings", s.requireAdmin(s.handleSettings))
 	s.mux.HandleFunc("GET /api/about", s.requireFullAuth(s.handleAbout))
 	s.mux.HandleFunc("GET /api/updates", s.requireAdmin(s.handleUpdates))
+	s.mux.HandleFunc("POST /api/updates/apply", s.requireAdmin(s.handleApplyUpdate))
 	s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 
 	s.mux.HandleFunc("GET /api/discover", s.requireAdmin(s.handleDiscover))
@@ -753,6 +767,43 @@ func (s *Server) handleUpdates(w http.ResponseWriter, r *http.Request) {
 		st = s.updateChecker.Status()
 	}
 	json.NewEncoder(w).Encode(updatesResponse{Status: st, ApplyMode: s.applyMode})
+}
+
+func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.applyMode != "self-replace" {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"error": "apply indisponível no modo " + s.applyMode})
+		return
+	}
+	if s.applier == nil || s.updateChecker == nil {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"error": "atualização não disponível"})
+		return
+	}
+	if !s.updateChecker.Status().UpdateAvailable {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"error": "nenhuma atualização disponível"})
+		return
+	}
+	manifest, ok := s.updateChecker.Manifest()
+	if !ok {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"error": "manifesto indisponível"})
+		return
+	}
+
+	// Apply baixa, troca o binário e re-executa (não retorna). Responde antes e
+	// roda em background para que a resposta saia.
+	go func() {
+		if err := s.applier.Apply(context.Background(), manifest); err != nil {
+			s.log.Error("apply update failed", "error", err)
+		}
+	}()
+
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]string{"status": "applying", "to": manifest.Latest})
 }
 
 func (s *Server) handleClientConfig(w http.ResponseWriter, r *http.Request) {
