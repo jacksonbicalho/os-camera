@@ -26,18 +26,18 @@ Crie uma story file e branch para iniciar uma nova história, seguindo estritame
 
 5. **Crie a branch.** `git checkout -b <tipo>/<slug>` (sem escopo no nome da branch — só `<tipo>/<slug>`).
 
-6. **Crie a story file.** Em `stories/YYYYMMDDHHmm_<tipo>_<slug_underscore>.md` (timestamp via `date +%Y%m%d%H%M`, slug com `_` em vez de `-`). O **primeiro critério é sempre o "verdes"** (auto-marcado por `scripts/check.sh`):
+6. **Crie a story file** com o **plano COMPLETO**. Em `stories/YYYYMMDDHHmm_<tipo>_<slug_underscore>.md` (timestamp via `date +%Y%m%d%H%M`, slug com `_` em vez de `-`). **Investigue antes e preencha Contexto e Solução — NUNCA deixe em branco**; o navigator revisa o plano, então o plano precisa existir, com arquivos/abordagem/decisões de escopo. O **primeiro critério é sempre o "verdes"** (auto-marcado por `scripts/check.sh`):
 
 ```markdown
 # <tipo>(<escopo>): <descrição>
 
 ## Contexto
 
-<deixar em branco pra eu preencher após investigar>
+<o problema e o estado atual, INVESTIGADO — arquivos/funções relevantes, por que mexer>
 
 ## Solução
 
-<deixar em branco>
+<o plano COMPLETO: arquivos a tocar, abordagem, decisões de escopo a revisar — nunca em branco>
 
 ## Critérios de Aceitação
 
@@ -63,5 +63,7 @@ Crie uma story file e branch para iniciar uma nova história, seguindo estritame
 - NÃO comece a implementar — só prepare o ambiente.
 - NÃO commite a story file ainda (será junto com a implementação).
 - **NÃO inicie a implementação antes de o navigator marcar `[x] História revisada`.** Monitore o arquivo em background.
+- **Contexto e Solução SEMPRE preenchidos antes da revisão** — escopo/ambiguidade se resolve no plano (use AskUserQuestion *antes* da revisão, se preciso), nunca depois.
+- **Após `[x] História revisada`, a ÚNICA interação com o navigator é o pedido de aprovação.** O driver vai até o fim sem perguntar nada e **sem confirmar nenhum comando/execução** (check.sh, scripts, builds, git rodam direto).
 - Ao final, ao pedir `./scripts/story-approval.sh`, rode **`scripts/await-approval.sh` em background** e **só siga** (commit/push/PR/merge) quando ele retornar (todos os critérios E `[x] Aprovado` marcados).
 - Se o navigator pedir uma branch a partir de master ou de outra branch que não develop, confirme com AskUserQuestion antes.
