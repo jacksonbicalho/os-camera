@@ -15,7 +15,7 @@ dddd000000000000000000000000000000000000000000000000000000000004  checksums.txt
 
 func TestBuildManifestParsesAssets(t *testing.T) {
 	notes := "### ✨ Novidades\n- algo novo (`abc1234`)\n\n**Commits:** \"aspas\" & <tag>"
-	m, err := BuildManifest("v1.2.3-dev", notes, "v0.0.0", sampleChecksums)
+	m, err := BuildManifest("v1.2.3-dev", notes, "v0.0.0", "", sampleChecksums)
 	if err != nil {
 		t.Fatalf("BuildManifest: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestBuildManifestParsesAssets(t *testing.T) {
 }
 
 func TestBuildManifestIgnoresNonAssetLines(t *testing.T) {
-	m, err := BuildManifest("v1.0.0", "n", "v0.0.0", sampleChecksums)
+	m, err := BuildManifest("v1.0.0", "n", "v0.0.0", "", sampleChecksums)
 	if err != nil {
 		t.Fatalf("BuildManifest: %v", err)
 	}
@@ -66,14 +66,54 @@ func TestBuildManifestIgnoresNonAssetLines(t *testing.T) {
 }
 
 func TestBuildManifestErrorsWhenNoAssets(t *testing.T) {
-	if _, err := BuildManifest("v1.0.0", "n", "v0.0.0", "dddd  checksums.txt\n"); err == nil {
+	if _, err := BuildManifest("v1.0.0", "n", "v0.0.0", "", "dddd  checksums.txt\n"); err == nil {
 		t.Error("esperava erro quando não há binários camera-linux-*")
+	}
+}
+
+func TestBuildManifestImage(t *testing.T) {
+	const img = "jacksonbicalho/os-camera:1.2.3-dev"
+
+	withImg, err := BuildManifest("v1.2.3-dev", "n", "v0.0.0", img, sampleChecksums)
+	if err != nil {
+		t.Fatalf("BuildManifest: %v", err)
+	}
+	if withImg.Image != img {
+		t.Errorf("Image = %q, quero %q", withImg.Image, img)
+	}
+	rawWith, err := withImg.JSON()
+	if err != nil {
+		t.Fatalf("JSON: %v", err)
+	}
+	var backWith map[string]json.RawMessage
+	if err := json.Unmarshal(rawWith, &backWith); err != nil {
+		t.Fatalf("JSON inválido: %v", err)
+	}
+	if _, ok := backWith["image"]; !ok {
+		t.Errorf("chave image ausente com image informado: %s", rawWith)
+	}
+
+	// image vazio → campo omitido (omitempty).
+	noImg, err := BuildManifest("v1.2.3-dev", "n", "v0.0.0", "", sampleChecksums)
+	if err != nil {
+		t.Fatalf("BuildManifest: %v", err)
+	}
+	rawNo, err := noImg.JSON()
+	if err != nil {
+		t.Fatalf("JSON: %v", err)
+	}
+	var backNo map[string]json.RawMessage
+	if err := json.Unmarshal(rawNo, &backNo); err != nil {
+		t.Fatalf("JSON inválido: %v", err)
+	}
+	if _, ok := backNo["image"]; ok {
+		t.Errorf("chave image deveria ser omitida com image vazio: %s", rawNo)
 	}
 }
 
 func TestManifestJSON(t *testing.T) {
 	notes := "linha 1\nlinha 2 com \"aspas\" e <html> & símbolos"
-	m, err := BuildManifest("v1.2.3-dev", notes, "v0.9.0", sampleChecksums)
+	m, err := BuildManifest("v1.2.3-dev", notes, "v0.9.0", "", sampleChecksums)
 	if err != nil {
 		t.Fatalf("BuildManifest: %v", err)
 	}
