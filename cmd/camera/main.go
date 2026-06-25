@@ -143,19 +143,22 @@ func main() {
 		}
 	}
 
-	// Antes de aplicar migrations (forward-only), tira um snapshot do banco para
-	// permitir rollback se a atualização der errado. Falha de backup é warn+segue
-	// — não bloqueia o boot da appliance.
-	if pending, perr := db.HasPendingMigrations(dbPath); perr != nil {
-		slog.Warn("could not check pending migrations for pre-migration backup", "error", perr)
-	} else if pending {
-		backupDir := filepath.Join(dbDir, "backups")
-		if snap, berr := dbbackup.Snapshot(dbPath, backupDir, version); berr != nil {
-			slog.Warn("pre-migration db backup failed", "error", berr)
-		} else {
-			slog.Info("pre-migration db backup created", "snapshot", snap)
-			if perr := dbbackup.Prune(backupDir, 5); perr != nil {
-				slog.Warn("pruning old db backups failed", "error", perr)
+	// Backup pré-migration só faz sentido se o banco JÁ existe. Num install novo
+	// não há o que preservar — e tocar no arquivo antes do db.Open faria o Open
+	// achar que o banco não é novo. Migrations são forward-only; o snapshot
+	// permite rollback. Falha de backup é warn+segue (não bloqueia o boot).
+	if _, statErr := os.Stat(dbPath); statErr == nil {
+		if pending, perr := db.HasPendingMigrations(dbPath); perr != nil {
+			slog.Warn("could not check pending migrations for pre-migration backup", "error", perr)
+		} else if pending {
+			backupDir := filepath.Join(dbDir, "backups")
+			if snap, berr := dbbackup.Snapshot(dbPath, backupDir, version); berr != nil {
+				slog.Warn("pre-migration db backup failed", "error", berr)
+			} else {
+				slog.Info("pre-migration db backup created", "snapshot", snap)
+				if perr := dbbackup.Prune(backupDir, 5); perr != nil {
+					slog.Warn("pruning old db backups failed", "error", perr)
+				}
 			}
 		}
 	}
@@ -167,8 +170,12 @@ func main() {
 	defer database.Close()
 	database.WithLogger(slog)
 
-	if database.IsNew {
-		slog.Info("new database, seeding admin user from bootstrap config")
+	// Semeia o admin quando NÃO há nenhum usuário — não por IsNew. Assim um banco
+	// vazio (ex.: criado sem seed por um bug anterior) se auto-cura no boot.
+	if users, uerr := db.ListUsers(database); uerr != nil {
+		slog.Warn("could not list users for admin seed check", "error", uerr)
+	} else if len(users) == 0 {
+		slog.Info("no users found, seeding admin user from bootstrap config")
 		if seedErr := db.SeedFromBootstrap(database, cfg); seedErr != nil {
 			slog.Warn("seed from bootstrap failed", "error", seedErr)
 		}
