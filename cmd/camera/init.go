@@ -10,6 +10,10 @@ import (
 )
 
 func runInit(args []string) {
+	if hasHelpFlag(args) {
+		fmt.Print(initUsage())
+		return
+	}
 	outPath := "camera.yaml"
 	for i, a := range args {
 		switch {

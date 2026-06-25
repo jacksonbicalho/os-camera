@@ -10,7 +10,7 @@ inclui; o `install.sh` instala automaticamente quando possível.
 | Servidor/desktop Linux, x86 ou Raspberry Pi | **[Docker](#docker-recomendado)** (imagem Docker Hub) |
 | Linux bare-metal com systemd | **[`install.sh`](#linux--script-de-instalação)** (serviço systemd) |
 | Container/host sem systemd, ou sem root | **`install.sh --user` / `--no-service`**, ou Docker |
-| Termux / Android | **[Termux](#termux-android)** (`install.sh` com autostart via termux-services) |
+| Termux / Android | **[Termux](#termux-android)** (`install.sh` automatiza via proot-distro) |
 | Offline / airgapped | **`install.sh --binary=<arquivo>`** |
 
 ## Docker (recomendado)
@@ -152,35 +152,42 @@ camera-uninstall --remove-all             # tudo (config + dados); vale para qua
 
 ## Termux (Android)
 
-Roda no celular via [Termux](https://termux.dev) — sem root e sem systemd. Suporta
-**arm64** (a maioria dos aparelhos). O `install.sh` detecta o Termux, instala em
-`$PREFIX/bin` (já no PATH), **ajusta o binário para o Android** (`termux-elf-cleaner`, o
-binário Go precisa disso para rodar no bionic) e configura **autostart** via
-`termux-services` (runit).
+Roda no celular via [Termux](https://termux.dev). O binário Go é glibc (PIE) e **não roda
+direto** no Android (bionic) — então o `install.sh` instala dentro de um **Debian via
+[proot-distro](https://github.com/termux/proot-distro)** (ambiente glibc por cima do
+Termux). Tudo é automático: ele detecta o Termux, garante o `proot-distro`, baixa o
+Debian, instala a app lá dentro (com ffmpeg + wizard) e configura **autostart** via
+`termux-services`.
 
 ```bash
-# 1) Dependências (o install.sh também instala ffmpeg e termux-elf-cleaner se faltarem)
-pkg update && pkg install -y curl ffmpeg
-
-# 2) Instalar (detecta Termux automaticamente)
+pkg update && pkg install -y curl
 curl -fsSL https://raw.githubusercontent.com/jacksonbicalho/os-camera/master/scripts/install.sh -o install.sh
 bash install.sh
 ```
 
-> **Inicie fechando e reabrindo o Termux.** O autostart usa `termux-services` (runit), cujo
-> supervisor (`runsvdir`) só sobe ao (re)abrir o Termux. Por isso o instalador apenas
-> **habilita** o serviço (`sv-enable`) — depois de reabrir, ele inicia sozinho. Gerência:
-> `sv status camera`, `sv down camera`. Para pular o serviço: `bash install.sh --no-service`.
+> **Atenção:** o `proot-distro install debian` baixa um rootfs de **algumas centenas de
+> MB** — pode demorar na primeira vez.
 
-> **Autostart no boot do aparelho:** instale o app **Termux:Boot** (F-Droid) e crie
-> `~/.termux/boot/start-camera` com `#!/data/data/com.termux/files/usr/bin/sh` +
-> `sv up camera`. Sem o Termux:Boot, o autostart vale a partir da primeira abertura do Termux.
+Durante a instalação o **wizard** roda dentro do Debian (porta, fuso, senha do admin).
+Acesso depois: `http://localhost:<porta>` no navegador do celular (login `admin`).
 
-> **Android 32-bit (armv7)** não é coberto (o binário 32-bit não é PIE). Use um aparelho
-> arm64 (praticamente todos desde ~2017).
+Comandos úteis:
 
-Desinstalar: `camera-uninstall` (binário + serviço); `camera-uninstall --remove-all`
-remove também config e dados.
+```bash
+# rodar na hora (primeiro plano):
+proot-distro login debian -- camera --config /etc/camera/camera.yaml
+# editar a config:
+proot-distro login debian -- nano /etc/camera/camera.yaml
+```
+
+> **Autostart:** feito por `termux-services` (runit) — o serviço (`run` → `proot-distro
+> login debian -- camera …`) é **habilitado** com `sv-enable`, mas o supervisor
+> (`runsvdir`) só sobe ao (re)abrir o Termux. **Feche e reabra o Termux** para iniciar;
+> depois `sv status camera`. Para boot do aparelho, use o app **Termux:Boot** (F-Droid).
+> Pular o autostart: `bash install.sh --no-service`.
+
+Desinstalar: `camera-uninstall` (remove o serviço de autostart). Para remover a app e os
+dados por completo: `proot-distro remove debian`.
 
 ---
 
