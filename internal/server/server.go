@@ -26,6 +26,7 @@ import (
 	"camera/internal/deviceinfo"
 	"camera/internal/ffprobe"
 	"camera/internal/motion"
+	"camera/internal/release"
 	"camera/internal/storage"
 	"camera/internal/zones"
 )
@@ -123,6 +124,13 @@ type Server struct {
 	net                netTracker
 	cleaner            interface{ ForceClean() }
 	deviceCollectors   []deviceinfo.Collector
+	updateChecker      updateStatuser
+}
+
+// updateStatuser fornece o snapshot da checagem de versão (consumido por
+// handleUpdates). Definido aqui no consumidor para manter o acoplamento mínimo.
+type updateStatuser interface {
+	Status() release.Status
 }
 
 func NewServer(cfg config.ServerConfig, timezone string, cameras []config.CameraConfig, log *slog.Logger, frontend fs.FS) *Server {
@@ -189,6 +197,11 @@ func (s *Server) WithBuildInfo(commit, builtAt string) *Server {
 
 func (s *Server) WithCleaner(c interface{ ForceClean() }) *Server {
 	s.cleaner = c
+	return s
+}
+
+func (s *Server) WithUpdateChecker(c updateStatuser) *Server {
+	s.updateChecker = c
 	return s
 }
 
@@ -280,6 +293,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/config", s.handleClientConfig)
 	s.mux.HandleFunc("GET /api/settings", s.requireAdmin(s.handleSettings))
 	s.mux.HandleFunc("GET /api/about", s.requireFullAuth(s.handleAbout))
+	s.mux.HandleFunc("GET /api/updates", s.requireAdmin(s.handleUpdates))
 	s.mux.HandleFunc("GET /api/cameras", s.requireFullAuth(s.handleCameras))
 
 	s.mux.HandleFunc("GET /api/discover", s.requireAdmin(s.handleDiscover))
@@ -719,6 +733,16 @@ func (s *Server) handleAbout(w http.ResponseWriter, r *http.Request) {
 		"uptime_seconds": time.Since(s.startTime).Seconds(),
 		"go_version":     runtime.Version(),
 	})
+}
+
+func (s *Server) handleUpdates(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.updateChecker == nil {
+		// Checker não configurado: responde um estado neutro, sem update.
+		json.NewEncoder(w).Encode(release.Status{Current: s.version})
+		return
+	}
+	json.NewEncoder(w).Encode(s.updateChecker.Status())
 }
 
 func (s *Server) handleClientConfig(w http.ResponseWriter, r *http.Request) {
