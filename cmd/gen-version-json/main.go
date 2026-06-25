@@ -23,16 +23,17 @@ func main() {
 	notesFile := flag.String("notes-file", "", "arquivo markdown com as notas da release")
 	checksumsFile := flag.String("checksums", "", "arquivo checksums.txt (formato sha256sum)")
 	minSupported := flag.String("min-supported", "", "versão mínima suportada")
+	image := flag.String("image", "", "referência da imagem Docker versionada (ex: jacksonbicalho/os-camera:1.2.3-dev)")
 	output := flag.String("output", "", "arquivo de saída (default: stdout)")
 	flag.Parse()
 
-	if err := run(*tag, *notesFile, *checksumsFile, *minSupported, *output); err != nil {
+	if err := run(*tag, *notesFile, *checksumsFile, *minSupported, *image, *output); err != nil {
 		fmt.Fprintln(os.Stderr, "gen-version-json:", err)
 		os.Exit(1)
 	}
 }
 
-func run(tag, notesFile, checksumsFile, minSupported, output string) error {
+func run(tag, notesFile, checksumsFile, minSupported, image, output string) error {
 	if tag == "" {
 		return fmt.Errorf("--tag é obrigatório")
 	}
@@ -46,7 +47,7 @@ func run(tag, notesFile, checksumsFile, minSupported, output string) error {
 		return fmt.Errorf("ler checksums: %w", err)
 	}
 
-	m, err := release.BuildManifest(tag, string(notes), minSupported, string(checksums))
+	m, err := release.BuildManifest(tag, string(notes), minSupported, image, string(checksums))
 	if err != nil {
 		return err
 	}
