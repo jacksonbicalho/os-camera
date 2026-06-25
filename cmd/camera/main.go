@@ -33,6 +33,7 @@ import (
 	"camera/internal/stateengine"
 	"camera/internal/storage"
 	"camera/internal/streaming"
+	"camera/internal/updater"
 	"camera/internal/zones"
 )
 
@@ -383,6 +384,11 @@ func main() {
 		updateChecker := release.NewChecker(release.DefaultManifestURL, version, nil)
 		srv.WithUpdateChecker(updateChecker)
 		go updateChecker.Run(ctx, 6*time.Hour)
+
+		exe, _ := os.Executable()
+		updEnv := updater.Detect(exe)
+		srv.WithApplyMode(updEnv.ApplyMode)
+		slog.Info("update environment detected", "apply_mode", updEnv.ApplyMode, "in_docker", updEnv.InDocker, "binary_writable", updEnv.BinaryWritable)
 	}
 	go cleaner.Run(ctx, cleanInterval)
 

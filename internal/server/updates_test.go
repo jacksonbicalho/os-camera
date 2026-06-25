@@ -44,6 +44,31 @@ func TestGetUpdates_WithChecker(t *testing.T) {
 	}
 }
 
+func TestGetUpdates_ApplyMode(t *testing.T) {
+	srv := server.NewServer(config.ServerConfig{}, "UTC", nil, discardLogger(), nil)
+	srv = withTestUsersAndCameras(t, srv, nil)
+	srv.WithApplyMode("self-replace")
+	token := loginAndGetToken(t, srv, "admin", "pw")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/updates", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		ApplyMode string `json:"apply_mode"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.ApplyMode != "self-replace" {
+		t.Errorf("apply_mode = %q, quero self-replace", resp.ApplyMode)
+	}
+}
+
 func TestGetUpdates_NoChecker(t *testing.T) {
 	srv := server.NewServer(config.ServerConfig{}, "UTC", nil, discardLogger(), nil)
 	srv = withTestUsersAndCameras(t, srv, nil)
