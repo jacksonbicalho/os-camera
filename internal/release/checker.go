@@ -11,9 +11,13 @@ import (
 	"golang.org/x/mod/semver"
 )
 
+// DefaultDownloadBase é o diretório (redirect /latest/download do GitHub
+// Releases) onde ficam o manifesto e os binários da última release.
+const DefaultDownloadBase = "https://github.com/jacksonbicalho/os-camera/releases/latest/download/"
+
 // DefaultManifestURL é o version.json da última release, servido estaticamente
-// pelo GitHub Releases (redirect /latest/download, sem a API).
-const DefaultManifestURL = "https://github.com/jacksonbicalho/os-camera/releases/latest/download/version.json"
+// pelo GitHub Releases (sem a API).
+const DefaultManifestURL = DefaultDownloadBase + "version.json"
 
 // Status é um snapshot do estado da checagem, seguro para serializar.
 type Status struct {
