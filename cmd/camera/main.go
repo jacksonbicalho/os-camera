@@ -21,16 +21,19 @@ import (
 	"camera/internal/analysis"
 	"camera/internal/config"
 	"camera/internal/db"
+	"camera/internal/dbbackup"
 	"camera/internal/exec"
 	"camera/internal/ffprobe"
 	"camera/internal/logger"
 	"camera/internal/motion"
 	"camera/internal/recorder"
+	"camera/internal/release"
 	"camera/internal/server"
 	"camera/internal/stateclass"
 	"camera/internal/stateengine"
 	"camera/internal/storage"
 	"camera/internal/streaming"
+	"camera/internal/updater"
 	"camera/internal/zones"
 )
 
@@ -106,6 +109,55 @@ func main() {
 	} else {
 		tmp.Close()
 		os.Remove(tmp.Name())
+	}
+
+	// Recuperação de update: lê o marcador ANTES de abrir o DB (o rollback mexe no
+	// arquivo do banco fechado). Em trial, persiste a tentativa e confirma depois
+	// que o server sobe; se o trial anterior não confirmou, reverte e re-executa.
+	exe, _ := os.Executable()
+	binDir := filepath.Dir(exe)
+	inTrial := false
+	if m, ok, merr := updater.ReadMarker(binDir); merr != nil {
+		slog.Warn("could not read update marker", "error", merr)
+	} else if ok {
+		switch action, updated := updater.EvaluateBoot(m); action {
+		case updater.ActionRollback:
+			slog.Warn("update trial did not confirm, rolling back", "from", m.FromVersion, "to", m.ToVersion)
+			if rerr := updater.Rollback(m); rerr != nil {
+				slog.Error("rollback failed", "error", rerr)
+				_ = updater.ClearMarker(binDir) // evita loop de rollback
+			} else {
+				_ = updater.ClearMarker(binDir)
+				slog.Info("rolled back to previous version, restarting")
+				if xerr := updater.ReexecSelf(exe); xerr != nil {
+					slog.Error("re-exec after rollback failed, exiting for supervisor", "error", xerr)
+					os.Exit(1)
+				}
+			}
+		case updater.ActionTrial:
+			if werr := updater.WriteMarker(binDir, updated); werr != nil {
+				slog.Warn("could not persist update trial marker", "error", werr)
+			}
+			inTrial = true
+			slog.Info("running update trial", "to", m.ToVersion)
+		}
+	}
+
+	// Antes de aplicar migrations (forward-only), tira um snapshot do banco para
+	// permitir rollback se a atualização der errado. Falha de backup é warn+segue
+	// — não bloqueia o boot da appliance.
+	if pending, perr := db.HasPendingMigrations(dbPath); perr != nil {
+		slog.Warn("could not check pending migrations for pre-migration backup", "error", perr)
+	} else if pending {
+		backupDir := filepath.Join(dbDir, "backups")
+		if snap, berr := dbbackup.Snapshot(dbPath, backupDir, version); berr != nil {
+			slog.Warn("pre-migration db backup failed", "error", berr)
+		} else {
+			slog.Info("pre-migration db backup created", "snapshot", snap)
+			if perr := dbbackup.Prune(backupDir, 5); perr != nil {
+				slog.Warn("pruning old db backups failed", "error", perr)
+			}
+		}
 	}
 
 	database, err := db.Open(dbPath)
@@ -360,6 +412,39 @@ func main() {
 	)
 	if srv != nil {
 		srv.WithCleaner(cleaner)
+
+		updateChecker := release.NewChecker(release.DefaultManifestURL, version, nil)
+		srv.WithUpdateChecker(updateChecker)
+		go updateChecker.Run(ctx, 6*time.Hour)
+
+		updEnv := updater.Detect(exe)
+		srv.WithApplyMode(updEnv.ApplyMode)
+		slog.Info("update environment detected", "apply_mode", updEnv.ApplyMode, "in_docker", updEnv.InDocker, "binary_writable", updEnv.BinaryWritable)
+
+		srv.WithApplier(&updater.Applier{
+			Dir: binDir, Target: exe, BaseURL: release.DefaultDownloadBase,
+			DBPath: dbPath, CurrentVersion: version,
+			Download: func(ctx context.Context, url, sha, dest string) error {
+				return updater.Download(ctx, nil, url, sha, dest)
+			},
+			Snapshot: func() (string, error) {
+				return dbbackup.Snapshot(dbPath, filepath.Join(dbDir, "backups"), version)
+			},
+			Replace: updater.Replace,
+			Reexec:  updater.ReexecSelf,
+		})
+
+		// Confirma o trial de update (limpa o marcador) após o boot ficar saudável.
+		if inTrial {
+			go func() {
+				time.Sleep(30 * time.Second)
+				if err := updater.ClearMarker(binDir); err != nil {
+					slog.Warn("could not clear update marker after trial", "error", err)
+				} else {
+					slog.Info("update confirmed")
+				}
+			}()
+		}
 	}
 	go cleaner.Run(ctx, cleanInterval)
 

@@ -10,6 +10,7 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  IMAGE_NAME: jacksonbicalho/os-camera
 
 jobs:
   build:
@@ -92,7 +93,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: jacksonbicalho/os-camera
+          images: ${{ env.IMAGE_NAME }}
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest
@@ -119,6 +120,12 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -253,6 +260,22 @@ jobs:
             echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Generate version.json manifest
+        run: |
+          printf '%s' "${{ steps.notes.outputs.body }}" > notes.md
+          MIN="$(head -1 MIN_SUPPORTED_VERSION)"
+          TAG="${{ github.ref_name }}"
+          # ${TAG#v} casa com o {{version}} do metadata-action (sem o 'v').
+          IMAGE="${IMAGE_NAME}:${TAG#v}"
+          go run ./cmd/gen-version-json \
+            --tag "$TAG" \
+            --notes-file notes.md \
+            --checksums dist/checksums.txt \
+            --min-supported "$MIN" \
+            --image "$IMAGE" \
+            --output dist/version.json
+          cat dist/version.json
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -264,5 +287,6 @@ jobs:
             dist/camera-linux-arm64
             dist/camera-linux-arm
             dist/checksums.txt
+            dist/version.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
