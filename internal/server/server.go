@@ -125,6 +125,7 @@ type Server struct {
 	cleaner            interface{ ForceClean() }
 	deviceCollectors   []deviceinfo.Collector
 	updateChecker      updateStatuser
+	applyMode          string
 }
 
 // updateStatuser fornece o snapshot da checagem de versão (consumido por
@@ -202,6 +203,11 @@ func (s *Server) WithCleaner(c interface{ ForceClean() }) *Server {
 
 func (s *Server) WithUpdateChecker(c updateStatuser) *Server {
 	s.updateChecker = c
+	return s
+}
+
+func (s *Server) WithApplyMode(mode string) *Server {
+	s.applyMode = mode
 	return s
 }
 
@@ -735,14 +741,18 @@ func (s *Server) handleAbout(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type updatesResponse struct {
+	release.Status
+	ApplyMode string `json:"apply_mode"`
+}
+
 func (s *Server) handleUpdates(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if s.updateChecker == nil {
-		// Checker não configurado: responde um estado neutro, sem update.
-		json.NewEncoder(w).Encode(release.Status{Current: s.version})
-		return
+	st := release.Status{Current: s.version}
+	if s.updateChecker != nil {
+		st = s.updateChecker.Status()
 	}
-	json.NewEncoder(w).Encode(s.updateChecker.Status())
+	json.NewEncoder(w).Encode(updatesResponse{Status: st, ApplyMode: s.applyMode})
 }
 
 func (s *Server) handleClientConfig(w http.ResponseWriter, r *http.Request) {
