@@ -12,10 +12,10 @@ O fluxo completo de **desenvolvimento e publicação** — XP/TDD, estratégia d
 
 **Regras-gate inegociáveis (resumo — detalhe em `docs/workflow.md`):**
 - `master` e `develop` são protegidos — nunca commit/push direto; tudo via PR.
-- Toda história começa por `/story` (story file + branch a partir de `develop`); nada de código/teste antes.
-- **Gate de revisão:** não implemente antes de `[x] História revisada` na story.
+- Toda história começa por `/story` (story file + branch a partir de `develop`); nada de código/teste antes. A story é **sempre preenchida** (Contexto + Solução investigados, **nunca em branco**) antes de pedir a revisão — escopo/ambiguidade se resolve no plano.
+- **Gate de revisão:** não implemente antes de `[x] História revisada` na story. **Após `[x] História revisada` a ÚNICA interação com o navigator é o pedido de aprovação** — o driver vai até o fim sem perguntar nada e **sem confirmar nenhum comando/execução**.
 - **Gate de aprovação:** nenhum commit antes de `[x] Aprovado`; o driver **não** marca os Critérios de Aceitação (só o navigator, via `scripts/story-approval.sh`).
-- Após aprovação: `scripts/commit.sh` → `scripts/push-pr.sh` (push + PR + CI + merge). Story file e branch só são removidos quando a história fica `[✓]` no release file.
+- Após aprovação: `scripts/commit.sh` → `scripts/push-pr.sh` (push + PR + CI + merge). Story file e branch só são removidos quando a história fica `[✓]` no release file. **Corte de release:** `scripts/release-pr.sh` (via `/release-pr`) abre o PR `develop → master` (só com ok explícito do navigator).
 
 ## Comandos principais
 

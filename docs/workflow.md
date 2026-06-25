@@ -66,9 +66,13 @@ EOF
 > ⚠️ **OBRIGATÓRIO:** Antes de escrever qualquer linha de código ou teste, o driver DEVE criar o arquivo de história E abrir a branch (use `/story`). Sem exceção — nem para bugs simples, nem para "pequenas correções".
 
 1. Criar `stories/YYYYMMDDHHmm_<descricao>.md` e abrir uma branch a partir de `develop`: `git checkout -b <tipo>/<descricao-curta> develop`. Se a história cobrir mais de um assunto independente, questionar o navigator antes de continuar — histórias devem ser pequenas e focadas. O 1º Critério de Aceitação é **sempre** `- [] Backend e frontend verdes (auto: scripts/check.sh)` (sem "se aplicável").
-2. **Revisão da história (antes de implementar).** A história inclui o campo `- [] História revisada`. O driver apresenta o plano e **aguarda o navigator marcar `[x] História revisada`** — monitorando o arquivo da story em background (grep case-insensitive). **Nenhuma linha de código ou teste antes disso.**
+2. **Revisão da história (antes de implementar).** A história inclui o campo `- [] História revisada`. O driver **preenche o plano COMPLETO antes** (Contexto + Solução **nunca em branco**: investiga e escreve arquivos/abordagem/decisões de escopo), apresenta e **aguarda o navigator marcar `[x] História revisada`** — monitorando o arquivo da story em background (grep case-insensitive). **Nenhuma linha de código ou teste antes disso.**
 
    > ⚠️ **O driver NÃO inicia o red phase enquanto `História revisada` não estiver `[x]`.** O navigator revisa o plano (Contexto/Solução/Critérios) primeiro; só então a implementação começa.
+
+   > ⚠️ **Story sempre preenchida.** Contexto e Solução são escritos (investigados) **antes** da revisão — revisar um plano vazio não tem sentido. Escopo/ambiguidade se resolve no plano (AskUserQuestion **antes** da revisão), nunca depois.
+
+   > ⚠️ **Após `[x] História revisada` → só aprovação.** A revisão **autoriza** implementar; daí em diante a **única** interação com o navigator é o pedido de aprovação. O driver vai até o fim **sem perguntar nada e sem confirmar nenhum comando/execução** (check.sh, scripts, builds, git rodam direto).
 
 3. Escrever o teste que falha (**red**) — nunca escrever código de produção sem um teste falhando antes.
 4. Implementar o mínimo para o teste passar (**green**).
@@ -146,6 +150,7 @@ Encadeiam o fluxo por história. **Checkboxes usam `[]` para não-marcado** (e `
 | `await-approval.sh [story]` | Claude (background) | Bloqueia até **nenhum** Critério de Aceitação desmarcado **e** `[x] Aprovado`. Usado no passo 8 (gate final antes de commit/push/PR/merge). |
 | `commit.sh` | Claude | Commita o que está staged usando o heading `#` da story como mensagem (já é `tipo(escopo): desc`); exige `[x] Aprovado`; adiciona `Co-Authored-By`. |
 | `push-pr.sh` | Claude | **Orquestra o ciclo pós-aprovação:** push + `gh pr create --base develop` + **registra a linha da história no `_next.md` com `[~]`** (idempotente por `#PR`) + aguarda o CI e mergeia (chama `merge-when-green.sh`). Só com tree limpa + story aprovada; idempotente (não recria PR; re-roda após fix). `--no-merge` só abre o PR sem mergear. CI vermelho: propaga erro sem mergear. |
+| `release-pr.sh [versão]` | Claude (via `/release-pr`) | **Corte de release:** valida o `_next.md` (todas `[✓]`) + pré-condições git (develop sincronizado, tree limpa, à frente de master), calcula a versão estimada (bump convencional) e abre o PR `develop → master`. Idempotente (PR aberto → mostra URL). **Não mergeia** (master exige aprovação humana). |
 
 ### Merge pós-PR
 
@@ -175,7 +180,7 @@ O script lê os commits convencionais desde a última tag, determina o bump (`fe
 2. Ao concluir cada história, preencher branch e PR na tabela e marcar `[~]` (aguardando aprovação no GitHub — PR targeta `develop`).
 3. Após aprovação no GitHub, marcar `[x]`.
 4. Quando todas estiverem `[x]`, o navigator diz **"pode mergear a release"** — Claude itera a lista, mergeia cada PR em `develop` em sequência, deleta a branch local (`git branch -d <branch>`) e marca `[✓]`. O GitHub deleta a branch remota automaticamente após o merge (setting "Automatically delete head branches" ativo).
-5. Após todos os merges em `develop`, Claude abre um PR `develop → master` com título `release: vX.Y.Z`.
+5. Após todos os merges em `develop`, Claude abre um PR `develop → master` via **`scripts/release-pr.sh`** (`/release-pr`) — valida o release file e as pré-condições e cria o PR `release: vX.Y.Z`.
 6. Após aprovação e merge do PR de release, Claude roda `./scripts/release.sh` para gerar a tag.
 7. **Após a tag ser criada**, mergear `master` de volta em `develop` para que `git describe` retorne a versão correta no modo dev:
    ```bash
