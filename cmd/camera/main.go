@@ -21,6 +21,7 @@ import (
 	"camera/internal/analysis"
 	"camera/internal/config"
 	"camera/internal/db"
+	"camera/internal/dbbackup"
 	"camera/internal/exec"
 	"camera/internal/ffprobe"
 	"camera/internal/logger"
@@ -107,6 +108,23 @@ func main() {
 	} else {
 		tmp.Close()
 		os.Remove(tmp.Name())
+	}
+
+	// Antes de aplicar migrations (forward-only), tira um snapshot do banco para
+	// permitir rollback se a atualização der errado. Falha de backup é warn+segue
+	// — não bloqueia o boot da appliance.
+	if pending, perr := db.HasPendingMigrations(dbPath); perr != nil {
+		slog.Warn("could not check pending migrations for pre-migration backup", "error", perr)
+	} else if pending {
+		backupDir := filepath.Join(dbDir, "backups")
+		if snap, berr := dbbackup.Snapshot(dbPath, backupDir, version); berr != nil {
+			slog.Warn("pre-migration db backup failed", "error", berr)
+		} else {
+			slog.Info("pre-migration db backup created", "snapshot", snap)
+			if perr := dbbackup.Prune(backupDir, 5); perr != nil {
+				slog.Warn("pruning old db backups failed", "error", perr)
+			}
+		}
 	}
 
 	database, err := db.Open(dbPath)
