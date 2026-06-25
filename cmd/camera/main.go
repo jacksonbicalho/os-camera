@@ -26,6 +26,7 @@ import (
 	"camera/internal/logger"
 	"camera/internal/motion"
 	"camera/internal/recorder"
+	"camera/internal/release"
 	"camera/internal/server"
 	"camera/internal/stateclass"
 	"camera/internal/stateengine"
@@ -360,6 +361,10 @@ func main() {
 	)
 	if srv != nil {
 		srv.WithCleaner(cleaner)
+
+		updateChecker := release.NewChecker(release.DefaultManifestURL, version, nil)
+		srv.WithUpdateChecker(updateChecker)
+		go updateChecker.Run(ctx, 6*time.Hour)
 	}
 	go cleaner.Run(ctx, cleanInterval)
 
