@@ -120,6 +120,12 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -253,6 +259,18 @@ jobs:
             echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Generate version.json manifest
+        run: |
+          printf '%s' "${{ steps.notes.outputs.body }}" > notes.md
+          MIN="$(head -1 MIN_SUPPORTED_VERSION)"
+          go run ./cmd/gen-version-json \
+            --tag "${{ github.ref_name }}" \
+            --notes-file notes.md \
+            --checksums dist/checksums.txt \
+            --min-supported "$MIN" \
+            --output dist/version.json
+          cat dist/version.json
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -264,5 +282,6 @@ jobs:
             dist/camera-linux-arm64
             dist/camera-linux-arm
             dist/checksums.txt
+            dist/version.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
