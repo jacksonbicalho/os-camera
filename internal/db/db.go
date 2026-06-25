@@ -56,6 +56,13 @@ func Open(path string) (*DB, error) {
 // um backup antes do Open (que aplica as pendentes). Em um banco inexistente,
 // todas as migrations contam como pendentes.
 func HasPendingMigrations(path string) (bool, error) {
+	// Banco inexistente = todas as migrations pendentes. Retorna sem abrir/criar
+	// o arquivo — criá-lo aqui faria o Open posterior achar que o banco não é
+	// novo e pular o seed do admin.
+	if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
+		return true, nil
+	}
+
 	d, err := sql.Open("sqlite", path)
 	if err != nil {
 		return false, fmt.Errorf("open sqlite %q: %w", path, err)
