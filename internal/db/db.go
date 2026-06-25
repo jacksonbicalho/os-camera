@@ -51,6 +51,33 @@ func Open(path string) (*DB, error) {
 	return &DB{DB: sqlDB, IsNew: isNew}, nil
 }
 
+// HasPendingMigrations abre o banco em path e reporta se há alguma migration
+// ainda não registrada em schema_migrations — sem aplicá-las. Útil para decidir
+// um backup antes do Open (que aplica as pendentes). Em um banco inexistente,
+// todas as migrations contam como pendentes.
+func HasPendingMigrations(path string) (bool, error) {
+	d, err := sql.Open("sqlite", path)
+	if err != nil {
+		return false, fmt.Errorf("open sqlite %q: %w", path, err)
+	}
+	defer d.Close()
+
+	if _, err := d.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)`); err != nil {
+		return false, fmt.Errorf("create schema_migrations: %w", err)
+	}
+
+	entries, err := fs.ReadDir(migrationsFS, "migrations")
+	if err != nil {
+		return false, fmt.Errorf("read migrations dir: %w", err)
+	}
+
+	var applied int
+	if err := d.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&applied); err != nil {
+		return false, fmt.Errorf("count applied migrations: %w", err)
+	}
+	return applied < len(entries), nil
+}
+
 func applyMigrations(db *sql.DB) error {
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS schema_migrations (
