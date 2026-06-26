@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
+import PageHeader from '../../components/PageHeader'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import UserForm, { type UserFormData } from '../../components/UserForm'
 import RoleBadge from '../../components/RoleBadge'
@@ -84,12 +85,11 @@ export default function UsersSettingsPage() {
 
   return (
     <SettingsLayout>
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h3 className="text-h2 font-semibold text-foreground">Usuários</h3>
-          <p className="text-sm text-muted-foreground mt-1">Gerencie usuários e permissões de acesso.</p>
-        </div>
-        {!creating && (
+      <PageHeader
+        size="section"
+        title="Usuários"
+        subtitle="Gerencie usuários e permissões de acesso."
+        actions={!creating && (
           <Button
             id="user-create"
             size="sm"
@@ -99,7 +99,7 @@ export default function UsersSettingsPage() {
             + Novo usuário
           </Button>
         )}
-      </div>
+      />
 
       {error && (
         <div className="mb-4 px-3 py-2 bg-red-900/30 border border-red-700/50 rounded text-xs text-red-400">

@@ -2,6 +2,7 @@ import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Link } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
+import PageHeader from '../components/PageHeader'
 import { Check, Trash2 } from '../components/Icons'
 import { useUserNotifications, type UserNotificationType } from '../contexts/UserNotificationContext'
 import { Button } from '@/components/ui/button'
@@ -27,24 +28,20 @@ export default function NotificationsPage() {
   return (
     <AppLayout>
       <div>
-        <div className="flex items-start justify-between mb-8">
-          <div>
-            <h2 className="text-2xl font-bold text-white">Notificações</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              {unreadCount > 0 ? `${unreadCount} não lida(s)` : 'Tudo lido'}
-            </p>
-          </div>
-          {notifications.length > 0 && (
-            <div className="flex gap-2">
+        <PageHeader
+          title="Notificações"
+          subtitle={unreadCount > 0 ? `${unreadCount} não lida(s)` : 'Tudo lido'}
+          actions={notifications.length > 0 && (
+            <>
               <Button variant="outline" size="sm" onClick={markAllRead} disabled={unreadCount === 0}>
                 Marcar todas como lidas
               </Button>
               <Button variant="outline" size="sm" onClick={removeAll} className="text-destructive hover:text-destructive">
                 Limpar tudo
               </Button>
-            </div>
+            </>
           )}
-        </div>
+        />
 
         {notifications.length === 0 ? (
           <p className="text-gray-500 text-sm">Nenhuma notificação.</p>

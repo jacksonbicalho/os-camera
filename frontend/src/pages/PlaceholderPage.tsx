@@ -1,4 +1,5 @@
 import AppLayout from '../components/AppLayout'
+import PageHeader from '../components/PageHeader'
 
 interface PlaceholderPageProps {
   /** Título da seção (ex: "Mapas"). */
@@ -14,10 +15,7 @@ export default function PlaceholderPage({ title, description }: PlaceholderPageP
   return (
     <AppLayout>
       <div id={`placeholder-${title.toLowerCase()}`} className="max-w-2xl">
-        <h2 className="text-2xl font-bold text-foreground">{title}</h2>
-        <p className="text-sm text-muted-foreground mt-2">
-          {description ?? 'Esta seção ainda está em construção.'}
-        </p>
+        <PageHeader title={title} subtitle={description ?? 'Esta seção ainda está em construção.'} />
       </div>
     </AppLayout>
   )

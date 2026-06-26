@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { authHeaders, onUnauthorized } from '../auth'
 import SettingsLayout from '../components/SettingsLayout'
+import PageHeader from '../components/PageHeader'
 import MotionScoreChart from '../components/MotionScoreChart'
 import { useStats } from '../hooks/useStats'
 import { formatBytes, formatDuration } from './statsUtils'
@@ -68,8 +69,7 @@ export default function StatsPage() {
 
   return (
     <SettingsLayout>
-      <h3 className="text-h2 font-semibold text-foreground">Estatísticas</h3>
-      <p className="text-sm text-muted-foreground mt-1 mb-6">Uso de disco, sistema e saúde das câmeras.</p>
+      <PageHeader size="section" title="Estatísticas" subtitle="Uso de disco, sistema e saúde das câmeras." />
 
       {!stats ? (
         <p className="text-gray-500 text-sm">Carregando...</p>

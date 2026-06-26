@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
 import AppLayout from '../components/AppLayout'
+import PageHeader from '../components/PageHeader'
 import DatePicker from '../components/DatePicker'
 import { authHeaders, onUnauthorized } from '../auth'
 import { categoryBuckets, axisTicks, categoryDetail, type EventReport } from './reportsUtils'
@@ -153,46 +154,48 @@ export default function ReportsPage() {
 
   return (
     <AppLayout>
-      <div className="flex items-end justify-between mb-6 gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">Relatórios</h2>
-          {camName && (
-            <p id="report-camera-name" className="text-base font-medium text-foreground mt-2">{camName}</p>
-          )}
-          <p id="report-stats-line" className="text-sm text-muted mt-1">Estatísticas de eventos — {report?.total ?? 0} no período.</p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <select
-            id="report-camera-select"
-            value={camera}
-            onChange={e => setCamera(e.target.value)}
-            disabled={cameras.length <= 1}
-            className="bg-surface-2 text-foreground text-xs rounded px-2 py-1 border border-border max-w-44 disabled:opacity-70"
-          >
-            {cameras.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-          <DatePicker
-            id="report-day-picker"
-            value={date}
-            onChange={d => setDate(d)}
-            disableFuture
-            availableDays={camera ? contentDays : []}
-            align="right"
-          />
-          <select
-            id="report-range-select"
-            value={String(days)}
-            onChange={e => setDays(Number(e.target.value))}
-            className="bg-surface-2 text-foreground text-xs rounded px-2 py-1 border border-border"
-          >
-            {RANGE_OPTS.map(n => (
-              <option key={n} value={n}>{n === 1 ? '1 dia' : `${n} dias`}</option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <PageHeader
+        title="Relatórios"
+        subtitle={
+          <>
+            {camName && <p id="report-camera-name" className="text-base font-medium text-foreground">{camName}</p>}
+            <p id="report-stats-line" className="text-sm text-muted mt-1">Estatísticas de eventos — {report?.total ?? 0} no período.</p>
+          </>
+        }
+        actions={
+          <>
+            <select
+              id="report-camera-select"
+              value={camera}
+              onChange={e => setCamera(e.target.value)}
+              disabled={cameras.length <= 1}
+              className="bg-surface-2 text-foreground text-xs rounded px-2 py-1 border border-border max-w-44 disabled:opacity-70"
+            >
+              {cameras.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <DatePicker
+              id="report-day-picker"
+              value={date}
+              onChange={d => setDate(d)}
+              disableFuture
+              availableDays={camera ? contentDays : []}
+              align="right"
+            />
+            <select
+              id="report-range-select"
+              value={String(days)}
+              onChange={e => setDays(Number(e.target.value))}
+              className="bg-surface-2 text-foreground text-xs rounded px-2 py-1 border border-border"
+            >
+              {RANGE_OPTS.map(n => (
+                <option key={n} value={n}>{n === 1 ? '1 dia' : `${n} dias`}</option>
+              ))}
+            </select>
+          </>
+        }
+      />
 
       {/* Barras empilhadas — por dia (intervalo) ou por hora (modo dia) */}
       <div className="bg-surface border border-border rounded-lg p-4 mb-4">
