@@ -7,6 +7,7 @@ import CameraSettingsTabs from '../../components/CameraSettingsTabs'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import BboxCanvas, { type BboxRect } from '../../components/BboxCanvas'
 import { authHeaders, onUnauthorized, getRole, getToken } from '../../auth'
+import { useSettings } from '../../hooks/useSettings'
 import { stateTitle, formatHistoryTime } from './statesHistory'
 import { Button } from '@/components/ui/button'
 import { Plus, Pencil, Trash2, Zap, Loader2, Camera as CameraIcon, CalendarDays, Film, X } from '../../components/Icons'
@@ -136,6 +137,8 @@ export default function CameraStatesSettingsPage() {
   const [states, setStates] = useState<Record<number, string>>({})
   const [historyFor, setHistoryFor] = useState<StateClassifier | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
+  const { settings } = useSettings()
+  const camName = settings?.cameras?.find(c => c.id === id)?.name
 
   // Estado atual de cada classificador, em poll (~5s) — atualiza ao runner mudar.
   useEffect(() => {
@@ -253,7 +256,7 @@ export default function CameraStatesSettingsPage() {
   if (!isAdmin) {
     return (
       <SettingsLayout>
-        <CameraSettingsTabs id={id!} active="states" />
+        <CameraSettingsTabs id={id!} active="states" camName={camName} />
         <p className="text-muted-foreground text-sm">Apenas administradores.</p>
       </SettingsLayout>
     )
@@ -261,7 +264,7 @@ export default function CameraStatesSettingsPage() {
 
   return (
     <SettingsLayout>
-      <CameraSettingsTabs id={id!} active="states" />
+      <CameraSettingsTabs id={id!} active="states" camName={camName} />
 
       {error && (
         <div className="mb-4 px-3 py-2 bg-red-900/30 border border-red-700/50 rounded text-xs text-red-400">{error}</div>
