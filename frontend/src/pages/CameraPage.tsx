@@ -16,7 +16,7 @@ import { useSettings, type CameraSettings } from '../hooks/useSettings'
 import { useMotionPeak } from '../hooks/useMotionPeak'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { useDebugTools } from '../hooks/useDebugTools'
-import { applyFrameStep, applySameChunkStep, loadedMetadataSeek, mergeRecordings, secondStepTarget } from './cameraUtils'
+import { applyFrameStep, applySameChunkStep, calendarContent, dateKey, loadedMetadataSeek, mergeRecordings, secondStepTarget } from './cameraUtils'
 import type { Recording, MotionEvent } from './cameraUtils'
 import BboxCanvas, { type BboxRect } from '../components/BboxCanvas'
 import CameraConfigMenu from '../components/CameraConfigMenu'
@@ -124,6 +124,7 @@ export default function CameraPage() {
     }
     return new Date()
   })
+  const [contentDays, setContentDays] = useState<string[]>([])
   const [viewerCam, setViewerCam] = useState<CameraSettings | undefined>(undefined)
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [, setRecordingsTotal] = useState(0)
@@ -239,6 +240,16 @@ export default function CameraPage() {
   useEffect(() => { allMotionEventsRef.current = motionEvents }, [motionEvents])
   useEffect(() => { activeEventIdRef.current = activeEventId }, [activeEventId])
   useEffect(() => { selectedDateRef.current = selectedDate }, [selectedDate])
+
+  // Dias com gravação ou evento — o calendário só habilita esses (e bloqueia a
+  // navegação para meses/anos vazios no passado).
+  useEffect(() => {
+    if (!id) return
+    fetch(`/api/cameras/${id}/content-days`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : { days: [] })
+      .then((d: { days?: string[] }) => setContentDays(d.days ?? []))
+      .catch(() => {})
+  }, [id])
 
   useEffect(() => {
     if (!speedMenuOpen) return
@@ -755,6 +766,8 @@ export default function CameraPage() {
   const calendarOnCurrentMonth =
     calendarMonth.getFullYear() === today.getFullYear() &&
     calendarMonth.getMonth() === today.getMonth()
+  // Limites e dias habilitados do calendário (só dias com gravação/evento).
+  const cal = calendarContent(contentDays, today)
   // Fim da janela da timeline horizontal: agora (se hoje) ou fim do dia selecionado.
   const timelineEndOfDayMs = (() => {
     const d = new Date(selectedDate)
@@ -1880,6 +1893,14 @@ function toggleFullscreen() {
                           selected={selectedDate}
                           month={calendarMonth}
                           onMonthChange={setCalendarMonth}
+                          startMonth={cal.startMonth}
+                          endMonth={cal.endMonth}
+                          disabled={[
+                            { after: today },
+                            ...(cal.daySet.size > 0 ? [(d: Date) => !cal.daySet.has(dateKey(d))] : []),
+                          ]}
+                          modifiers={{ hasContent: contentDays.map(s => { const [y, m, dd] = s.split('-').map(Number); return new Date(y, m - 1, dd) }) }}
+                          modifiersClassNames={{ hasContent: 'font-semibold text-primary' }}
                           onSelect={d => { if (d) { setSelectedDate(d); setCalendarMonth(d) } }}
                           footer={(!isToday || !calendarOnCurrentMonth) && (
                             <div className="flex justify-center pt-1">
