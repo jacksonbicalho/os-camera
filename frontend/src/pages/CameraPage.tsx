@@ -1035,8 +1035,11 @@ export default function CameraPage() {
 
   const isLive = activeRecording === null && !recordingId
 
-  // Zera o zoom ao trocar de fonte (live ↔ gravação ↔ outra gravação).
-  useEffect(() => { playerZoom.reset() }, [isLive, activeRecording, recordingId, playerZoom])
+  // Zera o zoom ao trocar de fonte (live ↔ gravação ↔ outra gravação). Depende do
+  // `reset` ESTÁVEL (useCallback) — não do objeto `playerZoom`, que é recriado a
+  // cada render e faria o efeito rodar (e zerar o zoom) em todo render.
+  const resetZoom = playerZoom.reset
+  useEffect(() => { resetZoom() }, [isLive, activeRecording, recordingId, resetZoom])
 
   // Live region score for the ephemeral "Analisar limiar" tool (live view only).
   const onAnalyzeScore = useCallback((data: string) => {
