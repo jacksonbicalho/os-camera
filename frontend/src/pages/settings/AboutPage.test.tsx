@@ -76,13 +76,22 @@ describe('AboutPage updates section', () => {
     expect(screen.queryByText('Atualizar agora')).toBeNull()
   })
 
-  it('em dia', () => {
+  it('em dia: não renderiza a seção', () => {
     mockRole = 'admin'
     mockStatus = { ...base, update_available: false }
     renderPage()
 
-    expect(screen.getByText(/última versão/i)).toBeTruthy()
+    expect(screen.queryByText(/última versão/i)).toBeNull()
+    expect(screen.queryByText(/Atualiza/i)).toBeNull()
     expect(screen.queryByText('Atualizar agora')).toBeNull()
+  })
+
+  it('erro na checagem: não renderiza a seção', () => {
+    mockRole = 'admin'
+    mockStatus = { ...base, update_available: false, error: 'boom' }
+    renderPage()
+
+    expect(screen.queryByText(/Atualiza/i)).toBeNull()
   })
 
   it('não-admin não vê a seção', () => {

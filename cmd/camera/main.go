@@ -421,6 +421,7 @@ func main() {
 		srv.WithCleaner(cleaner)
 
 		updateChecker := release.NewChecker(release.DefaultManifestURL, version, nil)
+		updateChecker.OnCheck = srv.NotifyUpdateAvailable
 		srv.WithUpdateChecker(updateChecker)
 		go updateChecker.Run(ctx, 6*time.Hour)
 

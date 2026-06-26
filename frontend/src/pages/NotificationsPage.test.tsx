@@ -70,6 +70,19 @@ describe('NotificationsPage', () => {
     expect(remove).toHaveBeenCalledWith(1)
   })
 
+  it('notification with link is clickable, navigates and marks read', () => {
+    mockNotifications = [
+      { id: 7, type: 'info', title: 'Atualização disponível', message: 'Nova versão v2.0.0 disponível.', link: '/settings/about', created_at: '2026-06-26T12:00:00Z', read: false },
+    ]
+    mockUnread = 1
+    renderPage()
+
+    const link = screen.getByRole('link', { name: /Nova versão v2\.0\.0/ })
+    expect(link.getAttribute('href')).toBe('/settings/about')
+    fireEvent.click(link)
+    expect(markRead).toHaveBeenCalledWith(7)
+  })
+
   it('mark-all and clear-all call their actions', () => {
     mockNotifications = [
       { id: 1, type: 'error', message: 'x', created_at: '2026-06-07T12:00:00Z', read: false },

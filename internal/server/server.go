@@ -127,6 +127,8 @@ type Server struct {
 	updateChecker      updateStatuser
 	applyMode          string
 	applier            applyRunner
+	updateNotifyMu     sync.Mutex
+	updateNotified     string // última versão latest já notificada (dedup)
 }
 
 // updateStatuser fornece o snapshot da checagem de versão e o manifesto cacheado

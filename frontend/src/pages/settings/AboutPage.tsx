@@ -20,7 +20,11 @@ function UpdatesSection() {
   const [applyMsg, setApplyMsg] = useState('')
   const [applyErr, setApplyErr] = useState('')
 
-  if (getRole() !== 'admin' || !status) return null
+  // A seção só existe quando há de fato uma atualização disponível: sem update,
+  // em dia ou com erro de checagem, fica em silêncio (não renderiza nada).
+  if (getRole() !== 'admin' || !status || status.error || !status.update_available) {
+    return null
+  }
 
   const onApply = async () => {
     setApplying(true)
@@ -38,15 +42,7 @@ function UpdatesSection() {
     <section id="updates-section" className="mt-8">
       <h4 className="text-h4 font-semibold text-foreground mb-3">Atualizações</h4>
 
-      {status.error ? (
-        <p id="update-error" className="text-sm text-muted-foreground">
-          Não foi possível checar atualizações.
-        </p>
-      ) : !status.update_available ? (
-        <p id="update-uptodate" className="text-sm text-muted-foreground">
-          Você está na última versão ({status.current}).
-        </p>
-      ) : applyMsg ? (
+      {applyMsg ? (
         <p id="update-applying" className="text-sm text-foreground">{applyMsg}</p>
       ) : (
         <div className="rounded-lg border border-border bg-surface p-4">
