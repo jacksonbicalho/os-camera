@@ -52,6 +52,7 @@ export default function ReportsPage() {
 
   // A data = FIM do período; `days` = tamanho da janela. "1 dia" = barras por hora do
   // dia; >1 dia = N dias terminando na data.
+  const camName = cameras.find(c => c.id === camera)?.name
   const dayMode = days === 1
   const periodEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1, 0, 0, 0, 0)
   const periodStart = dayMode
@@ -155,7 +156,10 @@ export default function ReportsPage() {
       <div className="flex items-end justify-between mb-6 gap-4">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Relatórios</h2>
-          <p className="text-sm text-muted mt-1">Estatísticas de eventos — {report?.total ?? 0} no período.</p>
+          {camName && (
+            <p id="report-camera-name" className="text-base font-medium text-foreground mt-2">{camName}</p>
+          )}
+          <p id="report-stats-line" className="text-sm text-muted mt-1">Estatísticas de eventos — {report?.total ?? 0} no período.</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <select

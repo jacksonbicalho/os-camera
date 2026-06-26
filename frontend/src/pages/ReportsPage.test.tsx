@@ -37,6 +37,23 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
+describe('ReportsPage cabeçalho', () => {
+  it('mostra o nome da câmera selecionada como subtítulo, acima da linha de estatísticas', async () => {
+    render(<MemoryRouter initialEntries={['/reports']}><ReportsPage /></MemoryRouter>)
+    const name = await waitFor(() => {
+      const el = document.getElementById('report-camera-name')
+      if (!el) throw new Error('nome da câmera não renderizou')
+      return el
+    })
+    expect(name.textContent).toContain('Corredor')
+
+    // a linha de estatísticas existe e vem DEPOIS (abaixo) do nome da câmera
+    const stats = document.getElementById('report-stats-line')
+    expect(stats?.textContent).toContain('no período')
+    expect(name.compareDocumentPosition(stats!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
 describe('ReportsPage heatmap', () => {
   it('busca o bucket=heatmap e renderiza uma linha por dia, rotulada DD + dia da semana', async () => {
     render(
