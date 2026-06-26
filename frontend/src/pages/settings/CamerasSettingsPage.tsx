@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
+import PageHeader from '../../components/PageHeader'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import CameraForm from '../../components/CameraForm'
 import { type Camera, type CameraFormData, formToPayload } from '../../components/cameraFormUtils'
@@ -112,9 +113,7 @@ export default function CamerasSettingsPage() {
   if (!isAdmin) {
     return (
       <SettingsLayout>
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-h2 font-semibold text-foreground">Câmeras</h3>
-        </div>
+        <PageHeader size="section" title="Câmeras" />
         {loading ? (
           <p className="text-muted-foreground text-sm">Carregando...</p>
         ) : cameras.length === 0 ? (
@@ -145,9 +144,10 @@ export default function CamerasSettingsPage() {
 
   return (
     <SettingsLayout>
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-h2 font-semibold text-foreground">Câmeras</h3>
-        {!creating && !noDb && (
+      <PageHeader
+        size="section"
+        title="Câmeras"
+        actions={!creating && !noDb && (
           <Button
             id="camera-create"
             onClick={() => { setCreating(true); setError(null) }}
@@ -156,7 +156,7 @@ export default function CamerasSettingsPage() {
             Nova câmera
           </Button>
         )}
-      </div>
+      />
 
       {noDb && (
         <p className="text-muted-foreground text-sm">Gerenciamento de câmeras requer banco de dados configurado.</p>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import SettingsLayout from '../../components/SettingsLayout'
+import PageHeader from '../../components/PageHeader'
 import { authHeaders } from '../../auth'
 import { Loader2, Search } from '../../components/Icons'
 import { Button } from '@/components/ui/button'
@@ -133,27 +134,27 @@ export default function DiscoverPage() {
   return (
     <SettingsLayout>
       <div className="flex flex-col gap-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-semibold text-white">Rastrear câmeras na rede</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              ONVIF WS-Discovery (multicast UDP) + varredura de porta 554 na subnet local
-            </p>
-          </div>
-          <Button id="discover-scan" onClick={handleScan} disabled={status === 'scanning'}>
-            {status === 'scanning' ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Rastreando…
-              </>
-            ) : (
-              <>
-                <Search className="w-4 h-4" />
-                Rastrear
-              </>
-            )}
-          </Button>
-        </div>
+        <PageHeader
+          size="section"
+          className="mb-0"
+          title="Rastrear câmeras na rede"
+          subtitle="ONVIF WS-Discovery (multicast UDP) + varredura de porta 554 na subnet local"
+          actions={
+            <Button id="discover-scan" onClick={handleScan} disabled={status === 'scanning'}>
+              {status === 'scanning' ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Rastreando…
+                </>
+              ) : (
+                <>
+                  <Search className="w-4 h-4" />
+                  Rastrear
+                </>
+              )}
+            </Button>
+          }
+        />
 
         {status === 'scanning' && (
           <p className="text-xs text-muted-foreground animate-pulse">

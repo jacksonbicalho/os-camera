@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import SettingsLayout from '../../components/SettingsLayout'
+import PageHeader from '../../components/PageHeader'
 import SettingsSection from '../../components/SettingsSection'
 import { useAbout } from '../../hooks/useSettings'
 import { useUpdates } from '../../hooks/useUpdates'
@@ -93,8 +94,7 @@ export default function AboutPage() {
 
   return (
     <SettingsLayout>
-      <h3 className="text-h2 font-semibold text-foreground">Sobre</h3>
-      <p className="text-sm text-muted-foreground mt-1 mb-6">Versão instalada, commit e tempo de atividade.</p>
+      <PageHeader size="section" title="Sobre" subtitle="Versão instalada, commit e tempo de atividade." />
       {!about ? (
         <p className="text-muted-foreground text-sm">Carregando...</p>
       ) : (

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import AppLayout from '../components/AppLayout'
+import PageHeader from '../components/PageHeader'
 import DatePicker from '../components/DatePicker'
 import { authHeaders, onUnauthorized, getToken } from '../auth'
 
@@ -135,44 +136,43 @@ export default function RecordingsPage() {
 
   return (
     <AppLayout>
-      <div className="flex items-end justify-between mb-4 gap-4 flex-wrap">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">Gravações</h2>
-          <p className="text-sm text-muted mt-1">
-            {view === 'recordings' ? 'Todas as gravações do dia — clique para abrir.' : 'Momentos das câmeras — clique para abrir na gravação.'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div id="recordings-view-toggle" className="flex items-center rounded-md border border-border overflow-hidden">
-            <button
-              id="recordings-view-recordings"
-              onClick={() => setView('recordings')}
-              className={`px-2.5 py-1.5 text-xs transition-colors ${view === 'recordings' ? 'bg-primary text-primary-foreground' : 'bg-surface text-muted hover:text-foreground'}`}
-            >
-              Gravações
-            </button>
-            <button
-              id="recordings-view-moments"
-              onClick={() => setView('moments')}
-              className={`px-2.5 py-1.5 text-xs transition-colors ${view === 'moments' ? 'bg-primary text-primary-foreground' : 'bg-surface text-muted hover:text-foreground'}`}
-            >
-              Momentos
-            </button>
-          </div>
-          {view === 'moments' && (
-            <input
-              id="recordings-search"
-              type="search"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar por conteúdo…"
-              aria-label="Buscar momentos por conteúdo"
-              className="w-48 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-foreground placeholder:text-faint focus:outline-none focus:border-primary/50"
-            />
-          )}
-          <DatePicker id="recordings-day-picker" value={date} onChange={d => { setDate(d); setPage(1) }} disableFuture availableDays={contentDays} align="right" />
-        </div>
-      </div>
+      <PageHeader
+        className="flex-wrap"
+        title="Gravações"
+        subtitle={view === 'recordings' ? 'Todas as gravações do dia — clique para abrir.' : 'Momentos das câmeras — clique para abrir na gravação.'}
+        actions={
+          <>
+            <div id="recordings-view-toggle" className="flex items-center rounded-md border border-border overflow-hidden">
+              <button
+                id="recordings-view-recordings"
+                onClick={() => setView('recordings')}
+                className={`px-2.5 py-1.5 text-xs transition-colors ${view === 'recordings' ? 'bg-primary text-primary-foreground' : 'bg-surface text-muted hover:text-foreground'}`}
+              >
+                Gravações
+              </button>
+              <button
+                id="recordings-view-moments"
+                onClick={() => setView('moments')}
+                className={`px-2.5 py-1.5 text-xs transition-colors ${view === 'moments' ? 'bg-primary text-primary-foreground' : 'bg-surface text-muted hover:text-foreground'}`}
+              >
+                Momentos
+              </button>
+            </div>
+            {view === 'moments' && (
+              <input
+                id="recordings-search"
+                type="search"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Buscar por conteúdo…"
+                aria-label="Buscar momentos por conteúdo"
+                className="w-48 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-foreground placeholder:text-faint focus:outline-none focus:border-primary/50"
+              />
+            )}
+            <DatePicker id="recordings-day-picker" value={date} onChange={d => { setDate(d); setPage(1) }} disableFuture availableDays={contentDays} align="right" />
+          </>
+        }
+      />
 
       {/* Filtro de categoria (modo Momentos) */}
       {view === 'moments' && (

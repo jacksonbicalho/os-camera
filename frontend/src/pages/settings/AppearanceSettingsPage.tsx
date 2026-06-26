@@ -1,4 +1,5 @@
 import SettingsLayout from '../../components/SettingsLayout'
+import PageHeader from '../../components/PageHeader'
 import { useDisplayMode, useSetDisplayMode, type DisplayMode } from '../../contexts/DisplayModeContext'
 import { useTheme, type Mode } from '../../contexts/ThemeContext'
 
@@ -48,8 +49,7 @@ export default function AppearanceSettingsPage() {
 
   return (
     <SettingsLayout>
-      <h3 className="text-h2 font-semibold text-foreground">Aparência</h3>
-      <p className="text-sm text-muted-foreground mt-1 mb-6">Controla como botões e rótulos são exibidos na interface.</p>
+      <PageHeader size="section" title="Aparência" subtitle="Controla como botões e rótulos são exibidos na interface." />
 
       <div className="flex flex-col gap-6">
         <div className="bg-surface border border-border rounded-lg p-5 flex flex-col gap-3">

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import SettingsLayout from '../../components/SettingsLayout'
+import PageHeader from '../../components/PageHeader'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { useSettings } from '../../hooks/useSettings'
 import { authHeaders, getRole } from '../../auth'
@@ -202,8 +203,7 @@ export default function StorageSettingsPage() {
   if (!isAdmin) {
     return (
       <SettingsLayout>
-        <h3 className="text-h2 font-semibold text-foreground">Armazenamento</h3>
-        <p className="text-sm text-muted-foreground mt-1 mb-6">Retenção, limpeza automática e espaço em disco.</p>
+        <PageHeader size="section" title="Armazenamento" subtitle="Retenção, limpeza automática e espaço em disco." />
         <p className="text-muted-foreground text-sm">Acesso restrito.</p>
       </SettingsLayout>
     )
@@ -211,8 +211,7 @@ export default function StorageSettingsPage() {
 
   return (
     <SettingsLayout>
-      <h3 className="text-h2 font-semibold text-foreground">Armazenamento</h3>
-      <p className="text-sm text-muted-foreground mt-1 mb-6">Retenção, limpeza automática e espaço em disco.</p>
+      <PageHeader size="section" title="Armazenamento" subtitle="Retenção, limpeza automática e espaço em disco." />
 
       {form ? (
         <div className="space-y-2 mb-4">

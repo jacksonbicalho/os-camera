@@ -1,4 +1,5 @@
 import SettingsLayout from '../../components/SettingsLayout'
+import PageHeader from '../../components/PageHeader'
 import SettingsSection from '../../components/SettingsSection'
 import { useSettings } from '../../hooks/useSettings'
 import { getRole } from '../../auth'
@@ -10,8 +11,7 @@ export default function ServerSettingsPage() {
 
   return (
     <SettingsLayout>
-      <h3 className="text-h2 font-semibold text-foreground">Servidor</h3>
-      <p className="text-sm text-muted-foreground mt-1 mb-6">Porta, JWT e configurações de rede.</p>
+      <PageHeader size="section" title="Servidor" subtitle="Porta, JWT e configurações de rede." />
       {!isAdmin ? (
         <p className="text-muted-foreground text-sm">Acesso restrito.</p>
       ) : !s ? (
