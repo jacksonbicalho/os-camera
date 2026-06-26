@@ -18,8 +18,7 @@ function mbps(n: number): string {
 // esquerda (CPU/Memória/Rede), estados ao vivo dos classificadores no centro
 // (FooterStates) e versão + conexão à direita. Faz poll de /api/stats via useStats.
 export default function StatusBar({ version }: StatusBarProps) {
-  const stats = useStats()
-  const connected = stats !== null
+  const { stats, connected } = useStats()
   const cpu = stats?.cpu_percent ?? -1
   const memUsed = stats ? stats.sys_mem_total_bytes - stats.sys_mem_free_bytes : 0
   const memPct = stats && stats.sys_mem_total_bytes > 0

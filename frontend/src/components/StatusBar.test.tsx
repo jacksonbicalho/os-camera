@@ -1,19 +1,22 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import StatusBar from './StatusBar'
 
+let mockConnected = true
+const mockStats = {
+  cpu_percent: 18,
+  sys_mem_total_bytes: 1000,
+  sys_mem_free_bytes: 550,
+  net_mbps: 12,
+}
 vi.mock('../hooks/useStats', () => ({
-  useStats: () => ({
-    cpu_percent: 18,
-    sys_mem_total_bytes: 1000,
-    sys_mem_free_bytes: 550,
-    net_mbps: 12,
-  }),
+  useStats: () => ({ stats: mockStats, connected: mockConnected }),
 }))
 
 vi.mock('./FooterStates', () => ({ default: () => <div id="footer-states" /> }))
 
+beforeEach(() => { mockConnected = true })
 afterEach(cleanup)
 
 function renderBar(version?: string) {
@@ -40,6 +43,15 @@ describe('StatusBar — rodapé de status do sistema', () => {
     renderBar('1.2.0')
     expect(document.getElementById('status-version')!.textContent).toContain('1.2.0')
     expect(document.getElementById('status-connection')!.textContent).toContain('Conectado')
+  })
+
+  it('quando desconectado mostra "Desconectado" e bolinha não-verde', () => {
+    mockConnected = false
+    renderBar('1.2.0')
+    const conn = document.getElementById('status-connection')!
+    expect(conn.textContent).toContain('Desconectado')
+    expect(conn.querySelector('.bg-green-500')).toBeNull()
+    expect(conn.querySelector('.bg-red-500')).toBeTruthy()
   })
 
   it('preserva o FooterStates na barra', () => {
