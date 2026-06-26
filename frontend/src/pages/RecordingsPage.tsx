@@ -62,6 +62,7 @@ export default function RecordingsPage() {
   const [motionOnly, setMotionOnly] = useState(false)
   const [recordings, setRecordings] = useState<RecordingItem[]>([])
   const [recLoaded, setRecLoaded] = useState(false)
+  const [contentDays, setContentDays] = useState<string[]>([])
 
   useEffect(() => {
     fetch('/api/cameras', { headers: authHeaders() })
@@ -69,6 +70,17 @@ export default function RecordingsPage() {
       .then((list: CameraOption[] | null) => { if (list) setCameras(list) })
       .catch(() => {})
   }, [])
+
+  // Dias com gravação ou momento (das câmeras selecionadas, ou todas) — habilitam
+  // só esses no calendário.
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (selectedCams.size > 0) params.set('cameras', [...selectedCams].join(','))
+    fetch(`/api/content-days?${params}`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : { days: [] })
+      .then((d: { days?: string[] }) => setContentDays(d.days ?? []))
+      .catch(() => {})
+  }, [selectedCams])
 
   // debounce do termo de busca: só vira `query` (que dispara o fetch) após 300 ms parado
   useEffect(() => {
@@ -158,7 +170,7 @@ export default function RecordingsPage() {
               className="w-48 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-foreground placeholder:text-faint focus:outline-none focus:border-primary/50"
             />
           )}
-          <DatePicker id="recordings-day-picker" value={date} onChange={d => { setDate(d); setPage(1) }} disableFuture align="right" />
+          <DatePicker id="recordings-day-picker" value={date} onChange={d => { setDate(d); setPage(1) }} disableFuture availableDays={contentDays} align="right" />
         </div>
       </div>
 

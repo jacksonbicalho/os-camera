@@ -51,20 +51,44 @@ func TestContentDays_UnionAndLocalOffset(t *testing.T) {
 		t.Fatalf("insert other: %v", err)
 	}
 
-	days, err := db.ContentDays(d, "cam1", loc)
-	if err != nil {
-		t.Fatalf("ContentDays: %v", err)
-	}
-
-	want := []string{"2026-06-19", "2026-06-20"}
-	if len(days) != len(want) {
-		t.Fatalf("expected %v, got %v", want, days)
-	}
-	for i := range want {
-		if days[i] != want[i] {
-			t.Fatalf("expected %v, got %v", want, days)
+	eq := func(got, want []string) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatalf("expected %v, got %v", want, got)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("expected %v, got %v", want, got)
+			}
 		}
 	}
+
+	days, err := db.ContentDays(d, "cam1", loc, db.ContentAll)
+	if err != nil {
+		t.Fatalf("ContentDays all: %v", err)
+	}
+	eq(days, []string{"2026-06-19", "2026-06-20"})
+
+	// recordings-only: só o dia da gravação (2026-06-20).
+	recDays, err := db.ContentDays(d, "cam1", loc, db.ContentRecordings)
+	if err != nil {
+		t.Fatalf("ContentDays recordings: %v", err)
+	}
+	eq(recDays, []string{"2026-06-20"})
+
+	// events-only: o evento das 02:00Z (2026-06-19) + o das 16:00Z (2026-06-20).
+	evDays, err := db.ContentDays(d, "cam1", loc, db.ContentEvents)
+	if err != nil {
+		t.Fatalf("ContentDays events: %v", err)
+	}
+	eq(evDays, []string{"2026-06-19", "2026-06-20"})
+
+	// Multi-câmera: une cam1 (2026-06-20) e cam2 (2026-06-25) por gravação.
+	multi, err := db.ContentDaysMulti(d, []string{"cam1", "cam2"}, loc, db.ContentRecordings)
+	if err != nil {
+		t.Fatalf("ContentDaysMulti: %v", err)
+	}
+	eq(multi, []string{"2026-06-20", "2026-06-25"})
 }
 
 func TestContentDays_Empty(t *testing.T) {
@@ -74,7 +98,7 @@ func TestContentDays_Empty(t *testing.T) {
 	}
 	defer d.Close()
 
-	days, err := db.ContentDays(d, "nope", time.UTC)
+	days, err := db.ContentDays(d, "nope", time.UTC, db.ContentAll)
 	if err != nil {
 		t.Fatalf("ContentDays: %v", err)
 	}

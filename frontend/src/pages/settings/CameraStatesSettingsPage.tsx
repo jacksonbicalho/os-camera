@@ -935,6 +935,7 @@ function EventPicker({ cameraId, classes, usedByFrame, onPick, onAddMany, onRemo
   const picked0 = loadPicked(cameraId)
   const [date, setDate] = useState(picked0?.date ?? todayStr())
   const [events, setEvents] = useState<EventItem[]>([])
+  const [contentDays, setContentDays] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [pickedFrame, setPickedFrame] = useState(picked0?.frame ?? '')
   const [yy, mm, dd] = date.split('-').map(Number)
@@ -996,6 +997,14 @@ function EventPicker({ cameraId, classes, usedByFrame, onPick, onAddMany, onRemo
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [cameraId, date])
+
+  // Dias com evento de movimento — habilitam só esses no seletor de data.
+  useEffect(() => {
+    fetch(`/api/cameras/${cameraId}/content-days?kind=events`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : { days: [] })
+      .then((d: { days?: string[] }) => setContentDays(d.days ?? []))
+      .catch(() => {})
+  }, [cameraId])
 
   // ESC fecha o carrossel.
   useEffect(() => {
@@ -1066,6 +1075,7 @@ function EventPicker({ cameraId, classes, usedByFrame, onPick, onAddMany, onRemo
               value={selectedDate}
               onChange={d => changeDate(format(d, 'yyyy-MM-dd'))}
               disableFuture
+              availableDays={contentDays}
               align="right"
             />
             <Button variant="ghost" size="sm" onClick={onClose}>Fechar</Button>

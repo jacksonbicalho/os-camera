@@ -375,6 +375,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/reports/events", s.requireFullAuth(s.handleEventReport))
 	s.mux.HandleFunc("GET /api/moments", s.requireFullAuth(s.handleMoments))
 	s.mux.HandleFunc("GET /api/recordings", s.requireFullAuth(s.handleGlobalRecordings))
+	s.mux.HandleFunc("GET /api/content-days", s.requireFullAuth(s.handleGlobalContentDays))
 	s.mux.HandleFunc("GET /api/cameras/{id}/device-info", s.requireCameraAccess(s.handleDeviceInfo))
 	s.mux.HandleFunc("POST /api/cameras/{id}/device-info/refresh", s.requireAdmin(s.handleRefreshDeviceInfo))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion", s.requireCameraAccess(s.handleMotionEvents))

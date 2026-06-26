@@ -21,4 +21,20 @@ describe('DatePicker', () => {
     expect(onChange).toHaveBeenCalled()
     expect(document.getElementById('dp-popover')).toBeNull()
   })
+
+  it('com availableDays: dia sem conteúdo fica desabilitado, dia com conteúdo habilitado', () => {
+    const onChange = vi.fn()
+    render(
+      <DatePicker id="dp" value={new Date(2026, 5, 15)} onChange={onChange} availableDays={['2026-06-20']} />,
+    )
+    fireEvent.click(document.getElementById('dp')!)
+
+    // 15/06 não está no conjunto → clicar não dispara onChange
+    fireEvent.click(screen.getByText('15'))
+    expect(onChange).not.toHaveBeenCalled()
+
+    // 20/06 está no conjunto → clicar dispara
+    fireEvent.click(screen.getByText('20'))
+    expect(onChange).toHaveBeenCalled()
+  })
 })

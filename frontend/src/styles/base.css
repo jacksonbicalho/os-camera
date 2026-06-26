@@ -33,3 +33,20 @@ a,
 [role="button"] {
   cursor: pointer;
 }
+
+/* Setas de navegação de mês do calendário (react-day-picker): no limite do
+   intervalo navegável (startMonth/endMonth) o rdp já as desabilita com
+   opacity 0.5, mas o chevron é azul (accent) e a 50% ainda parece habilitado —
+   diferente dos números desabilitados (texto cinza). Reforçamos o "apagado":
+   opacity menor + chevron em tom neutro (currentColor herdado), igual aos dias.
+   O seletor `.rdp-nav button:disabled` tem especificidade maior que a regra
+   padrão do rdp, então vence sem depender da ordem de import. */
+.rdp-nav button:disabled,
+.rdp-nav button[aria-disabled="true"] {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.rdp-nav button:disabled .rdp-chevron,
+.rdp-nav button[aria-disabled="true"] .rdp-chevron {
+  fill: currentColor;
+}
