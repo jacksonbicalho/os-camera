@@ -30,7 +30,17 @@ export default function ReportsPage() {
   const [date, setDate] = useState<Date>(new Date())
   const [cameras, setCameras] = useState<CameraOption[]>([])
   const [camera, setCamera] = useState('')
+  const [contentDays, setContentDays] = useState<string[]>([])
   const [modalCat, setModalCat] = useState<EventCategory | null>(null)
+
+  // Dias com evento da câmera selecionada — habilitam só esses no calendário.
+  useEffect(() => {
+    if (!camera) return
+    fetch(`/api/cameras/${camera}/content-days?kind=events`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : { days: [] })
+      .then((d: { days?: string[] }) => setContentDays(d.days ?? []))
+      .catch(() => {})
+  }, [camera])
 
   // Fecha o modal de categoria no Esc.
   useEffect(() => {
@@ -164,6 +174,7 @@ export default function ReportsPage() {
             value={date}
             onChange={d => setDate(d)}
             disableFuture
+            availableDays={camera ? contentDays : []}
             align="right"
           />
           <select
