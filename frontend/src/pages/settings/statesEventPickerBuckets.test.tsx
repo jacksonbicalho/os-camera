@@ -15,6 +15,9 @@ vi.mock('../../auth', () => ({
 const events = [
   { time: '2026-06-20T10:00:00Z', frame: 'a_motion.jpg' },
   { time: '2026-06-20T11:00:00Z', frame: 'b_motion.jpg' },
+  // transição de estado (saída do classificador) com frame absoluto: deve ser
+  // filtrada do picker — senão vira thumbnail quebrada (sliver).
+  { time: '2026-06-20T10:30:00Z', frame: '/recordings/state_history/3/123.jpg', kind: 'state' },
 ]
 
 beforeEach(() => {
@@ -73,6 +76,20 @@ describe('EventPicker — rodapé com uma linha por classificação', () => {
     expect(el('event-picker-row-acesa')).toBeTruthy()
     // com mais de uma classificação aparece a linha "todos"
     expect(el('event-picker-row-all')).toBeTruthy()
+  })
+
+  it('ignora transições de estado (kind:"state") — sem thumbnails quebradas', async () => {
+    render(<Harness />)
+    fireEvent.click(screen.getByText('Escolher dos eventos'))
+
+    // só os 2 motion events aparecem; a transição de estado é filtrada.
+    await waitFor(() => {
+      expect(screen.getAllByTitle('Selecionar para adicionar em lote').length).toBe(2)
+    })
+
+    // nenhuma thumbnail aponta para o frame absoluto da transição.
+    const imgs = Array.from(document.querySelectorAll('#state-frame-pick-events ~ * img, img')) as HTMLImageElement[]
+    expect(imgs.some(i => i.getAttribute('src')?.includes('state_history'))).toBe(false)
   })
 
   it('"Limpar" remove a linha da classificação', async () => {
