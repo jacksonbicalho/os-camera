@@ -25,7 +25,7 @@ function ChevronIcon({ open }: { open: boolean }) {
 }
 
 export default function StatsPage() {
-  const stats = useStats()
+  const { stats } = useStats()
   const [cameras, setCameras] = useState<CameraInfo[]>([])
   const [expandedCams, setExpandedCams] = useState<Set<string>>(new Set())
 
