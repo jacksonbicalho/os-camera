@@ -22,10 +22,10 @@ afterEach(() => {
 const trigger = () => document.getElementById('theme-nav-current')!
 
 describe('ThemeModeNav', () => {
-  it('colapsado: o gatilho mostra o modo selecionado e as opções ficam ocultas', () => {
+  it('colapsado: o gatilho mostra "Estilo (<modo>)" e as opções ficam ocultas', () => {
     currentMode = 'dark'
     render(<ThemeModeNav />)
-    expect(trigger().textContent).toContain('Dark')
+    expect(trigger().textContent).toContain('Estilo (Dark)')
     expect(document.getElementById('theme-mode-light')).toBeNull()
     expect(document.getElementById('theme-mode-system')).toBeNull()
   })
@@ -36,25 +36,15 @@ describe('ThemeModeNav', () => {
     expect(trigger().textContent).toContain('Light')
   })
 
-  it('com "Sistema" ativo + SO dark: gatilho e ✓ mostram Dark (não Sistema)', () => {
+  it('com "Sistema" escolhido: gatilho e ✓ mostram "Sistema" (independe do SO)', () => {
     currentMode = 'system'
     osDark = true
     render(<ThemeModeNav />)
-    expect(trigger().textContent).toContain('Dark')
-    expect(trigger().textContent).not.toContain('Sistema')
+    expect(trigger().textContent).toContain('Sistema')
     fireEvent.click(trigger())
-    expect(document.getElementById('theme-mode-dark')!.getAttribute('aria-current')).toBe('true')
-    expect(document.getElementById('theme-mode-system')!.getAttribute('aria-current')).toBeNull()
-  })
-
-  it('com "Sistema" ativo + SO light: gatilho e ✓ mostram Light', () => {
-    currentMode = 'system'
-    osDark = false
-    render(<ThemeModeNav />)
-    expect(trigger().textContent).toContain('Light')
-    fireEvent.click(trigger())
-    expect(document.getElementById('theme-mode-light')!.getAttribute('aria-current')).toBe('true')
-    expect(document.getElementById('theme-mode-system')!.getAttribute('aria-current')).toBeNull()
+    expect(document.getElementById('theme-mode-system')!.getAttribute('aria-current')).toBe('true')
+    expect(document.getElementById('theme-mode-dark')!.getAttribute('aria-current')).toBeNull()
+    expect(document.getElementById('theme-mode-light')!.getAttribute('aria-current')).toBeNull()
   })
 
   it('"Sistema" continua sendo uma opção selecionável', () => {

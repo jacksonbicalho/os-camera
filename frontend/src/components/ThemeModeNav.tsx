@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useTheme, resolveMode, type Mode } from '../contexts/ThemeContext'
+import { useTheme, type Mode } from '../contexts/ThemeContext'
 import { ChevronRight, Check } from './Icons'
 
 const MODE_OPTIONS: { value: Mode; label: string }[] = [
@@ -9,12 +9,12 @@ const MODE_OPTIONS: { value: Mode; label: string }[] = [
 ]
 
 // Seletor de modo para o popup de configurações do sidebar (engrenagem). O gatilho
-// exibe o modo efetivo; clicar abre as opções num flyout à direita; selecionar aplica o
-// modo na hora (setTheme), fecha a lista e o gatilho reflete a nova seleção.
+// exibe o modo escolhido; clicar abre as opções num flyout à direita; selecionar aplica o
+// modo na hora (setMode), fecha a lista e o gatilho reflete a nova seleção.
 //
-// "Sistema" resolve para dark ou light conforme o SO — não é um estado visual próprio.
-// Por isso o gatilho e o ✓ mostram sempre o concreto resolvido (Light/Dark): escolher
-// Sistema destaca Dark ou Light de acordo com o SO.
+// O gatilho e o ✓ refletem o modo **escolhido** (`mode`) — incl. "Sistema" —, espelhando
+// o radio de Aparência. A resolução de "Sistema" para dark/light (aplicada ao tema) fica
+// no ThemeContext; aqui só mostramos a escolha, não o resolvido.
 // `onSelect` é chamado após aplicar o modo — usado pelo Sidebar para fechar também
 // o popup de configurações pai (não só o flyout interno).
 export default function ThemeModeNav({ onSelect }: { onSelect?: () => void }) {
@@ -23,8 +23,7 @@ export default function ThemeModeNav({ onSelect }: { onSelect?: () => void }) {
   // Após selecionar, suprime o reabrir-por-hover enquanto o cursor segue sobre o
   // menu — só volta a abrir quando o mouse sai e entra de novo (ou clica no gatilho).
   const [dismissed, setDismissed] = useState(false)
-  const effective = resolveMode(mode)
-  const current = MODE_OPTIONS.find(o => o.value === effective) ?? MODE_OPTIONS[1]
+  const current = MODE_OPTIONS.find(o => o.value === mode) ?? MODE_OPTIONS[1]
 
   const select = (value: Mode) => {
     setMode(value)
@@ -46,7 +45,7 @@ export default function ThemeModeNav({ onSelect }: { onSelect?: () => void }) {
         onClick={() => { setDismissed(false); setOpen(v => !v) }}
         className="flex items-center justify-between w-full px-3 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
       >
-        <span>{current.label}</span>
+        <span>Estilo ({current.label})</span>
         <ChevronRight className="w-4 h-4" />
       </button>
 
@@ -56,7 +55,7 @@ export default function ThemeModeNav({ onSelect }: { onSelect?: () => void }) {
           className="absolute left-full top-0 w-40 bg-surface border border-border rounded shadow-lg z-50"
         >
           {MODE_OPTIONS.map(({ value, label }) => {
-            const active = effective === value
+            const active = mode === value
             return (
               <button
                 key={value}
