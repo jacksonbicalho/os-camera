@@ -1,5 +1,6 @@
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { Link } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
 import { Check, Trash2 } from '../components/Icons'
 import { useUserNotifications, type UserNotificationType } from '../contexts/UserNotificationContext'
@@ -57,7 +58,17 @@ export default function NotificationsPage() {
                 <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${variantDot[n.type]}`} aria-hidden="true" />
                 <div className="flex-1 min-w-0">
                   {n.title && <p className="text-sm font-medium text-gray-200">{n.title}</p>}
-                  <p className="text-sm text-gray-300 break-words">{n.message}</p>
+                  {n.link ? (
+                    <Link
+                      to={n.link}
+                      onClick={() => markRead(n.id)}
+                      className="text-sm text-blue-400 hover:text-blue-300 break-words underline-offset-2 hover:underline"
+                    >
+                      {n.message}
+                    </Link>
+                  ) : (
+                    <p className="text-sm text-gray-300 break-words">{n.message}</p>
+                  )}
                   <p className="text-xs text-gray-500 mt-1">{fmt(n.created_at)}</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">

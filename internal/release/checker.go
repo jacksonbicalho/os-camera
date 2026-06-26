@@ -37,6 +37,11 @@ type Checker struct {
 	current string
 	client  *http.Client
 
+	// OnCheck, se definido, é chamado ao fim de cada Check com o snapshot
+	// resultante (consumidor decide o que fazer — ex.: notificar). Definir antes
+	// de iniciar Run; nil = no-op.
+	OnCheck func(Status)
+
 	mu        sync.RWMutex
 	last      Manifest
 	checkedAt time.Time
@@ -63,6 +68,10 @@ func (c *Checker) Check(ctx context.Context) (Manifest, error) {
 		c.last = m
 	}
 	c.mu.Unlock()
+
+	if c.OnCheck != nil {
+		c.OnCheck(c.Status())
+	}
 
 	return m, err
 }
