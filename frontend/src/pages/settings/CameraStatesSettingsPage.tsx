@@ -75,7 +75,7 @@ function liveSnapshotURL(cameraId: string): string {
   return `/api/cameras/${cameraId}/snapshot?token=${getToken()}&t=${Date.now()}`
 }
 
-interface EventItem { time: string; frame: string }
+interface EventItem { time: string; frame: string; kind?: string }
 
 function todayStr(): string {
   const d = new Date()
@@ -85,6 +85,10 @@ function todayStr(): string {
 // eventSnapshotURL replica o caminho do snapshot ANOTADO de um evento (rápido,
 // usado nos thumbs do carrossel para navegar).
 function eventSnapshotURL(cameraId: string, ev: EventItem): string {
+  // Frame já absoluto (ex.: state_history) é servível direto — só anexa o token.
+  if (ev.frame.startsWith('/')) {
+    return `${ev.frame}?token=${getToken()}`
+  }
   const d = new Date(ev.time)
   const dateDir = `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`
   return `/recordings/${cameraId}/${dateDir}/${ev.frame}?token=${getToken()}`
@@ -986,7 +990,9 @@ function EventPicker({ cameraId, classes, usedByFrame, onPick, onAddMany, onRemo
   useEffect(() => {
     fetch(`/api/cameras/${cameraId}/motion?date=${date}`, { headers: authHeaders() })
       .then(r => r.ok ? r.json() : { events: [] })
-      .then((d: { events?: EventItem[] }) => setEvents((d.events ?? []).filter(e => !!e.frame)))
+      // Só motion events: transições de estado (kind:"state") são a saída do
+      // classificador e têm frame absoluto que não cabe no carrossel de treino.
+      .then((d: { events?: EventItem[] }) => setEvents((d.events ?? []).filter(e => !!e.frame && e.kind !== 'state')))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [cameraId, date])
