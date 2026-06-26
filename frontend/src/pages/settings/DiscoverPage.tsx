@@ -5,7 +5,7 @@ import PageHeader from '../../components/PageHeader'
 import { authHeaders } from '../../auth'
 import { Loader2, Search } from '../../components/Icons'
 import { Button } from '@/components/ui/button'
-import { findRegisteredCameraName } from './discoverDedupe'
+import { findRegisteredCamera, identityLines, discoveredDisplayName } from './discoverDedupe'
 
 interface RegisteredCamera { id: string; name?: string; rtsp_url?: string }
 
@@ -47,6 +47,7 @@ export default function DiscoverPage() {
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState<AddState | null>(null)
   const [registered, setRegistered] = useState<RegisteredCamera[]>([])
+  const [deviceInfo, setDeviceInfo] = useState<Record<string, Record<string, string>>>({})
   const navigate = useNavigate()
 
   // runScan só toca estado DEPOIS do await (assíncrono) — assim pode ser chamada do
@@ -79,7 +80,19 @@ export default function DiscoverPage() {
   useEffect(() => {
     fetch('/api/settings/cameras', { headers: authHeaders() })
       .then(r => r.ok ? r.json() : [])
-      .then((cams: RegisteredCamera[]) => setRegistered(cams))
+      .then((cams: RegisteredCamera[]) => {
+        setRegistered(cams)
+        // Identidade (modelo/serial/…) por câmera cadastrada → coluna Nome/Modelo.
+        cams.forEach(cam => {
+          if (!cam.id) return
+          fetch(`/api/cameras/${cam.id}/device-info`, { headers: authHeaders() })
+            .then(r => r.ok ? r.json() : null)
+            .then((d: { values?: Record<string, string> } | null) => {
+              if (d?.values) setDeviceInfo(prev => ({ ...prev, [cam.id]: d.values! }))
+            })
+            .catch(() => {})
+        })
+      })
       .catch(() => {})
     fetch('/api/discover', { headers: authHeaders() })
       .then(async res => {
@@ -183,42 +196,51 @@ export default function DiscoverPage() {
                 </tr>
               </thead>
               <tbody>
-                {results.map((r, i) => (
+                {results.map((r, i) => {
+                  const cam = findRegisteredCamera(r.ip, registered)
+                  const regName = cam ? (cam.name || cam.id || r.ip) : null
+                  const lines = cam?.id ? identityLines(deviceInfo[cam.id] ?? {}) : []
+                  const fallbackName = discoveredDisplayName(r, registered)
+                  return (
                   <>
                     <tr
                       key={i}
                       className={`border-b border-border ${adding?.idx === i ? '' : 'last:border-0'} hover:bg-accent/40 transition-colors`}
                     >
                       <td className="px-4 py-2.5 font-mono text-foreground">{r.ip}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{r.port}</td>
+                      <td className="px-4 py-2.5 font-mono text-muted-foreground">{r.port}</td>
                       <td className="px-4 py-2.5">
                         {r.onvif ? (
-                          <span className="px-1.5 py-0.5 rounded bg-blue-900/50 text-blue-300 text-[10px] font-medium">ONVIF</span>
+                          <span className="px-1.5 py-0.5 rounded bg-blue-900/50 text-blue-300 text-xs font-mono">ONVIF</span>
                         ) : (
-                          <span className="px-1.5 py-0.5 rounded bg-surface-2 text-muted-foreground text-[10px] font-medium">Scan</span>
+                          <span className="px-1.5 py-0.5 rounded bg-surface-2 text-muted-foreground text-xs font-mono">Scan</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-foreground">{r.name || <span className="text-muted-foreground">—</span>}</td>
+                      <td className="px-4 py-2.5 font-mono text-foreground">
+                        {lines.length > 0 ? (
+                          <div className="space-y-0.5">
+                            {lines.map(l => (
+                              <div key={l.label}>
+                                <span className="text-muted-foreground">{l.label}:</span> {l.value}
+                              </div>
+                            ))}
+                          </div>
+                        ) : fallbackName || <span className="text-muted-foreground">—</span>}
+                      </td>
                       <td className="px-4 py-2.5 text-right">
-                        {(() => {
-                          const regName = findRegisteredCameraName(r.ip, registered)
-                          if (regName) {
-                            return (
-                              <span className="text-[11px] text-muted-foreground italic">
-                                Já cadastrada como “{regName}”
-                              </span>
-                            )
-                          }
-                          return adding?.idx === i ? (
-                            <Button variant="outline" size="sm" onClick={() => setAdding(null)}>
-                              Cancelar
-                            </Button>
-                          ) : (
-                            <Button size="sm" onClick={() => startAdding(i)}>
-                              Adicionar
-                            </Button>
-                          )
-                        })()}
+                        {regName ? (
+                          <span className="text-xs font-mono text-muted-foreground">
+                            Já cadastrada como “{regName}”
+                          </span>
+                        ) : adding?.idx === i ? (
+                          <Button variant="outline" size="sm" onClick={() => setAdding(null)}>
+                            Cancelar
+                          </Button>
+                        ) : (
+                          <Button size="sm" onClick={() => startAdding(i)}>
+                            Adicionar
+                          </Button>
+                        )}
                       </td>
                     </tr>
 
@@ -279,7 +301,8 @@ export default function DiscoverPage() {
                       </tr>
                     )}
                   </>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
