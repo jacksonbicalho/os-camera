@@ -32,6 +32,12 @@ describe('groupDeviceInfo', () => {
     expect(field('Identidade', 'serial')?.value).toBe('DVB0006008586')
   })
 
+  it('mostra Conexão (Integrada/USB) na Identidade (webcam)', () => {
+    const g = groupDeviceInfo({ collector: 'webcam', model: 'HD Webcam', vendor: 'Sonix', connection: 'Integrada' })
+    const id = g.sections.find((s) => s.title === 'Identidade')
+    expect(id?.fields.find((f) => f.key === 'connection')).toEqual({ key: 'connection', label: 'Conexão', value: 'Integrada' })
+  })
+
   it('groups main and sub streams separately', () => {
     expect(field('Stream principal', 'stream.main.gop')).toMatchObject({ label: 'GOP', value: '40' })
     expect(field('Stream secundário', 'stream.sub.width')).toMatchObject({ label: 'Largura', value: '640' })

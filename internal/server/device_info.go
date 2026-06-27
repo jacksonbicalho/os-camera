@@ -33,7 +33,7 @@ func (s *Server) collectorsForDeviceInfo() []deviceinfo.Collector {
 	if s.deviceCollectors != nil {
 		return s.deviceCollectors
 	}
-	return []deviceinfo.Collector{deviceinfo.NewDahua()}
+	return []deviceinfo.Collector{deviceinfo.NewWebcam(), deviceinfo.NewDahua()}
 }
 
 // captureDeviceInfo collects a camera's device-info snapshot and persists it.

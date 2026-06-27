@@ -22,6 +22,7 @@ const IDENTITY_LABELS: Record<string, string> = {
   model: 'Modelo',
   serial: 'Serial',
   vendor: 'Fabricante',
+  connection: 'Conexão',
   firmware: 'Firmware',
   hardware: 'Hardware',
   collector: 'Coletor',
@@ -67,7 +68,7 @@ export function groupDeviceInfo(values: Record<string, string>): GroupedDeviceIn
 
   orderedSection(
     'Identidade',
-    ['model', 'serial', 'vendor', 'firmware', 'hardware', 'collector'],
+    ['model', 'serial', 'vendor', 'connection', 'firmware', 'hardware', 'collector'],
     (k) => IDENTITY_LABELS[k] ?? k,
   )
   orderedSection('Rede', ['mac'], () => 'MAC')
