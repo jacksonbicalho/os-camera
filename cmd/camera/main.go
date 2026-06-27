@@ -34,6 +34,7 @@ import (
 	"camera/internal/storage"
 	"camera/internal/streaming"
 	"camera/internal/updater"
+	"camera/internal/webcam"
 	"camera/internal/zones"
 )
 
@@ -204,8 +205,13 @@ func main() {
 		cancelsByID    = make(map[string]context.CancelFunc)
 		motionMonsByID = make(map[string]*motion.Monitor)
 		streamsByID    = make(map[string]ffprobe.StreamInfo)
+		webcamNameByID = make(map[string]string) // câmera webcam → path do restream (webcamN)
 		wg             sync.WaitGroup
 	)
+
+	// Restream de webcams locais (v4l2): servidor RTSP embutido, ligado ao ciclo
+	// de vida da câmera (Ensure no start, Release no stop). Self-contained (só ffmpeg).
+	wcMgr := webcam.New(ctx, "", slog)
 
 	// srv is assigned after NewServer; callbacks close over this variable.
 	var srv *server.Server
@@ -232,6 +238,15 @@ func main() {
 	}
 
 	startCameraProcs := func(cam config.CameraConfig) {
+		// Webcam local: sobe o restream (publisher → RTSP embutido) ANTES de
+		// probar/consumir o stream. Amarrado ao ciclo de vida da câmera.
+		if name, ok := wcMgr.WebcamName(cam.RTSPURL); ok {
+			wcMgr.Ensure(name)
+			camMu.Lock()
+			webcamNameByID[cam.ID] = name
+			camMu.Unlock()
+		}
+
 		stream := ffprobe.Resolve(context.Background(), ffprobe.Resolver{
 			VideoCodec: cam.VideoCodec,
 			HasAudio:   cam.HasAudio,
@@ -308,10 +323,16 @@ func main() {
 		delete(cancelsByID, id)
 		delete(motionMonsByID, id)
 		delete(streamsByID, id)
+		webcamName := webcamNameByID[id]
+		delete(webcamNameByID, id)
 		camMu.Unlock()
 
 		if cancel != nil {
 			cancel()
+		}
+		// Webcam: para o restream (libera o /dev/videoN; "apaga" a câmera).
+		if webcamName != "" {
+			wcMgr.Release(webcamName)
 		}
 	}
 
