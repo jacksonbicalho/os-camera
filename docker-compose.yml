@@ -11,11 +11,6 @@ services:
     volumes:
       - ./camera.yaml:/app/camera.yaml:ro
       - ./storage:/data
-      # Webcam local (v4l2): /dev visível + acesso aos devices major 81 (video4linux).
-      # Funciona quando há webcam e é inócuo quando não há (não quebra o up).
-      - /dev:/dev
-    device_cgroup_rules:
-      - "c 81:* rmw"
     restart: unless-stopped
 
   camera-dev:
@@ -29,11 +24,7 @@ services:
     volumes:
       - .:/app
       - ./storage:/data
-      # Webcam local (v4l2) — ver serviço `camera`.
-      - /dev:/dev
       #- frontend_node_modules:/app/frontend/node_modules
-    device_cgroup_rules:
-      - "c 81:* rmw"
     environment:
       - VERSION=${VERSION:-dev}
       - GOCACHE=/app/.cache/go-build
