@@ -2,8 +2,12 @@ package discovery
 
 import (
 	"context"
+	"net"
+	"strconv"
 	"sync"
 	"time"
+
+	"camera/internal/webcam"
 )
 
 const defaultTimeout = 10 * time.Second
@@ -52,5 +56,29 @@ func Discover(ctx context.Context) []Result {
 		seen[r.IP] = true
 		combined = append(combined, r)
 	}
+	// Webcams locais (v4l2) — restream embutido. Não passam pelo dedup por IP
+	// (todas em 127.0.0.1); distinguidas por Kind.
+	combined = append(combined, webcamResults(webcam.Detected(), webcam.DefaultRTSPAddress)...)
 	return combined
+}
+
+// webcamResults mapeia as webcams locais detectadas para Result{Kind:"webcam"}
+// com a URL do restream embutido. Função pura (testável).
+func webcamResults(devices []webcam.Device, addr string) []Result {
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		host, portStr = addr, "8554"
+	}
+	port, _ := strconv.Atoi(portStr)
+	out := make([]Result, 0, len(devices))
+	for _, d := range devices {
+		out = append(out, Result{
+			Kind:     "webcam",
+			Name:     d.Name,
+			IP:       host,
+			Port:     port,
+			RTSPURLs: []string{webcam.RTSPURL(addr, d.RTSPName)},
+		})
+	}
+	return out
 }

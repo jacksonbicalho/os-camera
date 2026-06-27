@@ -17,6 +17,7 @@ interface DiscoveryResult {
   name?: string
   rtsp_urls?: string[]
   services?: string[]
+  kind?: string
 }
 
 interface StreamURI {
@@ -210,7 +211,9 @@ export default function DiscoverPage() {
                       <td className="px-4 py-2.5 font-mono text-foreground">{r.ip}</td>
                       <td className="px-4 py-2.5 font-mono text-muted-foreground">{r.port}</td>
                       <td className="px-4 py-2.5">
-                        {r.onvif ? (
+                        {r.kind === 'webcam' ? (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-900/50 text-emerald-300 text-xs font-mono">Webcam</span>
+                        ) : r.onvif ? (
                           <span className="px-1.5 py-0.5 rounded bg-blue-900/50 text-blue-300 text-xs font-mono">ONVIF</span>
                         ) : (
                           <span className="px-1.5 py-0.5 rounded bg-surface-2 text-muted-foreground text-xs font-mono">Scan</span>
@@ -235,6 +238,11 @@ export default function DiscoverPage() {
                         ) : adding?.idx === i ? (
                           <Button variant="outline" size="sm" onClick={() => setAdding(null)}>
                             Cancelar
+                          </Button>
+                        ) : r.kind === 'webcam' ? (
+                          // Webcam local não tem auth — registra direto pela URL do restream.
+                          <Button size="sm" onClick={() => navigateWithURL(r, '', '', r.rtsp_urls?.[0] ?? '')}>
+                            Adicionar
                           </Button>
                         ) : (
                           <Button size="sm" onClick={() => startAdding(i)}>
