@@ -273,7 +273,14 @@ func main() {
 		motionCfg := cam.EffectiveMotionConfig()
 		if motionCfg.Enabled {
 			camID := cam.ID
-			mon := motion.New(cam, stream, motionCfg, cfg.Storage.Path, reconnect, slog,
+			// Motion may read a different stream than recorder/HLS (e.g. a lighter
+			// substream). When it does, probe that URL so the pipe/snapshot use its
+			// real dimensions instead of the main stream's.
+			motionStream := stream
+			if murl := cam.EffectiveMotionURL(); murl != cam.RTSPURL {
+				motionStream = ffprobe.Resolve(context.Background(), ffprobe.Resolver{RTSPURL: murl}, prober, slog)
+			}
+			mon := motion.New(cam, motionStream, motionCfg, cfg.Storage.Path, reconnect, slog,
 				func() []zones.Zone {
 					zs, _ := db.GetZones(database, camID)
 					return zs

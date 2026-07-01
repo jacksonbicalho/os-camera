@@ -13,6 +13,7 @@ export interface Camera {
   name: string
   id: string
   rtsp_url: string
+  motion_rtsp_url?: string
   chunk_duration: string
   reconnect_interval: string
   video_codec: string
@@ -31,6 +32,7 @@ export interface Camera {
 export interface CameraFormData {
   name: string
   rtsp_url: string
+  motion_rtsp_url: string
   chunk_duration: string
   reconnect_interval: string
   video_codec: string
@@ -85,7 +87,7 @@ export function emptyForm(cam?: Camera): CameraFormData {
   if (!cam) {
     return {
       name: '',
-      rtsp_url: '', chunk_duration: '5m', reconnect_interval: '30s',
+      rtsp_url: '', motion_rtsp_url: '', chunk_duration: '5m', reconnect_interval: '30s',
       video_codec: '', has_audio: '', resolution: '0x0',
       hls_video_mode: 'auto',
       record_video_mode: 'auto',
@@ -102,6 +104,7 @@ export function emptyForm(cam?: Camera): CameraFormData {
   return {
     name: cam.name ?? '',
     rtsp_url: cam.rtsp_url,
+    motion_rtsp_url: cam.motion_rtsp_url ?? '',
     chunk_duration: cam.chunk_duration,
     reconnect_interval: cam.reconnect_interval,
     video_codec: cam.video_codec ?? '',
@@ -131,6 +134,7 @@ export function formToPayload(f: CameraFormData) {
   const payload: Record<string, unknown> = {
     name: f.name,
     rtsp_url: f.rtsp_url,
+    motion_rtsp_url: f.motion_rtsp_url.trim(),
     chunk_duration: f.chunk_duration || '5m',
     reconnect_interval: f.reconnect_interval || '30s',
     video_codec: f.video_codec,
