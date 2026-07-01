@@ -113,6 +113,7 @@ type CameraConfig struct {
 	ID                string        `yaml:"id"`
 	Name              string        `yaml:"name"`
 	RTSPURL           string        `yaml:"rtsp_url"`
+	MotionRTSPURL     string        `yaml:"motion_rtsp_url"`
 	ChunkDuration     Duration      `yaml:"chunk_duration"`
 	ReconnectInterval Duration      `yaml:"reconnect_interval"`
 	VideoCodec        string        `yaml:"video_codec"`
@@ -155,6 +156,16 @@ func (c CameraConfig) EffectiveMotionConfig() MotionConfig {
 		return *c.Motion
 	}
 	return MotionConfig{}
+}
+
+// EffectiveMotionURL returns the RTSP URL the motion detector should read: the
+// per-camera MotionRTSPURL when set (e.g. a lighter substream, to cut decode
+// cost), otherwise the main RTSPURL.
+func (c CameraConfig) EffectiveMotionURL() string {
+	if c.MotionRTSPURL != "" {
+		return c.MotionRTSPURL
+	}
+	return c.RTSPURL
 }
 
 func (c CameraConfig) EffectiveChunkDuration() time.Duration {

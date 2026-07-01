@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { type Camera, type CameraFormData, RESOLUTIONS, emptyForm } from './cameraFormUtils'
 import { Button } from '@/components/ui/button'
+import { authHeaders } from '../auth'
 
 interface CameraFormProps {
   initial?: Camera
@@ -19,9 +20,37 @@ export default function CameraForm({ initial, prefillRtsp, prefillName, onSave, 
     return base
   })
   // editing mode when `initial` is provided
+  const [detecting, setDetecting] = useState(false)
+  const [detectMsg, setDetectMsg] = useState<{ text: string; ok: boolean } | null>(null)
 
   const set = (field: keyof CameraFormData, value: string | boolean | number) =>
     setForm(prev => ({ ...prev, [field]: value }))
+
+  const handleDetectSubstream = async () => {
+    const main = form.rtsp_url.trim()
+    if (!main) return
+    setDetecting(true)
+    setDetectMsg(null)
+    try {
+      const res = await fetch('/api/settings/cameras/detect-substream', {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rtsp_url: main, id: initial?.id }),
+      })
+      if (!res.ok) throw new Error('request failed')
+      const data = (await res.json()) as { motion_rtsp_url?: string; width?: number; height?: number }
+      if (data.motion_rtsp_url) {
+        setForm(prev => ({ ...prev, motion_rtsp_url: data.motion_rtsp_url! }))
+        setDetectMsg({ text: `Substream detectado: ${data.width}×${data.height}`, ok: true })
+      } else {
+        setDetectMsg({ text: 'Nenhum substream encontrado — informe manualmente.', ok: false })
+      }
+    } catch {
+      setDetectMsg({ text: 'Erro ao detectar — verifique a URL principal.', ok: false })
+    } finally {
+      setDetecting(false)
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -53,6 +82,33 @@ export default function CameraForm({ initial, prefillRtsp, prefillName, onSave, 
             className={inputClass}
             placeholder="rtsp://usuario:senha@ip:554/stream"
           />
+        </div>
+        <div className="sm:col-span-2">
+          <label className={labelClass}>RTSP URL da detecção de movimento (substream)</label>
+          <div className="flex gap-2">
+            <input
+              id="camera-motion-rtsp-url"
+              value={form.motion_rtsp_url}
+              onChange={e => set('motion_rtsp_url', e.target.value)}
+              className={inputClass}
+              placeholder="rtsp://usuario:senha@ip:554/stream (subtype=1)"
+            />
+            <Button
+              id="camera-motion-rtsp-detect"
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!form.rtsp_url.trim() || detecting}
+              onClick={handleDetectSubstream}
+              className="shrink-0"
+            >
+              {detecting ? 'Detectando...' : 'Detectar'}
+            </Button>
+          </div>
+          {detectMsg && (
+            <p className={`text-xs mt-0.5 ${detectMsg.ok ? 'text-green-500' : 'text-amber-500'}`}>{detectMsg.text}</p>
+          )}
+          <p className="text-xs text-gray-400 mt-0.5">Opcional. Vazio = usa o stream principal. "Detectar" tenta descobrir o substream a partir da URL principal (menor resolução) — reduz muito o custo de CPU da detecção; o snapshot do evento sai nessa resolução.</p>
         </div>
         <div>
           <label className={labelClass}>Duração do chunk</label>

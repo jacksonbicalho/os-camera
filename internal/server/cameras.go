@@ -69,6 +69,7 @@ type cameraConfigDTO struct {
 	ID                string           `json:"id"`
 	Name              string           `json:"name"`
 	RTSPURL           string           `json:"rtsp_url"`
+	MotionRTSPURL     string           `json:"motion_rtsp_url,omitempty"`
 	ChunkDuration     string           `json:"chunk_duration"`
 	ReconnectInterval string           `json:"reconnect_interval"`
 	VideoCodec        string           `json:"video_codec,omitempty"`
@@ -90,6 +91,7 @@ func cameraToDTO(cam config.CameraConfig) cameraConfigDTO {
 		ID:                cam.ID,
 		Name:              cam.Name,
 		RTSPURL:           cam.RTSPURL,
+		MotionRTSPURL:     cam.MotionRTSPURL,
 		ChunkDuration:     formatDuration(cam.EffectiveChunkDuration()),
 		ReconnectInterval: formatDuration(cam.EffectiveReconnectInterval()),
 		VideoCodec:        cam.VideoCodec,
@@ -117,6 +119,28 @@ func cameraToDTO(cam config.CameraConfig) cameraConfigDTO {
 		}
 	}
 	return dto
+}
+
+// restoreMaskedRTSPPassword returns submitted with its password replaced by the
+// one from existing when submitted carries the redacted placeholder ("xxxxx",
+// produced by url.URL.Redacted()); otherwise submitted is returned unchanged.
+// Host/path/query from submitted are preserved so edits to those survive.
+func restoreMaskedRTSPPassword(submitted, existing string) string {
+	u, err := url.Parse(submitted)
+	if err != nil || u.User == nil {
+		return submitted
+	}
+	pass, hasPass := u.User.Password()
+	if !hasPass || pass != "xxxxx" {
+		return submitted
+	}
+	orig, err := url.Parse(existing)
+	if err != nil || orig.User == nil {
+		return existing
+	}
+	origPass, _ := orig.User.Password()
+	u.User = url.UserPassword(orig.User.Username(), origPass)
+	return u.String()
 }
 
 // reloadCamerasFromDB replaces s.cameras with the current DB state.
@@ -151,6 +175,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name              string           `json:"name"`
 		RTSPURL           string           `json:"rtsp_url"`
+		MotionRTSPURL     string           `json:"motion_rtsp_url"`
 		ChunkDuration     string           `json:"chunk_duration"`
 		ReconnectInterval string           `json:"reconnect_interval"`
 		VideoCodec        string           `json:"video_codec"`
@@ -184,6 +209,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 	cam := config.CameraConfig{
 		Name:              req.Name,
 		RTSPURL:           req.RTSPURL,
+		MotionRTSPURL:     req.MotionRTSPURL,
 		VideoCodec:        req.VideoCodec,
 		HasAudio:          req.HasAudio,
 		Width:             req.Width,
@@ -269,6 +295,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name              string           `json:"name"`
 		RTSPURL           string           `json:"rtsp_url"`
+		MotionRTSPURL     string           `json:"motion_rtsp_url"`
 		ChunkDuration     string           `json:"chunk_duration"`
 		ReconnectInterval string           `json:"reconnect_interval"`
 		VideoCodec        string           `json:"video_codec"`
@@ -294,17 +321,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 	// If the client submitted the masked URL (password == "xxxxx" from Redacted()),
 	// restore the real password from the existing record but keep everything else
 	// (host, path, query) from the submitted URL — so host changes are preserved.
-	if u, err := url.Parse(req.RTSPURL); err == nil && u.User != nil {
-		if pass, hasPass := u.User.Password(); hasPass && pass == "xxxxx" {
-			if orig, err2 := url.Parse(existing.RTSPURL); err2 == nil && orig.User != nil {
-				origPass, _ := orig.User.Password()
-				u.User = url.UserPassword(orig.User.Username(), origPass)
-				req.RTSPURL = u.String()
-			} else {
-				req.RTSPURL = existing.RTSPURL
-			}
-		}
-	}
+	req.RTSPURL = restoreMaskedRTSPPassword(req.RTSPURL, existing.RTSPURL)
 	if req.Motion != nil {
 		if err := validateMotionConfig(req.Motion); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -320,6 +337,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		ID:                id,
 		Name:              req.Name,
 		RTSPURL:           req.RTSPURL,
+		MotionRTSPURL:     req.MotionRTSPURL,
 		VideoCodec:        req.VideoCodec,
 		HasAudio:          req.HasAudio,
 		Width:             req.Width,

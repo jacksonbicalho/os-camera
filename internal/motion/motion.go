@@ -71,7 +71,7 @@ func New(cam config.CameraConfig, stream ffprobe.StreamInfo, cfg config.MotionCo
 
 	cmd := newFFmpegFrameCommander()
 	st := newStore(storagePath, onEvent)
-	det := newDetector(cam.ID, cam.RTSPURL, scaledW, scaledH, effective, cmd, st, log, notify, notifyRaw, getZones)
+	det := newDetector(cam.ID, cam.EffectiveMotionURL(), scaledW, scaledH, effective, cmd, st, log, notify, notifyRaw, getZones)
 	// The pipe delivers full-res frames; the diff runs on a downscaled grayscale
 	// copy while the event snapshot keeps the original full resolution.
 	det.fullW = stream.Width
