@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { createRef } from 'react'
 import HLSPlayer, { type HLSPlayerHandle } from './HLSPlayer'
+import { negotiateWebRTC, WebRTCUnavailableError } from '../lib/webrtc'
 
 type HlsEventHandler = () => void
 
@@ -24,10 +25,55 @@ vi.mock('../auth', () => ({
   getToken: () => 'fake-token',
 }))
 
+vi.mock('../lib/webrtc', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/webrtc')>()
+  return { ...actual, negotiateWebRTC: vi.fn() }
+})
+
+let lastPC: FakeRTCPeerConnection | null = null
+
+class FakeRTCPeerConnection {
+  connectionState: RTCPeerConnectionState = 'new'
+  ontrack: ((ev: RTCTrackEvent) => void) | null = null
+  onconnectionstatechange: (() => void) | null = null
+  addTransceiver = vi.fn()
+  close = vi.fn()
+  fireConnected() {
+    this.connectionState = 'connected'
+    this.onconnectionstatechange?.()
+  }
+}
+
+class FakeEventSource {
+  onmessage: ((e: MessageEvent) => void) | null = null
+  onerror: (() => void) | null = null
+  close = vi.fn()
+}
+
+// stubs the browser live-view globals: RTCPeerConnection (WebRTC) and
+// EventSource (motion SSE, opened by useEventSource when cameraId is set).
+function stubRTCPeerConnection() {
+  vi.stubGlobal('RTCPeerConnection', function RTCPeerConnectionStub() {
+    lastPC = new FakeRTCPeerConnection()
+    return lastPC
+  })
+  vi.stubGlobal('EventSource', FakeEventSource)
+}
+
+async function flushAsync() {
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)) })
+}
+
 describe('HLSPlayer', () => {
   beforeEach(() => {
     manifestParsedHandler = null
+    lastPC = null
+    ;(negotiateWebRTC as unknown as Mock).mockReset()
     HTMLVideoElement.prototype.play = vi.fn().mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it('renders a video element', () => {
@@ -76,5 +122,31 @@ describe('HLSPlayer', () => {
     await act(async () => { manifestParsedHandler!() })
 
     expect(video.muted).toBe(true)
+  })
+
+  it('falls back to HLS when WebRTC is unavailable (409)', async () => {
+    stubRTCPeerConnection()
+    ;(negotiateWebRTC as unknown as Mock).mockRejectedValue(new WebRTCUnavailableError())
+
+    render(<HLSPlayer src="/stream/cam/index.m3u8" cameraId="cam" />)
+    await flushAsync()
+
+    expect(negotiateWebRTC).toHaveBeenCalled()
+    expect(manifestParsedHandler).not.toBeNull() // HLS took over
+  })
+
+  it('stays on WebRTC (no HLS setup) when negotiation succeeds', async () => {
+    stubRTCPeerConnection()
+    ;(negotiateWebRTC as unknown as Mock).mockResolvedValue(undefined)
+
+    const { container } = render(<HLSPlayer src="/stream/cam/index.m3u8" cameraId="cam" />)
+    await flushAsync()
+
+    expect(negotiateWebRTC).toHaveBeenCalled()
+    expect(manifestParsedHandler).toBeNull() // HLS never set up
+
+    const video = container.querySelector('video') as HTMLVideoElement
+    await act(async () => { lastPC!.fireConnected() })
+    expect(video.play).toHaveBeenCalled()
   })
 })
