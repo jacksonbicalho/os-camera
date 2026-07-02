@@ -195,6 +195,18 @@ func main() {
 	}
 	slog.Info("cameras loaded from database", "count", len(cameras))
 
+	// Remove HLS segment dirs left by cameras that no longer exist (deleted while
+	// the server was down, or leftovers from before per-camera transport gating).
+	if cfg.Server.SegmentsPath != "" {
+		validIDs := make(map[string]bool, len(cameras))
+		for _, c := range cameras {
+			validIDs[c.ID] = true
+		}
+		if n := storage.CleanOrphanedSegments(cfg.Server.SegmentsPath, validIDs, slog); n > 0 {
+			slog.Info("startup: orphaned HLS segment dirs removed", "count", n)
+		}
+	}
+
 	commander := exec.NewFFmpegCommander()
 	prober := ffprobe.NewProber(&ffprobe.OSExecutor{})
 
@@ -264,12 +276,18 @@ func main() {
 		}
 
 		if cfg.Server.SegmentsPath != "" {
-			str := streaming.NewHLSStreamer(cam, cfg.Server, stream, commander, slog)
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				str.Run(camCtx, reconnect)
-			}()
+			// The HLS pipeline runs unless the camera is set to WebRTC-only and can
+			// actually use it (H.264) — that camera stops writing .ts entirely.
+			if live.ShouldRunHLS(stream.VideoCodec, cam.EffectiveLiveTransport()) {
+				str := streaming.NewHLSStreamer(cam, cfg.Server, stream, commander, slog)
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					str.Run(camCtx, reconnect)
+				}()
+			} else if err := os.RemoveAll(filepath.Join(cfg.Server.SegmentsPath, cam.ID)); err != nil {
+				slog.Warn("failed to remove stale hls segments", "camera", cam.ID, "error", err)
+			}
 		}
 
 		// Low-latency live via WebRTC: only cameras that deliver H.264 can be
