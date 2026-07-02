@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import type HlsType from 'hls.js'
 import { getToken } from '../auth'
+import { negotiateWebRTC } from '../lib/webrtc'
 import { useEventSource } from '../hooks/useEventSource'
 import { AlertTriangle, Loader2, Play } from './Icons'
 
@@ -47,12 +48,19 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
 
     let hls: HlsType | undefined
     let cancelled = false
+    let pc: RTCPeerConnection | null = null
+    let watchdog: ReturnType<typeof setTimeout> | undefined
 
-    function setup(v: HTMLVideoElement) {
-      setFatalError(false)
-      setPlayBlocked(false)
-      v.muted = true
+    const tryPlay = (v: HTMLVideoElement) => {
+      v.muted = mutedRef.current
+      v.play()
+        .then(() => { if (!cancelled) setPlayBlocked(false) })
+        .catch((err: unknown) => {
+          if (!cancelled && (err as { name?: string })?.name !== 'AbortError') setPlayBlocked(true)
+        })
+    }
 
+    function setupHLS(v: HTMLVideoElement) {
       import('hls.js').then(({ default: Hls }) => {
         if (cancelled) return
 
@@ -78,14 +86,7 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
         })
         hls.loadSource(src)
         hls.attachMedia(v)
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          v.muted = mutedRef.current
-          v.play()
-            .then(() => { if (!cancelled) setPlayBlocked(false) })
-            .catch((err: unknown) => {
-              if (!cancelled && (err as { name?: string })?.name !== 'AbortError') setPlayBlocked(true)
-            })
-        })
+        hls.on(Hls.Events.MANIFEST_PARSED, () => { tryPlay(v) })
         hls.on(Hls.Events.ERROR, (_e, data) => {
           if (data.fatal) {
             hls?.destroy()
@@ -96,16 +97,80 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
       })
     }
 
+    async function setup(v: HTMLVideoElement) {
+      setFatalError(false)
+      setPlayBlocked(false)
+      v.muted = true
+
+      // Prefer WebRTC (sub-second latency); fall back to HLS when it is
+      // unavailable (409 / non-H.264 camera) or the media path never connects.
+      if (cameraId && typeof RTCPeerConnection !== 'undefined') {
+        const conn = new RTCPeerConnection()
+        pc = conn
+        let fellBack = false
+        const fallback = () => {
+          if (fellBack || cancelled) return
+          fellBack = true
+          if (watchdog) clearTimeout(watchdog)
+          try { conn.close() } catch { /* noop */ }
+          if (pc === conn) pc = null
+          v.srcObject = null
+          setupHLS(v)
+        }
+
+        conn.ontrack = (ev) => {
+          const [stream] = ev.streams
+          if (stream) v.srcObject = stream
+        }
+        conn.addTransceiver('video', { direction: 'recvonly' })
+
+        try {
+          await negotiateWebRTC(cameraId, conn, { token: getToken() ?? undefined })
+        } catch {
+          fallback()
+          return
+        }
+        if (cancelled) { conn.close(); return }
+
+        conn.onconnectionstatechange = () => {
+          if (conn.connectionState === 'connected') {
+            if (watchdog) clearTimeout(watchdog)
+            tryPlay(v)
+          } else if (conn.connectionState === 'failed') {
+            fallback()
+          }
+        }
+        // Watchdog: signaling succeeded, but if the media path never connects,
+        // fall back to HLS instead of showing a frozen frame.
+        watchdog = setTimeout(() => {
+          if (conn.connectionState !== 'connected') fallback()
+        }, 5000)
+        if (conn.connectionState === 'connected') {
+          if (watchdog) clearTimeout(watchdog)
+          tryPlay(v)
+        }
+        return
+      }
+
+      setupHLS(v)
+    }
+
     retryRef.current = () => setup(video)
 
     setup(video)
 
     return () => {
       cancelled = true
+      if (watchdog) clearTimeout(watchdog)
       hls?.destroy()
       hlsRef.current = null
+      if (pc) {
+        try { pc.close() } catch { /* noop */ }
+        pc = null
+      }
+      video.srcObject = null
     }
-  }, [src, segmentSeconds])
+  }, [src, segmentSeconds, cameraId])
 
   useEffect(() => {
     mutedRef.current = muted
