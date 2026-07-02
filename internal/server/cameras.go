@@ -79,6 +79,7 @@ type cameraConfigDTO struct {
 	DisplayOrder      int              `json:"display_order"`
 	HLSVideoMode      string           `json:"hls_video_mode"`
 	RecordVideoMode   string           `json:"record_video_mode"`
+	LiveTransport     string           `json:"live_transport"`
 	HLSSegmentSeconds *int             `json:"hls_segment_seconds"`
 	HLSListSize       *int             `json:"hls_list_size"`
 	HLSDVRSeconds     *int             `json:"hls_dvr_seconds"`
@@ -101,6 +102,7 @@ func cameraToDTO(cam config.CameraConfig) cameraConfigDTO {
 		DisplayOrder:      cam.DisplayOrder,
 		HLSVideoMode:      cam.HLSVideoMode,
 		RecordVideoMode:   cam.RecordVideoMode,
+		LiveTransport:     cam.EffectiveLiveTransport(),
 		HLSSegmentSeconds: cam.HLSSegmentSeconds,
 		HLSListSize:       cam.HLSListSize,
 		HLSDVRSeconds:     cam.HLSDVRSeconds,
@@ -168,6 +170,17 @@ func (s *Server) handleListSettingsCameras(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(list)
 }
 
+// normalizeLiveTransport coerces the client-provided live transport to a valid
+// value, defaulting to "auto" for empty or unknown input.
+func normalizeLiveTransport(s string) string {
+	switch s {
+	case "auto", "webrtc", "hls":
+		return s
+	default:
+		return "auto"
+	}
+}
+
 func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 	if !s.requireDB(w) {
 		return
@@ -184,6 +197,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		Height            int              `json:"height"`
 		HLSVideoMode      string           `json:"hls_video_mode"`
 		RecordVideoMode   string           `json:"record_video_mode"`
+		LiveTransport     string           `json:"live_transport"`
 		HLSSegmentSeconds *int             `json:"hls_segment_seconds"`
 		HLSListSize       *int             `json:"hls_list_size"`
 		HLSDVRSeconds     *int             `json:"hls_dvr_seconds"`
@@ -216,6 +230,7 @@ func (s *Server) handleCreateCamera(w http.ResponseWriter, r *http.Request) {
 		Height:            req.Height,
 		HLSVideoMode:      req.HLSVideoMode,
 		RecordVideoMode:   req.RecordVideoMode,
+		LiveTransport:     normalizeLiveTransport(req.LiveTransport),
 		HLSSegmentSeconds: req.HLSSegmentSeconds,
 		HLSListSize:       req.HLSListSize,
 		HLSDVRSeconds:     req.HLSDVRSeconds,
@@ -304,6 +319,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		Height            int              `json:"height"`
 		HLSVideoMode      string           `json:"hls_video_mode"`
 		RecordVideoMode   string           `json:"record_video_mode"`
+		LiveTransport     string           `json:"live_transport"`
 		HLSSegmentSeconds *int             `json:"hls_segment_seconds"`
 		HLSListSize       *int             `json:"hls_list_size"`
 		HLSDVRSeconds     *int             `json:"hls_dvr_seconds"`
@@ -346,6 +362,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 		DisplayOrder:      existing.DisplayOrder,
 		HLSVideoMode:      req.HLSVideoMode,
 		RecordVideoMode:   req.RecordVideoMode,
+		LiveTransport:     normalizeLiveTransport(req.LiveTransport),
 		HLSSegmentSeconds: req.HLSSegmentSeconds,
 		HLSListSize:       req.HLSListSize,
 		HLSDVRSeconds:     req.HLSDVRSeconds,

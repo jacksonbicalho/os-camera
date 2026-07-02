@@ -22,6 +22,7 @@ export interface Camera {
   height: number
   hls_video_mode: string
   record_video_mode: string
+  live_transport?: string
   hls_segment_seconds: number | null
   hls_list_size: number | null
   hls_dvr_seconds: number | null
@@ -40,6 +41,7 @@ export interface CameraFormData {
   resolution: string
   hls_video_mode: string
   record_video_mode: string
+  live_transport: string
   hls_segment_seconds_default: boolean
   hls_segment_seconds: string
   hls_list_size_default: boolean
@@ -91,6 +93,7 @@ export function emptyForm(cam?: Camera): CameraFormData {
       video_codec: '', has_audio: '', resolution: '0x0',
       hls_video_mode: 'auto',
       record_video_mode: 'auto',
+      live_transport: 'auto',
       hls_segment_seconds_default: true, hls_segment_seconds: '2',
       hls_list_size_default: true, hls_list_size: '5',
       hls_dvr_seconds: '0',
@@ -112,6 +115,7 @@ export function emptyForm(cam?: Camera): CameraFormData {
     resolution: encodeResolution(cam.width ?? 0, cam.height ?? 0),
     hls_video_mode: cam.hls_video_mode || 'auto',
     record_video_mode: cam.record_video_mode || 'auto',
+    live_transport: cam.live_transport || 'auto',
     hls_segment_seconds_default: cam.hls_segment_seconds == null,
     hls_segment_seconds: String(cam.hls_segment_seconds ?? 2),
     hls_list_size_default: cam.hls_list_size == null,
@@ -143,6 +147,7 @@ export function formToPayload(f: CameraFormData) {
     height,
     hls_video_mode: f.hls_video_mode || 'auto',
     record_video_mode: f.record_video_mode || 'auto',
+    live_transport: f.live_transport || 'auto',
     hls_segment_seconds: f.hls_segment_seconds_default ? null : (parseInt(f.hls_segment_seconds) || 2),
     hls_list_size: f.hls_list_size_default ? null : (parseInt(f.hls_list_size) || 5),
     hls_dvr_seconds: parseInt(f.hls_dvr_seconds) || null,

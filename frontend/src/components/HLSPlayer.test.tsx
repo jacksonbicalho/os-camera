@@ -149,4 +149,15 @@ describe('HLSPlayer', () => {
     await act(async () => { lastPC!.fireConnected() })
     expect(video.play).toHaveBeenCalled()
   })
+
+  it('does not attempt WebRTC when transport is "hls"', async () => {
+    stubRTCPeerConnection()
+    ;(negotiateWebRTC as unknown as Mock).mockResolvedValue(undefined)
+
+    render(<HLSPlayer src="/stream/cam/index.m3u8" cameraId="cam" transport="hls" />)
+    await flushAsync()
+
+    expect(negotiateWebRTC).not.toHaveBeenCalled()
+    expect(manifestParsedHandler).not.toBeNull() // went straight to HLS
+  })
 })

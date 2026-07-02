@@ -41,9 +41,9 @@ func CreateCamera(db *DB, cam config.CameraConfig, motion *config.MotionConfig) 
 	_, err = tx.Exec(
 		`INSERT INTO cameras(id, name, rtsp_url, motion_rtsp_url, chunk_duration, reconnect_interval,
 		                     video_codec, has_audio, width, height, display_order,
-		                     hls_video_mode, record_video_mode, hls_segment_seconds, hls_list_size,
+		                     hls_video_mode, record_video_mode, live_transport, hls_segment_seconds, hls_list_size,
 		                     hls_dvr_seconds, recording_enabled)
-		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		cam.ID,
 		cam.Name,
 		cam.RTSPURL,
@@ -57,6 +57,7 @@ func CreateCamera(db *DB, cam config.CameraConfig, motion *config.MotionConfig) 
 		cam.DisplayOrder,
 		cam.HLSVideoMode,
 		cam.RecordVideoMode,
+		cam.EffectiveLiveTransport(),
 		nullIntPtr(cam.HLSSegmentSeconds),
 		nullIntPtr(cam.HLSListSize),
 		nullIntPtr(cam.HLSDVRSeconds),
@@ -92,13 +93,13 @@ func GetCamera(db *DB, id string) (config.CameraConfig, error) {
 	err := db.QueryRow(
 		`SELECT id, name, rtsp_url, motion_rtsp_url, chunk_duration, reconnect_interval,
 		        video_codec, has_audio, width, height, display_order,
-		        hls_video_mode, record_video_mode, hls_segment_seconds, hls_list_size,
+		        hls_video_mode, record_video_mode, live_transport, hls_segment_seconds, hls_list_size,
 		        hls_dvr_seconds, recording_enabled
 		 FROM cameras WHERE id=?`, id,
 	).Scan(
 		&cam.ID, &cam.Name, &cam.RTSPURL, &cam.MotionRTSPURL, &chunk, &reconnect,
 		&codec, &hasAudio, &width, &height, &cam.DisplayOrder,
-		&cam.HLSVideoMode, &cam.RecordVideoMode, &segSec, &listSize,
+		&cam.HLSVideoMode, &cam.RecordVideoMode, &cam.LiveTransport, &segSec, &listSize,
 		&dvrSec, &recEnabled,
 	)
 	if err != nil {
@@ -143,7 +144,7 @@ func ListCameras(db *DB) ([]config.CameraConfig, error) {
 	rows, err := db.Query(`
 		SELECT c.id, c.name, c.rtsp_url, c.motion_rtsp_url, c.chunk_duration, c.reconnect_interval,
 		       c.video_codec, c.has_audio, c.width, c.height, c.display_order,
-		       c.hls_video_mode, c.record_video_mode, c.hls_segment_seconds, c.hls_list_size,
+		       c.hls_video_mode, c.record_video_mode, c.live_transport, c.hls_segment_seconds, c.hls_list_size,
 		       c.hls_dvr_seconds, c.recording_enabled,
 		       cm.enabled, cm.threshold, cm.fps, cm.cooldown_seconds,
 		       cm.capture_width, cm.capture_height, cm.playback_lead_seconds, cm.playback_trail_seconds
@@ -170,7 +171,7 @@ func ListCameras(db *DB) ([]config.CameraConfig, error) {
 		if err := rows.Scan(
 			&cam.ID, &cam.Name, &cam.RTSPURL, &cam.MotionRTSPURL, &chunk, &reconnect,
 			&codec, &hasAudio, &width, &height, &cam.DisplayOrder,
-			&cam.HLSVideoMode, &cam.RecordVideoMode, &segSec, &listSize,
+			&cam.HLSVideoMode, &cam.RecordVideoMode, &cam.LiveTransport, &segSec, &listSize,
 			&dvrSec, &recEnabled,
 			&mEnabled, &mThreshold, &mFPS, &mCooldown, &mCaptureW, &mCaptureH, &mPlaybackLead, &mPlaybackTrail,
 		); err != nil {
@@ -225,7 +226,7 @@ func UpdateCamera(db *DB, cam config.CameraConfig, motion *config.MotionConfig) 
 	_, err = tx.Exec(
 		`UPDATE cameras SET name=?, rtsp_url=?, motion_rtsp_url=?, chunk_duration=?, reconnect_interval=?,
 		                    video_codec=?, has_audio=?, width=?, height=?, display_order=?,
-		                    hls_video_mode=?, record_video_mode=?,
+		                    hls_video_mode=?, record_video_mode=?, live_transport=?,
 		                    hls_segment_seconds=?, hls_list_size=?, hls_dvr_seconds=?,
 		                    recording_enabled=?
 		 WHERE id=?`,
@@ -241,6 +242,7 @@ func UpdateCamera(db *DB, cam config.CameraConfig, motion *config.MotionConfig) 
 		cam.DisplayOrder,
 		cam.HLSVideoMode,
 		cam.RecordVideoMode,
+		cam.EffectiveLiveTransport(),
 		nullIntPtr(cam.HLSSegmentSeconds),
 		nullIntPtr(cam.HLSListSize),
 		nullIntPtr(cam.HLSDVRSeconds),

@@ -7,6 +7,7 @@ import HLSPlayer from '../components/HLSPlayer'
 interface Camera {
   id: string
   name: string
+  live_transport?: string
 }
 
 export default function DashboardPage() {
@@ -47,6 +48,7 @@ export default function DashboardPage() {
                     src={`/stream/${cam.id}/index.m3u8`}
                     className="w-full aspect-video object-cover bg-black pointer-events-none"
                     cameraId={cam.id}
+                    transport={cam.live_transport}
                   />
                   <span className="absolute top-2 left-2 bg-red-600 text-white text-xs px-2 py-0.5 rounded font-medium">
                     AO VIVO
