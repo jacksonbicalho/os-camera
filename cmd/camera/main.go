@@ -24,6 +24,7 @@ import (
 	"camera/internal/dbbackup"
 	"camera/internal/exec"
 	"camera/internal/ffprobe"
+	"camera/internal/live"
 	"camera/internal/logger"
 	"camera/internal/motion"
 	"camera/internal/recorder"
@@ -204,6 +205,7 @@ func main() {
 		cancelsByID    = make(map[string]context.CancelFunc)
 		motionMonsByID = make(map[string]*motion.Monitor)
 		streamsByID    = make(map[string]ffprobe.StreamInfo)
+		livePubsByID   = make(map[string]*live.Publisher)
 		wg             sync.WaitGroup
 	)
 
@@ -270,6 +272,28 @@ func main() {
 			}()
 		}
 
+		// Low-latency live via WebRTC: only cameras that deliver H.264 can be
+		// repackaged without transcoding. Non-H.264 cameras get no publisher and
+		// the front falls back to HLS. Uses the main RTSP URL (same as HLS).
+		if stream.VideoCodec == "h264" {
+			pub, err := live.NewPublisher(cam.ID, live.NewRTSPSource(cam.RTSPURL, slog), slog)
+			if err != nil {
+				slog.Error("live: failed to create webrtc publisher", "camera", cam.ID, "error", err)
+			} else {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					pub.Run(camCtx, reconnect)
+				}()
+				camMu.Lock()
+				livePubsByID[cam.ID] = pub
+				camMu.Unlock()
+				if srv != nil {
+					srv.WithLivePublisher(cam.ID, pub)
+				}
+			}
+		}
+
 		motionCfg := cam.EffectiveMotionConfig()
 		if motionCfg.Enabled {
 			camID := cam.ID
@@ -315,6 +339,7 @@ func main() {
 		delete(cancelsByID, id)
 		delete(motionMonsByID, id)
 		delete(streamsByID, id)
+		delete(livePubsByID, id)
 		camMu.Unlock()
 
 		if cancel != nil {
@@ -353,6 +378,9 @@ func main() {
 			srv.WithMotionFeed(id, mon.Events())
 			srv.WithRawFeed(id, mon.RawScores())
 			srv.WithMonitor(id, mon)
+		}
+		for id, pub := range livePubsByID {
+			srv.WithLivePublisher(id, pub)
 		}
 		camMu.Unlock()
 

@@ -120,6 +120,7 @@ type Server struct {
 	onCameraStart      func(config.CameraConfig)
 	onCameraStop       func(string)
 	monitors           map[string]*motion.Monitor
+	livePublishers     map[string]livePublisher
 	cpu                cpuTracker
 	net                netTracker
 	cleaner            interface{ ForceClean() }
@@ -380,6 +381,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/cameras/{id}/device-info", s.requireCameraAccess(s.handleDeviceInfo))
 	s.mux.HandleFunc("POST /api/cameras/{id}/device-info/refresh", s.requireAdmin(s.handleRefreshDeviceInfo))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion", s.requireCameraAccess(s.handleMotionEvents))
+	s.mux.HandleFunc("POST /api/cameras/{id}/webrtc", s.requireCameraAccess(s.handleWebRTC))
 	s.mux.HandleFunc("GET /api/motion/live", s.requireFullAuth(s.handleAllMotionLive))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/live", s.requireCameraAccess(s.handleMotionLive))
 	s.mux.HandleFunc("GET /api/cameras/{id}/motion/scores", s.requireCameraAccess(s.handleMotionScores))
