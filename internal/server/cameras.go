@@ -322,6 +322,7 @@ func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
 	// restore the real password from the existing record but keep everything else
 	// (host, path, query) from the submitted URL — so host changes are preserved.
 	req.RTSPURL = restoreMaskedRTSPPassword(req.RTSPURL, existing.RTSPURL)
+	req.MotionRTSPURL = restoreMaskedRTSPPassword(req.MotionRTSPURL, existing.MotionRTSPURL)
 	if req.Motion != nil {
 		if err := validateMotionConfig(req.Motion); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

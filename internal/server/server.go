@@ -642,6 +642,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		ID                string     `json:"id"`
 		Name              string     `json:"name"`
 		RTSPURL           string     `json:"rtsp_url"`
+		MotionRTSPURL     string     `json:"motion_rtsp_url,omitempty"`
 		ChunkDuration     string     `json:"chunk_duration"`
 		ReconnectInterval string     `json:"reconnect_interval"`
 		VideoCodec        string     `json:"video_codec"`
@@ -697,6 +698,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			ID:                c.ID,
 			Name:              c.Name,
 			RTSPURL:           maskRTSP(c.RTSPURL),
+			MotionRTSPURL:     maskRTSP(c.MotionRTSPURL),
 			ChunkDuration:     formatDuration(c.EffectiveChunkDuration()),
 			ReconnectInterval: formatDuration(c.EffectiveReconnectInterval()),
 			VideoCodec:        videoCodec,
