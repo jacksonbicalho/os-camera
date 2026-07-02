@@ -123,6 +123,7 @@ type CameraConfig struct {
 	DisplayOrder      int           `yaml:"display_order"`
 	HLSVideoMode      string        `yaml:"hls_video_mode"`
 	RecordVideoMode   string        `yaml:"record_video_mode"`
+	LiveTransport     string        `yaml:"live_transport"`
 	HLSSegmentSeconds *int          `yaml:"hls_segment_seconds"`
 	HLSListSize       *int          `yaml:"hls_list_size"`
 	HLSDVRSeconds     *int          `yaml:"hls_dvr_seconds"`
@@ -166,6 +167,15 @@ func (c CameraConfig) EffectiveMotionURL() string {
 		return c.MotionRTSPURL
 	}
 	return c.RTSPURL
+}
+
+// EffectiveLiveTransport returns the per-camera live transport preference,
+// defaulting to "auto" (try WebRTC, fall back to HLS) when unset.
+func (c CameraConfig) EffectiveLiveTransport() string {
+	if c.LiveTransport == "" {
+		return "auto"
+	}
+	return c.LiveTransport
 }
 
 func (c CameraConfig) EffectiveChunkDuration() time.Duration {

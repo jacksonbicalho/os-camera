@@ -1371,7 +1371,7 @@ function toggleFullscreen() {
                   onPointerMove={playerZoom.onPointerMove}
                   onPointerUp={playerZoom.onPointerUp}
                 >
-                  <HLSPlayer ref={hlsPlayerRef} src={liveUrl} containerClassName="w-full h-full" className="w-full h-full bg-background" cameraId={id} muted={videoMuted} segmentSeconds={cam?.hls_segment_seconds} onGoToEvent={handleGoToEvent} />
+                  <HLSPlayer ref={hlsPlayerRef} src={liveUrl} containerClassName="w-full h-full" className="w-full h-full bg-background" cameraId={id} transport={cam?.live_transport} muted={videoMuted} segmentSeconds={cam?.hls_segment_seconds} onGoToEvent={handleGoToEvent} />
                   {playerZoom.isZoomed && (
                     <button
                       onClick={playerZoom.reset}

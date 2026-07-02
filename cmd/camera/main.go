@@ -273,9 +273,10 @@ func main() {
 		}
 
 		// Low-latency live via WebRTC: only cameras that deliver H.264 can be
-		// repackaged without transcoding. Non-H.264 cameras get no publisher and
-		// the front falls back to HLS. Uses the main RTSP URL (same as HLS).
-		if stream.VideoCodec == "h264" {
+		// repackaged without transcoding, and the per-camera live_transport=hls
+		// preference forces HLS by skipping the publisher. Cameras without a
+		// publisher make the front fall back to HLS. Uses the main RTSP URL.
+		if live.ShouldPublish(stream.VideoCodec, cam.EffectiveLiveTransport()) {
 			pub, err := live.NewPublisher(cam.ID, live.NewRTSPSource(cam.RTSPURL, slog), slog)
 			if err != nil {
 				slog.Error("live: failed to create webrtc publisher", "camera", cam.ID, "error", err)

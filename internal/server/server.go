@@ -324,6 +324,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/settings/cameras", s.requireAdmin(s.handleListSettingsCameras))
 	s.mux.HandleFunc("POST /api/settings/cameras", s.requireAdmin(s.handleCreateCamera))
 	s.mux.HandleFunc("POST /api/settings/cameras/detect-substream", s.requireAdmin(s.handleDetectSubstream))
+	s.mux.HandleFunc("POST /api/settings/cameras/detect-streams", s.requireAdmin(s.handleDetectStreams))
 	s.mux.HandleFunc("PUT /api/settings/cameras/reorder", s.requireAdmin(s.handleReorderCameras))
 	s.mux.HandleFunc("PUT /api/settings/cameras/{id}", s.requireAdmin(s.handleUpdateCamera))
 	s.mux.HandleFunc("DELETE /api/settings/cameras/{id}", s.requireAdmin(s.handleDeleteCamera))
@@ -653,6 +654,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		Height            int        `json:"height"`
 		HLSVideoMode      string     `json:"hls_video_mode"`
 		RecordVideoMode   string     `json:"record_video_mode"`
+		LiveTransport     string     `json:"live_transport"`
 		HLSSegmentSeconds *int       `json:"hls_segment_seconds"`
 		HLSListSize       *int       `json:"hls_list_size"`
 		HLSDVRSeconds     *int       `json:"hls_dvr_seconds"`
@@ -709,6 +711,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			Height:            height,
 			HLSVideoMode:      c.HLSVideoMode,
 			RecordVideoMode:   c.RecordVideoMode,
+			LiveTransport:     c.EffectiveLiveTransport(),
 			HLSSegmentSeconds: c.HLSSegmentSeconds,
 			HLSListSize:       c.HLSListSize,
 			HLSDVRSeconds:     c.HLSDVRSeconds,

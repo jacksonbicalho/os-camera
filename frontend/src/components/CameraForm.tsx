@@ -22,6 +22,9 @@ export default function CameraForm({ initial, prefillRtsp, prefillName, onSave, 
   // editing mode when `initial` is provided
   const [detecting, setDetecting] = useState(false)
   const [detectMsg, setDetectMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [detectingLive, setDetectingLive] = useState(false)
+  const [liveDetectMsg, setLiveDetectMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [liveRecommended, setLiveRecommended] = useState<string>('')
 
   const set = (field: keyof CameraFormData, value: string | boolean | number) =>
     setForm(prev => ({ ...prev, [field]: value }))
@@ -49,6 +52,36 @@ export default function CameraForm({ initial, prefillRtsp, prefillName, onSave, 
       setDetectMsg({ text: 'Erro ao detectar — verifique a URL principal.', ok: false })
     } finally {
       setDetecting(false)
+    }
+  }
+
+  const handleDetectStreams = async () => {
+    const main = form.rtsp_url.trim()
+    if (!main) return
+    setDetectingLive(true)
+    setLiveDetectMsg(null)
+    try {
+      const res = await fetch('/api/settings/cameras/detect-streams', {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rtsp_url: main, id: initial?.id }),
+      })
+      if (!res.ok) throw new Error('request failed')
+      const data = (await res.json()) as { codec?: string; width?: number; height?: number; recommended?: string }
+      if (data.codec) {
+        setLiveRecommended(data.recommended ?? '')
+        const rec = data.recommended === 'webrtc'
+          ? 'WebRTC recomendado (baixa latência)'
+          : 'HLS recomendado — WebRTC indisponível para este codec'
+        setLiveDetectMsg({ text: `Codec detectado: ${data.codec.toUpperCase()} — ${rec}`, ok: data.recommended === 'webrtc' })
+      } else {
+        setLiveRecommended('')
+        setLiveDetectMsg({ text: 'Não foi possível detectar o codec — verifique a URL principal.', ok: false })
+      }
+    } catch {
+      setLiveDetectMsg({ text: 'Erro ao detectar — verifique a URL principal.', ok: false })
+    } finally {
+      setDetectingLive(false)
     }
   }
 
@@ -156,6 +189,39 @@ export default function CameraForm({ initial, prefillRtsp, prefillName, onSave, 
             <option value="h264">H.264 (sempre transcodifica)</option>
             <option value="copy">Cópia (sem transcodificação)</option>
           </select>
+        </div>
+        <div className="sm:col-span-2">
+          <label className={labelClass}>Transporte do ao-vivo</label>
+          <div className="flex gap-2">
+            <select
+              id="camera-live-transport"
+              value={form.live_transport}
+              onChange={e => set('live_transport', e.target.value)}
+              className={inputClass}
+            >
+              <option value="auto">Automático — WebRTC com fallback HLS{liveRecommended === 'webrtc' ? ' (recomendado)' : ''}</option>
+              <option value="webrtc">WebRTC — baixa latência{liveRecommended === 'webrtc' ? ' (recomendado)' : ''}</option>
+              <option value="hls">HLS — compatível{liveRecommended === 'hls' ? ' (recomendado)' : ''}</option>
+            </select>
+            <Button
+              id="camera-live-transport-detect"
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!form.rtsp_url.trim() || detectingLive}
+              onClick={handleDetectStreams}
+              className="shrink-0"
+            >
+              {detectingLive ? 'Detectando...' : 'Detectar'}
+            </Button>
+          </div>
+          {liveDetectMsg && (
+            <p className={`text-xs mt-0.5 ${liveDetectMsg.ok ? 'text-green-500' : 'text-amber-500'}`}>{liveDetectMsg.text}</p>
+          )}
+          {form.live_transport === 'webrtc' && liveRecommended === 'hls' && (
+            <p className="text-xs text-amber-500 mt-0.5">Este stream não é H.264 — o WebRTC cairá para HLS automaticamente.</p>
+          )}
+          <p className="text-xs text-gray-400 mt-0.5">WebRTC entrega o ao-vivo com latência abaixo de 1s (exige H.264 no stream principal). "Detectar" verifica o codec para recomendar o transporte.</p>
         </div>
         <div>
           <label className={labelClass}>Modo de gravação</label>

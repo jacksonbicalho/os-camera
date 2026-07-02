@@ -44,6 +44,60 @@ type detectSubstreamResponse struct {
 	Height        int    `json:"height"`
 }
 
+type detectStreamsResponse struct {
+	Codec       string `json:"codec"`
+	Width       int    `json:"width"`
+	Height      int    `json:"height"`
+	Recommended string `json:"recommended"`
+}
+
+// recommendedTransport suggests the live transport for a given video codec:
+// WebRTC when the stream is H.264 (browsers can play it), HLS otherwise
+// (e.g. H.265, which browsers do not decode over WebRTC).
+func recommendedTransport(codec string) string {
+	if codec == "h264" {
+		return "webrtc"
+	}
+	return "hls"
+}
+
+// handleDetectStreams probes the main RTSP URL and reports its video codec plus
+// the recommended live transport, so the camera form can offer WebRTC as the
+// recommended option when the device delivers H.264. A failed probe returns an
+// empty result (200, not an error) so the user can still choose manually.
+func (s *Server) handleDetectStreams(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		RTSPURL string `json:"rtsp_url"`
+		ID      string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.RTSPURL) == "" {
+		http.Error(w, "rtsp_url is required", http.StatusBadRequest)
+		return
+	}
+
+	rtsp := strings.TrimSpace(req.RTSPURL)
+	if req.ID != "" && s.db != nil {
+		if cam, err := db.GetCamera(s.db, req.ID); err == nil {
+			rtsp = restoreMaskedRTSPPassword(rtsp, cam.RTSPURL)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if s.prober != nil {
+		info := ffprobe.Resolve(r.Context(), ffprobe.Resolver{RTSPURL: rtsp}, s.prober, s.log)
+		if info.Width > 0 && info.VideoCodec != "" {
+			json.NewEncoder(w).Encode(detectStreamsResponse{
+				Codec:       info.VideoCodec,
+				Width:       info.Width,
+				Height:      info.Height,
+				Recommended: recommendedTransport(info.VideoCodec),
+			})
+			return
+		}
+	}
+	json.NewEncoder(w).Encode(detectStreamsResponse{})
+}
+
 // handleDetectSubstream derives substream candidates from the given main RTSP
 // URL and returns the first one that ffprobe confirms (with real dimensions).
 // When nothing can be derived/verified it returns an empty result (200, not an

@@ -22,6 +22,7 @@ interface HLSPlayerProps {
   className?: string
   containerClassName?: string
   cameraId?: string
+  transport?: string
   muted?: boolean
   segmentSeconds?: number | null
   onGoToEvent?: (eventTime: string) => void
@@ -32,7 +33,7 @@ interface MotionAlert {
   time: string
 }
 
-const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer({ src, className, containerClassName, cameraId, muted = true, segmentSeconds, onGoToEvent }, ref) {
+const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer({ src, className, containerClassName, cameraId, transport, muted = true, segmentSeconds, onGoToEvent }, ref) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<HlsType | null>(null)
   const mutedRef = useRef(muted)
@@ -104,7 +105,8 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
 
       // Prefer WebRTC (sub-second latency); fall back to HLS when it is
       // unavailable (409 / non-H.264 camera) or the media path never connects.
-      if (cameraId && typeof RTCPeerConnection !== 'undefined') {
+      // transport='hls' forces HLS by skipping WebRTC entirely.
+      if (transport !== 'hls' && cameraId && typeof RTCPeerConnection !== 'undefined') {
         const conn = new RTCPeerConnection()
         pc = conn
         let fellBack = false
@@ -170,7 +172,7 @@ const HLSPlayer = forwardRef<HLSPlayerHandle, HLSPlayerProps>(function HLSPlayer
       }
       video.srcObject = null
     }
-  }, [src, segmentSeconds, cameraId])
+  }, [src, segmentSeconds, cameraId, transport])
 
   useEffect(() => {
     mutedRef.current = muted
